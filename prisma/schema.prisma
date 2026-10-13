@@ -1,0 +1,267 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+  binaryTargets   = ["native", "rhel-openssl-1.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+  // Connection pooling optimization for high concurrency
+  // Supabase pgBouncer transaction mode recommended for serverless
+}
+
+model Profile {
+  id            String         @id @default(uuid())
+  userId        String         @unique
+  role          Role
+  name          String
+  email         String         @unique
+  phone         String?
+  active        Boolean        @default(true)
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  faculty       Faculty?
+  securityStaff SecurityStaff?
+  student       Student?
+  warden        Warden?
+
+  @@map("profiles")
+}
+
+model Student {
+  id          String                @id @default(uuid())
+  profileId   String                @unique @map("profile_id")
+  studentRoll String                @unique @map("student_roll")
+  department  String?
+  year        Int?
+  section     String?
+  studentType StudentType           @default(DAY_SCHOLAR) @map("student_type")
+  facultyId   String?               @map("faculty_id")
+  wardenId    String?               @map("warden_id")
+  roomNumber  String?               @map("room_number")
+  hostelBlock String?               @map("hostel_block")
+  status      StudentMovementStatus @default(INSIDE)
+  createdAt   DateTime              @default(now()) @map("created_at")
+  movements   Movement[]
+  permissions Permission[]
+  faculty     Faculty?              @relation("AssignedStudents", fields: [facultyId], references: [id])
+  profile     Profile               @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  warden      Warden?               @relation("AssignedHostellers", fields: [wardenId], references: [id])
+
+  @@index([facultyId])
+  @@index([wardenId])
+  @@index([status])
+  @@index([studentType])
+  @@map("students")
+}
+
+model Faculty {
+  id                  String               @id @default(uuid())
+  profileId           String               @unique @map("profile_id")
+  employeeId          String?              @unique @map("employee_id")
+  department          String?
+  designation         String?
+  maxApprovals        Int                  @default(5) @map("max_approvals")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  profile             Profile              @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  permissionApprovals PermissionApproval[]
+  assignedStudents    Student[]            @relation("AssignedStudents")
+  permissions         Permission[]         @relation("FacultyPermissions")
+  movements           Movement[]           @relation("FacultyMovements")
+
+  @@map("faculty")
+}
+
+model Warden {
+  id                  String               @id @default(uuid())
+  profileId           String               @unique @map("profile_id")
+  employeeId          String?              @unique @map("employee_id")
+  hostelBlock         String?              @map("hostel_block")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  permissionApprovals PermissionApproval[]
+  assignedHostellers  Student[]            @relation("AssignedHostellers")
+  profile             Profile              @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("wardens")
+}
+
+model SecurityStaff {
+  id         String     @id @default(uuid())
+  profileId  String     @unique @map("profile_id")
+  employeeId String?    @unique @map("employee_id")
+  gateId     String?    @map("gate_id")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  movements  Movement[]
+  gate       Gate?      @relation(fields: [gateId], references: [id])
+  profile    Profile    @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("security_staff")
+}
+
+model Permission {
+  id              String              @id @default(uuid())
+  studentId       String?             @map("student_id")
+  facultyId       String?             @map("faculty_id")
+  type            MovementType        @default(EXIT) // EXIT or ENTRY
+  approverType    ApproverType        @map("approver_type")
+  approverId      String              @map("approver_id")
+  status          PermissionStatus    @default(PENDING)
+  purpose         String
+  destination     String?
+  exitDate        DateTime            @map("exit_date")
+  expectedExit    DateTime?           @map("expected_exit")
+  expectedReturn  DateTime?           @map("expected_return")
+  remarks         String?
+  contactNumber   String?             @map("contact_number")
+  rejectionReason String?             @map("rejection_reason")
+  approvedAt      DateTime?           @map("approved_at")
+  rejectedAt      DateTime?           @map("rejected_at")
+  cancelledAt     DateTime?           @map("cancelled_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  movements       Movement[]
+  approval        PermissionApproval?
+  student         Student?            @relation(fields: [studentId], references: [id])
+  faculty         Faculty?            @relation("FacultyPermissions", fields: [facultyId], references: [id])
+  qr              QrCredential?
+
+  @@index([studentId, createdAt(sort: Desc)])
+  @@index([approverId, status])
+  @@index([status])
+  @@index([exitDate])
+  @@map("permissions")
+}
+
+model PermissionApproval {
+  id           String       @id @default(uuid())
+  permissionId String       @unique @map("permission_id")
+  approverType ApproverType @map("approver_type")
+  facultyId    String?      @map("faculty_id")
+  wardenId     String?      @map("warden_id")
+  approved     Boolean
+  reason       String?
+  createdAt    DateTime     @default(now()) @map("created_at")
+  faculty      Faculty?     @relation(fields: [facultyId], references: [id])
+  permission   Permission   @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  warden       Warden?      @relation(fields: [wardenId], references: [id])
+
+  @@index([facultyId, createdAt(sort: Desc)])
+  @@index([wardenId, createdAt(sort: Desc)])
+  @@map("permission_approvals")
+}
+
+model QrCredential {
+  id           String     @id @default(uuid())
+  permissionId String     @unique @map("permission_id")
+  token        String     @unique
+  expiresAt    DateTime   @map("expires_at")
+  active       Boolean    @default(true)
+  usedForExit  Boolean    @default(false) @map("used_for_exit")
+  usedForEntry Boolean    @default(false) @map("used_for_entry")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([expiresAt])
+  @@map("qr_credentials")
+}
+
+model Gate {
+  id            String          @id @default(uuid())
+  name          String          @unique
+  location      String?
+  active        Boolean         @default(true)
+  createdAt     DateTime        @default(now()) @map("created_at")
+  movements     Movement[]
+  securityStaff SecurityStaff[]
+
+  @@map("gates")
+}
+
+model Movement {
+  id             String        @id @default(uuid())
+  permissionId   String        @map("permission_id")
+  studentId      String?       @map("student_id")
+  facultyId      String?       @map("faculty_id")
+  gateId         String        @map("gate_id")
+  securityUserId String        @map("security_user_id")
+  type           MovementType
+  imagePath      String?       @map("image_path")
+  notes          String?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  gate           Gate          @relation(fields: [gateId], references: [id])
+  permission     Permission    @relation(fields: [permissionId], references: [id])
+  securityUser   SecurityStaff @relation(fields: [securityUserId], references: [id])
+  student        Student?      @relation(fields: [studentId], references: [id])
+  faculty        Faculty?      @relation("FacultyMovements", fields: [facultyId], references: [id])
+
+  @@index([studentId, createdAt(sort: Desc)])
+  @@index([gateId, createdAt(sort: Desc)])
+  @@index([permissionId])
+  @@index([type, createdAt(sort: Desc)])
+  @@map("movements")
+}
+
+model Outsider {
+  id              String    @id @default(uuid())
+  name            String
+  phone           String
+  category        String    @default("GUEST")
+  purpose         String
+  visitingStudent String?   @map("visiting_student")
+  gate            String?
+  vehicleNumber   String?   @map("vehicle_number")
+  photoUrl        String?   @map("photo_url")
+  status          String    @default("INSIDE")
+  entryTime       DateTime  @default(now()) @map("entry_time")
+  exitTime        DateTime? @map("exit_time")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@map("outsiders")
+}
+
+enum Role {
+  ADMIN
+  STUDENT
+  FACULTY
+  FACULTY_ADMIN
+  WARDEN
+  SECURITY
+  DIRECTOR
+  DEAN
+}
+
+enum StudentType {
+  DAY_SCHOLAR
+  HOSTELLER
+}
+
+enum StudentMovementStatus {
+  INSIDE
+  OUTSIDE
+}
+
+enum ApproverType {
+  FACULTY
+  WARDEN
+  FACULTY_ADMIN
+  DIRECTOR
+  DEAN
+}
+
+enum PermissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  EXPIRED
+  EXITED
+  COMPLETED
+}
+
+enum MovementType {
+  EXIT
+  ENTRY
+}

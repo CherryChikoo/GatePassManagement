@@ -1,0 +1,576 @@
+"use server";
+
+import { prisma } from "@/lib/db/prisma";
+import { requireRole } from "@/lib/auth/helpers";
+import { verifyQrToken } from "@/lib/qr/token";
+import { revalidatePath } from "next/cache";
+
+let securityDashboardCache: { data: any; expiresAt: number } | null = null;
+let securityLogCache = new Map<string, { data: any; expiresAt: number }>();
+
+export async function invalidateSecurityCache() {
+  securityDashboardCache = null;
+  securityLogCache.clear();
+}
+
+/**
+ * Verify a QR token and return permission details for security
+ */
+export async function verifyQrScan(token: string) {
+  await requireRole("SECURITY", "ADMIN");
+
+  let permissionId: string | null = null;
+  const result = await verifyQrToken(token);
+  if (result.valid && result.payload) {
+    permissionId = result.payload.permissionId;
+  } else {
+    const cleanToken = token.trim();
+    // 1. Direct match on qrCredential table (token or permissionId)
+    const dbQr = await prisma.qrCredential.findFirst({
+      where: {
+        OR: [{ token: cleanToken }, { permissionId: cleanToken }],
+      },
+      select: { permissionId: true },
+    });
+    if (dbQr) {
+      permissionId = dbQr.permissionId;
+    } else {
+      // 2. Direct permission ID match
+      const perm = await prisma.permission.findUnique({
+        where: { id: cleanToken },
+        select: { id: true },
+      });
+      if (perm) {
+        permissionId = perm.id;
+      } else {
+        // 3. Match by student roll number for their active/approved pass
+        const studentPerm = await prisma.permission.findFirst({
+          where: {
+            student: { studentRoll: { equals: cleanToken, mode: "insensitive" } },
+            status: "APPROVED",
+            qr: { active: true },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true },
+        });
+        if (studentPerm) {
+          permissionId = studentPerm.id;
+        }
+      }
+    }
+  }
+
+  if (!permissionId) {
+    return { valid: false, error: result.error || "Invalid QR code or pass not found" };
+  }
+
+  // Fetch the full permission with student details
+  const permission = await prisma.permission.findUnique({
+    where: { id: permissionId },
+    include: {
+      student: {
+        select: {
+          id: true,
+          studentRoll: true,
+          department: true,
+          year: true,
+          section: true,
+          status: true,
+          studentType: true,
+          profile: {
+            select: { name: true, email: true, phone: true },
+          },
+        },
+      },
+      faculty: {
+        select: {
+          id: true,
+          employeeId: true,
+          department: true,
+          profile: {
+            select: { name: true, email: true, phone: true },
+          },
+        },
+      },
+      qr: {
+        select: {
+          id: true,
+          active: true,
+          usedForExit: true,
+          usedForEntry: true,
+          expiresAt: true,
+        },
+      },
+    },
+  });
+
+  if (!permission) {
+    return { valid: false, error: "Permission not found" };
+  }
+
+  if (!permission.qr || !permission.qr.active) {
+    return { valid: false, error: "QR credential is inactive or revoked" };
+  }
+
+  if (permission.status === "APPROVED" && new Date(permission.qr.expiresAt) < new Date()) {
+    await prisma.$transaction([
+      prisma.permission.update({
+        where: { id: permission.id },
+        data: { status: "EXPIRED" },
+      }),
+      prisma.qrCredential.update({
+        where: { id: permission.qr.id },
+        data: { active: false },
+      }),
+    ]);
+    return { valid: false, error: "QR code has expired" };
+  }
+
+  // Determine what action is allowed
+  let allowedAction: "EXIT" | "ENTRY" | null = null;
+  if (permission.type === "ENTRY") {
+    if (permission.status === "APPROVED" && !permission.qr.usedForEntry && permission.qr.active) {
+      allowedAction = "ENTRY";
+    }
+  } else {
+    // Default or EXIT type
+    if (permission.status === "APPROVED" && !permission.qr.usedForExit && permission.qr.active) {
+      allowedAction = "EXIT";
+    }
+  }
+
+  if (!allowedAction) {
+    if (permission.type !== "ENTRY" && (permission.status === "EXITED" || permission.qr.usedForExit)) {
+      return {
+        valid: false,
+        error: "This Exit Pass has already been used to leave campus. The student must raise a separate Entry Request to enter campus.",
+      };
+    }
+    if (permission.type === "ENTRY" && permission.qr.usedForEntry) {
+      return {
+        valid: false,
+        error: "This Entry Pass has already been used to enter campus.",
+      };
+    }
+    const reasons: Record<string, string> = {
+      PENDING: "Permission is still pending approval",
+      REJECTED: "Permission was rejected",
+      CANCELLED: "Permission was cancelled",
+      EXPIRED: "Permission has expired",
+      COMPLETED: "This pass has already been used and completed",
+      EXITED: "Student has already exited. They must raise a separate Entry Request to return.",
+    };
+    return {
+      valid: false,
+      error: reasons[permission.status] || "No valid action available for this QR",
+    };
+  }
+
+  return {
+    valid: true,
+    allowedAction,
+    permission: {
+      id: permission.id,
+      type: permission.type,
+      status: permission.status,
+      purpose: permission.purpose,
+      destination: permission.destination,
+      expectedExit: permission.expectedExit,
+      expectedReturn: permission.expectedReturn,
+      approverType: permission.approverType,
+      approvedAt: permission.approvedAt,
+    },
+    student: permission.student || (permission.faculty ? {
+      id: permission.faculty.id,
+      studentRoll: permission.faculty.employeeId || "FACULTY",
+      department: permission.faculty.department,
+      year: null,
+      section: null,
+      status: "ACTIVE" as any,
+      studentType: "FACULTY" as any,
+      profile: permission.faculty.profile,
+    } : null),
+  };
+}
+
+/**
+ * Register an EXIT movement
+ * Uses an interactive transaction to prevent TOCTOU race conditions
+ */
+export async function registerExit(
+  permissionId: string,
+  gateId: string,
+  imagePath?: string,
+  notes?: string
+) {
+  const user = await requireRole("SECURITY", "ADMIN");
+
+  let securityStaff = await prisma.securityStaff.findUnique({
+    where: { profileId: user.profileId },
+    select: { id: true },
+  });
+
+  if (!securityStaff && user.role === "ADMIN") {
+    securityStaff = await prisma.securityStaff.findFirst({
+      select: { id: true },
+    });
+  }
+
+  if (!securityStaff) {
+    return { error: "Security staff record not found. Please ensure at least one security guard is registered." };
+  }
+
+  // Validate inputs before entering the transaction
+  if (!imagePath) {
+    return { error: "Photo capture is mandatory for exit registration" };
+  }
+  // Guard against oversized base64 payloads (500KB limit)
+  if (imagePath.length > 500_000) {
+    return { error: "Captured image is too large. Please retake with lower resolution." };
+  }
+
+  try {
+    // Interactive transaction: reads + checks + writes are all atomic
+    await prisma.$transaction(async (tx) => {
+      // Read permission state INSIDE the transaction
+      const permission = await tx.permission.findUnique({
+        where: { id: permissionId },
+        include: {
+          qr: true,
+          student: { select: { id: true, status: true } },
+        },
+      });
+
+      if (!permission) throw new Error("Permission not found");
+      if (permission.status !== "APPROVED") {
+        throw new Error(`Cannot register exit — permission status is ${permission.status}`);
+      }
+      if (permission.type === "ENTRY") {
+        throw new Error("Cannot register exit with an ENTRY pass. This pass is only for entering campus.");
+      }
+      if (!permission.qr || !permission.qr.active) {
+        throw new Error("QR credential is not active");
+      }
+      if (permission.qr.usedForExit) {
+        throw new Error("Exit already registered for this permission");
+      }
+
+      // Verify gate exists
+      const gate = await tx.gate.findUnique({ where: { id: gateId } });
+      if (!gate || !gate.active) {
+        throw new Error("Invalid or inactive gate");
+      }
+
+      // All checks passed — perform writes
+      await tx.movement.create({
+        data: {
+          permissionId,
+          studentId: permission.studentId || null,
+          facultyId: permission.facultyId || null,
+          gateId,
+          securityUserId: securityStaff.id,
+          type: "EXIT",
+          imagePath: imagePath || null,
+          notes: notes || null,
+        },
+      });
+      // Mark permission as EXITED (they are currently outside)
+      await tx.permission.update({
+        where: { id: permissionId },
+        data: { status: "EXITED" },
+      });
+      // Deactivate QR immediately upon exit: this pass is finished and cannot be used again
+      await tx.qrCredential.update({
+        where: { id: permission.qr!.id },
+        data: { 
+          usedForExit: true,
+          active: false, 
+        },
+      });
+      // Student is now OUTSIDE
+      if (permission.studentId) {
+        await tx.student.update({
+          where: { id: permission.studentId },
+          data: { status: "OUTSIDE" },
+        });
+      }
+
+    });
+  } catch (err: any) {
+    return { error: err.message || "Failed to register exit" };
+  }
+
+  invalidateSecurityCache();
+  revalidatePath("/security");
+  revalidatePath("/security/log");
+  revalidatePath("/student");
+  revalidatePath("/admin");
+  revalidatePath("/faculty");
+  revalidatePath("/warden");
+  return { success: true };
+}
+
+/**
+ * Register an ENTRY movement
+ */
+export async function registerEntry(
+  permissionId: string,
+  gateId: string,
+  imagePath?: string,
+  notes?: string
+) {
+  const user = await requireRole("SECURITY", "ADMIN");
+
+  let securityStaff = await prisma.securityStaff.findUnique({
+    where: { profileId: user.profileId },
+    select: { id: true },
+  });
+
+  if (!securityStaff && user.role === "ADMIN") {
+    securityStaff = await prisma.securityStaff.findFirst({
+      select: { id: true },
+    });
+  }
+
+  if (!securityStaff) {
+    return { error: "Security staff record not found. Please ensure at least one security guard is registered." };
+  }
+
+  // Validate inputs before entering the transaction
+  // Guard against oversized base64 payloads (500KB limit)
+  if (imagePath && imagePath.length > 500_000) {
+    return { error: "Captured image is too large. Please retake with lower resolution." };
+  }
+
+  try {
+    // Interactive transaction: reads + checks + writes are all atomic
+    await prisma.$transaction(async (tx) => {
+      const permission = await tx.permission.findUnique({
+        where: { id: permissionId },
+        include: {
+          qr: true,
+          student: { select: { id: true, status: true } },
+        },
+      });
+
+      if (!permission) throw new Error("Permission not found");
+      if (permission.type !== "ENTRY") {
+        throw new Error("Cannot register entry with an EXIT pass. A separate Entry Request is required to enter campus.");
+      }
+      if (permission.status !== "APPROVED") {
+        throw new Error(`Cannot register entry — permission status is ${permission.status}`);
+      }
+      if (!permission.qr || !permission.qr.active) {
+        throw new Error("QR credential is not active or has expired");
+      }
+      if (permission.qr.usedForEntry) {
+        throw new Error("Entry already registered for this permission");
+      }
+
+      const gate = await tx.gate.findUnique({ where: { id: gateId } });
+      if (!gate || !gate.active) {
+        throw new Error("Invalid or inactive gate");
+      }
+
+      // All checks passed — perform writes
+      await tx.movement.create({
+        data: {
+          permissionId,
+          studentId: permission.studentId || null,
+          facultyId: permission.facultyId || null,
+          gateId,
+          securityUserId: securityStaff.id,
+          type: "ENTRY",
+          imagePath: imagePath || null,
+          notes: notes || null,
+        },
+      });
+      await tx.permission.update({
+        where: { id: permissionId },
+        data: { status: "COMPLETED" },
+      });
+      await tx.qrCredential.update({
+        where: { id: permission.qr!.id },
+        data: { usedForEntry: true, active: false },
+      });
+      if (permission.studentId) {
+        await tx.student.update({
+          where: { id: permission.studentId },
+          data: { status: "INSIDE" },
+        });
+      }
+
+    });
+  } catch (err: any) {
+    return { error: err.message || "Failed to register entry" };
+  }
+
+  invalidateSecurityCache();
+  revalidatePath("/security");
+  revalidatePath("/security/log");
+  revalidatePath("/student");
+  revalidatePath("/admin");
+  revalidatePath("/faculty");
+  revalidatePath("/warden");
+  return { success: true };
+}
+
+/**
+ * Get security dashboard data
+ */
+export async function getSecurityDashboard() {
+  await requireRole("SECURITY", "ADMIN");  if (securityDashboardCache && securityDashboardCache.expiresAt > Date.now()) {
+    return securityDashboardCache.data;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const [
+    outsiderVisitsToday,
+    studentExitsToday,
+    studentEntriesToday,
+    outsidersInside,
+    recentMovements,
+    gates,
+  ] = await Promise.all([
+    prisma.outsider.count({ where: { createdAt: { gte: today } } }),
+    prisma.movement.count({
+      where: { type: "EXIT", createdAt: { gte: today } },
+    }),
+    prisma.movement.count({
+      where: { type: "ENTRY", createdAt: { gte: today } },
+    }),
+    prisma.outsider.count({ where: { status: "INSIDE" } }),
+    prisma.movement.findMany({
+      where: { createdAt: { gte: today } },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        type: true,
+        createdAt: true,
+        notes: true,
+        student: {
+          select: {
+            studentRoll: true,
+            profile: { select: { name: true } },
+          },
+        },
+        gate: { select: { name: true } },
+        permission: {
+          select: { purpose: true, destination: true },
+        },
+      },
+    }),
+    prisma.gate.findMany({
+      where: { active: true },
+      select: { id: true, name: true, location: true },
+    }),
+  ]);
+
+  const result = {
+    stats: { outsiderVisitsToday, studentExitsToday, studentEntriesToday, outsidersInside },
+    recentMovements,
+    gates,
+  };
+
+  securityDashboardCache = { data: result, expiresAt: Date.now() + 15_000 };
+  return result;
+}
+
+/**
+ * Get the currently outside students list
+ */
+export async function getCurrentlyOutsideStudents() {
+  await requireRole("SECURITY", "ADMIN");
+
+  return prisma.student.findMany({
+    where: { status: "OUTSIDE" },
+    select: {
+      id: true,
+      studentRoll: true,
+      department: true,
+      profile: { select: { name: true, phone: true } },
+      permissions: {
+        where: { status: "EXITED" },
+        take: 1,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          purpose: true,
+          destination: true,
+          expectedReturn: true,
+          movements: {
+            where: { type: "EXIT" },
+            take: 1,
+            orderBy: { createdAt: "desc" },
+            select: {
+              createdAt: true,
+              gate: { select: { name: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+export async function getSecurityLogData(dateStr?: string) {
+  await requireRole("SECURITY", "ADMIN");
+
+  const cacheKey = dateStr || "today";
+  const cached = securityLogCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+
+  let targetDate = new Date();
+  if (dateStr) {
+    const parsed = new Date(dateStr);
+    if (!isNaN(parsed.getTime())) {
+      targetDate = parsed;
+    }
+  }
+  targetDate.setHours(0, 0, 0, 0);
+  
+  const endOfDay = new Date(targetDate);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+
+  const [studentEntries, studentExits, outsiderVisits] = await Promise.all([
+    prisma.movement.findMany({
+      where: { type: "ENTRY", createdAt: { gte: targetDate, lt: endOfDay } },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true, type: true, createdAt: true, notes: true, imagePath: true,
+        student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
+        gate: { select: { name: true } },
+        permission: { select: { purpose: true, destination: true } },
+      },
+    }),
+    prisma.movement.findMany({
+      where: { type: "EXIT", createdAt: { gte: targetDate, lt: endOfDay } },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true, type: true, createdAt: true, notes: true, imagePath: true,
+        student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
+        gate: { select: { name: true } },
+        permission: { select: { purpose: true, destination: true } },
+      },
+    }),
+    prisma.outsider.findMany({
+      where: { entryTime: { gte: targetDate, lt: endOfDay } },
+      orderBy: { entryTime: "desc" },
+    }),
+  ]);
+
+  const result = { 
+    studentEntries, 
+    studentExits, 
+    outsiderVisits, 
+    selectedDate: targetDate.toISOString().split('T')[0] 
+  };
+  
+  securityLogCache.set(cacheKey, { data: result, expiresAt: Date.now() + 15000 }); // 15s cache
+  return result;
+}
