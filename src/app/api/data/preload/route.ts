@@ -3,6 +3,8 @@ import { getAuthUser } from "@/lib/auth/helpers";
 import { prisma } from "@/lib/db/prisma";
 import { getDepartmentVariants } from "@/lib/constants";
 import { autoExpireOutdatedPermissions } from "@/lib/permissions/auto-expire";
+import { resolveStudentApprover } from "@/lib/permissions/approver";
+import { istDateString, istStartOfDay } from "@/lib/time/ist";
 
 /**
  * Unified preload endpoint — returns ALL data the logged-in user needs
@@ -23,34 +25,37 @@ export async function GET() {
     // Proactively clean up any expired passes (time limit ended or previous days)
     await autoExpireOutdatedPermissions();
 
-    switch (user.role) {
-      case "FACULTY":
-        return NextResponse.json(await preloadFaculty(user.profileId));
-      case "WARDEN":
-        return NextResponse.json(await preloadWarden(user.profileId));
-      case "STUDENT":
-        return NextResponse.json(await preloadStudent(user.profileId));
-      case "SECURITY":
-        return NextResponse.json(await preloadSecurity());
-      case "FACULTY_ADMIN":
-        return NextResponse.json(await preloadFacultyAdmin(user.profileId));
-      case "ADMIN":
-        return NextResponse.json(await preloadAdmin());
-      case "DIRECTOR":
-        return NextResponse.json(await preloadDirector(user.profileId));
-      case "DEAN":
-        return NextResponse.json(await preloadDean(user.profileId));
-      default:
-        return NextResponse.json({ error: "Unknown role" }, { status: 400 });
+    const loaders: Record<string, () => Promise<unknown>> = {
+      FACULTY: () => preloadFaculty(user.profileId),
+      WARDEN: () => preloadWarden(user.profileId),
+      STUDENT: () => preloadStudent(user.profileId),
+      SECURITY: () => preloadSecurity(),
+      FACULTY_ADMIN: () => preloadFacultyAdmin(user.profileId),
+      ADMIN: () => preloadAdmin(),
+      DIRECTOR: () => preloadDirector(user.profileId),
+      DEAN: () => preloadDean(user.profileId),
+    };
+    const loader = loaders[user.role];
+    if (!loader) {
+      return NextResponse.json({ error: "Unknown role" }, { status: 400, headers: NO_STORE });
     }
+    return NextResponse.json(await loader(), { headers: NO_STORE });
   } catch (err: any) {
-    console.error("[Preload] Error:", err);
-    return NextResponse.json(
-      { error: err.message || "Failed to preload" },
-      { status: 500 }
-    );
+    console.error("[Preload] Error:", err?.message);
+    return NextResponse.json({ error: "Failed to load data" }, { status: 500, headers: NO_STORE });
   }
 }
+
+const NO_STORE = { "Cache-Control": "private, no-store" };
+
+/** QR credential fields safe to send to the browser (never the stored token). */
+const QR_PUBLIC_SELECT = {
+  id: true,
+  expiresAt: true,
+  active: true,
+  usedForExit: true,
+  usedForEntry: true,
+} as const;
 
 // ──────────────────────────────────────────────────────────────
 // HOD (FACULTY ADMIN) PRELOAD
@@ -75,12 +80,24 @@ async function preloadFacultyAdmin(profileId: string) {
     });
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = istStartOfDay();
 
   const deptVariants = getDepartmentVariants(faculty.department);
   const deptCondition = deptVariants.length > 0 ? [{ department: { in: deptVariants } }] : [];
   const studentDeptCondition = deptVariants.length > 0 ? [{ student: { department: { in: deptVariants } } }] : [];
+  const facultyDeptCondition = deptVariants.length > 0 ? [{ faculty: { department: { in: deptVariants } } }] : [];
+
+  // Requests this HOD is responsible for: routed to an HOD and belonging to
+  // this department (students or faculty), never the HOD's own pass.
+  const hodScope = {
+    approverType: "FACULTY_ADMIN" as const,
+    AND: [{ OR: [{ facultyId: null }, { facultyId: { not: faculty.id } }] }],
+    OR: [
+      { approverId: { in: [profileId, faculty.id] } },
+      ...studentDeptCondition,
+      ...facultyDeptCondition,
+    ],
+  };
 
   const [
     totalStudents,
@@ -106,75 +123,34 @@ async function preloadFacultyAdmin(profileId: string) {
       },
     }),
     prisma.permission.count({
-      where: {
-        status: { in: ["APPROVED", "EXITED", "COMPLETED"] },
-        approvedAt: { gte: today },
-        OR: [
-          { approverType: "FACULTY_ADMIN" },
-          { approverId: faculty.id },
-          { approverId: profileId },
-          ...studentDeptCondition,
-        ],
-      },
+      where: { ...hodScope, status: { in: ["APPROVED", "EXITED", "COMPLETED"] }, approvedAt: { gte: today } },
     }),
     prisma.permission.count({
-      where: {
-        status: "REJECTED",
-        rejectedAt: { gte: today },
-        OR: [
-          { approverType: "FACULTY_ADMIN" },
-          { approverId: faculty.id },
-          { approverId: profileId },
-          ...studentDeptCondition,
-        ],
-      },
+      where: { ...hodScope, status: "REJECTED", rejectedAt: { gte: today } },
     }),
     prisma.movement.count({
       where: {
         type: "EXIT",
         createdAt: { gte: today },
-        OR: [
-          { facultyId: { not: null } },
-          ...studentDeptCondition,
-        ],
+        OR: [...studentDeptCondition, ...facultyDeptCondition],
       },
     }),
     prisma.movement.count({
       where: {
         type: "ENTRY",
         createdAt: { gte: today },
-        OR: [
-          { facultyId: { not: null } },
-          ...studentDeptCondition,
-        ],
+        OR: [...studentDeptCondition, ...facultyDeptCondition],
       },
     }),
     prisma.permission.count({
-      where: {
-        approverType: "FACULTY_ADMIN",
-        status: "PENDING",
-      },
+      where: { ...hodScope, status: "PENDING", facultyId: { not: null } },
     }),
     prisma.permission.count({
-      where: {
-        status: "PENDING",
-        OR: [
-          { approverId: faculty.id },
-          { approverId: profileId },
-          ...studentDeptCondition,
-        ],
-      },
+      where: { ...hodScope, status: "PENDING", studentId: { not: null } },
     }),
-    // Combined requests: faculty passes + department student passes
+    // Combined requests: department faculty passes + department student passes
     prisma.permission.findMany({
-      where: {
-        OR: [
-          { approverType: "FACULTY_ADMIN" },
-          { approverId: faculty.id },
-          { approverId: profileId },
-          ...studentDeptCondition,
-        ],
-      },
+      where: hodScope,
       orderBy: { createdAt: "desc" },
       take: 500,
       include: {
@@ -198,7 +174,7 @@ async function preloadFacultyAdmin(profileId: string) {
         qr: { select: { usedForExit: true, usedForEntry: true, expiresAt: true } },
       },
     }),
-    // Department students
+    // Department students (no department configured → none)
     prisma.student.findMany({
       where: {
         OR: [
@@ -249,20 +225,17 @@ async function preloadFacultyAdmin(profileId: string) {
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {
-        qr: true,
+        qr: { select: QR_PUBLIC_SELECT },
         movements: { include: { gate: true } },
       },
     }),
-    // Movements
+    // Department movements (students + faculty)
     prisma.movement.findMany({
       where: {
-        OR: [
-          { facultyId: { not: null } },
-          ...studentDeptCondition,
-        ],
+        OR: [...studentDeptCondition, ...facultyDeptCondition],
       },
       orderBy: { createdAt: "desc" },
-      take: 500,
+      take: 200,
       include: {
         student: {
           select: {
@@ -322,8 +295,7 @@ async function preloadFaculty(profileId: string) {
 
   if (!faculty) return { dashboard: null };
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = istStartOfDay();
 
   const [
     totalStudents,
@@ -430,7 +402,7 @@ async function preloadFaculty(profileId: string) {
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {
-        qr: true,
+        qr: { select: QR_PUBLIC_SELECT },
         movements: { include: { gate: true } }
       }
     }),
@@ -461,8 +433,7 @@ async function preloadWarden(profileId: string) {
 
   if (!warden) return { dashboard: null };
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = istStartOfDay();
 
   const [
     totalHostellers,
@@ -530,8 +501,14 @@ async function preloadWarden(profileId: string) {
     prisma.student.findMany({
       where: { wardenId: warden.id },
       include: {
-        profile: true,
-        permissions: { orderBy: { createdAt: "desc" }, take: 1 },
+        profile: { select: { id: true, name: true, email: true, phone: true, active: true } },
+        faculty: { select: { id: true, profile: { select: { name: true } } } },
+        warden: { select: { id: true, profile: { select: { name: true } } } },
+        permissions: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { id: true, status: true, type: true, purpose: true, createdAt: true },
+        },
       },
       orderBy: { studentRoll: "asc" },
     }),
@@ -541,20 +518,11 @@ async function preloadWarden(profileId: string) {
     }),
   ]);
 
-  // Transform students to match expected format
-  const students = studentsRaw.map((s: any) => ({
-    id: s.id,
-    name: s.profile.name,
-    email: s.profile.email,
-    phone: s.profile.phone,
-    rollNo: s.studentRoll,
-    department: s.department,
-    year: s.year,
-    section: s.section,
-    roomNumber: s.roomNumber,
-    active: s.profile.active,
-    studentType: s.studentType,
-    lastPermission: s.permissions[0] || null,
+  // Same shape as the faculty/HOD student lists (the warden client reads s.profile.*),
+  // plus the latest pass for quick status display.
+  const students = studentsRaw.map(({ permissions, ...s }) => ({
+    ...s,
+    lastPermission: permissions[0] || null,
   }));
 
   return {
@@ -580,7 +548,7 @@ async function preloadStudent(profileId: string) {
     select: {
       id: true, studentRoll: true, department: true, year: true,
       section: true, studentType: true, status: true,
-      roomNumber: true, hostelBlock: true,
+      roomNumber: true, hostelBlock: true, wardenId: true,
     },
   });
 
@@ -588,17 +556,10 @@ async function preloadStudent(profileId: string) {
 
   const isHosteller = student.studentType === "HOSTELLER";
 
-  // Load approvers + latest permission in parallel
-  const [approvers, latestPermission, historyData] = await Promise.all([
-    isHosteller
-      ? prisma.warden.findMany({
-          select: { id: true, hostelBlock: true, profile: { select: { name: true } } },
-          orderBy: { profile: { name: "asc" } },
-        })
-      : prisma.faculty.findMany({
-          select: { id: true, department: true, profile: { select: { name: true } } },
-          orderBy: { profile: { name: "asc" } },
-        }),
+  // Students do not choose an approver: day scholars → department HOD,
+  // hostellers → assigned warden.
+  const [resolution, latestPermission, historyData] = await Promise.all([
+    resolveStudentApprover(student),
     prisma.permission.findFirst({
       where: { studentId: student.id },
       orderBy: { createdAt: "desc" },
@@ -607,12 +568,9 @@ async function preloadStudent(profileId: string) {
         exitDate: true, expectedExit: true, expectedReturn: true,
         contactNumber: true, remarks: true, rejectionReason: true,
         approverType: true, approverId: true, createdAt: true,
-        qr: {
-          select: {
-            id: true, token: true, expiresAt: true,
-            active: true, usedForExit: true, usedForEntry: true,
-          },
-        },
+        // The stored QR token is never sent to the browser; the pass screen
+        // fetches rotating 60-second tokens instead.
+        qr: { select: QR_PUBLIC_SELECT },
       },
     }),
     // Pre-fetch first page of history
@@ -623,23 +581,48 @@ async function preloadStudent(profileId: string) {
         take: 25,
         include: {
           approval: {
-            include: {
-              faculty: { include: { profile: true } },
-              warden: { include: { profile: true } },
+            select: {
+              approved: true,
+              reason: true,
+              approverType: true,
+              createdAt: true,
+              faculty: { select: { profile: { select: { name: true } } } },
+              warden: { select: { profile: { select: { name: true } } } },
             },
           },
-          movements: { include: { gate: true } },
+          movements: { select: { id: true, type: true, createdAt: true, gate: { select: { name: true } } } },
         },
       }),
       prisma.permission.count({ where: { studentId: student.id } }),
     ]),
   ]);
 
-  // Resolve approver name
+  const assignedApprover = resolution.ok
+    ? { name: resolution.approver.name, label: resolution.approver.label, available: true }
+    : { name: null, label: null, available: false, reason: resolution.error };
+
+  // Name of whoever the latest request was routed to
   let approverName: string | null = null;
   if (latestPermission) {
-    const match = approvers.find((a: any) => a.id === latestPermission.approverId);
-    approverName = (match as any)?.profile?.name || (isHosteller ? "Hostel Warden" : "Faculty Incharge");
+    if (latestPermission.approverType === "WARDEN") {
+      const w = await prisma.warden.findUnique({
+        where: { id: latestPermission.approverId },
+        select: { profile: { select: { name: true } } },
+      });
+      approverName = w?.profile.name ?? null;
+    } else if (latestPermission.approverType === "FACULTY_ADMIN") {
+      const p = await prisma.profile.findUnique({
+        where: { id: latestPermission.approverId },
+        select: { name: true },
+      });
+      approverName = p?.name ?? null;
+    } else {
+      const f = await prisma.faculty.findUnique({
+        where: { id: latestPermission.approverId },
+        select: { profile: { select: { name: true } } },
+      });
+      approverName = f?.profile.name ?? null;
+    }
   }
 
   // Determine state
@@ -676,15 +659,17 @@ async function preloadStudent(profileId: string) {
       }
     : null;
 
+  const { wardenId: _wardenId, ...studentPublic } = student;
+
   return {
     dashboard: {
-      student,
+      student: studentPublic,
       isHosteller,
-      approvers,
+      assignedApprover,
       state,
       latestPermission: serializedPermission,
     },
-    formData: { isHosteller, approvers },
+    formData: { isHosteller, assignedApprover },
     history: { permissions: historyData[0], total: historyData[1] },
   };
 }
@@ -694,8 +679,7 @@ async function preloadStudent(profileId: string) {
 // ──────────────────────────────────────────────────────────────
 
 async function preloadSecurity() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = istStartOfDay();
 
   const endOfDay = new Date(today);
   endOfDay.setDate(endOfDay.getDate() + 1);
@@ -736,8 +720,9 @@ async function preloadSecurity() {
     prisma.movement.findMany({
       where: { type: "ENTRY", createdAt: { gte: today, lt: endOfDay } },
       orderBy: { createdAt: "desc" },
+      take: 200,
       select: {
-        id: true, type: true, createdAt: true, notes: true, imagePath: true,
+        id: true, type: true, createdAt: true, notes: true,
         student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
         gate: { select: { name: true } },
         permission: { select: { purpose: true, destination: true } },
@@ -746,8 +731,9 @@ async function preloadSecurity() {
     prisma.movement.findMany({
       where: { type: "EXIT", createdAt: { gte: today, lt: endOfDay } },
       orderBy: { createdAt: "desc" },
+      take: 200,
       select: {
-        id: true, type: true, createdAt: true, notes: true, imagePath: true,
+        id: true, type: true, createdAt: true, notes: true,
         student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
         gate: { select: { name: true } },
         permission: { select: { purpose: true, destination: true } },
@@ -757,18 +743,20 @@ async function preloadSecurity() {
       where: { entryTime: { gte: today, lt: endOfDay } },
       orderBy: { entryTime: "desc" },
     }),
-    // Outsiders management data
+    // Outsiders management data — everyone still inside, including earlier days
     prisma.outsider.findMany({
-      where: { status: "INSIDE", entryTime: { gte: today } },
+      where: { status: "INSIDE" },
       orderBy: { entryTime: "desc" },
+      take: 500,
     }),
     prisma.outsider.findMany({
-      where: { status: "EXITED", entryTime: { gte: today } },
+      where: { status: "EXITED", exitTime: { gte: today } },
       orderBy: { exitTime: "desc" },
+      take: 500,
     }),
   ]);
 
-  const todayStr = today.toISOString().split("T")[0];
+  const todayStr = istDateString();
 
   return {
     dashboard: {
@@ -796,8 +784,7 @@ async function preloadSecurity() {
 // ──────────────────────────────────────────────────────────────
 
 async function preloadAdmin() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = istStartOfDay();
 
   const endOfDay = new Date(today);
   endOfDay.setDate(endOfDay.getDate() + 1);
@@ -929,8 +916,7 @@ async function preloadDirector(profileId: string) {
     });
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = istStartOfDay();
 
   const [
     totalFaculty,
@@ -1066,7 +1052,7 @@ async function preloadDirector(profileId: string) {
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {
-        qr: true,
+        qr: { select: QR_PUBLIC_SELECT },
         movements: { include: { gate: true } },
       },
     }),
@@ -1158,8 +1144,7 @@ async function preloadDean(profileId: string) {
     });
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = istStartOfDay();
 
   const [
     totalFaculty,
@@ -1286,7 +1271,7 @@ async function preloadDean(profileId: string) {
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {
-        qr: true,
+        qr: { select: QR_PUBLIC_SELECT },
         movements: { include: { gate: true } },
       },
     }),

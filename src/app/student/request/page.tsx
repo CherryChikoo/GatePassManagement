@@ -7,13 +7,13 @@ export default async function StudentRequestPage() {
   const formData = await getStudentFormData();
 
   if (!formData) {
-    return <div>Loading...</div>;
+    return <div className="p-8 text-center text-zinc-400">Student record not found. Contact the administrator.</div>;
   }
 
   return (
     <RequestFormClient
       user={user}
-      approvers={formData.approvers}
+      assignedApprover={formData.assignedApprover}
       isHosteller={formData.isHosteller}
     />
   );

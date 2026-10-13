@@ -1,67 +1,84 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
-import { requireRole } from "@/lib/auth/helpers";
+import { requireRole, getAuthUser, type AuthUser } from "@/lib/auth/helpers";
 import { verifyQrToken } from "@/lib/qr/token";
 import { revalidatePath } from "next/cache";
+import { uploadExitPhotoAdmin } from "@/lib/storage/storage-admin";
+import { istDateString, istDayRangeFromParam, istStartOfDay } from "@/lib/time/ist";
 
 let securityDashboardCache: { data: any; expiresAt: number } | null = null;
 let securityLogCache = new Map<string, { data: any; expiresAt: number }>();
 
 export async function invalidateSecurityCache() {
+  // Exported from a "use server" module (browser-callable): require a signed-in user.
+  if (!(await getAuthUser())) return;
   securityDashboardCache = null;
   securityLogCache.clear();
 }
 
+function clearSecurityCaches() {
+  securityDashboardCache = null;
+  securityLogCache.clear();
+}
+
+/** Every gate movement is attributed to the guard who actually recorded it. */
+async function getSecurityStaffId(user: AuthUser): Promise<string | null> {
+  const staff = await prisma.securityStaff.findUnique({
+    where: { profileId: user.profileId },
+    select: { id: true },
+  });
+  return staff?.id ?? null;
+}
+
+const ROLL_RE = /^[A-Za-z0-9/_-]{2,30}$/;
+
 /**
- * Verify a QR token and return permission details for security
+ * Verify a scanned QR (rotating signed token) or a manually typed roll number
+ * and return the pass details for the guard.
  */
 export async function verifyQrScan(token: string) {
   await requireRole("SECURITY", "ADMIN");
+  if (typeof token !== "string" || !token.trim()) {
+    return { valid: false, error: "Scan a QR code or enter a roll number" };
+  }
+  const input = token.trim();
 
   let permissionId: string | null = null;
-  const result = await verifyQrToken(token);
-  if (result.valid && result.payload) {
-    permissionId = result.payload.permissionId;
-  } else {
-    const cleanToken = token.trim();
-    // 1. Direct match on qrCredential table (token or permissionId)
-    const dbQr = await prisma.qrCredential.findFirst({
-      where: {
-        OR: [{ token: cleanToken }, { permissionId: cleanToken }],
-      },
-      select: { permissionId: true },
-    });
-    if (dbQr) {
-      permissionId = dbQr.permissionId;
-    } else {
-      // 2. Direct permission ID match
-      const perm = await prisma.permission.findUnique({
-        where: { id: cleanToken },
-        select: { id: true },
-      });
-      if (perm) {
-        permissionId = perm.id;
-      } else {
-        // 3. Match by student roll number for their active/approved pass
-        const studentPerm = await prisma.permission.findFirst({
-          where: {
-            student: { studentRoll: { equals: cleanToken, mode: "insensitive" } },
-            status: "APPROVED",
-            qr: { active: true },
-          },
-          orderBy: { createdAt: "desc" },
-          select: { id: true },
-        });
-        if (studentPerm) {
-          permissionId = studentPerm.id;
-        }
+  let manualOverride = false;
+  let tokenError: string | undefined;
+
+  if (input.split(".").length === 3) {
+    // Signed JWT. Only the rotating on-screen tokens are accepted, so
+    // screenshots of an old QR stop working within a minute.
+    const result = await verifyQrToken(input);
+    if (result.valid && result.payload) {
+      if (!result.payload.live) {
+        return { valid: false, error: "Outdated QR code. Ask the pass holder to open their live pass screen." };
       }
+      permissionId = result.payload.permissionId;
+    } else {
+      tokenError = result.error;
+    }
+  } else if (ROLL_RE.test(input)) {
+    // Manual fallback typed by the guard (e.g. phone not available).
+    const studentPerm = await prisma.permission.findFirst({
+      where: {
+        student: { studentRoll: { equals: input, mode: "insensitive" } },
+        status: "APPROVED",
+        qr: { active: true },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    if (studentPerm) {
+      permissionId = studentPerm.id;
+      manualOverride = true;
     }
   }
 
   if (!permissionId) {
-    return { valid: false, error: result.error || "Invalid QR code or pass not found" };
+    return { valid: false, error: tokenError || "Invalid QR code or no approved pass found" };
   }
 
   // Fetch the full permission with student details
@@ -114,8 +131,8 @@ export async function verifyQrScan(token: string) {
 
   if (permission.status === "APPROVED" && new Date(permission.qr.expiresAt) < new Date()) {
     await prisma.$transaction([
-      prisma.permission.update({
-        where: { id: permission.id },
+      prisma.permission.updateMany({
+        where: { id: permission.id, status: "APPROVED" },
         data: { status: "EXPIRED" },
       }),
       prisma.qrCredential.update({
@@ -124,6 +141,10 @@ export async function verifyQrScan(token: string) {
       }),
     ]);
     return { valid: false, error: "QR code has expired" };
+  }
+
+  if (istStartOfDay(permission.exitDate) > new Date()) {
+    return { valid: false, error: `This pass is valid only from ${istDateString(permission.exitDate)}.` };
   }
 
   // Determine what action is allowed
@@ -169,6 +190,7 @@ export async function verifyQrScan(token: string) {
   return {
     valid: true,
     allowedAction,
+    manualOverride,
     permission: {
       id: permission.id,
       type: permission.type,
@@ -193,6 +215,40 @@ export async function verifyQrScan(token: string) {
   };
 }
 
+/** Throws if the pass is outside its valid window (scheduled IST day / QR expiry). */
+function assertPassWindow(exitDate: Date, qrExpiresAt: Date) {
+  const now = new Date();
+  if (qrExpiresAt < now) throw new Error("This gate pass has expired");
+  if (istStartOfDay(exitDate) > now) {
+    throw new Error(`This pass is valid only from ${istDateString(exitDate)}`);
+  }
+}
+
+/**
+ * Stores a captured gate photo in Supabase Storage and returns its path.
+ * If Storage is unavailable the (size-checked) inline image is kept so the
+ * gate is never blocked.
+ */
+async function storeGatePhoto(imageData: string, permissionId: string): Promise<{ path: string } | { error: string }> {
+  if (imageData.length > 700_000) {
+    return { error: "Captured image is too large. Please retake with lower resolution." };
+  }
+  if (!/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(imageData)) {
+    return { error: "Invalid photo format" };
+  }
+  const owner = await prisma.permission.findUnique({
+    where: { id: permissionId },
+    select: { studentId: true, facultyId: true },
+  });
+  if (!owner) return { error: "Permission not found" };
+
+  const upload = await uploadExitPhotoAdmin(imageData, owner.studentId || owner.facultyId || "unknown", permissionId);
+  if (upload.path) return { path: upload.path };
+
+  console.error("[storeGatePhoto] storage upload failed, keeping inline image:", upload.error);
+  return { path: imageData };
+}
+
 /**
  * Register an EXIT movement
  * Uses an interactive transaction to prevent TOCTOU race conditions
@@ -203,31 +259,27 @@ export async function registerExit(
   imagePath?: string,
   notes?: string
 ) {
-  const user = await requireRole("SECURITY", "ADMIN");
+  const user = await requireRole("SECURITY");
 
-  let securityStaff = await prisma.securityStaff.findUnique({
-    where: { profileId: user.profileId },
-    select: { id: true },
-  });
-
-  if (!securityStaff && user.role === "ADMIN") {
-    securityStaff = await prisma.securityStaff.findFirst({
-      select: { id: true },
-    });
+  const securityStaffId = await getSecurityStaffId(user);
+  if (!securityStaffId) {
+    return { error: "Your security staff record was not found. Contact the administrator." };
   }
-
-  if (!securityStaff) {
-    return { error: "Security staff record not found. Please ensure at least one security guard is registered." };
+  const securityStaff = { id: securityStaffId };
+  if (typeof permissionId !== "string" || typeof gateId !== "string") {
+    return { error: "Invalid request" };
+  }
+  if (notes !== undefined && (typeof notes !== "string" || notes.length > 500)) {
+    return { error: "Notes must be at most 500 characters" };
   }
 
   // Validate inputs before entering the transaction
-  if (!imagePath) {
+  if (!imagePath || typeof imagePath !== "string") {
     return { error: "Photo capture is mandatory for exit registration" };
   }
-  // Guard against oversized base64 payloads (500KB limit)
-  if (imagePath.length > 500_000) {
-    return { error: "Captured image is too large. Please retake with lower resolution." };
-  }
+  const photo = await storeGatePhoto(imagePath, permissionId);
+  if ("error" in photo) return { error: photo.error };
+  const storedImage = photo.path;
 
   try {
     // Interactive transaction: reads + checks + writes are all atomic
@@ -254,6 +306,7 @@ export async function registerExit(
       if (permission.qr.usedForExit) {
         throw new Error("Exit already registered for this permission");
       }
+      assertPassWindow(permission.exitDate, permission.qr.expiresAt);
 
       // Verify gate exists
       const gate = await tx.gate.findUnique({ where: { id: gateId } });
@@ -270,7 +323,7 @@ export async function registerExit(
           gateId,
           securityUserId: securityStaff.id,
           type: "EXIT",
-          imagePath: imagePath || null,
+          imagePath: storedImage,
           notes: notes || null,
         },
       });
@@ -300,7 +353,7 @@ export async function registerExit(
     return { error: err.message || "Failed to register exit" };
   }
 
-  invalidateSecurityCache();
+  clearSecurityCaches();
   revalidatePath("/security");
   revalidatePath("/security/log");
   revalidatePath("/student");
@@ -319,27 +372,27 @@ export async function registerEntry(
   imagePath?: string,
   notes?: string
 ) {
-  const user = await requireRole("SECURITY", "ADMIN");
+  const user = await requireRole("SECURITY");
 
-  let securityStaff = await prisma.securityStaff.findUnique({
-    where: { profileId: user.profileId },
-    select: { id: true },
-  });
-
-  if (!securityStaff && user.role === "ADMIN") {
-    securityStaff = await prisma.securityStaff.findFirst({
-      select: { id: true },
-    });
+  const securityStaffId = await getSecurityStaffId(user);
+  if (!securityStaffId) {
+    return { error: "Your security staff record was not found. Contact the administrator." };
+  }
+  const securityStaff = { id: securityStaffId };
+  if (typeof permissionId !== "string" || typeof gateId !== "string") {
+    return { error: "Invalid request" };
+  }
+  if (notes !== undefined && (typeof notes !== "string" || notes.length > 500)) {
+    return { error: "Notes must be at most 500 characters" };
   }
 
-  if (!securityStaff) {
-    return { error: "Security staff record not found. Please ensure at least one security guard is registered." };
-  }
-
-  // Validate inputs before entering the transaction
-  // Guard against oversized base64 payloads (500KB limit)
-  if (imagePath && imagePath.length > 500_000) {
-    return { error: "Captured image is too large. Please retake with lower resolution." };
+  // Photo is optional for entry
+  let storedImage: string | null = null;
+  if (imagePath) {
+    if (typeof imagePath !== "string") return { error: "Invalid photo" };
+    const photo = await storeGatePhoto(imagePath, permissionId);
+    if ("error" in photo) return { error: photo.error };
+    storedImage = photo.path;
   }
 
   try {
@@ -366,6 +419,7 @@ export async function registerEntry(
       if (permission.qr.usedForEntry) {
         throw new Error("Entry already registered for this permission");
       }
+      assertPassWindow(permission.exitDate, permission.qr.expiresAt);
 
       const gate = await tx.gate.findUnique({ where: { id: gateId } });
       if (!gate || !gate.active) {
@@ -381,7 +435,7 @@ export async function registerEntry(
           gateId,
           securityUserId: securityStaff.id,
           type: "ENTRY",
-          imagePath: imagePath || null,
+          imagePath: storedImage,
           notes: notes || null,
         },
       });
@@ -405,7 +459,7 @@ export async function registerEntry(
     return { error: err.message || "Failed to register entry" };
   }
 
-  invalidateSecurityCache();
+  clearSecurityCaches();
   revalidatePath("/security");
   revalidatePath("/security/log");
   revalidatePath("/student");
@@ -419,12 +473,12 @@ export async function registerEntry(
  * Get security dashboard data
  */
 export async function getSecurityDashboard() {
-  await requireRole("SECURITY", "ADMIN");  if (securityDashboardCache && securityDashboardCache.expiresAt > Date.now()) {
+  await requireRole("SECURITY", "ADMIN");
+  if (securityDashboardCache && securityDashboardCache.expiresAt > Date.now()) {
     return securityDashboardCache.data;
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = istStartOfDay();
 
   const [
     outsiderVisitsToday,
@@ -519,23 +573,13 @@ export async function getCurrentlyOutsideStudents() {
 export async function getSecurityLogData(dateStr?: string) {
   await requireRole("SECURITY", "ADMIN");
 
-  const cacheKey = dateStr || "today";
+  const { start: targetDate, end: endOfDay, dateStr: selectedDate } = istDayRangeFromParam(dateStr);
+
+  const cacheKey = selectedDate;
   const cached = securityLogCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.data;
   }
-
-  let targetDate = new Date();
-  if (dateStr) {
-    const parsed = new Date(dateStr);
-    if (!isNaN(parsed.getTime())) {
-      targetDate = parsed;
-    }
-  }
-  targetDate.setHours(0, 0, 0, 0);
-  
-  const endOfDay = new Date(targetDate);
-  endOfDay.setDate(endOfDay.getDate() + 1);
 
   const [studentEntries, studentExits, outsiderVisits] = await Promise.all([
     prisma.movement.findMany({
@@ -568,7 +612,7 @@ export async function getSecurityLogData(dateStr?: string) {
     studentEntries, 
     studentExits, 
     outsiderVisits, 
-    selectedDate: targetDate.toISOString().split('T')[0] 
+    selectedDate,
   };
   
   securityLogCache.set(cacheKey, { data: result, expiresAt: Date.now() + 15000 }); // 15s cache

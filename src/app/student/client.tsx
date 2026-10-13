@@ -8,8 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea, Select, StatusBadge } from "@/components/ui/primitives";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { logoutAction } from "@/server/actions/auth";
-import { createPermissionRequest, createEntryRequest, cancelPermissionRequest } from "@/server/actions/permissions";
+import {
+  createPermissionRequest,
+  createEntryRequest,
+  cancelPermissionRequest,
+  generateLiveQrToken,
+} from "@/server/actions/permissions";
 import { formatDateTime } from "@/lib/utils";
+import { istDateString } from "@/lib/time/ist";
+import { AssignedApproverCard, type AssignedApprover } from "@/components/student/assigned-approver";
 import QRCode from "qrcode";
 import Link from "next/link";
 import {
@@ -28,7 +35,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useAppStore } from "@/stores/app-store";
+import { useAppStore, logoutAndClear } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
 
@@ -45,14 +52,14 @@ export function StudentDashboardClient({ user }: Props) {
 
   const state = dashboardData?.state;
 
-  // Auto-poll for status updates (when PENDING or QR_CODE)
+  // Poll for the approval decision while a request is pending
   useEffect(() => {
-    if (state === "PENDING" || state === "QR_CODE") {
+    if (state === "PENDING") {
       const interval = setInterval(() => {
         startTransition(() => {
           useAppStore.getState().refresh(true);
         });
-      }, 5000); // Check every 5 seconds
+      }, 10000);
       return () => clearInterval(interval);
     }
   }, [state]);
@@ -71,7 +78,7 @@ export function StudentDashboardClient({ user }: Props) {
             <p className="text-sm text-zinc-400 mb-6">
               Please contact the campus administrator to initialize your student profile.
             </p>
-            <Button onClick={() => logoutAction()} variant="outline">
+            <Button onClick={() => logoutAndClear(logoutAction)} variant="outline">
               Sign Out
             </Button>
           </div>
@@ -80,7 +87,7 @@ export function StudentDashboardClient({ user }: Props) {
     );
   }
 
-  const { student, isHosteller, approvers, latestPermission } = dashboardData;
+  const { student, isHosteller, assignedApprover, latestPermission } = dashboardData;
 
   return (
     <>
@@ -104,7 +111,7 @@ export function StudentDashboardClient({ user }: Props) {
         {state === "FORM" && (
           <PermissionFormView
             student={student}
-            approvers={approvers}
+            assignedApprover={assignedApprover}
             isHosteller={isHosteller}
             latestPermission={latestPermission}
           />
@@ -129,25 +136,48 @@ function QrCodeView({
   permission: any;
 }) {
   const [qrImage, setQrImage] = useState<string | null>(null);
+  const [qrError, setQrError] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<string>("");
   const [isExpired, setIsExpired] = useState(false);
 
-  // Generate QR Code data URL
+  // Rotating QR: a fresh 60-second signed token every 45 seconds, so a
+  // screenshot of this screen stops working almost immediately.
   useEffect(() => {
-    if (permission.qr?.token) {
-      QRCode.toDataURL(permission.qr.token, {
-        width: 300,
-        margin: 2,
-        color: {
-          dark: "#000000",
-          light: "#ffffff",
-        },
-        errorCorrectionLevel: "H",
-      })
-        .then(setQrImage)
-        .catch(console.error);
+    let cancelled = false;
+
+    async function refreshToken() {
+      try {
+        const res = await generateLiveQrToken(permission.id);
+        if (cancelled) return;
+        if ("error" in res && res.error) {
+          setQrError(res.error);
+          setQrImage(null);
+          return;
+        }
+        if ("token" in res && res.token) {
+          const url = await QRCode.toDataURL(res.token, {
+            width: 300,
+            margin: 2,
+            color: { dark: "#000000", light: "#ffffff" },
+            errorCorrectionLevel: "M",
+          });
+          if (!cancelled) {
+            setQrImage(url);
+            setQrError(null);
+          }
+        }
+      } catch {
+        if (!cancelled) setQrError("Could not refresh your QR code. Check your connection.");
+      }
     }
-  }, [permission.qr?.token]);
+
+    refreshToken();
+    const interval = setInterval(refreshToken, 45_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [permission.id]);
 
   // Realtime countdown timer
   useEffect(() => {
@@ -223,7 +253,11 @@ function QrCodeView({
         <CardContent className="p-4 sm:p-6 md:p-8 flex flex-col items-center text-center space-y-5 sm:space-y-6 min-w-0">
           {/* QR Code Container */}
           <div className="p-3 sm:p-4 rounded-2xl bg-white shadow-2xl ring-4 ring-emerald-500/20 transition-all hover:scale-[1.02] max-w-full">
-            {qrImage ? (
+            {qrError ? (
+              <div className="w-48 h-48 sm:w-60 sm:h-60 md:w-64 md:h-64 flex items-center justify-center bg-zinc-100 rounded-lg max-w-full p-4">
+                <p className="text-sm text-zinc-700 font-medium">{qrError}</p>
+              </div>
+            ) : qrImage ? (
               <img
                 src={qrImage}
                 alt="Gate Pass QR Code"
@@ -269,7 +303,8 @@ function QrCodeView({
           </div>
 
           <p className="text-xs text-zinc-500 max-w-sm">
-            Once scanned by security at the gate, your exit will be logged and this gate pass will be completed.
+            This QR code refreshes automatically every minute — screenshots will not work at the gate.
+            Once scanned by security, your {permission.type === "ENTRY" ? "entry" : "exit"} will be logged and this pass will be completed.
           </p>
         </CardContent>
       </Card>
@@ -295,7 +330,14 @@ function PendingApprovalView({
   const [error, setError] = useState<string | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
 
-  const approverLabel = isHosteller ? "Hostel Warden" : "Faculty Incharge";
+  const approverLabel =
+    permission.approverType === "WARDEN"
+      ? "Hostel Warden"
+      : permission.approverType === "FACULTY_ADMIN"
+      ? "HOD"
+      : isHosteller
+      ? "Hostel Warden"
+      : "Faculty";
 
   async function handleCancelConfirm() {
     setCancelling(true);
@@ -428,12 +470,12 @@ function PendingApprovalView({
 
 function PermissionFormView({
   student,
-  approvers,
+  assignedApprover,
   isHosteller,
   latestPermission,
 }: {
   student: any;
-  approvers: any[];
+  assignedApprover: AssignedApprover | undefined;
   isHosteller: boolean;
   latestPermission: any | null;
 }) {
@@ -465,13 +507,14 @@ function PermissionFormView({
     return `${h.toString().padStart(2, "0")}:${m}`;
   }
 
-  const approverLabel = isHosteller ? "Hostel Warden" : "Faculty Incharge";
   const wasRejected = latestPermission?.status === "REJECTED";
   const wasExited = latestPermission?.status === "EXITED" || latestPermission?.status === "COMPLETED";
-  const wasExpired = latestPermission?.status === "APPROVED" && 
-                     latestPermission?.qr && 
-                     !latestPermission.qr.usedForExit && 
-                     new Date(latestPermission.qr.expiresAt) <= new Date();
+  const wasExpired =
+    latestPermission?.status === "EXPIRED" ||
+    (latestPermission?.status === "APPROVED" &&
+      latestPermission?.qr &&
+      !latestPermission.qr.usedForExit &&
+      new Date(latestPermission.qr.expiresAt) <= new Date());
 
   useEffect(() => {
     if (wasExpired && !hideExpiryAlert) {
@@ -518,23 +561,11 @@ function PermissionFormView({
     }
   }
 
-  // Today in YYYY-MM-DD format (local timezone)
-  const [todayStr, setTodayStr] = useState(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  });
+  // Campus date (IST) — identical on server and client
+  const [todayStr, setTodayStr] = useState(() => istDateString());
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      setTodayStr(`${year}-${month}-${day}`);
-    }, 60000);
+    const interval = setInterval(() => setTodayStr(istDateString()), 60000);
     return () => clearInterval(interval);
   }, []);
   return (
@@ -682,30 +713,12 @@ function PermissionFormView({
               />
             </div>
 
-            {/* Select Approver */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-300 flex items-center gap-2">
-                <ShieldCheck className={`h-4 w-4 ${requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}`} />
-                Select Approver ({approverLabel}) <span className={requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}>*</span>
-              </label>
-              <Select
-                name="approverId"
-                required
-                className="bg-zinc-950/60 border-zinc-800"
-              >
-                <option value="">-- Select {approverLabel} --</option>
-                {approvers.map((a: any) => (
-                  <option key={a.id} value={a.id}>
-                    {a.profile?.name || "Staff"} {a.department ? `(${a.department})` : a.hostelBlock ? `(Block ${a.hostelBlock})` : ""}
-                  </option>
-                ))}
-              </Select>
-              <p className="text-xs text-zinc-500">
-                {isHosteller
-                  ? "Hostel residents require approval from their Hostel Warden."
-                  : "Day scholar students require approval from their assigned Department Faculty."}
-              </p>
-            </div>
+            {/* Approver (assigned automatically — students cannot choose) */}
+            <AssignedApproverCard
+              approver={assignedApprover}
+              isHosteller={isHosteller}
+              accent={requestType === "ENTRY" ? "emerald" : "orange"}
+            />
 
             {/* Timings Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -779,7 +792,7 @@ function PermissionFormView({
             {/* Submit Button */}
             <Button
               type="submit"
-              disabled={loading}
+              disabled={loading || !assignedApprover?.available}
               className={`w-full h-11 text-white font-semibold text-sm cursor-pointer shadow-none ${
                 requestType === "ENTRY"
                   ? "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600"

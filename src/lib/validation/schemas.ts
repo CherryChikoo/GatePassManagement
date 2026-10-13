@@ -13,37 +13,62 @@ export const loginSchema = z.object({
 // PERMISSION SCHEMAS
 // ──────────────────────────────────────────────────────────────
 
+const timeField = (label: string) =>
+  z
+    .string()
+    .trim()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, `${label} must be a valid time, e.g. 04:00 PM`);
+
+const phoneField = z
+  .string()
+  .trim()
+  .regex(/^\+?[0-9][0-9\s-]{8,16}[0-9]$/, "Enter a valid phone number (10–15 digits)");
+
 export const permissionRequestSchema = z.object({
   purpose: z
     .string()
+    .trim()
     .min(5, "Purpose must be at least 5 characters")
     .max(500, "Purpose too long"),
-  destination: z.string().min(2, "Destination is required").max(200),
-  exitDate: z.string().min(1, "Exit date is required"),
-  expectedExit: z.string().min(1, "Expected exit time is required"),
-  expectedReturn: z.string().optional().or(z.literal("")),
-  contactNumber: z
-    .string()
-    .min(10, "Phone number must be at least 10 digits")
-    .max(15)
-    .optional()
-    .or(z.literal("")),
+  destination: z.string().trim().min(2, "Destination is required").max(200),
+  exitDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "A valid date is required"),
+  expectedExit: timeField("Expected time"),
+  expectedReturn: timeField("Expected return time").optional().or(z.literal("")),
+  contactNumber: phoneField.optional().or(z.literal("")),
   remarks: z.string().max(500).optional().or(z.literal("")),
 });
+
+/** Allowed QR validity windows (minutes) an approver may choose. */
+export const APPROVAL_EXPIRY_MINUTES = { MIN: 15, MAX: 720, DEFAULT: 60 } as const;
 
 export const approvalSchema = z.object({
   permissionId: z.string().uuid(),
   action: z.enum(["APPROVE", "REJECT"]),
-  reason: z.string().max(500).optional().or(z.literal("")),
+  reason: z.string().trim().max(500).optional().or(z.literal("")),
+  expiryMinutes: z
+    .number()
+    .int()
+    .min(APPROVAL_EXPIRY_MINUTES.MIN)
+    .max(APPROVAL_EXPIRY_MINUTES.MAX)
+    .optional(),
 });
 
 export const batchApprovalSchema = z.object({
   permissionIds: z
     .array(z.string().uuid())
     .min(1, "Select at least one request")
-    .max(5, "Maximum 5 students can be approved at once"),
+    .max(5, "Maximum 5 requests can be processed at once"),
   action: z.enum(["APPROVE", "REJECT"]),
-  reason: z.string().max(500).optional().or(z.literal("")),
+  reason: z.string().trim().max(500).optional().or(z.literal("")),
+});
+
+export const batchGrantSchema = z.object({
+  studentIds: z.array(z.string().uuid()).min(1, "No students selected").max(5, "Maximum 5 students at a time"),
+  type: z.enum(["ENTRY", "EXIT"]),
+  purpose: z.string().trim().min(3, "Purpose is required").max(500),
+  destination: z.string().trim().max(200).optional().or(z.literal("")),
+  contactNumber: phoneField.optional().or(z.literal("")),
+  remarks: z.string().max(500).optional().or(z.literal("")),
 });
 
 // ──────────────────────────────────────────────────────────────
@@ -73,6 +98,53 @@ export const createUserSchema = z.object({
 export const createGateSchema = z.object({
   name: z.string().min(2, "Gate name is required").max(100),
   location: z.string().max(200).optional().or(z.literal("")),
+});
+
+const optionalText = (max: number) => z.string().trim().max(max).optional().nullable();
+
+/** Fields any scoped staff member (HOD / faculty / warden) may edit on a student. */
+export const staffStudentUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(100).optional(),
+  phone: optionalText(20),
+  year: z.coerce.number().int().min(1).max(6).optional().nullable(),
+  section: optionalText(10),
+  roomNumber: optionalText(20),
+  hostelBlock: optionalText(50),
+});
+
+/** Additional fields only an ADMIN may change. */
+export const adminStudentUpdateSchema = staffStudentUpdateSchema.extend({
+  email: z.string().trim().email("Invalid email").optional(),
+  studentRoll: z.string().trim().min(1).max(30).optional(),
+  department: optionalText(100),
+  studentType: z.enum(["DAY_SCHOLAR", "HOSTELLER"]).optional(),
+  facultyId: z.string().uuid().optional().nullable().or(z.literal("")),
+  wardenId: z.string().uuid().optional().nullable().or(z.literal("")),
+});
+
+export const adminUserUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(100).optional(),
+  email: z.string().trim().email("Invalid email").optional(),
+  phone: optionalText(20),
+  designation: optionalText(100),
+  department: optionalText(100),
+  employeeId: optionalText(50),
+  hostelBlock: optionalText(50),
+  gateId: z.string().uuid().optional().nullable().or(z.literal("")),
+});
+
+export const updateGateSchema = createGateSchema;
+
+export const outsiderSchema = z.object({
+  name: z.string().trim().min(2, "Name is required").max(100),
+  phone: phoneField,
+  category: z.string().trim().min(1).max(30).default("GUEST"),
+  purpose: z.string().trim().min(2, "Purpose is required").max(500),
+  visitingStudent: z.string().trim().max(100).optional().or(z.literal("")),
+  gate: z.string().trim().max(100).optional().or(z.literal("")),
+  vehicleNumber: z.string().trim().max(30).optional().or(z.literal("")),
+  photoUrl: z.string().max(300).optional().or(z.literal("")),
+  entryTime: z.string().optional().or(z.literal("")),
 });
 
 // ──────────────────────────────────────────────────────────────

@@ -125,7 +125,7 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ```
 Email: admin@campus.edu
-Password: admin123
+Password: (one-time password printed by the seed script / SEED_DEFAULT_PASSWORD — change it immediately)
 ```
 
 **⚠️ IMPORTANT: Change this password immediately after first login!**

@@ -123,9 +123,13 @@ export function OutsidersClient({ user, inside, history }: Props) {
   useEffect(() => {
     async function fetchUrl() {
       if (selectedOutsider?.photoUrl) {
-        setPhotoUrl(null); // loading state
-        const url = await getExitPhotoUrl(selectedOutsider.photoUrl);
-        setPhotoUrl(url);
+        if (selectedOutsider.photoUrl.startsWith("data:") || selectedOutsider.photoUrl.startsWith("http")) {
+          setPhotoUrl(selectedOutsider.photoUrl);
+        } else {
+          setPhotoUrl(null); // loading state
+          const url = await getExitPhotoUrl(selectedOutsider.photoUrl);
+          setPhotoUrl(url);
+        }
       } else {
         setPhotoUrl(null);
       }

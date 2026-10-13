@@ -1,7 +1,6 @@
 "use client";
 
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -50,23 +49,46 @@ export type AppStore = AppState & AppActions;
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const SYNC_INTERVAL_MS = 15_000; // 15 seconds for near real-time sync across all dashboards
-const STORE_NAME = "gatepass-store";
+// Background sync while the tab is visible. Data is also refreshed immediately
+// after every action and whenever the user returns to the tab, so a longer
+// interval keeps serverless/database usage within free-tier limits without
+// making the UI feel stale.
+const SYNC_INTERVAL_MS = 45_000;
+const LEGACY_STORE_NAME = "gatepass-store";
 const STALE_THRESHOLD_MS = 5 * 60_000; // 5 minutes — force re-fetch if older
 const THROTTLE_MS = 10_000; // 10 seconds — prevent tab-switch spam but allow frequent syncs
 
+// Data is kept in memory only. Older versions persisted every dashboard's
+// data (names, phones, QR tokens) to localStorage; wipe any leftover copy.
+if (typeof window !== "undefined") {
+  try {
+    window.localStorage.removeItem(LEGACY_STORE_NAME);
+  } catch {}
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+class SessionExpiredError extends Error {}
 
 async function fetchPreload(): Promise<StoreData> {
   const res = await fetch("/api/data/preload", {
     credentials: "include",
     cache: "no-store",
   });
+  if (res.status === 401) throw new SessionExpiredError("Session expired");
   if (!res.ok) {
-    const text = await res.text().catch(() => "Unknown error");
-    throw new Error(`Preload failed (${res.status}): ${text}`);
+    throw new Error(res.status >= 500 ? "Server error while loading data. Retrying…" : `Failed to load data (${res.status})`);
   }
   return res.json();
+}
+
+function handleSessionExpired() {
+  stopBackgroundSync();
+  if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+    // Full page load on purpose: guarantees all in-memory session data is discarded.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.href = "/login";
+  }
 }
 
 // ─── Store ──────────────────────────────────────────────────────────────────
@@ -107,7 +129,6 @@ function stopBackgroundSync() {
 }
 
 export const useAppStore = create<AppStore>()(
-  persist(
     (set, get) => ({
       // ── State ───────────────────────────────
       user: null,
@@ -150,6 +171,11 @@ export const useAppStore = create<AppStore>()(
           });
           startBackgroundSync(get().refresh);
         } catch (err: any) {
+          if (err instanceof SessionExpiredError) {
+            set({ isLoading: false });
+            handleSessionExpired();
+            return;
+          }
           set({ error: err.message, isLoading: false });
           // Even on error, start sync so it retries
           startBackgroundSync(get().refresh);
@@ -158,7 +184,7 @@ export const useAppStore = create<AppStore>()(
 
       refresh: async (force = false) => {
         const state = get();
-        if (!state.user || !state.isInitialized) return;
+        if (!state.user) return;
 
         // Throttle rapid refreshes (e.g. tab spam) unless explicitly forced
         if (!force && Date.now() - state.lastSyncAt < THROTTLE_MS) {
@@ -169,11 +195,17 @@ export const useAppStore = create<AppStore>()(
           const preloadData = await fetchPreload();
           set({
             data: preloadData,
+            isInitialized: true,
             lastSyncAt: Date.now(),
             error: null,
           });
-        } catch {
-          // Silent fail on background sync — data is still usable
+        } catch (err: any) {
+          if (err instanceof SessionExpiredError) {
+            handleSessionExpired();
+            return;
+          }
+          // Keep showing existing data; surface the error if we have nothing yet
+          if (!get().isInitialized) set({ error: err.message });
         }
       },
 
@@ -200,30 +232,17 @@ export const useAppStore = create<AppStore>()(
           error: null,
         });
         try {
-          localStorage.removeItem(STORE_NAME);
+          localStorage.removeItem(LEGACY_STORE_NAME);
         } catch {}
       },
-    }),
-    {
-      name: STORE_NAME,
-      storage: createJSONStorage(() => {
-        // Safe storage wrapper for SSR
-        if (typeof window === "undefined") {
-          return {
-            getItem: () => null,
-            setItem: () => {},
-            removeItem: () => {},
-          };
-        }
-        return localStorage;
-      }),
-      // Only persist essential data — no timers, no loading states
-      partialize: (state) => ({
-        user: state.user,
-        data: state.data,
-        isInitialized: state.isInitialized,
-        lastSyncAt: state.lastSyncAt,
-      }),
-    }
-  )
+    })
 );
+
+/**
+ * Logs the user out: clears all cached client data first (so nothing from this
+ * session remains in memory or storage), then ends the server session.
+ */
+export async function logoutAndClear(logout: () => Promise<unknown>) {
+  useAppStore.getState().reset();
+  await logout();
+}

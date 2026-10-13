@@ -5,6 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MapPin, Calendar as CalendarIcon, Clock, Phone, FileText, Send, CheckCircle2, History, LogIn, LogOut, Search, QrCode, ShieldCheck, X } from "lucide-react";
 import { createFacultyPermissionRequest } from "@/server/actions/faculty-permissions";
+import { generateLiveQrToken } from "@/server/actions/permissions";
+import { istDateString } from "@/lib/time/ist";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/stores/app-store";
 import { EmptyState, StatusBadge, Modal } from "@/components/ui/primitives";
@@ -42,42 +44,58 @@ export function FacultyApplyClient() {
     if (!hasPending) return;
     const interval = setInterval(() => {
       useAppStore.getState().refresh(true);
-    }, 5000);
+    }, 10000);
     return () => clearInterval(interval);
   }, [hasPending]);
 
-  // Generate QR Code data URL when modal opens
+  // Rotating QR while the modal is open: a fresh 60-second signed token every 45 seconds
+  const [qrError, setQrError] = useState<string | null>(null);
+  const selectedQrPassId: string | null = selectedQrPass?.id ?? null;
   useEffect(() => {
-    if (selectedQrPass?.qr?.token) {
-      QRCode.toDataURL(selectedQrPass.qr.token, {
-        width: 280,
-        margin: 2,
-        color: { dark: "#000000", light: "#ffffff" },
-        errorCorrectionLevel: "H",
-      })
-        .then(setQrImage)
-        .catch(() => setQrImage(null));
-    } else {
+    if (!selectedQrPassId) {
       setQrImage(null);
+      setQrError(null);
+      return;
     }
-  }, [selectedQrPass]);
+    let cancelled = false;
+    async function refreshToken() {
+      try {
+        const res = await generateLiveQrToken(selectedQrPassId!);
+        if (cancelled) return;
+        if ("error" in res && res.error) {
+          setQrError(res.error);
+          setQrImage(null);
+          return;
+        }
+        if ("token" in res && res.token) {
+          const url = await QRCode.toDataURL(res.token, {
+            width: 280,
+            margin: 2,
+            color: { dark: "#000000", light: "#ffffff" },
+            errorCorrectionLevel: "M",
+          });
+          if (!cancelled) {
+            setQrImage(url);
+            setQrError(null);
+          }
+        }
+      } catch {
+        if (!cancelled) setQrError("Could not refresh the QR code. Check your connection.");
+      }
+    }
+    refreshToken();
+    const interval = setInterval(refreshToken, 45_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [selectedQrPassId]);
 
-  const [today, setToday] = useState(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  });
+  // Campus date (IST) — identical on server and client
+  const [today, setToday] = useState(() => istDateString());
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      setToday(`${year}-${month}-${day}`);
-    }, 60000);
+    const interval = setInterval(() => setToday(istDateString()), 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -140,7 +158,7 @@ export function FacultyApplyClient() {
               Request Submitted!
             </h2>
             <p className="text-sm text-zinc-500 mb-6 max-w-sm mx-auto">
-              Your {type.toLowerCase()} request has been sent to the Faculty Admin. 
+              Your {type.toLowerCase()} request has been sent for approval.
             </p>
           </div>
         </div>
@@ -490,7 +508,7 @@ export function FacultyApplyClient() {
                           </span>
                           <span className="font-semibold text-zinc-100">{pass.purpose}</span>
                           <StatusBadge status={pass.status} />
-                          {pass.status === "APPROVED" && pass.qr?.token && (
+                          {pass.status === "APPROVED" && pass.qr?.active && (
                             <Button
                               size="sm"
                               onClick={() => setSelectedQrPass(pass)}
@@ -621,7 +639,11 @@ export function FacultyApplyClient() {
       >
         {selectedQrPass && (
           <div className="flex flex-col items-center text-center space-y-4 py-2">
-            {qrImage ? (
+            {qrError ? (
+              <div className="w-56 h-56 flex items-center justify-center bg-zinc-800 rounded-2xl p-4">
+                <p className="text-sm text-zinc-300">{qrError}</p>
+              </div>
+            ) : qrImage ? (
               <div className="bg-white p-3 rounded-2xl border border-zinc-200 shadow-sm">
                 <img src={qrImage} alt="Gate Pass QR Code" className="w-56 h-56" />
               </div>

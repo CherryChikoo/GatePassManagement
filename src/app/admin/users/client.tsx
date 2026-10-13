@@ -17,7 +17,8 @@ import {
   updateStudentDetails,
   updateUserDetails,
 } from "@/server/actions/admin";
-import { Search, 
+import { useAppStore } from "@/stores/app-store";
+import { Search,
   UserPlus,
   Users,
   Shield,
@@ -129,7 +130,8 @@ export function UserManagementClient({
         setEditDept("CSE");
         setEditCustomDept("");
       }
-    } else if ((u.role === "FACULTY" || u.role === "FACULTY_ADMIN") && u.faculty) {
+    } else if (["FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN"].includes(u.role) && u.faculty) {
+      // Director/Dean usually hold "All Departments", which is kept via the OTHER/custom branch
       const currentDept = u.faculty.department || "";
       const matched = DEPARTMENTS.find(
         (d) =>
@@ -260,8 +262,14 @@ export function UserManagementClient({
       ),
     }));
 
-    await toggleUserActive(profileId);
+    try {
+      const res = await toggleUserActive(profileId);
+      if (res?.error) window.alert(res.error);
+    } catch {
+      window.alert("Failed to update the account status.");
+    }
     setToggling(null);
+    useAppStore.getState().refresh(true);
     router.refresh();
   }
 
@@ -272,9 +280,15 @@ export function UserManagementClient({
   async function confirmDelete() {
     if (!userToDelete) return;
     setDeleting(userToDelete);
-    await deleteUser(userToDelete);
+    try {
+      const res = await deleteUser(userToDelete);
+      if (res?.error) window.alert(res.error);
+    } catch {
+      window.alert("Failed to delete the user.");
+    }
     setDeleting(null);
     setUserToDelete(null);
+    useAppStore.getState().refresh(true);
     router.refresh();
   }
 
@@ -1313,7 +1327,7 @@ export function UserManagementClient({
                       type="number"
                       min={1}
                       max={5}
-                      defaultValue={editingUser.student?.year || 1}
+                      defaultValue={editingUser.student?.year ?? ""}
                       className="bg-zinc-900 border-zinc-800"
                     />
                   </div>
@@ -1322,7 +1336,7 @@ export function UserManagementClient({
                     <label className="text-xs font-medium text-zinc-400">Section</label>
                     <Input
                       name="section"
-                      defaultValue={editingUser.student?.section || "A"}
+                      defaultValue={editingUser.student?.section ?? ""}
                       className="bg-zinc-900 border-zinc-800"
                     />
                   </div>

@@ -1,11 +1,13 @@
 "use server";
 
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/helpers";
 import { permissionRequestSchema } from "@/lib/validation/schemas";
 import { revalidatePath } from "next/cache";
 import { resolveFacultyActivePass } from "@/lib/permissions/auto-expire";
 import { getDepartmentVariants } from "@/lib/constants";
+import { istDateTime, istDateToInstant, istStartOfDay } from "@/lib/time/ist";
 
 /**
  * Faculty submits a new permission request (EXIT or ENTRY)
@@ -50,79 +52,64 @@ export async function createFacultyPermissionRequest(formData: FormData, type: "
     }
   }
 
-  // Determine approver based on role hierarchy:
-  // If requester is HOD (FACULTY_ADMIN), escalate to DEAN or DIRECTOR
-  // If requester is regular FACULTY, assign to their department's HOD (FACULTY_ADMIN)
+  if (type !== "EXIT" && type !== "ENTRY") return { error: "Invalid pass type" };
+
+  // Approver hierarchy:
+  // - HOD (FACULTY_ADMIN) → Dean, else Director
+  // - Faculty → HOD of their own department, else Dean/Director
+  // Never another department's HOD, never the requester themself.
   let approverProfile: { id: string; role: string } | null = null;
-  let approverType: "FACULTY_ADMIN" | "DIRECTOR" | "DEAN" = "FACULTY_ADMIN";
+
+  const findLeadership = async () =>
+    (await prisma.profile.findFirst({
+      where: { role: "DEAN", active: true, id: { not: user.profileId } },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, role: true },
+    })) ||
+    (await prisma.profile.findFirst({
+      where: { role: "DIRECTOR", active: true, id: { not: user.profileId } },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, role: true },
+    }));
 
   if (user.role === "FACULTY_ADMIN") {
-    approverProfile = await prisma.profile.findFirst({
-      where: { role: { in: ["DEAN", "DIRECTOR"] }, active: true },
-      orderBy: { role: "asc" }, // Prefers DEAN first, then DIRECTOR
-      select: { id: true, role: true },
-    });
-    if (approverProfile) {
-      approverType = approverProfile.role as "DEAN" | "DIRECTOR";
-    }
+    approverProfile = await findLeadership();
   } else {
-    const deptVariants = faculty.department ? getDepartmentVariants(faculty.department) : [];
+    const deptVariants = getDepartmentVariants(faculty.department);
     if (deptVariants.length > 0) {
       approverProfile = await prisma.profile.findFirst({
         where: {
           role: "FACULTY_ADMIN",
           active: true,
+          id: { not: user.profileId },
           faculty: { department: { in: deptVariants } },
         },
+        orderBy: { createdAt: "asc" },
         select: { id: true, role: true },
       });
     }
-
-    if (!approverProfile) {
-      approverProfile = await prisma.profile.findFirst({
-        where: { role: "FACULTY_ADMIN", active: true },
-        select: { id: true, role: true },
-      });
-    }
-
-    if (approverProfile) {
-      approverType = "FACULTY_ADMIN";
-    }
-  }
-
-  // Fallback to any administrative authority if primary role not found
-  if (!approverProfile) {
-    approverProfile = await prisma.profile.findFirst({
-      where: { role: { in: ["DIRECTOR", "DEAN", "FACULTY_ADMIN"] }, active: true },
-      select: { id: true, role: true },
-    });
-    if (approverProfile) {
-      approverType = approverProfile.role as "FACULTY_ADMIN" | "DIRECTOR" | "DEAN";
-    }
+    if (!approverProfile) approverProfile = await findLeadership();
   }
 
   if (!approverProfile) {
-    return { error: "No administrator found to approve your pass." };
+    return { error: "No approver (HOD / Dean / Director) is available for your pass. Contact the administrator." };
   }
+  const approverType = approverProfile.role as "FACULTY_ADMIN" | "DIRECTOR" | "DEAN";
 
-  const exitDate = new Date(parsed.data.exitDate);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (exitDate < today) {
+  // Dates/times are IST wall-clock values
+  const exitDate = istDateToInstant(parsed.data.exitDate);
+  if (exitDate < istStartOfDay()) {
     return { error: "Date cannot be in the past." };
   }
 
-  const [exitH, exitM] = parsed.data.expectedExit.split(":").map(Number);
-  const expectedExit = new Date(exitDate);
-  expectedExit.setHours(exitH, exitM, 0, 0);
+  const expectedExit = istDateTime(parsed.data.exitDate, parsed.data.expectedExit);
+  if (!expectedExit) return { error: "Invalid time" };
 
   let expectedReturn: Date | null = null;
   if (parsed.data.expectedReturn && type === "EXIT") {
-    const [retH, retM] = parsed.data.expectedReturn.split(":").map(Number);
-    expectedReturn = new Date(exitDate);
-    expectedReturn.setHours(retH, retM, 0, 0);
-    if (expectedReturn <= expectedExit) {
-      expectedReturn.setDate(expectedReturn.getDate() + 1);
+    expectedReturn = istDateTime(parsed.data.exitDate, parsed.data.expectedReturn);
+    if (expectedReturn && expectedReturn <= expectedExit) {
+      expectedReturn = new Date(expectedReturn.getTime() + 24 * 60 * 60 * 1000);
     }
   }
 
@@ -165,20 +152,12 @@ export async function cancelFacultyPermissionRequest(permissionId: string) {
 
   if (!faculty) return { error: "Faculty not found" };
 
-  const permission = await prisma.permission.findFirst({
-    where: {
-      id: permissionId,
-      facultyId: faculty.id,
-      status: "PENDING",
-    },
-  });
-
-  if (!permission) return { error: "Request not found" };
-
-  await prisma.permission.update({
-    where: { id: permissionId },
+  const updated = await prisma.permission.updateMany({
+    where: { id: permissionId, facultyId: faculty.id, status: "PENDING" },
     data: { status: "CANCELLED", cancelledAt: new Date() },
   });
+
+  if (updated.count !== 1) return { error: "Request not found or can no longer be cancelled" };
 
   revalidatePath("/faculty");
   revalidatePath("/faculty/requests");
@@ -195,10 +174,23 @@ export async function cancelFacultyPermissionRequest(permissionId: string) {
  * Fetch complete gate pass history and stats for a specific faculty member (HOD / Admin / Director / Dean view)
  */
 export async function getFacultyPassHistory(profileIdOrFacultyId: string) {
-  await requireRole("FACULTY_ADMIN", "ADMIN", "DIRECTOR", "DEAN");
+  const user = await requireRole("FACULTY_ADMIN", "ADMIN", "DIRECTOR", "DEAN");
+  if (typeof profileIdOrFacultyId !== "string" || !profileIdOrFacultyId) {
+    return { error: "Faculty member record not found" };
+  }
+
+  // HODs may only view faculty of their own department
+  let departmentFilter: Prisma.FacultyWhereInput = {};
+  if (user.role === "FACULTY_ADMIN") {
+    const hod = await prisma.faculty.findUnique({ where: { profileId: user.profileId }, select: { department: true } });
+    const variants = getDepartmentVariants(hod?.department);
+    if (variants.length === 0) return { error: "Faculty member record not found" };
+    departmentFilter = { department: { in: variants } };
+  }
 
   const faculty = await prisma.faculty.findFirst({
     where: {
+      ...departmentFilter,
       OR: [
         { id: profileIdOrFacultyId },
         { profileId: profileIdOrFacultyId },
@@ -218,6 +210,7 @@ export async function getFacultyPassHistory(profileIdOrFacultyId: string) {
   const permissions = await prisma.permission.findMany({
     where: { facultyId: faculty.id },
     orderBy: { createdAt: "desc" },
+    take: 200,
     include: {
       approval: {
         include: {

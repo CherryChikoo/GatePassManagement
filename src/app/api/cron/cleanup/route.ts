@@ -1,159 +1,90 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { deleteOldPhotos } from "@/lib/storage/image-upload";
-import { timingSafeEqual } from "crypto";
+import { deleteOldPhotos } from "@/lib/storage/storage-admin";
+import { isAuthorizedCronRequest } from "@/lib/auth/cron";
 import { logger } from "@/lib/logger";
+import { RETENTION } from "@/lib/constants";
 
 /**
- * Automated cleanup cron job
- * Deletes old permissions, movements, QR codes, and photos
- * 
- * Security: Uses constant-time comparison and header-based authentication
- * 
- * Usage: 
- * curl -X GET https://your-domain.com/api/cron/cleanup \
- *   -H "x-cron-secret: YOUR_CRON_SECRET"
+ * Automated cleanup cron job.
+ * Removes stale, finished records that carry no gate history, expired QR
+ * credentials, and old photos. Gate movement history is kept for
+ * RETENTION.OLD_MOVEMENTS_YEARS.
+ *
+ * Auth: `Authorization: Bearer <CRON_SECRET>` (Vercel Cron) or `x-cron-secret`.
  */
-
 export async function GET(request: NextRequest) {
+  if (!isAuthorizedCronRequest(request)) {
+    logger.warn("[CLEANUP] Unauthorized cron request");
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const results = {
+    deletedPermissions: 0,
+    deletedMovements: 0,
+    deletedQRs: 0,
+    deletedPhotos: 0,
+    errors: [] as string[],
+  };
+
   try {
-    // 1. Verify cron secret (prevent unauthorized access)
-    const authHeader = request.headers.get("authorization");
-    const bearerSecret = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-    const providedSecret = request.headers.get("x-cron-secret") || bearerSecret;
-    const expectedSecret = process.env.CRON_SECRET;
+    logger.info("[CLEANUP] Starting cleanup job...");
 
-    if (!providedSecret || !expectedSecret) {
-      logger.error('[CLEANUP] Missing cron secret');
-      return NextResponse.json(
-        { error: "Unauthorized" }, 
-        { status: 401 }
-      );
+    // 1. Movements older than the retention window (must go before their permissions: FK)
+    try {
+      const cutoff = new Date();
+      cutoff.setFullYear(cutoff.getFullYear() - RETENTION.OLD_MOVEMENTS_YEARS);
+      const deleted = await prisma.movement.deleteMany({ where: { createdAt: { lt: cutoff } } });
+      results.deletedMovements = deleted.count;
+    } catch (err: any) {
+      results.errors.push(`Movement cleanup: ${err.message}`);
+      logger.error("[CLEANUP] Movement cleanup failed", err);
     }
 
-    // Use constant-time comparison to prevent timing attacks
+    // 2. Finished permissions older than N months that no longer have gate movements
     try {
-      const providedBuffer = Buffer.from(providedSecret, 'utf8');
-      const expectedBuffer = Buffer.from(expectedSecret, 'utf8');
-
-      if (
-        providedBuffer.length !== expectedBuffer.length ||
-        !timingSafeEqual(providedBuffer, expectedBuffer)
-      ) {
-        logger.error('[CLEANUP] Invalid cron secret');
-        return NextResponse.json(
-          { error: "Unauthorized" }, 
-          { status: 401 }
-        );
-      }
-    } catch (err) {
-      logger.error('[CLEANUP] Error comparing secrets', err);
-      return NextResponse.json(
-        { error: "Unauthorized" }, 
-        { status: 401 }
-      );
-    }
-
-    logger.info('[CLEANUP] Starting cleanup job...');
-
-    const results = {
-      deletedPermissions: 0,
-      deletedMovements: 0,
-      deletedQRs: 0,
-      deletedPhotos: 0,
-      errors: [] as string[],
-    };
-
-    // 2. Delete completed permissions older than 6 months
-    try {
-      const sixMonthsAgo = new Date();
-      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-      const deletedPerms = await prisma.permission.deleteMany({
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - RETENTION.COMPLETED_PERMISSIONS_MONTHS);
+      const deleted = await prisma.permission.deleteMany({
         where: {
-          status: { in: ["COMPLETED", "EXPIRED"] },
-          createdAt: { lt: sixMonthsAgo },
+          status: { in: ["COMPLETED", "EXPIRED", "CANCELLED", "REJECTED"] },
+          createdAt: { lt: cutoff },
+          movements: { none: {} },
         },
       });
-
-      results.deletedPermissions = deletedPerms.count;
-      logger.info(`[CLEANUP] Deleted ${deletedPerms.count} old permissions`);
+      results.deletedPermissions = deleted.count;
     } catch (err: any) {
-      const errorMsg = `Permission cleanup: ${err.message}`;
-      results.errors.push(errorMsg);
-      logger.error(`[CLEANUP] ${errorMsg}`, err);
+      results.errors.push(`Permission cleanup: ${err.message}`);
+      logger.error("[CLEANUP] Permission cleanup failed", err);
     }
 
-    // 3. Delete movements older than 1 year
+    // 3. Inactive QR credentials that expired long ago
     try {
-      const oneYearAgo = new Date();
-      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-
-      const deletedMovs = await prisma.movement.deleteMany({
-        where: {
-          createdAt: { lt: oneYearAgo },
-        },
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - RETENTION.EXPIRED_QR_CODES_DAYS);
+      const deleted = await prisma.qrCredential.deleteMany({
+        where: { expiresAt: { lt: cutoff }, active: false },
       });
-
-      results.deletedMovements = deletedMovs.count;
-      logger.info(`[CLEANUP] Deleted ${deletedMovs.count} old movements`);
+      results.deletedQRs = deleted.count;
     } catch (err: any) {
-      const errorMsg = `Movement cleanup: ${err.message}`;
-      results.errors.push(errorMsg);
-      logger.error(`[CLEANUP] ${errorMsg}`, err);
+      results.errors.push(`QR cleanup: ${err.message}`);
+      logger.error("[CLEANUP] QR cleanup failed", err);
     }
 
-    // 4. Delete expired QR credentials older than 30 days
-    try {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // 4. Old photos in Supabase Storage
+    const photoResult = await deleteOldPhotos(RETENTION.EXIT_PHOTOS_DAYS);
+    if (photoResult.error) results.errors.push(`Photo cleanup: ${photoResult.error}`);
+    results.deletedPhotos = photoResult.deleted;
 
-      const deletedQRs = await prisma.qrCredential.deleteMany({
-        where: {
-          expiresAt: { lt: thirtyDaysAgo },
-          active: false,
-        },
-      });
-
-      results.deletedQRs = deletedQRs.count;
-      logger.info(`[CLEANUP] Deleted ${deletedQRs.count} old QR codes`);
-    } catch (err: any) {
-      const errorMsg = `QR cleanup: ${err.message}`;
-      results.errors.push(errorMsg);
-      logger.error(`[CLEANUP] ${errorMsg}`, err);
-    }
-
-    // 5. Delete exit photos older than 90 days (from Supabase Storage)
-    try {
-      const photoResult = await deleteOldPhotos(90);
-      if (photoResult.error) {
-        results.errors.push(`Photo cleanup: ${photoResult.error}`);
-      } else {
-        results.deletedPhotos = photoResult.deleted;
-      }
-      logger.info(`[CLEANUP] Deleted ${photoResult.deleted} old photos`);
-    } catch (err: any) {
-      const errorMsg = `Photo cleanup: ${err.message}`;
-      results.errors.push(errorMsg);
-      logger.error(`[CLEANUP] ${errorMsg}`, err);
-    }
-
-    logger.info('[CLEANUP] Cleanup job completed', results);
-
-    return NextResponse.json({
-      success: true,
-      timestamp: new Date().toISOString(),
-      results,
-    });
+    logger.info("[CLEANUP] Cleanup job completed", results);
+    return NextResponse.json({ success: results.errors.length === 0, timestamp: new Date().toISOString(), results });
   } catch (error: any) {
     logger.error("[CLEANUP] Fatal error", error);
     return NextResponse.json(
-      {
-        success: false,
-        error: "Internal server error",
-        timestamp: new Date().toISOString(),
-      },
+      { success: false, error: "Internal server error", timestamp: new Date().toISOString() },
       { status: 500 }
     );
   }
 }
+
+export const dynamic = "force-dynamic";

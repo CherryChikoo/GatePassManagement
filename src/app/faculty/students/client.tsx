@@ -31,9 +31,11 @@ import { useStoreReady } from "@/components/providers/store-hydrator";
 
 interface Props {
   user: { name: string; email: string; role: string; profileId: string };
+  /** Route prefix for student detail pages (HODs use their own area). */
+  detailBasePath?: string;
 }
 
-export function FacultyStudentsClient({ user }: Props) {
+export function FacultyStudentsClient({ user, detailBasePath = "/faculty/students" }: Props) {
   const router = useRouter();
   const isReady = useStoreReady();
   const studentsData = useAppStore((s) => s.data.students);
@@ -278,7 +280,7 @@ export function FacultyStudentsClient({ user }: Props) {
                           <td className="px-5 py-3.5 text-right">
                             <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                               <Link
-                                href={`/faculty/students/${s.profile.id}`}
+                                href={`${detailBasePath}/${s.profile.id}`}
                                 className="inline-flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 px-2.5 h-8 text-xs font-medium rounded-md transition-colors"
                                 title="View full student details, permissions & activity"
                               >
@@ -343,7 +345,7 @@ export function FacultyStudentsClient({ user }: Props) {
                                   </div>
                                   <div className="flex flex-wrap items-center gap-2">
                                     <Link
-                                      href={`/faculty/students/${s.profile.id}`}
+                                      href={`${detailBasePath}/${s.profile.id}`}
                                       onClick={(e) => e.stopPropagation()}
                                       className="inline-flex items-center gap-1.5 px-3 h-8 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 text-xs font-semibold shadow-sm transition-all"
                                     >
@@ -412,7 +414,7 @@ export function FacultyStudentsClient({ user }: Props) {
                                       <p className="text-zinc-300">
                                         <span className="text-zinc-500">Faculty: </span>
                                         <span className="font-medium text-emerald-300">
-                                          {s.faculty?.profile?.name || user.name}
+                                          {s.faculty?.profile?.name || "Unassigned"}
                                         </span>
                                       </p>
                                       {s.studentType === "HOSTELLER" && (
@@ -557,7 +559,7 @@ export function FacultyStudentsClient({ user }: Props) {
                   type="number"
                   min={1}
                   max={5}
-                  defaultValue={editingStudent.year || 1}
+                  defaultValue={editingStudent.year ?? ""}
                   className="bg-zinc-900 border-zinc-800"
                 />
               </div>
@@ -566,7 +568,7 @@ export function FacultyStudentsClient({ user }: Props) {
                 <label className="text-xs font-medium text-zinc-400">Section</label>
                 <Input
                   name="section"
-                  defaultValue={editingStudent.section || "A"}
+                  defaultValue={editingStudent.section ?? ""}
                   className="bg-zinc-900 border-zinc-800"
                 />
               </div>

@@ -1226,7 +1226,7 @@ export function UserDetailClient({
                           type="number"
                           min={1}
                           max={5}
-                          defaultValue={student?.year || 1}
+                          defaultValue={student?.year ?? ""}
                           className="bg-zinc-950 border-zinc-800"
                         />
                       </div>
@@ -1237,7 +1237,7 @@ export function UserDetailClient({
                         </label>
                         <Input
                           name="section"
-                          defaultValue={student?.section || "A"}
+                          defaultValue={student?.section ?? ""}
                           className="bg-zinc-950 border-zinc-800"
                         />
                       </div>

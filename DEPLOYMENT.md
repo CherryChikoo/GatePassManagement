@@ -255,7 +255,7 @@ curl https://your-app.vercel.app/api/health
 
 1. Login at `https://your-app.vercel.app/login`
 2. Email: `admin@campus.edu`
-3. Password: `admin123`
+3. Password: the one-time password printed by the seed script (`SEED_DEFAULT_PASSWORD`) — change it immediately
 4. Go to Settings → Change Password
 5. Use strong password (12+ chars, mixed case, numbers, symbols)
 

@@ -276,12 +276,15 @@ async function main() {
 
   const createdUsers: any[] = [];
 
+  // Never derive passwords from emails. Use SEED_DEFAULT_PASSWORD, or a random one.
+  const seedPassword =
+    process.env.SEED_DEFAULT_PASSWORD || require("crypto").randomBytes(12).toString("base64url");
+
   for (const user of testUsers) {
     try {
-      // Create user in Supabase Auth (password = email)
       const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: user.email,
-        password: user.email, // Password is same as email
+        password: seedPassword,
         email_confirm: true,
       });
 
@@ -567,10 +570,8 @@ async function main() {
   console.log(`   • Movements: ${movementCount}`);
   console.log("\n🔐 LOGIN CREDENTIALS:");
   console.log("   Email: [any email from above]");
-  console.log("   Password: [same as email]");
-  console.log("\n   Example:");
-  console.log("   Email: admin@campus.edu");
-  console.log("   Password: admin@campus.edu");
+  console.log(`   Password (all seeded accounts): ${seedPassword}`);
+  console.log("   ⚠️  Development data only — never seed production. Change passwords after first login.");
   console.log("\n📝 TEST ACCOUNTS:");
   console.log("   Admin:    admin@campus.edu");
   console.log("   Faculty:  faculty1@campus.edu");

@@ -4,7 +4,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db/prisma";
 import { loginSchema } from "@/lib/validation/schemas";
 import { redirect } from "next/navigation";
-import { getRoleDashboardPath } from "@/lib/auth/helpers";
+import { cookies, headers } from "next/headers";
+import { getRoleDashboardPath, invalidateProfileCache } from "@/lib/auth/helpers";
 import { checkRateLimit, resetRateLimit } from "@/lib/auth/rate-limiter";
 import { logger } from "@/lib/logger";
 import { LIMITS } from "@/lib/constants";
@@ -21,10 +22,14 @@ export async function loginAction(formData: FormData) {
       return { error: parsed.error.issues[0].message };
     }
 
-    const { email, password } = parsed.data;
+    const email = parsed.data.email.trim().toLowerCase();
+    const { password } = parsed.data;
 
-    // Check rate limit
-    const rateLimitResult = checkRateLimit(`login:${email}`, {
+    // Rate limit per client IP + email so a third party cannot lock out a
+    // specific account from everywhere. Note: in-memory, per serverless instance.
+    const reqHeaders = await headers();
+    const ip = (reqHeaders.get("x-forwarded-for") || "").split(",")[0].trim() || "unknown";
+    const rateLimitResult = checkRateLimit(`login:${ip}:${email}`, {
       maxAttempts: LIMITS.MAX_LOGIN_ATTEMPTS,
       windowMs: LIMITS.LOGIN_RATE_LIMIT_WINDOW_MS,
       blockDurationMs: LIMITS.LOGIN_BLOCK_DURATION_MS,
@@ -32,7 +37,7 @@ export async function loginAction(formData: FormData) {
 
     if (!rateLimitResult.allowed) {
       const minutesRemaining = Math.ceil((rateLimitResult.resetAt - Date.now()) / 60000);
-      logger.warn('Login rate limit exceeded', { email, minutesRemaining });
+      logger.warn('Login rate limit exceeded', { minutesRemaining });
       return { 
         error: `Too many login attempts. Please try again in ${minutesRemaining} minutes.` 
       };
@@ -46,9 +51,11 @@ export async function loginAction(formData: FormData) {
     });
 
     if (error) {
-      logger.warn('Login failed', { email, error: error.message });
+      logger.warn('Login failed', { error: error.message });
       return { error: "Invalid email or password" };
     }
+
+    resetRateLimit(`login:${ip}:${email}`);
 
     // Get the profile to determine role-based redirect
     const profile = await prisma.profile.findUnique({
@@ -58,40 +65,41 @@ export async function loginAction(formData: FormData) {
 
     if (!profile) {
       await supabase.auth.signOut();
-      logger.error('Login failed - profile not found', undefined, { email, userId: data.user.id });
+      logger.error('Login failed - profile not found', undefined, { userId: data.user.id });
       return { error: "Account not configured. Contact admin." };
     }
 
     if (!profile.active) {
       await supabase.auth.signOut();
-      logger.warn('Login failed - account disabled', { email, userId: data.user.id });
+      logger.warn('Login failed - account disabled', { userId: data.user.id });
       return { error: "Account is disabled. Contact admin." };
     }
 
-    logger.info('User logged in successfully', { email, userId: data.user.id, role: profile.role });
+    logger.info('User logged in successfully', { userId: data.user.id, role: profile.role });
 
     return { redirectUrl: getRoleDashboardPath(profile.role) };
   } catch (err: any) {
     logger.error('Login action exception', err);
-    return { error: err?.message || "An unexpected error occurred during login. Please try again." };
+    return { error: "An unexpected error occurred during login. Please try again." };
   }
 }
 
-import { cookies } from "next/headers";
-import { invalidateProfileCache } from "@/lib/auth/helpers";
-
 export async function logoutAction() {
+  let userId: string | null = null;
+  try {
+    const supabase = await createServerSupabaseClient();
+    const { data } = await supabase.auth.getClaims();
+    userId = (data?.claims?.sub as string) || null;
+    await supabase.auth.signOut();
+  } catch {}
   try {
     const cookieStore = await cookies();
-    const allCookies = cookieStore.getAll();
-    for (const c of allCookies) {
-      if (c.name.includes("auth-token") || c.name.startsWith("sb-")) {
+    for (const c of cookieStore.getAll()) {
+      if (c.name.startsWith("sb-") && c.name.includes("auth-token")) {
         cookieStore.delete(c.name);
       }
     }
-    const supabase = await createServerSupabaseClient();
-    await supabase.auth.signOut();
   } catch {}
-  invalidateProfileCache();
+  if (userId) invalidateProfileCache(userId);
   redirect("/login");
 }

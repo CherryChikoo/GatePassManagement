@@ -556,7 +556,7 @@ export function WardenStudentsClient({ user }: Props) {
                   type="number"
                   min={1}
                   max={5}
-                  defaultValue={editingStudent.year || 1}
+                  defaultValue={editingStudent.year ?? ""}
                   className="bg-zinc-900 border-zinc-800"
                 />
               </div>
@@ -565,7 +565,7 @@ export function WardenStudentsClient({ user }: Props) {
                 <label className="text-xs font-medium text-zinc-400">Section</label>
                 <Input
                   name="section"
-                  defaultValue={editingStudent.section || "A"}
+                  defaultValue={editingStudent.section ?? ""}
                   className="bg-zinc-900 border-zinc-800"
                 />
               </div>

@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/ui/back-button";
+import { useAppStore } from "@/stores/app-store";
 
 interface Props {
   user: { name: string; email: string; role: string };
@@ -22,9 +23,16 @@ export function HistoryClient({ user, initialData, currentPage }: Props) {
   const [cancelling, setCancelling] = useState<string | null>(null);
 
   async function handleCancel(id: string) {
+    if (!window.confirm("Cancel this request? This cannot be undone.")) return;
     setCancelling(id);
-    await cancelPermissionRequest(id);
+    try {
+      const res = await cancelPermissionRequest(id);
+      if (res?.error) window.alert(res.error);
+    } catch {
+      window.alert("Failed to cancel the request. Please try again.");
+    }
     setCancelling(null);
+    useAppStore.getState().refresh(true);
     router.refresh();
   }
 

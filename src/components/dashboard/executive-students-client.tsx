@@ -99,7 +99,7 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
   const metrics = useMemo(() => {
     const total = students.length;
     const active = students.filter((s: any) => s.profile?.active !== false).length;
-    const hostelers = students.filter((s: any) => s.studentType === "HOSTELER").length;
+    const hostelers = students.filter((s: any) => s.studentType === "HOSTELLER").length;
     const dayScholars = total - hostelers;
     return { total, active, hostelers, dayScholars };
   }, [students]);
@@ -230,7 +230,7 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
             className="h-9 px-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500"
           >
             <option value="ALL">All Types</option>
-            <option value="HOSTELER">Hostelers</option>
+            <option value="HOSTELLER">Hostelers</option>
             <option value="DAY_SCHOLAR">Day Scholars</option>
           </select>
 
@@ -337,7 +337,7 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
 
                         {/* Residence / Hostel */}
                         <td className="px-5 py-4">
-                          {student.studentType === "HOSTELER" ? (
+                          {student.studentType === "HOSTELLER" ? (
                             <div className="space-y-0.5">
                               <span className="text-[11px] font-semibold text-amber-400 flex items-center gap-1">
                                 <Home className="h-3 w-3" /> Hosteler
@@ -468,7 +468,7 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
                 </div>
               </div>
               <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-                {selectedStudent.studentType === "HOSTELER" ? "Hosteler" : "Day Scholar"}
+                {selectedStudent.studentType === "HOSTELLER" ? "Hosteler" : "Day Scholar"}
               </span>
             </div>
 
@@ -501,7 +501,7 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
               <div className="p-3.5 rounded-lg bg-zinc-900/60 border border-zinc-800 space-y-1">
                 <p className="text-zinc-500 font-medium">Hostel Accommodation</p>
                 <p className="font-semibold text-zinc-200">
-                  {selectedStudent.studentType === "HOSTELER"
+                  {selectedStudent.studentType === "HOSTELLER"
                     ? `${selectedStudent.hostelBlock || "Block"} · Room ${selectedStudent.roomNumber || "N/A"}`
                     : "Day Scholar (Off-campus resident)"}
                 </p>

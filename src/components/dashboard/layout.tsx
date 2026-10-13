@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { logoutAndClear } from "@/stores/app-store";
 import {
   LayoutDashboard,
   FileText,
@@ -55,8 +56,14 @@ export function DashboardLayout({
   const [desktopCollapsed, setDesktopCollapsed] = useState(defaultCollapsed);
   const pathname = usePathname();
 
-  let navItems = adminNavItems;
-  if (role === "FACULTY") navItems = facultyNavItems;
+  // Clear all cached client data before ending the server session
+  const handleLogout = () => {
+    void logoutAndClear(async () => onLogout());
+  };
+
+  let navItems: NavItem[] = [];
+  if (role === "ADMIN") navItems = adminNavItems;
+  else if (role === "FACULTY") navItems = facultyNavItems;
   else if (role === "FACULTY_ADMIN") navItems = facultyAdminNavItems;
   else if (role === "WARDEN") navItems = wardenNavItems;
   else if (role === "SECURITY") navItems = securityNavItems;
@@ -259,7 +266,7 @@ export function DashboardLayout({
           {/* Direct sign out in drawer on mobile */}
           <div className="lg:hidden pt-1">
             <button
-              onClick={onLogout}
+              onClick={handleLogout}
               className="w-full flex items-center justify-center gap-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-red-500/40 hover:bg-red-500/10 px-3 py-2 text-xs font-semibold text-zinc-300 hover:text-red-400 transition-all cursor-pointer"
             >
               <LogOut className="h-3.5 w-3.5" />
@@ -338,7 +345,7 @@ export function DashboardLayout({
               </div>
             )}
             <button
-              onClick={onLogout}
+              onClick={handleLogout}
               className="flex items-center gap-1.5 sm:gap-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-red-500/40 hover:bg-red-500/10 px-2.5 sm:px-3.5 py-1.5 text-xs font-semibold text-zinc-300 hover:text-red-400 transition-all cursor-pointer shadow-sm"
               title="Sign Out"
             >

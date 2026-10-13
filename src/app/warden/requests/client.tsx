@@ -88,12 +88,14 @@ export function WardenRequestsClient({ user }: Props) {
     );
 
     try {
-      await handleApproval(requestId, "APPROVE", undefined, expiryMinutes);
+      const res = await handleApproval(requestId, "APPROVE", undefined, expiryMinutes);
+      if (res?.error) window.alert(res.error);
       useAppStore.getState().refresh(true);
     } catch {
-      updateData("requests", (old: any) => 
+      updateData("requests", (old: any) =>
         (old || []).map((r: any) => r.id === requestId ? { ...r, status: "PENDING" } : r)
       );
+      window.alert("Failed to approve the request. Please try again.");
     } finally {
       setProcessing(null);
       setApproveModal(null);
@@ -103,6 +105,10 @@ export function WardenRequestsClient({ user }: Props) {
 
   async function handleSingleReject() {
     if (!rejectModal) return;
+    if (!rejectReason.trim()) {
+      window.alert("Please enter a reason for rejecting this request.");
+      return;
+    }
     const requestId = rejectModal.id;
     setProcessing(requestId);
     
@@ -112,12 +118,14 @@ export function WardenRequestsClient({ user }: Props) {
     );
 
     try {
-      await handleApproval(requestId, "REJECT", rejectReason);
+      const res = await handleApproval(requestId, "REJECT", rejectReason);
+      if (res?.error) window.alert(res.error);
       useAppStore.getState().refresh(true);
     } catch {
-      updateData("requests", (old: any) => 
+      updateData("requests", (old: any) =>
         (old || []).map((r: any) => r.id === requestId ? { ...r, status: "PENDING", rejectionReason: null } : r)
       );
+      window.alert("Failed to reject the request. Please try again.");
     } finally {
       setProcessing(null);
       setRejectModal(null);
@@ -136,12 +144,14 @@ export function WardenRequestsClient({ user }: Props) {
     );
 
     try {
-      await batchApproval(selectedIds, "APPROVE");
+      const res: any = await batchApproval(selectedIds, "APPROVE");
+      if (!res?.success) window.alert(res?.error || "Some requests could not be approved.");
       useAppStore.getState().refresh(true);
     } catch {
-      updateData("requests", (old: any) => 
+      updateData("requests", (old: any) =>
         (old || []).map((r: any) => selectedIds.includes(r.id) ? { ...r, status: "PENDING" } : r)
       );
+      window.alert("Failed to process the selected requests.");
     } finally {
       setBatchProcessing(false);
       setSelected(new Set());

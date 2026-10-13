@@ -1,7 +1,8 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["fullTextSearch", "fullTextIndex"]
-  binaryTargets   = ["native", "rhel-openssl-1.0.x"]
+  // native = local dev; rhel-openssl-3.0.x = Vercel (Amazon Linux 2023). Only ship what is used.
+  binaryTargets   = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
@@ -27,6 +28,7 @@ model Profile {
   student       Student?
   warden        Warden?
 
+  @@index([role, active])
   @@map("profiles")
 }
 
@@ -52,6 +54,7 @@ model Student {
 
   @@index([facultyId])
   @@index([wardenId])
+  @@index([department])
   @@index([status])
   @@index([studentType])
   @@map("students")
@@ -71,6 +74,7 @@ model Faculty {
   permissions         Permission[]         @relation("FacultyPermissions")
   movements           Movement[]           @relation("FacultyMovements")
 
+  @@index([department])
   @@map("faculty")
 }
 
@@ -128,9 +132,13 @@ model Permission {
   qr              QrCredential?
 
   @@index([studentId, createdAt(sort: Desc)])
+  @@index([facultyId, createdAt(sort: Desc)])
   @@index([approverId, status])
+  @@index([approverType, status])
+  @@index([status, exitDate])
   @@index([status])
   @@index([exitDate])
+  @@index([createdAt(sort: Desc)])
   @@map("permissions")
 }
 
@@ -198,9 +206,12 @@ model Movement {
   faculty        Faculty?      @relation("FacultyMovements", fields: [facultyId], references: [id])
 
   @@index([studentId, createdAt(sort: Desc)])
+  @@index([facultyId, createdAt(sort: Desc)])
+  @@index([securityUserId, createdAt(sort: Desc)])
   @@index([gateId, createdAt(sort: Desc)])
   @@index([permissionId])
   @@index([type, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
   @@map("movements")
 }
 
@@ -219,6 +230,9 @@ model Outsider {
   exitTime        DateTime? @map("exit_time")
   createdAt       DateTime  @default(now()) @map("created_at")
 
+  @@index([status, entryTime(sort: Desc)])
+  @@index([entryTime(sort: Desc)])
+  @@index([exitTime(sort: Desc)])
   @@map("outsiders")
 }
 

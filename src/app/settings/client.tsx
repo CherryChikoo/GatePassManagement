@@ -41,8 +41,9 @@ export function SettingsClient({ user }: Props) {
   // Controlled form state
   const [name, setName] = useState(user.name || "");
   const [phone, setPhone] = useState(user.phone || "");
-  const [department, setDepartment] = useState(user.department || "");
-  const [designation, setDesignation] = useState(user.designation || "");
+  const department = user.department || "";
+  const designation = user.designation || "";
+  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
 
   const isFacultyOrHod = ["FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN"].includes(user.role);
@@ -96,9 +97,8 @@ export function SettingsClient({ user }: Props) {
     const formData = new FormData();
     formData.append("name", name);
     formData.append("phone", phone);
-    formData.append("department", department);
-    formData.append("designation", designation);
     if (password) {
+      formData.append("currentPassword", currentPassword);
       formData.append("password", password);
     }
 
@@ -108,8 +108,9 @@ export function SettingsClient({ user }: Props) {
       if (result?.error) {
         setError(result.error);
       } else {
-        setSuccess("Profile settings successfully updated and synchronized with Supabase!");
+        setSuccess("Profile settings updated.");
         setPassword("");
+        setCurrentPassword("");
         // Refresh server components and sidebar to show updated profile details
         router.refresh();
       }
@@ -201,14 +202,18 @@ export function SettingsClient({ user }: Props) {
                 {/* Department & Designation (Visible for Faculty and HOD) */}
                 {isFacultyOrHod && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                    <Input
-                      label="Department"
-                      name="department"
-                      value={department}
-                      onChange={(e) => setDepartment(e.target.value)}
-                      placeholder="e.g. Computer Science"
-                      icon={<Building2 className="h-4 w-4" />}
-                    />
+                    <div>
+                      <Input
+                        label="Department"
+                        name="department"
+                        value={department || "Not assigned"}
+                        disabled
+                        icon={<Building2 className="h-4 w-4" />}
+                      />
+                      <p className="text-[11px] text-zinc-500 mt-1 ml-1">
+                        Department is assigned by the administrator.
+                      </p>
+                    </div>
                     <div>
                       <Input
                         label="Designation"
@@ -240,17 +245,33 @@ export function SettingsClient({ user }: Props) {
                   <h3 className="text-sm font-semibold text-zinc-200 mb-3 flex items-center gap-2">
                     <Lock className="h-4 w-4 text-orange-500" /> Change Password
                   </h3>
-                  <Input
-                    label="New Password (Optional)"
-                    name="password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Leave blank to keep current password"
-                    icon={<Lock className="h-4 w-4" />}
-                  />
+                  <div className="space-y-4">
+                    <Input
+                      label="New Password (Optional)"
+                      name="password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Leave blank to keep current password"
+                      icon={<Lock className="h-4 w-4" />}
+                    />
+                    {password && (
+                      <Input
+                        label="Current Password"
+                        name="currentPassword"
+                        type="password"
+                        autoComplete="current-password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        placeholder="Required to change your password"
+                        required
+                        icon={<Lock className="h-4 w-4" />}
+                      />
+                    )}
+                  </div>
                   <p className="text-xs text-zinc-500 mt-2">
-                    If you enter a new password, it must be at least 6 characters long and will update your Supabase Auth credentials.
+                    A new password must be at least 8 characters. Your current password is required to change it.
                   </p>
                 </div>
               </div>

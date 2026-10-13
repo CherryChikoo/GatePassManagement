@@ -40,9 +40,13 @@ export function SecurityLogClient({
     async function fetchUrl() {
       const path = selectedRecord?.photoUrl || selectedRecord?.imagePath;
       if (path) {
-        setPhotoUrl(null);
-        const url = await getExitPhotoUrl(path);
-        setPhotoUrl(url);
+        if (path.startsWith("data:") || path.startsWith("http")) {
+          setPhotoUrl(path);
+        } else {
+          setPhotoUrl(null);
+          const url = await getExitPhotoUrl(path);
+          setPhotoUrl(url);
+        }
       } else {
         setPhotoUrl(null);
       }
@@ -320,7 +324,7 @@ export function SecurityLogClient({
       <Modal
         open={!!selectedRecord}
         onClose={() => setSelectedRecord(null)}
-        title={selectedRecord?.studentRoll ? "Student Movement Details" : "Outsider Details"}
+        title={selectedRecord?.student ? "Student Movement Details" : "Outsider Details"}
       >
         {selectedRecord && (
           <div className="space-y-6">
@@ -347,7 +351,7 @@ export function SecurityLogClient({
                 </div>
                 <p className="text-zinc-400 font-medium mb-3">
                   {selectedRecord.phone || selectedRecord.student?.profile?.phone}
-                  {selectedRecord.studentRoll && ` • ${selectedRecord.student.studentRoll}`}
+                  {selectedRecord.student?.studentRoll && ` • ${selectedRecord.student.studentRoll}`}
                 </p>
                 <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                   <span className="px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 text-xs font-medium border border-zinc-700">

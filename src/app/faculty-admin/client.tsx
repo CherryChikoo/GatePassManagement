@@ -57,7 +57,7 @@ export function FacultyAdminDashboardClient({ user }: Props) {
   const requestsList = allRequests || dashboardData?.recentActivity || [];
 
   const filteredActivity = requestsList.filter((item: any) => {
-    const isFacultyPass = item.approverType === "FACULTY_ADMIN" || !!item.facultyId;
+    const isFacultyPass = !!item.facultyId;
     if (activeTab === "ALL") return true;
     if (activeTab === "FACULTY") return isFacultyPass;
     if (activeTab === "STUDENTS") return !isFacultyPass;
@@ -203,7 +203,7 @@ export function FacultyAdminDashboardClient({ user }: Props) {
             ) : (
               <div className="space-y-3">
                 {filteredActivity.map((item: any) => {
-                  const isFacultyPass = item.approverType === "FACULTY_ADMIN" || !!item.facultyId;
+                  const isFacultyPass = !!item.facultyId;
                   const name = isFacultyPass
                     ? item.faculty?.profile?.name || "Faculty Member"
                     : item.student?.profile?.name || "Student";
@@ -277,7 +277,7 @@ export function FacultyAdminDashboardClient({ user }: Props) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <p className="text-xs text-zinc-500 mb-1">
-                  {selectedActivity.approverType === "FACULTY_ADMIN" || selectedActivity.facultyId
+                  {selectedActivity.facultyId
                     ? "Faculty Member"
                     : "Student"}
                 </p>

@@ -11,7 +11,14 @@ const nextConfig: NextConfig = {
   
   // Disable prefetching on hover for instant navigation
   experimental: {
-    optimizePackageImports: ['lucide-react'],
+    optimizePackageImports: ['lucide-react', 'date-fns'],
+    // Reuse recently visited pages from the client router cache, so switching
+    // between sections is instant instead of a server round-trip every click.
+    // Live data comes from the client store, which refreshes independently.
+    staleTimes: {
+      dynamic: 60,
+      static: 300,
+    },
   },
 
   // Image optimization
@@ -20,6 +27,13 @@ const nextConfig: NextConfig = {
     deviceSizes: [640, 750, 828, 1080, 1200],
     imageSizes: [16, 32, 48, 64, 96, 128, 256],
     minimumCacheTTL: 60,
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '*.supabase.co',
+        pathname: '/**',
+      },
+    ],
   },
 
   // Security headers
@@ -47,6 +61,10 @@ const nextConfig: NextConfig = {
           {
             key: 'Permissions-Policy',
             value: 'camera=(self), microphone=(), geolocation=()',
+          },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=63072000; includeSubDomains',
           },
         ],
       },

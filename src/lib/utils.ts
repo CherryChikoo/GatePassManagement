@@ -5,6 +5,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// All dates are shown in campus time (IST). A fixed time zone also keeps
+// server-rendered and browser-rendered text identical (no hydration mismatch).
+const TIME_ZONE = "Asia/Kolkata";
+
 /**
  * Format a date for display
  */
@@ -13,6 +17,7 @@ export function formatDate(date: Date | string): string {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: TIME_ZONE,
   });
 }
 
@@ -26,6 +31,7 @@ export function formatDateTime(date: Date | string): string {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: TIME_ZONE,
   });
 }
 
@@ -36,6 +42,7 @@ export function formatTime(date: Date | string): string {
   return new Date(date).toLocaleTimeString("en-IN", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: TIME_ZONE,
   });
 }
 

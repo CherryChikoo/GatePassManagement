@@ -141,12 +141,14 @@ export function DeanRequestsClient() {
     try {
       const res = await handleApproval(id, "APPROVE", undefined, mins);
       if (res?.error) {
-        // Rollback
+        // Rollback and tell the user why
         setLocalOverrides((prev) => {
           const next = { ...prev };
           delete next[id];
           return next;
         });
+        window.alert(res.error);
+        useAppStore.getState().refresh(true);
       } else {
         updateData("requests", (prev: any[]) =>
           (prev || []).map((p: any) => (p.id === id ? { ...p, status: "APPROVED", approvedAt: new Date().toISOString() } : p))
@@ -158,6 +160,7 @@ export function DeanRequestsClient() {
         delete next[id];
         return next;
       });
+      window.alert("Failed to approve the request. Please try again.");
     } finally {
       setProcessing((prev) => {
         const next = new Set(prev);
@@ -187,6 +190,8 @@ export function DeanRequestsClient() {
           delete next[id];
           return next;
         });
+        window.alert(res.error);
+        useAppStore.getState().refresh(true);
       } else {
         updateData("requests", (prev: any[]) =>
           (prev || []).map((p: any) =>
@@ -225,19 +230,34 @@ export function DeanRequestsClient() {
     });
 
     try {
-      const res = await batchApproval(ids, "APPROVE");
-      if (res?.success) {
+      const res: any = await batchApproval(ids, "APPROVE");
+      const failedIds: string[] = res?.success
+        ? []
+        : (res?.results?.filter((r: any) => !r.success).map((r: any) => r.id) ?? ids);
+      const okIds = ids.filter((id) => !failedIds.includes(id));
+      if (okIds.length > 0) {
         updateData("requests", (prev: any[]) =>
-          (prev || []).map((p: any) => (ids.includes(p.id) ? { ...p, status: "APPROVED", approvedAt: now } : p))
+          (prev || []).map((p: any) => (okIds.includes(p.id) ? { ...p, status: "APPROVED", approvedAt: now } : p))
         );
-        setSelectedIds(new Set());
-      } else {
+      }
+      if (failedIds.length > 0) {
+        // Roll back only the ones that failed
         setLocalOverrides((prev) => {
           const next = { ...prev };
-          ids.forEach((id) => delete next[id]);
+          failedIds.forEach((id) => delete next[id]);
           return next;
         });
+        window.alert(res?.error || "Some requests could not be approved.");
+        useAppStore.getState().refresh(true);
       }
+      setSelectedIds(new Set(failedIds));
+    } catch {
+      setLocalOverrides((prev) => {
+        const next = { ...prev };
+        ids.forEach((id) => delete next[id]);
+        return next;
+      });
+      window.alert("Failed to process the selected requests.");
     } finally {
       setBatchProcessing(false);
     }
@@ -259,22 +279,37 @@ export function DeanRequestsClient() {
     });
 
     try {
-      const res = await batchApproval(ids, "REJECT", rejectReason);
-      if (res?.success) {
+      const res: any = await batchApproval(ids, "REJECT", rejectReason);
+      const failedIds: string[] = res?.success
+        ? []
+        : (res?.results?.filter((r: any) => !r.success).map((r: any) => r.id) ?? ids);
+      const okIds = ids.filter((id) => !failedIds.includes(id));
+      if (okIds.length > 0) {
         updateData("requests", (prev: any[]) =>
           (prev || []).map((p: any) =>
-            ids.includes(p.id) ? { ...p, status: "REJECTED", rejectedAt: now, rejectionReason: rejectReason } : p
+            okIds.includes(p.id) ? { ...p, status: "REJECTED", rejectedAt: now, rejectionReason: rejectReason } : p
           )
         );
-        setSelectedIds(new Set());
-        setRejectReason("");
-      } else {
+      }
+      if (failedIds.length > 0) {
         setLocalOverrides((prev) => {
           const next = { ...prev };
-          ids.forEach((id) => delete next[id]);
+          failedIds.forEach((id) => delete next[id]);
           return next;
         });
+        window.alert(res?.error || "Some requests could not be rejected.");
+        useAppStore.getState().refresh(true);
+      } else {
+        setRejectReason("");
       }
+      setSelectedIds(new Set(failedIds));
+    } catch {
+      setLocalOverrides((prev) => {
+        const next = { ...prev };
+        ids.forEach((id) => delete next[id]);
+        return next;
+      });
+      window.alert("Failed to process the selected requests.");
     } finally {
       setBatchProcessing(false);
     }

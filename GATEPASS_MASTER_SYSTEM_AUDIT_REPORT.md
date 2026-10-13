@@ -780,20 +780,20 @@ CRON_SECRET="a89e1b..."
 
 ### Initial Seed Test Accounts (`prisma/seed.ts`)
 
-> **Note on Test Passwords:** For all seeded accounts, the password in development is set equal to the user's **email address** (e.g. email `admin@campus.edu` uses password `admin@campus.edu` or `admin123`).
+> **Note on Test Passwords:** Seeded development accounts use a single password taken from the `SEED_DEFAULT_PASSWORD` environment variable (a random one is generated and printed if it is not set). Never use seeded accounts or shared passwords in production.
 
 | Role | Test Email | Default Password | Notes |
 | :--- | :--- | :--- | :--- |
-| **Admin** | `admin@campus.edu` | `admin@campus.edu` / `admin123` | Dr. Sarah Johnson (Superadmin) |
-| **Faculty** | `faculty1@campus.edu` | `faculty1@campus.edu` | Dr. Priya Sharma (Computer Science) |
-| **Faculty** | `faculty2@campus.edu` | `faculty2@campus.edu` | Prof. Rajesh Kumar (Electronics) |
-| **Faculty-Admin**| `facultyadmin@campus.edu` or `admin2@campus.edu` | `admin123` | Executive Faculty Pass Approver |
-| **Warden** | `warden1@campus.edu` | `warden1@campus.edu` | Mr. Suresh Reddy (Block A - Boys) |
-| **Warden** | `warden2@campus.edu` | `warden2@campus.edu` | Mrs. Lakshmi Nair (Block B - Girls) |
-| **Security** | `security1@campus.edu` | `security1@campus.edu` | Mr. Ravi Singh (Main Gate) |
-| **Security** | `security2@campus.edu` | `security2@campus.edu` | Mr. Anil Verma (Back Gate) |
-| **Student (Day)** | `student1@campus.edu` | `student1@campus.edu` | Aarav Gupta (Roll: `21BCS101`, Day Scholar) |
-| **Student (Hostel)**| `student6@campus.edu` | `student6@campus.edu` | Rohan Joshi (Roll: `21BCS601`, Room A-205) |
+| **Admin** | `admin@campus.edu` | (see `SEED_DEFAULT_PASSWORD`) | Dr. Sarah Johnson (Superadmin) |
+| **Faculty** | `faculty1@campus.edu` | (see `SEED_DEFAULT_PASSWORD`) | Dr. Priya Sharma (Computer Science) |
+| **Faculty** | `faculty2@campus.edu` | (see `SEED_DEFAULT_PASSWORD`) | Prof. Rajesh Kumar (Electronics) |
+| **Faculty-Admin**| `facultyadmin@campus.edu` or `admin2@campus.edu` | (see `SEED_DEFAULT_PASSWORD`) | Executive Faculty Pass Approver |
+| **Warden** | `warden1@campus.edu` | (see `SEED_DEFAULT_PASSWORD`) | Mr. Suresh Reddy (Block A - Boys) |
+| **Warden** | `warden2@campus.edu` | (see `SEED_DEFAULT_PASSWORD`) | Mrs. Lakshmi Nair (Block B - Girls) |
+| **Security** | `security1@campus.edu` | (see `SEED_DEFAULT_PASSWORD`) | Mr. Ravi Singh (Main Gate) |
+| **Security** | `security2@campus.edu` | (see `SEED_DEFAULT_PASSWORD`) | Mr. Anil Verma (Back Gate) |
+| **Student (Day)** | `student1@campus.edu` | (see `SEED_DEFAULT_PASSWORD`) | Aarav Gupta (Roll: `21BCS101`, Day Scholar) |
+| **Student (Hostel)**| `student6@campus.edu` | (see `SEED_DEFAULT_PASSWORD`) | Rohan Joshi (Roll: `21BCS601`, Room A-205) |
 
 ---
 

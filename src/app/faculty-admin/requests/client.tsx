@@ -65,7 +65,7 @@ export function FacultyAdminRequestsClient() {
 
   const filteredRequests = rawRequests
     .filter((item: any) => {
-      const isFacultyPass = item.approverType === "FACULTY_ADMIN" || !!item.facultyId;
+      const isFacultyPass = !!item.facultyId;
 
       // Target filter
       if (targetType === "FACULTY" && !isFacultyPass) return false;
@@ -144,10 +144,10 @@ export function FacultyAdminRequestsClient() {
   ).length;
 
   const facultyPendingCount = rawRequests.filter(
-    (r: any) => (r.approverType === "FACULTY_ADMIN" || !!r.facultyId) && r.status === "PENDING"
+    (r: any) => !!r.facultyId && r.status === "PENDING"
   ).length;
   const studentPendingCount = rawRequests.filter(
-    (r: any) => r.approverType !== "FACULTY_ADMIN" && !r.facultyId && r.status === "PENDING"
+    (r: any) => !r.facultyId && r.status === "PENDING"
   ).length;
 
   async function onAction(
@@ -558,7 +558,7 @@ export function FacultyAdminRequestsClient() {
         <div className="grid gap-4">
           {paginatedRequests.map((req: any) => {
             const isProcessing = processing.has(req.id);
-            const isFacultyPass = req.approverType === "FACULTY_ADMIN" || !!req.facultyId;
+            const isFacultyPass = !!req.facultyId;
             const applicantName = isFacultyPass
               ? req.faculty?.profile?.name || "Faculty Member"
               : req.student?.profile?.name || "Student";

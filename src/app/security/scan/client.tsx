@@ -120,6 +120,7 @@ export function ScanClient({ user, gates }: Props) {
       }
     } catch (err) {
       console.error("Camera error:", err);
+      stopCamera();
       setError("Camera access required to scan QR code. Please allow camera access.");
       setState("error");
     }
@@ -158,15 +159,20 @@ export function ScanClient({ user, gates }: Props) {
     setState("registering"); // Temporary loading state
     setError(null);
 
-    const result = await verifyQrScan(token.trim());
-    if (!result.valid) {
-      setError(result.error || "Invalid QR code");
-      setState("error");
-      return;
-    }
+    try {
+      const result = await verifyQrScan(token.trim());
+      if (!result.valid) {
+        setError(result.error || "Invalid QR code");
+        setState("error");
+        return;
+      }
 
-    setVerifyResult(result);
-    setState("verified");
+      setVerifyResult(result);
+      setState("verified");
+    } catch {
+      setError("Could not verify the pass. Check the network connection and try again.");
+      setState("error");
+    }
   }
 
   // Start Photo Capture mode (after QR verification)
@@ -191,16 +197,23 @@ export function ScanClient({ user, gates }: Props) {
       }
     } catch (err) {
       console.error("Camera error:", err);
+      stopCamera();
       setError("Camera access required for photo. Please allow camera access.");
+      setState("error");
     }
   };
 
   // Capture photo
   function capturePhoto() {
     if (!videoRef.current) return;
+    // Refuse to capture a blank frame (camera not started / not ready)
+    if (!videoRef.current.videoWidth || !videoRef.current.videoHeight) {
+      setError("Camera is not ready yet. Wait a moment and try again.");
+      return;
+    }
     const canvas = document.createElement("canvas");
-    canvas.width = videoRef.current.videoWidth || 640;
-    canvas.height = videoRef.current.videoHeight || 480;
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
     const ctx = canvas.getContext("2d");
     if (ctx) {
       ctx.drawImage(videoRef.current, 0, 0);
@@ -229,29 +242,29 @@ export function ScanClient({ user, gates }: Props) {
     setState("registering");
     setError(null);
 
-    let result;
-    if (action === "EXIT") {
-      result = await registerExit(
-        verifyResult.permission.id,
-        selectedGate,
-        capturedImage!,
-        notes || undefined
-      );
-    } else {
-      result = await registerEntry(
-        verifyResult.permission.id,
-        selectedGate,
-        capturedImage || undefined,
-        notes || undefined
-      );
-    }
+    // Manual roll-number lookups are recorded as such in the movement notes
+    const finalNotes = verifyResult.manualOverride
+      ? `[Manual roll-number entry]${notes ? " " + notes : ""}`
+      : notes || undefined;
 
-    if (result.error) {
-      setError(result.error);
+    try {
+      let result;
+      if (action === "EXIT") {
+        result = await registerExit(verifyResult.permission.id, selectedGate, capturedImage!, finalNotes);
+      } else {
+        result = await registerEntry(verifyResult.permission.id, selectedGate, capturedImage || undefined, finalNotes);
+      }
+
+      if (result.error) {
+        setError(result.error);
+        setState("error");
+      } else {
+        setSuccess(`${action === "EXIT" ? "Exit" : "Entry"} registered successfully!`);
+        setState("done");
+      }
+    } catch {
+      setError("Could not register the movement. Check the network connection and try again.");
       setState("error");
-    } else {
-      setSuccess(`${action === "EXIT" ? "Exit" : "Entry"} registered successfully!`);
-      setState("done");
     }
   }
 
@@ -510,6 +523,12 @@ export function ScanClient({ user, gates }: Props) {
                 </option>
               ))}
             </Select>
+
+            {verifyResult?.manualOverride && (
+              <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                Found by roll number (no QR scanned). Verify the person&apos;s college ID card before allowing movement.
+              </div>
+            )}
 
             {/* Camera / Photo Section */}
             {state === "verified" && !capturedImage && (

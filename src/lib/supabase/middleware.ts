@@ -1,183 +1,175 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { decodeJwt } from "jose";
+import { jwtVerify, createRemoteJWKSet, decodeProtectedHeader } from "jose";
 
-// Cache validated sessions for 60s to eliminate external Supabase Auth network latency on rapid navigations
-// Increased to 2000 entries for 5K+ concurrent users (was 200 - caused cache thrashing)
-const sessionCache = new Map<string, { user: any; expiresAt: number }>();
+/**
+ * Identity headers forwarded to server components / actions.
+ * They are ALWAYS stripped from the incoming request first, so a client can
+ * never inject them; they are only re-added after the session JWT has been
+ * cryptographically verified.
+ */
+export const USER_ID_HEADER = "x-user-id";
+export const USER_EMAIL_HEADER = "x-user-email";
+
+type VerifiedUser = { id: string; email: string };
+
+// Short-lived cache of VERIFIED sessions, keyed by the exact auth cookie value.
+// A forged cookie never verifies, so it can never enter this cache.
+const sessionCache = new Map<string, { user: VerifiedUser; expiresAt: number }>();
 const MAX_CACHE_SIZE = 2000;
+const CACHE_TTL_MS = 30_000;
 
-function extractUserFromCookies(cookies: { name: string; value: string }[]): { id: string; email: string } | null {
+// ─── Fast local verification ────────────────────────────────────────────────
+// supabase.auth.getClaims() verifies locally only for asymmetric signing keys;
+// with the legacy HS256 secret it calls the Auth server on every check, which
+// adds a network round-trip to every click. We verify the access token locally
+// (HS256 via SUPABASE_JWT_SECRET, or asymmetric via the project's JWKS) and only
+// fall back to Supabase when the token is missing, expiring, or unverifiable.
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const JWT_SECRET = process.env.SUPABASE_JWT_SECRET
+  ? new TextEncoder().encode(process.env.SUPABASE_JWT_SECRET)
+  : null;
+const JWKS = createRemoteJWKSet(new URL(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`));
+const ISSUER = `${SUPABASE_URL}/auth/v1`;
+const REFRESH_MARGIN_S = 60;
+
+/** Reads the (possibly chunked) Supabase session cookie and returns its access token. */
+function readAccessToken(request: NextRequest): string | null {
   try {
-    const authCookies = cookies.filter((c) => c.name.includes("-auth-token"));
-    if (authCookies.length === 0) return null;
-
-    let raw = "";
-    if (authCookies.length === 1) {
-      raw = authCookies[0].value;
-    } else {
-      authCookies.sort((a, b) => {
-        const numA = parseInt(a.name.slice(a.name.lastIndexOf(".") + 1), 10) || 0;
-        const numB = parseInt(b.name.slice(b.name.lastIndexOf(".") + 1), 10) || 0;
-        return numA - numB;
+    const chunks = request.cookies
+      .getAll()
+      .filter((c) => c.name.startsWith("sb-") && /-auth-token(\.\d+)?$/.test(c.name))
+      .sort((a, b) => {
+        const n = (s: string) => Number(s.match(/\.(\d+)$/)?.[1] ?? 0);
+        return n(a.name) - n(b.name);
       });
-      raw = authCookies.map((c) => c.value).join("");
-    }
+    if (chunks.length === 0) return null;
 
-    if (!raw) return null;
-
+    let raw = chunks.map((c) => c.value).join("");
     if (raw.startsWith("base64-")) {
-      const b64 = raw.slice(7);
-      if (typeof atob === "function") {
-        raw = atob(b64);
-      } else {
-        raw = Buffer.from(b64, "base64").toString("utf-8");
-      }
+      raw = Buffer.from(raw.slice(7), "base64url").toString("utf-8");
     }
-
-    const parsed = JSON.parse(raw);
-    const token =
-      parsed.access_token ||
-      (Array.isArray(parsed) ? parsed[0] : null) ||
-      (typeof parsed === "string" ? parsed : null);
-
-    if (!token || typeof token !== "string") return null;
-
-    const payload = decodeJwt(token);
-    if (!payload || !payload.sub || typeof payload.exp !== "number") return null;
-
-    // Check expiration with a 30s buffer
-    if (payload.exp * 1000 < Date.now() + 30_000) {
-      return null;
-    }
-
-    return {
-      id: payload.sub as string,
-      email: (payload.email as string) || (parsed.user?.email as string) || "",
-    };
+    const session = JSON.parse(raw);
+    const token = session?.access_token;
+    return typeof token === "string" ? token : null;
   } catch {
     return null;
   }
 }
 
-export async function updateSession(request: NextRequest) {
-  const publicRoutes = ["/login", "/api/auth/callback", "/api/health", "/api/cron"];
-  const isPublicRoute = publicRoutes.some((route) =>
-    request.nextUrl.pathname.startsWith(route)
-  );
-
-  // For public routes, let them through immediately
-  if (isPublicRoute) {
-    return NextResponse.next({
-      request,
-    });
+/** Cryptographically verifies the access token without any network call (JWKS is cached). */
+async function verifyLocally(token: string): Promise<VerifiedUser | null> {
+  try {
+    const { alg } = decodeProtectedHeader(token);
+    const options = { issuer: ISSUER, audience: "authenticated" };
+    let payload;
+    if (alg === "HS256") {
+      if (!JWT_SECRET) return null; // cannot verify locally → fall back
+      ({ payload } = await jwtVerify(token, JWT_SECRET, { ...options, algorithms: ["HS256"] }));
+    } else {
+      ({ payload } = await jwtVerify(token, JWKS, { ...options, algorithms: ["ES256", "RS256"] }));
+    }
+    if (!payload.sub || typeof payload.exp !== "number") return null;
+    // Let Supabase refresh tokens that are about to expire
+    if (payload.exp - REFRESH_MARGIN_S < Date.now() / 1000) return null;
+    return { id: payload.sub, email: (payload.email as string) || "" };
+  } catch {
+    return null;
   }
+}
 
-  let supabaseResponse = NextResponse.next({
-    request,
-  });
+function isPublicPath(pathname: string): boolean {
+  return (
+    pathname === "/login" ||
+    pathname === "/api/auth/callback" ||
+    pathname === "/api/health" ||
+    pathname.startsWith("/api/cron/")
+  );
+}
 
-  const allCookies = request.cookies.getAll();
-  const authCookieKey = allCookies
-    .filter((c) => c.name.includes("auth-token"))
+export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const isPublic = isPublicPath(pathname);
+
+  const authCookieKey = request.cookies
+    .getAll()
+    .filter((c) => c.name.startsWith("sb-") && c.name.includes("auth-token"))
     .map((c) => `${c.name}=${c.value}`)
     .join(";");
 
-  let user: any = null;
+  let user: VerifiedUser | null = null;
+  const cookiesToSet: { name: string; value: string; options: any }[] = [];
 
-  // 1. Check in-memory session cache
   if (authCookieKey) {
     const cached = sessionCache.get(authCookieKey);
     if (cached && cached.expiresAt > Date.now()) {
       user = cached.user;
     }
-  }
 
-  // 2. Fast local JWT decoding from cookie to avoid Supabase network latency
-  if (!user && authCookieKey) {
-    const localUser = extractUserFromCookies(allCookies);
-    if (localUser) {
-      user = localUser;
-      sessionCache.set(authCookieKey, {
-        user,
-        expiresAt: Date.now() + 60_000,
-      });
+    if (!user) {
+      const token = readAccessToken(request);
+      if (token) user = await verifyLocally(token);
     }
-  }
 
-  // 3. Fallback to Supabase Auth network call if not cached or local decode didn't succeed
-  if (!user && authCookieKey) {
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return request.cookies.getAll();
+    if (!user) {
+      const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            getAll() {
+              return request.cookies.getAll();
+            },
+            setAll(toSet) {
+              toSet.forEach(({ name, value }) => request.cookies.set(name, value));
+              cookiesToSet.push(...toSet);
+            },
           },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value }) =>
-              request.cookies.set(name, value)
-            );
-            supabaseResponse = NextResponse.next({
-              request,
-            });
-            cookiesToSet.forEach(({ name, value, options }) =>
-              supabaseResponse.cookies.set(name, value, options)
-            );
-          },
-        },
-      }
-    );
+        }
+      );
 
-    const {
-      data: { user: fetchedUser },
-    } = await supabase.auth.getUser();
-
-    user = fetchedUser;
-
-    if (user && authCookieKey) {
-      sessionCache.set(authCookieKey, {
-        user,
-        expiresAt: Date.now() + 60_000,
-      });
-      // LRU eviction - remove oldest entries when cache is full
-      if (sessionCache.size > MAX_CACHE_SIZE) {
-        const entriesToDelete = sessionCache.size - MAX_CACHE_SIZE;
-        const keys = Array.from(sessionCache.keys());
-        for (let i = 0; i < entriesToDelete; i++) {
-          sessionCache.delete(keys[i]);
+      // getClaims() verifies the JWT signature (JWKS, or the Auth server for
+      // legacy symmetric keys) and refreshes the session when needed.
+      const { data } = await supabase.auth.getClaims();
+      const claims = data?.claims;
+      if (claims?.sub) {
+        user = { id: claims.sub, email: (claims.email as string) || "" };
+        const expMs = typeof claims.exp === "number" ? claims.exp * 1000 : Date.now() + CACHE_TTL_MS;
+        if (cookiesToSet.length === 0) {
+          sessionCache.set(authCookieKey, {
+            user,
+            expiresAt: Math.min(Date.now() + CACHE_TTL_MS, expMs),
+          });
+          if (sessionCache.size > MAX_CACHE_SIZE) {
+            const oldest = sessionCache.keys().next().value;
+            if (oldest) sessionCache.delete(oldest);
+          }
         }
       }
     }
   }
 
-  // 3. Handle unauthenticated access
-  if (!user && !isPublicRoute) {
+  if (!user && !isPublic) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    url.search = "";
     return NextResponse.redirect(url);
   }
 
-  // 4. Forward authenticated user ID & email downstream via request headers
+  // Build downstream headers AFTER any cookie refresh so server code sees the new cookies.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete(USER_ID_HEADER);
+  requestHeaders.delete(USER_EMAIL_HEADER);
   if (user) {
-    const requestHeaders = new Headers(request.headers);
-    requestHeaders.set("x-user-id", user.id);
-    if (user.email) requestHeaders.set("x-user-email", user.email);
-
-    const responseWithHeaders = NextResponse.next({
-      request: {
-        headers: requestHeaders,
-      },
-    });
-
-    supabaseResponse.cookies.getAll().forEach((cookie) => {
-      responseWithHeaders.cookies.set(cookie.name, cookie.value, cookie);
-    });
-
-    return responseWithHeaders;
+    requestHeaders.set(USER_ID_HEADER, user.id);
+    if (user.email) requestHeaders.set(USER_EMAIL_HEADER, user.email);
   }
 
-  return supabaseResponse;
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+  return response;
 }
-

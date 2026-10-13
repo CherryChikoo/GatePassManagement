@@ -3,5 +3,5 @@ import { FacultyStudentsClient } from "@/app/faculty/students/client";
 
 export default async function FacultyAdminStudentsPage() {
   const user = await requireRole("FACULTY_ADMIN");
-  return <FacultyStudentsClient user={user} />;
+  return <FacultyStudentsClient user={user} detailBasePath="/faculty-admin/students" />;
 }

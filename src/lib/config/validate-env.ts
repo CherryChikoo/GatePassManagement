@@ -69,7 +69,12 @@ export function validateEnv() {
     }
   }
 
-  console.log('✅ Environment variables validated successfully');
+  if (!process.env.SUPABASE_JWT_SECRET) {
+    console.warn(
+      '⚠️  SUPABASE_JWT_SECRET is not set: sessions signed with the legacy HS256 secret are ' +
+      'verified by calling Supabase Auth on each request (slower). Set it for faster page loads.'
+    );
+  }
 }
 
 // Run validation immediately when this module is imported

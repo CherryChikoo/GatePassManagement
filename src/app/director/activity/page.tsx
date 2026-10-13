@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth/helpers";
 import { prisma } from "@/lib/db/prisma";
+import { istDateString, istDayRangeFromParam } from "@/lib/time/ist";
 import { DirectorActivityClient } from "./client";
 
 export const dynamic = "force-dynamic";
@@ -12,18 +13,10 @@ export default async function DirectorActivityPage({
 }) {
   const resolvedParams = await searchParams;
 
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
-  const todayStr = `${year}-${month}-${day}`;
-
-  const dateStr = resolvedParams.date || todayStr;
-  const isToday = dateStr === todayStr;
-
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const startDate = new Date(y, m - 1, d, 0, 0, 0, 0);
-  const endDate = new Date(y, m - 1, d, 23, 59, 59, 999);
+  // IST calendar day; invalid ?date falls back to today
+  const { start: startDate, end: dayEnd, dateStr } = istDayRangeFromParam(resolvedParams.date);
+  const endDate = new Date(dayEnd.getTime() - 1);
+  const isToday = dateStr === istDateString();
 
   const user = await requireRole("DIRECTOR");
 
@@ -46,6 +39,7 @@ export default async function DirectorActivityPage({
         ...dateFilter,
       },
       orderBy: { createdAt: "desc" },
+      take: 500, // bound the payload for busy days
       select: {
         id: true,
         purpose: true,
@@ -86,6 +80,7 @@ export default async function DirectorActivityPage({
         ...dateFilter,
       },
       orderBy: { createdAt: "desc" },
+      take: 500, // bound the payload for busy days
       select: {
         id: true,
         purpose: true,
@@ -128,6 +123,7 @@ export default async function DirectorActivityPage({
         createdAt: { gte: startDate, lte: endDate },
       },
       orderBy: { createdAt: "desc" },
+      take: 500, // bound the payload for busy days
       select: {
         id: true,
         permissionId: true,
@@ -153,6 +149,7 @@ export default async function DirectorActivityPage({
         createdAt: { gte: startDate, lte: endDate },
       },
       orderBy: { createdAt: "desc" },
+      take: 500, // bound the payload for busy days
       select: {
         id: true,
         permissionId: true,

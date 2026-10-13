@@ -1,14 +1,9 @@
 import { requireAuth } from "@/lib/auth/helpers";
 import { prisma } from "@/lib/db/prisma";
 import { SettingsClient } from "./client";
-import { redirect } from "next/navigation";
 
 export default async function SettingsPage() {
   const user = await requireAuth();
-
-  if (user.role === "STUDENT") {
-    redirect("/student");
-  }
 
   const extraData: Record<string, any> = {};
 

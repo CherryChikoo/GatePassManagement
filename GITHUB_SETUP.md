@@ -214,7 +214,7 @@ $env:DATABASE_URL=""
 1. Go to `https://your-project.vercel.app/login`
 2. Login with:
    - Email: `admin@campus.edu`
-   - Password: `admin123`
+   - Password: the one-time password printed by the seed script (`SEED_DEFAULT_PASSWORD`) — change it immediately
 3. **IMMEDIATELY** change password:
    - Go to Settings
    - Change password to strong password

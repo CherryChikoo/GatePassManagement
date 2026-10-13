@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth/helpers";
 import { prisma } from "@/lib/db/prisma";
+import { istDayRangeFromParam, parsePageParam } from "@/lib/time/ist";
 import { WardenActivityClient } from "./client";
 
 export default async function WardenActivityPage({
@@ -8,22 +9,12 @@ export default async function WardenActivityPage({
   searchParams: Promise<{ page?: string; date?: string }>;
 }) {
   const resolvedParams = await searchParams;
-  const page = parseInt(resolvedParams.page || "1");
+  const page = parsePageParam(resolvedParams.page);
   const pageSize = 25;
-  
-  // Get today's date in local timezone
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
-  const todayStr = `${year}-${month}-${day}`;
-  
-  const dateStr = resolvedParams.date || todayStr;
-  
-  const startDate = new Date(dateStr);
-  startDate.setHours(0, 0, 0, 0);
-  const endDate = new Date(dateStr);
-  endDate.setHours(23, 59, 59, 999);
+
+  // IST calendar day; invalid ?date falls back to today
+  const { start: startDate, end: dayEnd, dateStr } = istDayRangeFromParam(resolvedParams.date);
+  const endDate = new Date(dayEnd.getTime() - 1);
 
   const user = await requireRole("WARDEN");
   

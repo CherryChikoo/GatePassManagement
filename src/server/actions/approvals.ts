@@ -1,22 +1,105 @@
 "use server";
 
+import type { ApproverType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { requireRole } from "@/lib/auth/helpers";
+import { requireRole, type AuthUser } from "@/lib/auth/helpers";
 import { generateQrToken } from "@/lib/qr/token";
 import { revalidatePath } from "next/cache";
 import { getDepartmentVariants } from "@/lib/constants";
+import { APPROVAL_EXPIRY_MINUTES, batchApprovalSchema } from "@/lib/validation/schemas";
+import { istDayRange, istStartOfDay } from "@/lib/time/ist";
 
 // In-memory dashboard caches for faculty and warden (15s TTL)
 const facultyDashboardCache = new Map<string, { data: any; expiresAt: number }>();
 const wardenDashboardCache = new Map<string, { data: any; expiresAt: number }>();
 
-export async function invalidateApprovalsCache() {
+function invalidateApprovalsCache() {
   facultyDashboardCache.clear();
   wardenDashboardCache.clear();
 }
 
 /**
- * Faculty/Warden approves or rejects a permission request
+ * Builds the Prisma filter for PENDING permissions the given approver may act on.
+ * Returns null when the user has no approver record.
+ */
+async function getApprovableScope(user: AuthUser): Promise<{
+  where: Prisma.PermissionWhereInput;
+  facultyRecordId: string | null;
+  wardenRecordId: string | null;
+} | null> {
+  switch (user.role) {
+    case "FACULTY": {
+      // Legacy: requests that were routed to an individual faculty member.
+      const faculty = await prisma.faculty.findUnique({ where: { profileId: user.profileId }, select: { id: true } });
+      if (!faculty) return null;
+      return {
+        where: { approverType: "FACULTY", approverId: faculty.id, studentId: { not: null } },
+        facultyRecordId: faculty.id,
+        wardenRecordId: null,
+      };
+    }
+    case "WARDEN": {
+      const warden = await prisma.warden.findUnique({ where: { profileId: user.profileId }, select: { id: true } });
+      if (!warden) return null;
+      return {
+        where: { approverType: "WARDEN", approverId: warden.id },
+        facultyRecordId: null,
+        wardenRecordId: warden.id,
+      };
+    }
+    case "FACULTY_ADMIN": {
+      const hod = await prisma.faculty.findUnique({
+        where: { profileId: user.profileId },
+        select: { id: true, department: true },
+      });
+      if (!hod) return null;
+      const variants = getDepartmentVariants(hod.department);
+      return {
+        where: {
+          approverType: "FACULTY_ADMIN",
+          // An HOD never approves their own pass
+          AND: [{ OR: [{ facultyId: null }, { facultyId: { not: hod.id } }] }],
+          OR: [
+            { approverId: { in: [user.profileId, hod.id] } },
+            ...(variants.length > 0
+              ? [
+                  { student: { department: { in: variants } } },
+                  { faculty: { department: { in: variants } } },
+                ]
+              : []),
+          ],
+        },
+        facultyRecordId: hod.id,
+        wardenRecordId: null,
+      };
+    }
+    case "DIRECTOR":
+    case "DEAN": {
+      const faculty = await prisma.faculty.findUnique({ where: { profileId: user.profileId }, select: { id: true } });
+      if (!faculty) return null;
+      // Campus leadership acts on faculty / HOD passes (never students, never their own).
+      return {
+        where: {
+          facultyId: { not: null },
+          AND: [{ facultyId: { not: faculty.id } }],
+        },
+        facultyRecordId: faculty.id,
+        wardenRecordId: null,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+function clampExpiryMinutes(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return APPROVAL_EXPIRY_MINUTES.DEFAULT;
+  return Math.min(APPROVAL_EXPIRY_MINUTES.MAX, Math.max(APPROVAL_EXPIRY_MINUTES.MIN, Math.round(n)));
+}
+
+/**
+ * Faculty/Warden/HOD/Director/Dean approves or rejects a permission request
  */
 export async function handleApproval(
   permissionId: string,
@@ -26,252 +109,112 @@ export async function handleApproval(
 ) {
   const user = await requireRole("FACULTY", "WARDEN", "FACULTY_ADMIN", "DIRECTOR", "DEAN");
 
-  // Determine role
-  const isFaculty = user.role === "FACULTY";
-  const isFacultyAdmin = user.role === "FACULTY_ADMIN";
-  const isDirector = user.role === "DIRECTOR";
-  const isDean = user.role === "DEAN";
-  
-  let approverRecord = null;
-  let hodFacultyRecord = null;
-  if (isFaculty || isDirector || isDean) {
-    approverRecord = await prisma.faculty.findUnique({
-      where: { profileId: user.profileId },
-      select: { id: true, maxApprovals: true },
-    });
-  } else if (isFacultyAdmin) {
-    approverRecord = await prisma.profile.findUnique({
-      where: { id: user.profileId },
-      select: { id: true },
-    });
-    hodFacultyRecord = await prisma.faculty.findUnique({
-      where: { profileId: user.profileId },
-      select: { id: true, department: true },
-    });
-  } else {
-    approverRecord = await prisma.warden.findUnique({
-      where: { profileId: user.profileId },
-      select: { id: true },
-    });
+  if (typeof permissionId !== "string" || !permissionId) return { error: "Invalid request" };
+  if (action !== "APPROVE" && action !== "REJECT") return { error: "Invalid action" };
+  const trimmedReason = typeof reason === "string" ? reason.trim().slice(0, 500) : "";
+
+  if (action === "REJECT" && !trimmedReason) {
+    return { error: "A reason is required when rejecting a request" };
   }
 
-  if (!approverRecord) {
-    return { error: "Approver record not found" };
-  }
+  const scope = await getApprovableScope(user);
+  if (!scope) return { error: "Approver record not found" };
 
-  let permission = null;
-  if (isDirector || isDean) {
-    // Director and Dean can only approve faculty passes across campus
-    permission = await prisma.permission.findFirst({
-      where: {
-        id: permissionId,
-        status: "PENDING",
-        facultyId: { not: null },
-      },
-      include: {
-        student: {
-          select: { id: true, profileId: true },
-        },
-        faculty: {
-          select: { id: true, profileId: true },
-        },
-      },
-    });
-  } else if (isFacultyAdmin) {
-    const deptVariants = hodFacultyRecord?.department
-      ? getDepartmentVariants(hodFacultyRecord.department)
-      : [];
-
-    permission = await prisma.permission.findFirst({
-      where: {
-        id: permissionId,
-        status: "PENDING",
-        OR: [
-          { approverType: "FACULTY_ADMIN" },
-          { approverId: user.profileId },
-          ...(hodFacultyRecord ? [{ approverId: hodFacultyRecord.id }] : []),
-          ...(deptVariants.length > 0
-            ? [{ student: { department: { in: deptVariants } } }]
-            : hodFacultyRecord?.department
-            ? [{ student: { department: hodFacultyRecord.department } }]
-            : []),
-        ],
-      },
-      include: {
-        student: {
-          select: { id: true, profileId: true },
-        },
-        faculty: {
-          select: { id: true, profileId: true },
-        },
-      },
-    });
-
-    // Fallback: If HOD sees it in their portal, allow processing the pending request
-    if (!permission) {
-      permission = await prisma.permission.findFirst({
-        where: {
-          id: permissionId,
-          status: "PENDING",
-        },
-        include: {
-          student: {
-            select: { id: true, profileId: true },
-          },
-          faculty: {
-            select: { id: true, profileId: true },
-          },
-        },
-      });
-    }
-  } else {
-    permission = await prisma.permission.findFirst({
-      where: {
-        id: permissionId,
-        approverId: approverRecord.id,
-        status: "PENDING",
-      },
-      include: {
-        student: {
-          select: { id: true, profileId: true },
-        },
-        faculty: {
-          select: { id: true, profileId: true },
-        }
-      },
-    });
-  }
+  const permission = await prisma.permission.findFirst({
+    where: { AND: [{ id: permissionId, status: "PENDING" }, scope.where] },
+    select: { id: true, studentId: true, facultyId: true, exitDate: true },
+  });
 
   if (!permission) {
     return { error: "Permission request not found or already processed" };
   }
 
-  if (action === "REJECT" && (!reason || reason.trim().length === 0)) {
-    return { error: "A reason is required when rejecting a request" };
-  }
+  const approvalRecord = {
+    approverType: user.role as ApproverType,
+    facultyId: scope.facultyRecordId,
+    wardenId: scope.wardenRecordId,
+  };
 
   if (action === "REJECT") {
-    await prisma.$transaction([
-      prisma.permission.update({
-        where: { id: permissionId },
-        data: {
-          status: "REJECTED",
-          rejectedAt: new Date(),
-          rejectionReason: reason || "Request denied",
-        },
-      }),
-      prisma.permissionApproval.upsert({
-        where: { permissionId },
-        create: {
-          permissionId,
-          approverType: user.role as any,
-          facultyId: (isFaculty || isDirector || isDean) ? approverRecord.id : (isFacultyAdmin ? (hodFacultyRecord?.id || null) : null),
-          wardenId: (!isFaculty && !isFacultyAdmin && !isDirector && !isDean) ? approverRecord.id : null,
-          approved: false,
-          reason: reason || "Request denied",
-        },
-        update: {
-          approverType: user.role as any,
-          facultyId: (isFaculty || isDirector || isDean) ? approverRecord.id : (isFacultyAdmin ? (hodFacultyRecord?.id || null) : null),
-          wardenId: (!isFaculty && !isFacultyAdmin && !isDirector && !isDean) ? approverRecord.id : null,
-          approved: false,
-          reason: reason || "Request denied",
-        },
-      })
-    ]);
+    try {
+      await prisma.$transaction(async (tx) => {
+        const updated = await tx.permission.updateMany({
+          where: { id: permissionId, status: "PENDING" },
+          data: { status: "REJECTED", rejectedAt: new Date(), rejectionReason: trimmedReason },
+        });
+        if (updated.count !== 1) throw new Error(ALREADY_PROCESSED);
+        await tx.permissionApproval.upsert({
+          where: { permissionId },
+          create: { permissionId, ...approvalRecord, approved: false, reason: trimmedReason },
+          update: { ...approvalRecord, approved: false, reason: trimmedReason },
+        });
+      });
+    } catch (err: any) {
+      if (err?.message === ALREADY_PROCESSED) return { error: "This request was already processed by someone else." };
+      console.error("[handleApproval] reject failed:", err?.message);
+      return { error: "Failed to reject request" };
+    }
 
     invalidateApprovalsCache();
-    revalidatePath("/faculty");
-    revalidatePath("/faculty/requests");
-    revalidatePath("/warden");
-    revalidatePath("/warden/requests");
-    revalidatePath("/faculty-admin");
-    revalidatePath("/faculty-admin/requests");
-    revalidatePath("/director");
-    revalidatePath("/director/requests");
-    revalidatePath("/dean");
-    revalidatePath("/dean/requests");
-    revalidatePath("/student");
+    revalidateApprovalPaths();
     return { success: true, action: "REJECTED" };
   }
 
-  // APPROVE flow
-  // Generate QR credential
-  let expiresAt: Date;
-  if (expiryMinutes) {
-    expiresAt = new Date(Date.now() + expiryMinutes * 60000);
-  } else {
-    // Default fallback to 1 hour
-    expiresAt = new Date(Date.now() + 60 * 60000); 
-  }
+  // APPROVE flow — QR validity:
+  // - Pass for today: valid for the chosen window from now.
+  // - Advance pass for a future IST day: valid for that whole day (scan is
+  //   blocked before the day starts; see security.ts).
+  const now = new Date();
+  const exitDay = istDayRange(permission.exitDate);
+  const expiresAt =
+    exitDay.start > now
+      ? exitDay.end
+      : new Date(now.getTime() + clampExpiryMinutes(expiryMinutes ?? APPROVAL_EXPIRY_MINUTES.DEFAULT) * 60_000);
 
   const qrTargetId = permission.studentId || permission.facultyId;
   if (!qrTargetId) return { error: "No student or faculty attached to permission" };
 
-  const { token, tokenId } = await generateQrToken(
-    permissionId,
-    qrTargetId,
-    expiresAt as Date
-  );
+  const { token } = await generateQrToken(permissionId, qrTargetId, expiresAt);
 
-  await prisma.$transaction([
-    prisma.permission.update({
-      where: { id: permissionId },
-      data: {
-        status: "APPROVED",
-        approvedAt: new Date(),
-      },
-    }),
-    prisma.permissionApproval.upsert({
-      where: { permissionId },
-      create: {
-        permissionId,
-        approverType: user.role as any,
-        facultyId: (isFaculty || isDirector || isDean) ? approverRecord.id : (isFacultyAdmin ? (hodFacultyRecord?.id || null) : null),
-        wardenId: (!isFaculty && !isFacultyAdmin && !isDirector && !isDean) ? approverRecord.id : null,
-        approved: true,
-        reason: reason || null,
-      },
-      update: {
-        approverType: user.role as any,
-        facultyId: (isFaculty || isDirector || isDean) ? approverRecord.id : (isFacultyAdmin ? (hodFacultyRecord?.id || null) : null),
-        wardenId: (!isFaculty && !isFacultyAdmin && !isDirector && !isDean) ? approverRecord.id : null,
-        approved: true,
-        reason: reason || null,
-      },
-    }),
-    prisma.qrCredential.upsert({
-      where: { permissionId },
-      create: {
-        permissionId,
-        token,
-        expiresAt: expiresAt as Date,
-        active: true,
-      },
-      update: {
-        token,
-        expiresAt: expiresAt as Date,
-        active: true,
-        usedForExit: false,
-        usedForEntry: false,
-      },
-    })
-  ]);
+  try {
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.permission.updateMany({
+        where: { id: permissionId, status: "PENDING" },
+        data: { status: "APPROVED", approvedAt: now },
+      });
+      if (updated.count !== 1) throw new Error(ALREADY_PROCESSED);
+      await tx.permissionApproval.upsert({
+        where: { permissionId },
+        create: { permissionId, ...approvalRecord, approved: true, reason: trimmedReason || null },
+        update: { ...approvalRecord, approved: true, reason: trimmedReason || null },
+      });
+      await tx.qrCredential.upsert({
+        where: { permissionId },
+        create: { permissionId, token, expiresAt, active: true },
+        update: { token, expiresAt, active: true, usedForExit: false, usedForEntry: false },
+      });
+    });
+  } catch (err: any) {
+    if (err?.message === ALREADY_PROCESSED) return { error: "This request was already processed by someone else." };
+    console.error("[handleApproval] approve failed:", err?.message);
+    return { error: "Failed to approve request" };
+  }
 
   invalidateApprovalsCache();
-  revalidatePath("/faculty");
-  revalidatePath("/faculty/requests");
-  revalidatePath("/warden");
-  revalidatePath("/warden/requests");
-  revalidatePath("/faculty-admin");
-  revalidatePath("/faculty-admin/requests");
-  revalidatePath("/director");
-  revalidatePath("/director/requests");
-  revalidatePath("/dean");
-  revalidatePath("/dean/requests");
-  revalidatePath("/student");
-  revalidatePath("/student/qr");
+  revalidateApprovalPaths();
   return { success: true, action: "APPROVED" };
+}
+
+const ALREADY_PROCESSED = "ALREADY_PROCESSED";
+
+function revalidateApprovalPaths() {
+  for (const p of [
+    "/faculty", "/faculty/requests", "/warden", "/warden/requests",
+    "/faculty-admin", "/faculty-admin/requests", "/director", "/director/requests",
+    "/dean", "/dean/requests", "/student",
+  ]) {
+    revalidatePath(p);
+  }
 }
 
 /**
@@ -282,19 +225,16 @@ export async function batchApproval(
   action: "APPROVE" | "REJECT",
   reason?: string
 ) {
-  const user = await requireRole("FACULTY", "WARDEN", "FACULTY_ADMIN", "DIRECTOR", "DEAN");
+  await requireRole("FACULTY", "WARDEN", "FACULTY_ADMIN", "DIRECTOR", "DEAN");
 
-  if (!permissionIds || permissionIds.length === 0) {
-    return { error: "No requests selected" };
+  const parsed = batchApprovalSchema.safeParse({ permissionIds, action, reason: reason ?? "" });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
   }
 
-  if (permissionIds.length > 5) {
-    return { error: "Maximum 5 requests can be processed at once" };
-  }
-
-  // Execute up to 5 requests concurrently in parallel
+  // Execute up to 5 requests concurrently; each is individually authorized and atomic
   const results = await Promise.all(
-    permissionIds.map(async (id) => {
+    parsed.data.permissionIds.map(async (id) => {
       try {
         const res = await handleApproval(id, action, reason);
         return {
@@ -311,20 +251,6 @@ export async function batchApproval(
       }
     })
   );
-
-  invalidateApprovalsCache();
-  revalidatePath("/faculty");
-  revalidatePath("/faculty/requests");
-  revalidatePath("/warden");
-  revalidatePath("/warden/requests");
-  revalidatePath("/faculty-admin");
-  revalidatePath("/faculty-admin/requests");
-  revalidatePath("/director");
-  revalidatePath("/director/requests");
-  revalidatePath("/dean");
-  revalidatePath("/dean/requests");
-  revalidatePath("/student");
-  revalidatePath("/student/qr");
 
   const failures = results.filter((r) => !r.success);
   if (failures.length > 0) {
@@ -439,8 +365,7 @@ export async function getFacultyDashboard() {
 
   if (!faculty) return null;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = istStartOfDay();
 
   const [
     totalStudents,
@@ -551,8 +476,7 @@ export async function getWardenDashboard() {
 
   if (!warden) return null;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = istStartOfDay();
 
   const [
     totalHostellers,

@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatDateTime, formatDate, getRelativeTime } from "@/lib/utils";
 import { logoutAction } from "@/server/actions/auth";
-import { getActivityData, createOutsider, markOutsiderExited } from "@/server/actions/admin";
+import { getActivityData } from "@/server/actions/admin";
+import { registerOutsider, markOutsiderExited } from "@/server/actions/outsiders";
+import { istDateString } from "@/lib/time/ist";
 import { getExitPhotoUrl } from "@/lib/storage/image-upload";
 import {
   Clock,
@@ -68,35 +70,37 @@ interface OutsiderRecord {
 
 export function ActivityClient({ user, data: initialData }: Props) {
   const [data, setData] = useState(initialData);
-  const [date, setDate] = useState(() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  });
+  const [date, setDate] = useState(() => istDateString());
   const [loading, setLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function reloadData(forDate: string) {
+    setLoading(true);
+    try {
+      const newData = await getActivityData(forDate);
+      setData(newData);
+    } catch {
+      setActionError("Failed to load activity data.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function handleDateChange(newDate: string) {
     setDate(newDate);
-    setLoading(true);
-    const newData = await getActivityData(newDate);
-    setData(newData);
-    setLoading(false);
+    await reloadData(newDate);
   }
 
-  
   const formatDisplayDate = (dateStr: string) => {
     if (!dateStr) return "";
-    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return new Date(`${dateStr}T00:00:00+05:30`).toLocaleDateString("en-IN", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "Asia/Kolkata",
+    });
   };
-  const isToday = date === (() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  })();
+  const isToday = date === istDateString();
   
   const stats = data?.stats || {
     entriesToday: 0,
@@ -130,30 +134,18 @@ export function ActivityClient({ user, data: initialData }: Props) {
   const [signedPhotoUrl, setSignedPhotoUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (selectedRecord?.photoUrl && !selectedRecord.photoUrl.startsWith("http")) {
-      getExitPhotoUrl(selectedRecord.photoUrl).then(url => {
-        setSignedPhotoUrl(url);
-      });
-    } else if (selectedRecord?.photoUrl) {
-      setSignedPhotoUrl(selectedRecord.photoUrl);
+    const path = selectedRecord?.photoUrl || selectedRecord?.imagePath;
+    if (path) {
+      if (path.startsWith("data:") || path.startsWith("http")) {
+        setSignedPhotoUrl(path);
+      } else {
+        getExitPhotoUrl(path).then(url => {
+          setSignedPhotoUrl(url);
+        });
+      }
     } else {
       setSignedPhotoUrl(null);
     }
-  }, [selectedRecord]);
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function fetchUrl() {
-      const path = selectedRecord?.photoUrl || selectedRecord?.imagePath;
-      if (path) {
-        setPhotoUrl(null);
-        const url = await getExitPhotoUrl(path);
-        setPhotoUrl(url);
-      } else {
-        setPhotoUrl(null);
-      }
-    }
-    fetchUrl();
   }, [selectedRecord]);
   const [outsiderCategory, setOutsiderCategory] = useState("ALL");
 
@@ -166,14 +158,6 @@ export function ActivityClient({ user, data: initialData }: Props) {
     }
   }, [data]);
   const [showAddModal, setShowAddModal] = useState(false);
-
-  // Date Filtering Helper for Outsiders (since they are mock data)
-  const isWithinDate = (dateString: string) => {
-    if (!dateString) return true;
-    const itemDate = new Date(dateString);
-    const filterDate = new Date(date);
-    return itemDate.toDateString() === filterDate.toDateString();
-  };
 
   // Filtered Entries (server already filtered by date)
   const filteredEntries = (recentEntries || []).filter((m) => {
@@ -217,36 +201,50 @@ export function ActivityClient({ user, data: initialData }: Props) {
   // Count active outsiders inside campus for this date
   const activeOutsidersCount = (outsiders || []).filter((o) => o.status === "INSIDE").length;
 
-  // Add new outsider
-  function handleAddOutsider(e: React.FormEvent<HTMLFormElement>) {
+  // Add new outsider (persisted)
+  const [savingOutsider, setSavingOutsider] = useState(false);
+  async function handleAddOutsider(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (savingOutsider) return;
     const formData = new FormData(e.currentTarget);
-    const newRecord: OutsiderRecord = {
-      id: `out-${Date.now()}`,
-      name: formData.get("name") as string,
-      phone: formData.get("phone") as string,
-      category: formData.get("category") as any,
-      purpose: formData.get("purpose") as string,
-      visitingStudent: (formData.get("visitingStudent") as string) || "General Campus",
-      gate: (formData.get("gate") as string) || "Main Gate 1",
-      vehicleNumber: (formData.get("vehicleNumber") as string) || "Pedestrian",
-      entryTime: new Date().toISOString(),
-      status: "INSIDE",
-    };
-
-    setOutsiders((prev) => [newRecord, ...prev]);
-    setShowAddModal(false);
+    setSavingOutsider(true);
+    setActionError(null);
+    try {
+      const res = await registerOutsider({
+        name: formData.get("name") as string,
+        phone: formData.get("phone") as string,
+        category: (formData.get("category") as string) || "GUEST",
+        purpose: formData.get("purpose") as string,
+        visitingStudent: (formData.get("visitingStudent") as string) || "",
+        gate: (formData.get("gate") as string) || "",
+        vehicleNumber: (formData.get("vehicleNumber") as string) || "",
+      });
+      if (!res?.success) {
+        setActionError(res?.error || "Failed to register visitor.");
+        return;
+      }
+      setShowAddModal(false);
+      await reloadData(date);
+    } catch {
+      setActionError("Failed to register visitor.");
+    } finally {
+      setSavingOutsider(false);
+    }
   }
 
-  // Toggle outsider exit
-  function handleMarkExited(id: string) {
-    setOutsiders((prev) =>
-      prev.map((o) =>
-        o.id === id
-          ? { ...o, status: "EXITED", exitTime: new Date().toISOString() }
-          : o
-      )
-    );
+  // Mark outsider as exited (persisted)
+  async function handleMarkExited(id: string) {
+    setActionError(null);
+    try {
+      const res = await markOutsiderExited(id);
+      if (!res?.success) {
+        setActionError(res?.error || "Failed to mark visitor as exited.");
+        return;
+      }
+      await reloadData(date);
+    } catch {
+      setActionError("Failed to mark visitor as exited.");
+    }
   }
 
   return (
@@ -674,6 +672,11 @@ export function ActivityClient({ user, data: initialData }: Props) {
           {/* TAB 3: Students Left */}
           {activeTab === "outsiders" && (
             <div className="space-y-4">
+              {actionError && !showAddModal && (
+                <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+                  {actionError}
+                </div>
+              )}
               {/* Outsiders Card */}
               <Card className="border-zinc-800 bg-zinc-900/60 shadow-xl overflow-hidden min-h-[500px]">
                 {/* Integrated Toolbar */}
@@ -804,7 +807,10 @@ export function ActivityClient({ user, data: initialData }: Props) {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => handleMarkExited(o.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMarkExited(o.id);
+                                  }}
                                   className="text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 px-3 h-8 text-xs font-medium cursor-pointer"
                                 >
                                   Mark Exited
@@ -863,6 +869,11 @@ export function ActivityClient({ user, data: initialData }: Props) {
         className="max-w-xl"
       >
         <form onSubmit={handleAddOutsider} className="space-y-4 pt-2">
+          {actionError && (
+            <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+              {actionError}
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-zinc-400">Visitor Name *</label>
@@ -886,11 +897,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
 
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-zinc-400">Entry Gate</label>
-              <Select name="gate" defaultValue="Main Gate 1" className="bg-zinc-950 border-zinc-800">
-                <option value="Main Gate 1">Main Gate 1</option>
-                <option value="Gate 2 - South">Gate 2 - South</option>
-                <option value="Service Gate 3">Service Gate 3</option>
-              </Select>
+              <Input name="gate" placeholder="e.g. Main Gate" maxLength={100} className="bg-zinc-950 border-zinc-800" />
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
@@ -931,8 +938,8 @@ export function ActivityClient({ user, data: initialData }: Props) {
             >
               Cancel
             </Button>
-            <Button type="submit" className="bg-orange-600 hover:bg-orange-500 text-white font-semibold">
-              Save Entry
+            <Button type="submit" disabled={savingOutsider} className="bg-orange-600 hover:bg-orange-500 text-white font-semibold">
+              {savingOutsider ? "Saving..." : "Save Entry"}
             </Button>
           </div>
         </form>
@@ -1041,12 +1048,18 @@ export function ActivityClient({ user, data: initialData }: Props) {
               )}
             </div>
 
-            {/* Display photo ONLY for outsiders */}
-            {selectedRecord.photoUrl && (
+            {/* Display photo for outsiders or student movements */}
+            {(selectedRecord.photoUrl || selectedRecord.imagePath) && (
               <div className="pt-4 border-t border-zinc-800">
                 <p className="text-zinc-500 text-sm mb-2">Captured Photo</p>
                 <div className="rounded-xl overflow-hidden border border-zinc-800 bg-black flex justify-center items-center max-h-64">
-                  {signedPhotoUrl ? <img src={signedPhotoUrl} alt="Outsider" className="max-h-full object-contain" /> : <div className="animate-pulse bg-zinc-800 w-full h-full"></div>}
+                  {signedPhotoUrl ? (
+                    <img src={signedPhotoUrl} alt="Captured Photo" className="max-h-full object-contain" />
+                  ) : (
+                    <div className="animate-pulse bg-zinc-800 w-full h-full min-h-[120px] flex items-center justify-center">
+                      <span className="text-xs text-zinc-500">Loading photo...</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

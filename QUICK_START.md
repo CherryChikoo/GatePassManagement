@@ -111,7 +111,7 @@ Expected:
 ### 5.2 Login
 1. Go to: `https://your-project.vercel.app/login`
 2. Email: `admin@campus.edu`
-3. Password: `admin123`
+3. Password: the one-time password printed by the seed script (`SEED_DEFAULT_PASSWORD`) — change it immediately
 
 ✅ **Success!** You're in!
 

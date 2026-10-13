@@ -20,35 +20,26 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { BackButton } from "@/components/ui/back-button";
+import { AssignedApproverCard, type AssignedApprover } from "@/components/student/assigned-approver";
+import { useAppStore } from "@/stores/app-store";
+import { istDateString } from "@/lib/time/ist";
 
 interface Props {
   user: { name: string; email: string; role: string };
-  approvers: any[];
+  assignedApprover: AssignedApprover;
   isHosteller: boolean;
 }
 
-export function EntryRequestClient({ user, approvers, isHosteller }: Props) {
-  const approverLabel = isHosteller ? "Warden" : "Faculty Advisor";
+export function EntryRequestClient({ user, assignedApprover, isHosteller }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const [today, setToday] = useState(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  });
+  // Campus date (IST) — identical on server and client, so no hydration mismatch
+  const [today, setToday] = useState(() => istDateString());
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      setToday(`${year}-${month}-${day}`);
-    }, 60000);
+    const interval = setInterval(() => setToday(istDateString()), 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -78,6 +69,7 @@ export function EntryRequestClient({ user, approvers, isHosteller }: Props) {
         setError(result.error);
       } else if (result?.success) {
         setSuccess(true);
+        useAppStore.getState().refresh(true);
       }
     } catch {
       setError("Something went wrong. Please try again.");
@@ -160,29 +152,8 @@ export function EntryRequestClient({ user, approvers, isHosteller }: Props) {
 
             <form action={handleSubmit} className="space-y-6">
               <input type="hidden" name="type" value="ENTRY" />
-              {/* Approver Selection */}
-              <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">
-                  Select {approverLabel} *
-                </label>
-                <div className="relative">
-                  <UserCheck className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
-                  <select
-                    name="approverId"
-                    required
-                    className="w-full pl-10 pr-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent appearance-none cursor-pointer"
-                  >
-                    <option value="">-- Choose {approverLabel} --</option>
-                    {approvers.map((approver) => (
-                      <option key={approver.id} value={approver.id}>
-                        {approver.profile?.name || "Unknown"} 
-                        {approver.department && ` - ${approver.department}`}
-                        {approver.hostelBlock && ` - ${approver.hostelBlock}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              {/* Approver (assigned automatically) */}
+              <AssignedApproverCard approver={assignedApprover} isHosteller={isHosteller} accent="emerald" />
 
               {/* Purpose */}
               <div>
@@ -302,7 +273,7 @@ export function EntryRequestClient({ user, approvers, isHosteller }: Props) {
                 type="submit"
                 className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
                 size="lg"
-                disabled={loading}
+                disabled={loading || !assignedApprover?.available}
               >
                 {loading ? (
                   "Submitting..."
