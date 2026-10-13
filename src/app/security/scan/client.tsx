@@ -234,8 +234,8 @@ export function ScanClient({ user, gates }: Props) {
     if (!verifyResult || !selectedGate) return;
     const action = verifyResult.allowedAction as "EXIT" | "ENTRY";
     
-    if (action === "EXIT" && !capturedImage) {
-      setError("Photo is mandatory for exit registration");
+    if (!capturedImage) {
+      setError(`Photo is mandatory for ${action === "EXIT" ? "exit" : "entry"} registration`);
       return;
     }
 
@@ -252,7 +252,7 @@ export function ScanClient({ user, gates }: Props) {
       if (action === "EXIT") {
         result = await registerExit(verifyResult.permission.id, selectedGate, capturedImage!, finalNotes);
       } else {
-        result = await registerEntry(verifyResult.permission.id, selectedGate, capturedImage || undefined, finalNotes);
+        result = await registerEntry(verifyResult.permission.id, selectedGate, capturedImage, finalNotes);
       }
 
       if (result.error) {
@@ -537,7 +537,7 @@ export function ScanClient({ user, gates }: Props) {
                   <div className="flex items-center gap-2">
                     <Camera className="h-5 w-5 text-zinc-400" />
                     <p className="font-medium text-zinc-200">
-                      {verifyResult.allowedAction === "EXIT" ? "Photo Required for Exit" : "Photo Optional for Entry"}
+                      {verifyResult.allowedAction === "EXIT" ? "Photo Required for Exit" : "Photo Required for Entry"}
                     </p>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -610,7 +610,7 @@ export function ScanClient({ user, gates }: Props) {
                   ? "bg-red-600 hover:bg-red-500 text-white" 
                   : "bg-emerald-600 hover:bg-emerald-500 text-white"
               }`}
-              disabled={verifyResult.allowedAction === "EXIT" && !capturedImage}
+              disabled={!capturedImage}
             >
               <DoorOpen className="h-5 w-5" />
               Register {verifyResult.allowedAction}

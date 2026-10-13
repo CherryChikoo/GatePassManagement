@@ -1,7 +1,6 @@
-import Link from "next/link";
-import { Shield, LogOut, ArrowRight, LayoutDashboard } from "lucide-react";
-import { getAuthUser, getRoleDashboardPath } from "@/lib/auth/helpers";
-import { logoutAction } from "@/server/actions/auth";
+import { Shield } from "lucide-react";
+import { SignOutButton } from "@/components/ui/sign-out-submit-button";
+import { getAuthUser } from "@/lib/auth/helpers";
 import { redirect } from "next/navigation";
 
 export default async function UnauthorizedPage() {
@@ -30,15 +29,7 @@ export default async function UnauthorizedPage() {
 
         <div className="max-w-xs mx-auto">
           {/* ONLY Action: Sign out and go to Login */}
-          <form action={logoutAction} className="w-full">
-            <button
-              type="submit"
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 px-5 py-2.5 text-sm font-semibold text-white shadow-none transition-all cursor-pointer"
-            >
-              <LogOut className="h-4 w-4" />
-              Sign Out
-            </button>
-          </form>
+          <SignOutButton className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 px-5 py-2.5 text-sm font-semibold text-white shadow-none transition-all cursor-pointer disabled:opacity-70 disabled:cursor-wait" />
         </div>
       </div>
     </div>

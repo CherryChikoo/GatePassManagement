@@ -39,7 +39,9 @@ export async function GET() {
     if (!loader) {
       return NextResponse.json({ error: "Unknown role" }, { status: 400, headers: NO_STORE });
     }
-    return NextResponse.json(await loader(), { headers: NO_STORE });
+    // __profileId lets each tab detect that the browser's session now belongs to someone else
+    const data = (await loader()) as Record<string, unknown>;
+    return NextResponse.json({ ...data, __profileId: user.profileId }, { headers: NO_STORE });
   } catch (err: any) {
     console.error("[Preload] Error:", err?.message);
     return NextResponse.json({ error: "Failed to load data" }, { status: 500, headers: NO_STORE });
@@ -567,7 +569,7 @@ async function preloadStudent(profileId: string) {
         id: true, status: true, type: true, purpose: true, destination: true,
         exitDate: true, expectedExit: true, expectedReturn: true,
         contactNumber: true, remarks: true, rejectionReason: true,
-        approverType: true, approverId: true, createdAt: true,
+        approverType: true, approverId: true, createdAt: true, rejectedAt: true,
         // The stored QR token is never sent to the browser; the pass screen
         // fetches rotating 60-second tokens instead.
         qr: { select: QR_PUBLIC_SELECT },
@@ -634,11 +636,19 @@ async function preloadStudent(profileId: string) {
     latestPermission.qr.active &&
     new Date(latestPermission.qr.expiresAt) > now;
 
-  let state: "FORM" | "PENDING" | "QR_CODE" = "FORM";
+  // Student flow: FORM → PENDING (locked) → QR_CODE (approved) or REJECTED (reason) → FORM
+  const REJECTION_VISIBLE_MS = 24 * 60 * 60 * 1000;
+  let state: "FORM" | "PENDING" | "QR_CODE" | "REJECTED" = "FORM";
   if (latestPermission && latestPermission.status === "PENDING") {
     state = "PENDING";
   } else if (isQrValid) {
     state = "QR_CODE";
+  } else if (
+    latestPermission?.status === "REJECTED" &&
+    latestPermission.rejectedAt &&
+    now.getTime() - latestPermission.rejectedAt.getTime() < REJECTION_VISIBLE_MS
+  ) {
+    state = "REJECTED";
   }
 
   // Serialize dates for JSON

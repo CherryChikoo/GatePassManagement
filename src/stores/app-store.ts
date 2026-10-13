@@ -82,13 +82,70 @@ async function fetchPreload(): Promise<StoreData> {
   return res.json();
 }
 
+/**
+ * Full-page navigation that REPLACES the current history entry. Used whenever
+ * the session ends or changes, so the in-app router cache and the back/forward
+ * history of the old session are discarded (swiping back cannot reveal it).
+ */
+export function hardNavigate(path: string) {
+  if (typeof window === "undefined") return;
+  window.location.replace(path);
+}
+
 function handleSessionExpired() {
   stopBackgroundSync();
   if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-    // Full page load on purpose: guarantees all in-memory session data is discarded.
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.href = "/login";
+    hardNavigate("/login");
   }
+}
+
+// ─── Cross-tab session sync ─────────────────────────────────────────────────
+// One browser = one signed-in user. Tabs tell each other when someone logs in
+// or out, so a tab never keeps showing a previous user's screens.
+
+const SESSION_CHANNEL = "gatepass-session";
+const SESSION_EVENT_KEY = "gatepass:session-event";
+
+export type SessionEvent = { type: "login" | "logout"; at: number };
+
+export function broadcastSessionEvent(type: SessionEvent["type"]) {
+  if (typeof window === "undefined") return;
+  const event: SessionEvent = { type, at: Date.now() };
+  try {
+    const ch = new BroadcastChannel(SESSION_CHANNEL);
+    ch.postMessage(event);
+    ch.close();
+  } catch {}
+  // Fallback for browsers without BroadcastChannel (fires `storage` in other tabs)
+  try {
+    window.localStorage.setItem(SESSION_EVENT_KEY, JSON.stringify(event));
+  } catch {}
+}
+
+export function subscribeSessionEvents(onEvent: (e: SessionEvent) => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  let ch: BroadcastChannel | null = null;
+  try {
+    ch = new BroadcastChannel(SESSION_CHANNEL);
+    ch.onmessage = (m) => onEvent(m.data as SessionEvent);
+  } catch {}
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== SESSION_EVENT_KEY || !e.newValue) return;
+    try {
+      onEvent(JSON.parse(e.newValue));
+    } catch {}
+  };
+  window.addEventListener("storage", onStorage);
+  return () => {
+    ch?.close();
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+/** The server says the cookie now belongs to someone else → load that user's home. */
+function handleSessionChanged() {
+  stopBackgroundSync();
+  hardNavigate("/");
 }
 
 // ─── Store ──────────────────────────────────────────────────────────────────
@@ -162,6 +219,11 @@ export const useAppStore = create<AppStore>()(
 
         try {
           const preloadData = await fetchPreload();
+          // Another tab signed in as a different user → this tab must not show the old screens
+          if (preloadData.__profileId && preloadData.__profileId !== get().user?.profileId) {
+            handleSessionChanged();
+            return;
+          }
           set({
             data: preloadData,
             isInitialized: true,
@@ -193,6 +255,11 @@ export const useAppStore = create<AppStore>()(
 
         try {
           const preloadData = await fetchPreload();
+          // Another tab signed in as a different user → this tab must not show the old screens
+          if (preloadData.__profileId && preloadData.__profileId !== get().user?.profileId) {
+            handleSessionChanged();
+            return;
+          }
           set({
             data: preloadData,
             isInitialized: true,
@@ -244,5 +311,8 @@ export const useAppStore = create<AppStore>()(
  */
 export async function logoutAndClear(logout: () => Promise<unknown>) {
   useAppStore.getState().reset();
-  await logout();
+  await logout(); // throws on failure → caller re-enables the button
+  broadcastSessionEvent("logout");
+  // Replace (not push) so Back/swipe cannot return to the signed-in screens
+  hardNavigate("/login");
 }

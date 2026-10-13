@@ -36,6 +36,7 @@ import {
   X,
 } from "lucide-react";
 import { useAppStore, logoutAndClear } from "@/stores/app-store";
+import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
 
@@ -52,9 +53,9 @@ export function StudentDashboardClient({ user }: Props) {
 
   const state = dashboardData?.state;
 
-  // Poll for the approval decision while a request is pending
+  // Poll while waiting on someone else: the approver (PENDING) or the gate scan (QR_CODE)
   useEffect(() => {
-    if (state === "PENDING") {
+    if (state === "PENDING" || state === "QR_CODE") {
       const interval = setInterval(() => {
         startTransition(() => {
           useAppStore.getState().refresh(true);
@@ -63,6 +64,24 @@ export function StudentDashboardClient({ user }: Props) {
       return () => clearInterval(interval);
     }
   }, [state]);
+
+  // A rejection is shown once; after the student dismisses it (button/timer) we go back to the form.
+  const latestId: string | undefined = dashboardData?.latestPermission?.id;
+  const [dismissedRejectionId, setDismissedRejectionId] = useState<string | null>(null);
+  useEffect(() => {
+    if (state !== "REJECTED" || !latestId) return;
+    try {
+      if (sessionStorage.getItem(REJECTION_ACK_KEY) === latestId) setDismissedRejectionId(latestId);
+    } catch {}
+  }, [state, latestId]);
+
+  const dismissRejection = () => {
+    if (!latestId) return;
+    try {
+      sessionStorage.setItem(REJECTION_ACK_KEY, latestId);
+    } catch {}
+    setDismissedRejectionId(latestId);
+  };
 
   if (!isReady || dashboardData === undefined) {
     return <DashboardSkeleton />;
@@ -78,9 +97,7 @@ export function StudentDashboardClient({ user }: Props) {
             <p className="text-sm text-zinc-400 mb-6">
               Please contact the campus administrator to initialize your student profile.
             </p>
-            <Button onClick={() => logoutAndClear(logoutAction)} variant="outline">
-              Sign Out
-            </Button>
+            <RecordMissingSignOut />
           </div>
         </div>
       
@@ -88,10 +105,16 @@ export function StudentDashboardClient({ user }: Props) {
   }
 
   const { student, isHosteller, assignedApprover, latestPermission } = dashboardData;
+  const showRejected = state === "REJECTED" && latestPermission && dismissedRejectionId !== latestPermission.id;
+  const showForm = state === "FORM" || (state === "REJECTED" && !showRejected);
 
   return (
     <>
       <div className="max-w-2xl mx-auto py-2">
+        {showRejected && (
+          <RejectedView permission={latestPermission} onDone={dismissRejection} />
+        )}
+
         {state === "QR_CODE" && latestPermission && (
           <QrCodeView
             user={user}
@@ -108,7 +131,7 @@ export function StudentDashboardClient({ user }: Props) {
           />
         )}
 
-        {state === "FORM" && (
+        {showForm && (
           <PermissionFormView
             student={student}
             assignedApprover={assignedApprover}
@@ -119,6 +142,97 @@ export function StudentDashboardClient({ user }: Props) {
       </div>
     
     </>
+  );
+}
+
+function RecordMissingSignOut() {
+  const [signingOut, setSigningOut] = useState(false);
+  return (
+    <>
+      <Button
+        onClick={async () => {
+          setSigningOut(true);
+          try {
+            await logoutAndClear(logoutAction);
+          } catch (err: any) {
+            if (!String(err?.digest ?? err?.message ?? "").includes("NEXT_REDIRECT")) setSigningOut(false);
+          }
+        }}
+        variant="outline"
+        loading={signingOut}
+        disabled={signingOut}
+      >
+        {signingOut ? "Signing out…" : "Sign Out"}
+      </Button>
+      {signingOut && <SigningOutOverlay />}
+    </>
+  );
+}
+
+const REJECTION_ACK_KEY = "gatepass:rejection-ack";
+const REJECTED_AUTO_RETURN_S = 20;
+
+// ──────────────────────────────────────────────────────────────
+// VIEW 0: REJECTED (reason from HOD / warden, then back to the form)
+// ──────────────────────────────────────────────────────────────
+
+function RejectedView({ permission, onDone }: { permission: any; onDone: () => void }) {
+  const [secondsLeft, setSecondsLeft] = useState(REJECTED_AUTO_RETURN_S);
+
+  useEffect(() => {
+    if (secondsLeft <= 0) {
+      onDone();
+      return;
+    }
+    const t = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [secondsLeft, onDone]);
+
+  const approverRole =
+    permission.approverType === "WARDEN" ? "Hostel Warden" : permission.approverType === "FACULTY_ADMIN" ? "HOD" : "approver";
+
+  return (
+    <div className="space-y-6 animate-scale-in" role="alert">
+      <div className="text-center space-y-2">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-red-500/15 text-red-400 mb-2">
+          <XCircle className="h-8 w-8" />
+        </div>
+        <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">
+          {permission.type === "ENTRY" ? "Entry Request Rejected" : "Exit Request Rejected"}
+        </h1>
+        <p className="text-sm text-zinc-400">
+          Your request was rejected by your {approverRole}
+          {permission.approverName ? ` (${permission.approverName})` : ""}.
+        </p>
+      </div>
+
+      <Card className="border-red-500/30 bg-zinc-900/60 shadow-xl">
+        <CardContent className="p-6 space-y-4">
+          <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+            <span className="text-xs font-semibold text-red-300 uppercase tracking-wider block mb-1">Reason</span>
+            <p className="text-sm text-zinc-100 whitespace-pre-wrap break-words">
+              {permission.rejectionReason || "No reason was provided."}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div className="p-3 rounded-xl bg-zinc-800/40 border border-zinc-800/60">
+              <span className="text-zinc-500 block mb-1">Purpose</span>
+              <span className="text-zinc-200 font-medium text-sm break-words">{permission.purpose}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-zinc-800/40 border border-zinc-800/60">
+              <span className="text-zinc-500 block mb-1">{permission.type === "ENTRY" ? "Coming From" : "Destination"}</span>
+              <span className="text-zinc-200 font-medium text-sm break-words">{permission.destination || "—"}</span>
+            </div>
+          </div>
+          <Button type="button" onClick={onDone} className="w-full h-11 bg-orange-600 hover:bg-orange-500 text-white font-semibold">
+            Submit a new request
+          </Button>
+          <p className="text-center text-xs text-zinc-500" aria-live="polite">
+            Returning to the request form in {secondsLeft}s
+          </p>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -152,6 +266,8 @@ function QrCodeView({
         if ("error" in res && res.error) {
           setQrError(res.error);
           setQrImage(null);
+          // Pass was just scanned/used or expired → reload state (shows the confirmation / form)
+          useAppStore.getState().refresh(true);
           return;
         }
         if ("token" in res && res.token) {
@@ -484,7 +600,6 @@ function PermissionFormView({
   const [error, setError] = useState<string | null>(null);
 
   const [hideExpiryAlert, setHideExpiryAlert] = useState<boolean>(false);
-  const [hideRejectAlert, setHideRejectAlert] = useState<boolean>(false);
 
   const timeOptions = Array.from({ length: 48 }, (_, i) => {
     const h = Math.floor(i / 2);
@@ -507,8 +622,6 @@ function PermissionFormView({
     return `${h.toString().padStart(2, "0")}:${m}`;
   }
 
-  const wasRejected = latestPermission?.status === "REJECTED";
-  const wasExited = latestPermission?.status === "EXITED" || latestPermission?.status === "COMPLETED";
   const wasExpired =
     latestPermission?.status === "EXPIRED" ||
     (latestPermission?.status === "APPROVED" &&
@@ -522,13 +635,6 @@ function PermissionFormView({
       return () => clearTimeout(timer);
     }
   }, [wasExpired, hideExpiryAlert]);
-
-  useEffect(() => {
-    if (wasRejected && !hideRejectAlert) {
-      const timer = setTimeout(() => setHideRejectAlert(true), 8000);
-      return () => clearTimeout(timer);
-    }
-  }, [wasRejected, hideRejectAlert]);
 
   const isOutside = student?.status === "OUTSIDE";
   const [requestType, setRequestType] = useState<"EXIT" | "ENTRY">(() => isOutside ? "ENTRY" : "EXIT");
@@ -633,40 +739,6 @@ function PermissionFormView({
           </div>
           <p className="text-xs text-zinc-300 pl-7 pr-6 leading-relaxed">
             Your previous approved gate pass for <span className="font-semibold text-white">&ldquo;{latestPermission.purpose}&rdquo;</span> expired because it was not scanned at the gate within the valid time window. You must submit a new request.
-          </p>
-        </div>
-      )}
-
-      {/* Rejection Alert Banner if last request was rejected */}
-      {wasRejected && !hideRejectAlert && (
-        <div className="relative rounded-2xl border border-red-500/30 bg-red-500/10 p-5 space-y-2 animate-fade-in">
-          <button 
-            type="button"
-            onClick={() => setHideRejectAlert(true)}
-            className="absolute top-4 right-4 text-red-500/60 hover:text-red-400 transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
-          <div className="flex items-center gap-2.5 text-red-400 font-semibold text-sm">
-            <XCircle className="h-5 w-5 flex-shrink-0" />
-            <span>Previous Request Rejected</span>
-          </div>
-          <p className="text-xs text-zinc-300 pl-7 pr-6 leading-relaxed">
-            Your previous request for <span className="font-semibold text-white">&ldquo;{latestPermission.purpose}&rdquo;</span> was rejected
-            {latestPermission.rejectionReason && (
-              <>: <span className="text-red-300 font-medium">{latestPermission.rejectionReason}</span></>
-            )}.
-            You may adjust your details and submit a new request below.
-          </p>
-        </div>
-      )}
-
-      {/* Exit Recorded Notification if previous request was completed */}
-      {wasExited && (
-        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 flex items-center gap-3">
-          <CheckCircle2 className="h-5 w-5 text-emerald-400 flex-shrink-0" />
-          <p className="text-xs text-emerald-300/90 leading-relaxed">
-            Your previous exit was recorded. You can submit a new gate pass request whenever you need your next exit.
           </p>
         </div>
       )}

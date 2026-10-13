@@ -125,11 +125,11 @@ export async function verifyQrScan(token: string) {
     return { valid: false, error: "Permission not found" };
   }
 
-  if (!permission.qr || !permission.qr.active) {
-    return { valid: false, error: "QR credential is inactive or revoked" };
+  if (!permission.qr) {
+    return { valid: false, error: "This pass has no QR credential (not approved)" };
   }
 
-  if (permission.status === "APPROVED" && new Date(permission.qr.expiresAt) < new Date()) {
+  if (permission.status === "APPROVED" && permission.qr.active && new Date(permission.qr.expiresAt) < new Date()) {
     await prisma.$transaction([
       prisma.permission.updateMany({
         where: { id: permission.id, status: "APPROVED" },
@@ -172,6 +172,9 @@ export async function verifyQrScan(token: string) {
         valid: false,
         error: "This Entry Pass has already been used to enter campus.",
       };
+    }
+    if (permission.status === "APPROVED" && !permission.qr.active) {
+      return { valid: false, error: "QR credential is inactive or revoked" };
     }
     const reasons: Record<string, string> = {
       PENDING: "Permission is still pending approval",
@@ -386,14 +389,13 @@ export async function registerEntry(
     return { error: "Notes must be at most 500 characters" };
   }
 
-  // Photo is optional for entry
-  let storedImage: string | null = null;
-  if (imagePath) {
-    if (typeof imagePath !== "string") return { error: "Invalid photo" };
-    const photo = await storeGatePhoto(imagePath, permissionId);
-    if ("error" in photo) return { error: photo.error };
-    storedImage = photo.path;
+  // Photo is mandatory for entry, same as exit
+  if (!imagePath || typeof imagePath !== "string") {
+    return { error: "Photo capture is mandatory for entry registration" };
   }
+  const photo = await storeGatePhoto(imagePath, permissionId);
+  if ("error" in photo) return { error: photo.error };
+  const storedImage = photo.path;
 
   try {
     // Interactive transaction: reads + checks + writes are all atomic

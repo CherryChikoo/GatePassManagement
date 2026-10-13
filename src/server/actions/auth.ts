@@ -3,7 +3,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/db/prisma";
 import { loginSchema } from "@/lib/validation/schemas";
-import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { getRoleDashboardPath, invalidateProfileCache } from "@/lib/auth/helpers";
 import { checkRateLimit, resetRateLimit } from "@/lib/auth/rate-limiter";
@@ -101,5 +100,7 @@ export async function logoutAction() {
     }
   } catch {}
   if (userId) invalidateProfileCache(userId);
-  redirect("/login");
+  // No server redirect: the client performs a full-page replace to /login so the
+  // router cache and browser history entries of the old session are discarded.
+  return { success: true };
 }

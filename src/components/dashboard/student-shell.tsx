@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Shield, LogOut } from "lucide-react";
+import { Shield, LogOut, Loader2 } from "lucide-react";
 import { logoutAndClear } from "@/stores/app-store";
+import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
 
 /**
  * Minimal student layout: a slim top bar (brand, student, sign out) and the
@@ -22,10 +23,17 @@ export function StudentShell({
 }) {
   const [signingOut, setSigningOut] = useState(false);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (signingOut) return;
     setSigningOut(true);
-    void logoutAndClear(async () => onLogout());
+    try {
+      await logoutAndClear(async () => onLogout());
+    } catch (err: any) {
+      // A successful logout redirects; any other failure lets the user retry.
+      if (!String(err?.digest ?? err?.message ?? "").includes("NEXT_REDIRECT")) {
+        setSigningOut(false);
+      }
+    }
   };
 
   return (
@@ -48,15 +56,22 @@ export function StudentShell({
             type="button"
             onClick={handleLogout}
             disabled={signingOut}
-            className="flex shrink-0 items-center gap-2 rounded-lg border border-zinc-800 px-3 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-red-500/40 hover:text-red-400 disabled:opacity-60"
+            aria-busy={signingOut}
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-zinc-800 px-3 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-red-500/40 hover:text-red-400 disabled:opacity-60 disabled:cursor-wait"
           >
-            <LogOut className="h-4 w-4" aria-hidden="true" />
+            {signingOut ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+            )}
             {signingOut ? "Signing out…" : "Sign out"}
           </button>
         </div>
       </header>
 
       <main className="mx-auto max-w-3xl px-4 py-6">{children}</main>
+
+      {signingOut && <SigningOutOverlay />}
     </div>
   );
 }

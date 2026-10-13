@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { logoutAndClear } from "@/stores/app-store";
+import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
 import {
   LayoutDashboard,
   FileText,
@@ -26,6 +27,7 @@ import {
   Eye,
   Landmark,
   GraduationCap,
+  Loader2,
 } from "lucide-react";
 
 export type NavItem = {
@@ -57,8 +59,20 @@ export function DashboardLayout({
   const pathname = usePathname();
 
   // Clear all cached client data before ending the server session
-  const handleLogout = () => {
-    void logoutAndClear(async () => onLogout());
+  const [signingOut, setSigningOut] = useState(false);
+  const handleLogout = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    setSidebarOpen(false);
+    try {
+      await logoutAndClear(async () => onLogout());
+    } catch (err: any) {
+      // A successful logout redirects (navigation unmounts this overlay).
+      // Anything else is a real failure: let the user try again.
+      if (!String(err?.digest ?? err?.message ?? "").includes("NEXT_REDIRECT")) {
+        setSigningOut(false);
+      }
+    }
   };
 
   let navItems: NavItem[] = [];
@@ -266,11 +280,14 @@ export function DashboardLayout({
           {/* Direct sign out in drawer on mobile */}
           <div className="lg:hidden pt-1">
             <button
+              type="button"
               onClick={handleLogout}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-red-500/40 hover:bg-red-500/10 px-3 py-2 text-xs font-semibold text-zinc-300 hover:text-red-400 transition-all cursor-pointer"
+              disabled={signingOut}
+              aria-busy={signingOut}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-red-500/40 hover:bg-red-500/10 px-3 py-2 text-xs font-semibold text-zinc-300 hover:text-red-400 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait"
             >
-              <LogOut className="h-3.5 w-3.5" />
-              <span>Sign Out</span>
+              {signingOut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
+              <span>{signingOut ? "Signing out…" : "Sign Out"}</span>
             </button>
           </div>
         </div>
@@ -345,12 +362,15 @@ export function DashboardLayout({
               </div>
             )}
             <button
+              type="button"
               onClick={handleLogout}
-              className="flex items-center gap-1.5 sm:gap-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-red-500/40 hover:bg-red-500/10 px-2.5 sm:px-3.5 py-1.5 text-xs font-semibold text-zinc-300 hover:text-red-400 transition-all cursor-pointer shadow-sm"
+              disabled={signingOut}
+              aria-busy={signingOut}
+              className="flex items-center gap-1.5 sm:gap-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-red-500/40 hover:bg-red-500/10 px-2.5 sm:px-3.5 py-1.5 text-xs font-semibold text-zinc-300 hover:text-red-400 transition-all cursor-pointer shadow-sm disabled:opacity-60 disabled:cursor-wait"
               title="Sign Out"
             >
-              <LogOut className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Sign Out</span>
+              {signingOut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline">{signingOut ? "Signing out…" : "Sign Out"}</span>
             </button>
           </div>
         </header>
@@ -360,6 +380,8 @@ export function DashboardLayout({
           {children}
         </div>
       </main>
+
+      {signingOut && <SigningOutOverlay />}
 
       {/* Mobile Bottom Navigation Bar */}
       {isMobileNavRole && navItems.length > 0 && (

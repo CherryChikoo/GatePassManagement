@@ -143,23 +143,22 @@ export function OutsidersClient({ user, inside, history }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!photo) {
-      setError("Photo is required for outsider registration"); setTimeout(() => setError(null), 3000);
-      return;
-    }
+    if (loading) return;
 
     setLoading(true);
     try {
-      
-      const { path, error } = await uploadOutsiderPhoto(photo, formData.name);
-      
-      if (error || !path) {
-        setError("Photo upload failed: " + error); setTimeout(() => setError(null), 3000);
-        setLoading(false);
-        return;
+      // Photo is optional for visitors; upload only if one was taken
+      let path: string | undefined;
+      if (photo) {
+        const upload = await uploadOutsiderPhoto(photo, formData.name);
+        if (upload.error || !upload.path) {
+          setError("Photo upload failed: " + (upload.error || "unknown error")); setTimeout(() => setError(null), 3000);
+          setLoading(false);
+          return;
+        }
+        path = upload.path;
       }
 
-      
       const now = new Date();
       let hours24 = parseInt(time12h.hour);
       if (time12h.period === "PM" && hours24 !== 12) hours24 += 12;
@@ -375,7 +374,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
           <Card>
             <CardHeader>
               <CardTitle>Manual Registration</CardTitle>
-              <CardDescription>Register a new outsider entry. Photo is mandatory.</CardDescription>
+              <CardDescription>Register a new outsider entry.</CardDescription>
             </CardHeader>
             <CardContent className="p-4 sm:p-6">
               <form onSubmit={handleSubmit} className="space-y-6">
@@ -395,7 +394,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                 
                 {/* Photo Capture */}
                 <div className="space-y-3">
-                  <label className="text-sm font-medium leading-none text-zinc-200">Outsider Photo (Required)</label>
+                  <label className="text-sm font-medium leading-none text-zinc-200">Outsider Photo (Optional)</label>
                   <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                     <div className="relative h-32 w-32 shrink-0 rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-900/50 flex flex-col items-center justify-center overflow-hidden">
                       {photo ? (
@@ -418,7 +417,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                         onChange={handlePhotoCapture}
                       />
                       <p className="text-xs text-zinc-500">
-                        Use device camera to capture face clearly. Entry is not permitted without a photo.
+                        Optionally capture the visitor&apos;s face with the device camera.
                       </p>
                     </div>
                   </div>
@@ -527,7 +526,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
 
 
 
-                <Button type="submit" className="w-full" size="lg" disabled={loading || !photo}>
+                <Button type="submit" className="w-full" size="lg" disabled={loading}>
                   {loading ? "Registering..." : "Complete Registration & Allow Entry"}
                 </Button>
               </form>
