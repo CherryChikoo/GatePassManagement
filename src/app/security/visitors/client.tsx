@@ -382,7 +382,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                 
                 {/* Photo Capture */}
                 <div className="space-y-3">
-                  <label className="text-sm font-medium leading-none text-zinc-200">Visitor Photo</label>
+                  <label className="text-sm font-medium leading-none text-zinc-200">Visitor Photo (Optional)</label>
                   <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                     <div className="relative h-32 w-32 shrink-0 rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-900/50 flex flex-col items-center justify-center overflow-hidden">
                       {photo ? (
