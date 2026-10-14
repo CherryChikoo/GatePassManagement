@@ -123,8 +123,8 @@ export function buildSearchText(def: EntryRegister, data: RegisterData): string 
 }
 
 /**
- * Validates a new record. Every input is optional, but at least one detail is
- * needed. Dates are today; times are now; In / Out registers need a direction.
+ * Validates a new record. The important details of each register are
+ * mandatory and everything else is optional. Dates are today; times are now; In / Out registers need a direction.
  */
 export async function validateNewRecord(
   def: EntryRegister,
@@ -168,6 +168,7 @@ export async function validateNewRecord(
     if (skip.has(f.key)) continue;
     const res = await cleanValue(f, fields[f.key], resolveStaff);
     if ("error" in res) return { error: res.error };
+    if (res.value === null && def.required.includes(f.key)) return { error: `${f.label} is required` };
     data[f.key] = res.value;
     if (res.value !== null) details++;
   }
@@ -202,6 +203,9 @@ export async function validateNewRecord(
         }
         const res = await cleanValue(f, raw[f.key], resolveStaff);
         if ("error" in res) return { error: `${g.itemLabel} ${rows.length + 1} — ${res.error}` };
+        if (res.value === null && g.required?.includes(f.key)) {
+          return { error: `${g.itemLabel} ${rows.length + 1} — ${f.label} is required` };
+        }
         row[f.key] = res.value;
       }
       rows.push(row);
@@ -311,4 +315,93 @@ export function effectiveData(
     if (first) base.direction = first;
   }
   return base;
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * Main Admin editing a saved record: every value can be corrected, including
+ * dates, times, readings and group rows. The register's mandatory details
+ * still apply. Returns the full replacement data.
+ */
+export async function validateAdminEdit(
+  def: EntryRegister,
+  current: RegisterData,
+  payload: RawPayload,
+  resolveStaff: StaffResolver
+): Promise<{ data: RegisterData; entryDateStr: string | null } | { error: string }> {
+  const fields = asRecord(payload?.fields);
+  const groups = asRecord(payload?.groups);
+  const today = istDateString();
+  const data: RegisterData = {};
+
+  const cleanAny = async (f: FieldDef, raw: unknown): Promise<{ value: FieldValue } | { error: string }> => {
+    if (f.type === "date") {
+      if (isBlank(raw)) return { value: null };
+      const s = String(raw).trim();
+      if (!DATE_RE.test(s) || Number.isNaN(Date.parse(`${s}T00:00:00Z`))) return { error: `${f.label}: enter a valid date` };
+      if (s > today) return { error: `${f.label} cannot be in the future` };
+      return { value: s };
+    }
+    if (f.type === "time") {
+      if (isBlank(raw)) return { value: null };
+      const s = String(raw).trim();
+      if (!TIME_RE.test(s)) return { error: `${f.label}: enter a valid time` };
+      return { value: s };
+    }
+    return cleanValue(f, raw, resolveStaff);
+  };
+
+  for (const f of def.fields) {
+    if (def.movement?.directionField === f.key) continue;
+    const res = await cleanAny(f, fields[f.key]);
+    if ("error" in res) return { error: res.error };
+    if (res.value === null && def.required.includes(f.key)) return { error: `${f.label} is required` };
+    data[f.key] = res.value;
+  }
+
+  const m = def.movement;
+  if (m) {
+    const dir = payload?.direction === "IN" || payload?.direction === "OUT" ? payload.direction : current.direction;
+    if (dir === "IN" || dir === "OUT") {
+      data.direction = dir;
+      if (m.directionField) data[m.directionField] = dir === "IN" ? "In" : "Out";
+    }
+    const o = m.out.readingKey ? data[m.out.readingKey] : null;
+    const i = m.in.readingKey ? data[m.in.readingKey] : null;
+    if (typeof o === "number" && typeof i === "number" && i < o) return { error: "In reading cannot be less than the out reading" };
+  }
+
+  for (const g of def.groups ?? []) {
+    const list = Array.isArray(groups[g.key]) ? (groups[g.key] as unknown[]) : [];
+    const rows: Record<string, FieldValue>[] = [];
+    for (const item of list) {
+      const raw = asRecord(item);
+      if (g.fields.every((f) => isBlank(raw[f.key]))) continue;
+      const row: Record<string, FieldValue> = {};
+      for (const f of g.fields) {
+        const res = await cleanAny(f, raw[f.key]);
+        if ("error" in res) return { error: `${g.itemLabel} ${rows.length + 1} — ${res.error}` };
+        if (res.value === null && g.required?.includes(f.key)) {
+          return { error: `${g.itemLabel} ${rows.length + 1} — ${f.label} is required` };
+        }
+        row[f.key] = res.value;
+      }
+      rows.push(row);
+    }
+    const limit = g.max ?? HARD_GROUP_LIMIT;
+    if (rows.length > limit) return { error: `At most ${limit} ${g.label.toLowerCase()} per record` };
+    data[g.key] = rows;
+  }
+
+  if (def.key === "SIROS_LABOUR_CONTRACT") {
+    const total = typeof data.totalWorkers === "number" ? data.totalWorkers : null;
+    const workers = Array.isArray(data.workers) ? data.workers.length : 0;
+    if (total !== null && workers > total) return { error: `You listed ${workers} workers but the total under the contractor is ${total}` };
+  }
+
+  const dateField = def.fields.find((f) => f.type === "date");
+  const entryDateStr = dateField && typeof data[dateField.key] === "string" ? (data[dateField.key] as string) : null;
+  return { data, entryDateStr };
 }

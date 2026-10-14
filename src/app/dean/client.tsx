@@ -31,7 +31,7 @@ interface Props {
   user?: { name: string; email: string; role: string; profileId: string };
 }
 
-export function DeanDashboardClient({ user }: Props) {
+export function DeanDashboardClient({ user, title }: Props & { title?: string }) {
   const [selectedActivity, setSelectedActivity] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState<"ALL" | "PENDING" | "APPROVED" | "REJECTED">("ALL");
 
@@ -118,7 +118,7 @@ export function DeanDashboardClient({ user }: Props) {
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2.5 flex-wrap">
-              Dean Dashboard
+              {title ?? "Dean Dashboard"}
               <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/30">
                 Academic Leadership
               </span>

@@ -58,7 +58,12 @@ async function uploadImage(base64Data: string, folderPath: string, fileStem: str
 const safeSegment = (s: string) => s.replace(/[^a-z0-9_-]/gi, "_").slice(0, 60) || "x";
 
 export function uploadExitPhotoAdmin(base64Data: string, ownerId: string, permissionId: string) {
-  return uploadImage(base64Data, `students/${safeSegment(ownerId)}`, safeSegment(permissionId));
+  return uploadImage(base64Data, gatePhotoFolder(ownerId), safeSegment(permissionId));
+}
+
+/** Storage folder holding one person’s gate photos. */
+export function gatePhotoFolder(ownerId: string): string {
+  return `students/${safeSegment(ownerId)}`;
 }
 
 export function uploadOutsiderPhotoAdmin(base64Data: string, outsiderName: string) {

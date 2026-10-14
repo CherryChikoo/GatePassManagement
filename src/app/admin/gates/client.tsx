@@ -142,7 +142,15 @@ export function GatesClient({ user, gates }: Props) {
       </div>
 
       <Modal open={showModal} onClose={() => { setShowModal(false); setError(null); setEditingGate(null); }} title={editingGate ? "Edit Gate" : "Add New Gate"}>
-        <form action={handleSave} className="space-y-4">
+        <form
+          // Not a form action: React resets action forms after submit, which would
+          // wipe what was typed when the server returns an error.
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSave(new FormData(e.currentTarget));
+          }}
+          className="space-y-4"
+        >
           {error && (
             <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>
           )}

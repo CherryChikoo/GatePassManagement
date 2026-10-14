@@ -202,9 +202,14 @@ export function UserManagementClient({
           phone: formData.get("phone") as string,
           employeeId: formData.get("employeeId") as string,
           department: resolvedDept,
-          designation: formData.get("designation") as string,
+          // Deans are saved as "Dean of <area>"
+          designation:
+            editingUser.role === "DEAN"
+              ? `Dean of ${String(formData.get("deanOf") || "").trim().replace(/^dean\s+of\s+/i, "")}`
+              : (formData.get("designation") as string),
           hostelBlock: formData.get("hostelBlock") as string,
           gateId: formData.get("gateId") as string,
+          ...(editingUser.role === "SECURITY" ? { isHeadSecurity: formData.get("isHeadSecurity") === "on" } : {}),
         });
 
         if (res?.error) {
@@ -817,6 +822,7 @@ export function UserManagementClient({
                                           )}
                                           {role === "SECURITY" && u.securityStaff && (
                                             <p className="text-xs text-blue-400">
+                                              {u.securityStaff.isHead && <span className="mr-1.5 rounded bg-orange-500/15 px-1.5 py-0.5 font-semibold text-orange-300">Head Security</span>}
                                               {u.securityStaff.gate?.name ? `Gate: ${u.securityStaff.gate.name}` : "Unassigned Gate"}
                                             </p>
                                           )}
@@ -920,7 +926,15 @@ export function UserManagementClient({
         title="Create New User"
         className="max-w-2xl"
       >
-        <form action={handleCreateUser} className="space-y-6">
+        <form
+          // Not a form action: React resets action forms after submit, which would
+          // wipe everything typed when the server returns an error (e.g. email taken).
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleCreateUser(new FormData(e.currentTarget));
+          }}
+          className="space-y-6"
+        >
           {error && (
             <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
               {error}
@@ -963,6 +977,7 @@ export function UserManagementClient({
               <option value="DIRECTOR">Director</option>
               <option value="WARDEN">Warden</option>
               <option value="SECURITY">Security</option>
+              <option value="HEAD_SECURITY">Head Security (takes staff attendance)</option>
               <option value="SECURITY_SUPERVISOR">Security Supervisor (view only)</option>
             </Select>
 
@@ -1136,7 +1151,14 @@ export function UserManagementClient({
                   <Input name="employeeId" label="Employee ID *" required id="create-dir-emp" defaultValue={`DIR-${Date.now().toString().slice(-4)}`} />
                   <Input name="department" label="Department" defaultValue="All Departments" id="create-dir-dept" />
                 </div>
-                <Input name="designation" label="Designation" defaultValue="Director" id="create-dir-designation" />
+                <Input
+                  name="designation"
+                  label="Title *"
+                  required
+                  maxLength={100}
+                  placeholder="e.g. Managing Director"
+                  id="create-dir-designation"
+                />
               </div>
             )}
 
@@ -1151,7 +1173,20 @@ export function UserManagementClient({
                   <Input name="employeeId" label="Employee ID *" required id="create-dean-emp" defaultValue={`DEAN-${Date.now().toString().slice(-4)}`} />
                   <Input name="department" label="Department" defaultValue="All Departments" id="create-dean-dept" />
                 </div>
-                <Input name="designation" label="Designation" defaultValue="Dean" id="create-dean-designation" />
+                <div className="space-y-1.5">
+                  <label htmlFor="create-dean-of" className="block text-sm font-medium text-zinc-300">Dean of *</label>
+                  <div className="flex items-stretch rounded-xl border border-zinc-700/50 bg-zinc-900 focus-within:ring-2 focus-within:ring-orange-500/40">
+                    <span className="flex items-center px-3.5 text-sm font-semibold text-zinc-400 border-r border-zinc-700/50 whitespace-nowrap">Dean of</span>
+                    <input
+                      id="create-dean-of"
+                      name="deanOf"
+                      required
+                      maxLength={80}
+                      placeholder="e.g. Placements, Internal Affairs, Academics"
+                      className="h-12 w-full min-w-0 bg-transparent px-3.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1170,7 +1205,7 @@ export function UserManagementClient({
             )}
 
             {/* Security-specific */}
-            {selectedRole === "SECURITY" && (
+            {(selectedRole === "SECURITY" || selectedRole === "HEAD_SECURITY") && (
               <div className="space-y-4 rounded-xl border border-zinc-800/50 p-5 mt-4 bg-zinc-900/50">
                 <p className="text-sm font-medium text-red-400 flex items-center gap-2 mb-4">
                   <Shield className="h-4 w-4" />
@@ -1489,14 +1524,35 @@ export function UserManagementClient({
                       />
                     </div>
                   )}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-400">Designation</label>
-                    <Input
-                      name="designation"
-                      defaultValue={editingUser.faculty?.designation || ""}
-                      className="bg-zinc-900 border-zinc-800"
-                    />
-                  </div>
+                  {editingUser.role === "DEAN" ? (
+                    <div className="space-y-1.5">
+                      <label htmlFor="edit-dean-of" className="text-xs font-medium text-zinc-400">Dean of *</label>
+                      <div className="flex items-stretch rounded-xl border border-zinc-800 bg-zinc-900 focus-within:ring-2 focus-within:ring-orange-500/40">
+                        <span className="flex items-center px-3 text-sm font-semibold text-zinc-400 border-r border-zinc-800 whitespace-nowrap">Dean of</span>
+                        <input
+                          id="edit-dean-of"
+                          name="deanOf"
+                          required
+                          maxLength={80}
+                          defaultValue={(editingUser.faculty?.designation || "").replace(/^dean(\s+of)?\s*/i, "")}
+                          placeholder="e.g. Placements, Internal Affairs"
+                          className="h-11 w-full min-w-0 bg-transparent px-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-zinc-400">{editingUser.role === "DIRECTOR" ? "Title *" : "Designation"}</label>
+                      <Input
+                        name="designation"
+                        required={editingUser.role === "DIRECTOR"}
+                        maxLength={100}
+                        placeholder={editingUser.role === "DIRECTOR" ? "e.g. Managing Director" : undefined}
+                        defaultValue={editingUser.faculty?.designation || ""}
+                        className="bg-zinc-900 border-zinc-800"
+                      />
+                    </div>
+                  )}
                 </>
               )}
 
@@ -1544,6 +1600,18 @@ export function UserManagementClient({
                       ))}
                     </Select>
                   </div>
+                  <label className="flex items-start gap-2.5 rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2.5 cursor-pointer sm:col-span-2">
+                    <input
+                      type="checkbox"
+                      name="isHeadSecurity"
+                      defaultChecked={!!editingUser.securityStaff?.isHead}
+                      className="mt-0.5 h-4 w-4 accent-orange-500"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-zinc-200">Head Security</span>
+                      <span className="block text-xs text-zinc-500">Can see and take the staff attendance register. Everything else is the same as Security.</span>
+                    </span>
+                  </label>
                 </>
               )}
             </div>

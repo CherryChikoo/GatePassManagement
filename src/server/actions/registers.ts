@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole, type AuthUser } from "@/lib/auth/helpers";
 import { revalidatePath } from "next/cache";
 import { createSignedPhotoUrl } from "@/lib/storage/storage-admin";
+import { getRegisterAccess } from "@/lib/registers/access";
 import {
   REGISTER_BY_KEY,
   facultyRequestTypeLabel,
@@ -16,6 +17,7 @@ import {
   buildSearchText,
   effectiveData,
   validateCompletion,
+  validateAdminEdit,
   validateNewRecord,
   type CompletionPayload,
   type RawPayload,
@@ -94,9 +96,10 @@ export async function getRegisterStaffOptions() {
 
 /** Security records a new register entry. Saved records can never be edited or deleted. */
 export async function createRegisterEntry(registerKey: string, payload: RawPayload, clientToken: string) {
-  const user = await requireRole("SECURITY");
+  const user = await requireRole("SECURITY", "ADMIN");
   const def = entryRegister(registerKey);
   if (!def) return { error: "Unknown register" };
+  if (!(await getRegisterAccess(user)).canCreate(def.key)) return { error: "You are not allowed to add to this register" };
   if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
 
   const result = await validateNewRecord(def, payload, resolveStaff);
@@ -129,7 +132,8 @@ export async function createRegisterEntry(registerKey: string, payload: RawPaylo
  * or marks workers out, as a separate COMPLETION record. Nothing is overwritten.
  */
 export async function completeRegisterEntry(entryId: string, payload: CompletionPayload, clientToken: string) {
-  const user = await requireRole("SECURITY");
+  const user = await requireRole("SECURITY", "ADMIN");
+  const access = await getRegisterAccess(user);
   if (typeof entryId !== "string" || !entryId) return { error: "Record not found" };
   if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
 
@@ -146,6 +150,7 @@ export async function completeRegisterEntry(entryId: string, payload: Completion
       if (!original) return { error: "Record not found" };
       const def = entryRegister(original.register);
       if (!def) return { error: "Unknown register" };
+      if (!access.canCreate(def.key)) return { error: "You are not allowed to update this register" };
 
       const current = effectiveData(def, original.data as RegisterData, original.supplements);
       const checked = await validateCompletion(def, current, payload);
@@ -174,9 +179,10 @@ export async function completeRegisterEntry(entryId: string, payload: Completion
 }
 
 export async function listRegisterEntries(params: { register: string; date?: string; q?: string; page?: number }) {
-  await requireRole(...VIEW_ROLES);
+  const user = await requireRole(...VIEW_ROLES);
   const def = entryRegister(params?.register);
   if (!def) return { error: "Unknown register" };
+  if (!(await getRegisterAccess(user)).canView(def.key)) return { error: "You do not have access to this register" };
 
   const page = parsePageParam(String(params.page ?? 1));
   const range = dayFilter(params.date);
@@ -664,11 +670,12 @@ export async function getHomeOutingSummary(params: { from?: string; to?: string 
 // ──────────────────────────────────────────────────────────────
 
 export async function getRegisterCountsToday() {
-  await requireRole(...VIEW_ROLES);
+  const user = await requireRole(...VIEW_ROLES);
+  const { hidden } = await getRegisterAccess(user);
   const { start, end } = istDayRangeFromParam(istDateString());
   const grouped = await prisma.registerEntry.groupBy({
     by: ["register"],
-    where: { kind: "ORIGINAL", entryDate: { gte: start, lt: end } },
+    where: { kind: "ORIGINAL", entryDate: { gte: start, lt: end }, register: { notIn: hidden } },
     _count: { _all: true },
   });
   const counts: Record<string, number> = {};
@@ -798,5 +805,165 @@ export async function getHomeOutingDay(date: string) {
       to: iso(p.endDate ?? p.exitDate),
       exitedAt: iso(p.movements[0]?.createdAt),
     })),
+  };
+}
+
+// ──────────────────────────────────────────────────────────────
+// Main Admin: edit / delete register records
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * Main Admin overwrites a register record with corrected values. Any later
+ * recordings (In / Out, workers marked out) are folded into the record.
+ * The previous values are not kept.
+ */
+export async function adminUpdateRegisterEntry(entryId: string, payload: RawPayload) {
+  await requireRole("ADMIN");
+  if (typeof entryId !== "string" || !entryId) return { error: "Record not found" };
+
+  try {
+    const res = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"register-entry:" + entryId}))`;
+      const original = await tx.registerEntry.findFirst({
+        where: { id: entryId, kind: "ORIGINAL" },
+        select: { id: true, register: true, data: true, supplements: { select: { kind: true, data: true, createdAt: true } } },
+      });
+      if (!original) return { error: "Record not found" };
+      const def = entryRegister(original.register);
+      if (!def) return { error: "Unknown register" };
+
+      const current = effectiveData(def, original.data as RegisterData, original.supplements);
+      const checked = await validateAdminEdit(def, current, payload, resolveStaff);
+      if ("error" in checked) return { error: checked.error };
+
+      await tx.registerEntry.deleteMany({ where: { parentId: original.id } });
+      await tx.registerEntry.update({
+        where: { id: original.id },
+        data: {
+          data: checked.data as Prisma.InputJsonValue,
+          searchText: buildSearchText(def, checked.data),
+          ...(checked.entryDateStr ? { entryDate: istDateToInstant(checked.entryDateStr) } : {}),
+        },
+      });
+      return { success: true as const };
+    });
+    if ("success" in res) revalidateRegisters();
+    return res;
+  } catch (err: any) {
+    console.error("[adminUpdateRegisterEntry] failed:", err?.message);
+    return { error: "Could not save the changes. Please try again." };
+  }
+}
+
+/** Main Admin permanently deletes a register record (and its later recordings). */
+export async function adminDeleteRegisterEntry(entryId: string) {
+  await requireRole("ADMIN");
+  if (typeof entryId !== "string" || !entryId) return { error: "Record not found" };
+  try {
+    const deleted = await prisma.$transaction(async (tx) => {
+      const original = await tx.registerEntry.findFirst({ where: { id: entryId, kind: "ORIGINAL" }, select: { id: true } });
+      if (!original) return 0;
+      await tx.registerEntry.deleteMany({ where: { parentId: original.id } });
+      await tx.registerEntry.delete({ where: { id: original.id } });
+      return 1;
+    });
+    if (!deleted) return { error: "Record not found or already deleted" };
+  } catch (err: any) {
+    console.error("[adminDeleteRegisterEntry] failed:", err?.message);
+    return { error: "Could not delete the record. Please try again." };
+  }
+  revalidateRegisters();
+  return { success: true };
+}
+
+/** Full details of one gate movement (exit / entry) for the details popup. */
+export async function getMovementDetails(movementId: string) {
+  await requireRole(...VIEW_ROLES);
+  if (typeof movementId !== "string" || !movementId) return { error: "Record not found" };
+  const m = await prisma.movement.findUnique({
+    where: { id: movementId },
+    select: {
+      id: true, type: true, createdAt: true, notes: true, imagePath: true,
+      gate: { select: { name: true, location: true } },
+      securityUser: { select: { employeeId: true, profile: { select: { name: true } } } },
+      student: {
+        select: {
+          studentRoll: true, department: true, year: true, semester: true, section: true, studentType: true, hostelType: true,
+          roomNumber: true, hostelBlock: true, profile: { select: { name: true, phone: true } },
+        },
+      },
+      faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { name: true, phone: true } } } },
+      permission: {
+        select: {
+          id: true, type: true, purpose: true, destination: true, requestType: true, passKind: true,
+          exitDate: true, endDate: true, expectedExit: true, expectedReturn: true, contactNumber: true, remarks: true,
+          createdAt: true, approvedAt: true, approverType: true, approvalMode: true,
+          approval: { select: { faculty: { select: { profile: { select: { name: true } } } }, warden: { select: { profile: { select: { name: true } } } } } },
+        },
+      },
+    },
+  });
+  if (!m) return { error: "Record not found" };
+  const person = m.student
+    ? {
+        kind: "Student",
+        name: m.student.profile.name,
+        phone: m.student.profile.phone,
+        id: m.student.studentRoll,
+        department: m.student.department,
+        detail: [
+          m.student.year && `Year ${m.student.year}`,
+          m.student.semester && `Sem ${m.student.semester}`,
+          m.student.section && `Section ${m.student.section}`,
+        ].filter(Boolean).join(" • "),
+        type:
+          m.student.studentType === "HOSTELLER"
+            ? `Hosteller${m.student.hostelType ? ` (${m.student.hostelType === "BOYS" ? "Boys" : "Ladies"})` : ""}${m.student.roomNumber ? ` • Room ${m.student.roomNumber}` : ""}`
+            : "Day Scholar",
+      }
+    : m.faculty
+    ? {
+        kind: "Faculty",
+        name: m.faculty.profile.name,
+        phone: m.faculty.profile.phone,
+        id: m.faculty.employeeId,
+        department: m.faculty.department,
+        detail: m.faculty.designation,
+        type: "Faculty",
+      }
+    : null;
+  const p = m.permission;
+  return {
+    success: true,
+    movement: {
+      id: m.id,
+      type: m.type,
+      at: m.createdAt.toISOString(),
+      gate: [m.gate?.name, m.gate?.location].filter(Boolean).join(" • "),
+      guard: [m.securityUser?.profile?.name, m.securityUser?.employeeId].filter(Boolean).join(" • "),
+      notes: m.notes,
+      photoUrl: await signedPhoto(m.imagePath),
+      person,
+      pass: p
+        ? {
+            type: p.type,
+            requestType: facultyRequestTypeLabel(p.requestType) || null,
+            hostelPass: p.passKind === "HOSTEL",
+            purpose: p.purpose,
+            destination: p.destination,
+            dates: { from: iso(p.exitDate), to: iso(p.endDate ?? p.exitDate) },
+            expectedExit: iso(p.expectedExit),
+            expectedReturn: iso(p.expectedReturn),
+            contactNumber: p.contactNumber,
+            remarks: p.remarks,
+            requestedAt: iso(p.createdAt),
+            approvedAt: iso(p.approvedAt),
+            approvedBy:
+              p.approvalMode === "BOTH"
+                ? "HOD & Dean"
+                : p.approval?.faculty?.profile?.name ?? p.approval?.warden?.profile?.name ?? (p.approverType === "WARDEN" ? "Warden" : p.approverType === "DEAN" ? "Dean" : "HOD"),
+          }
+        : null,
+    },
   };
 }

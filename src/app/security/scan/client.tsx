@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import jsQR from "jsqr";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, StatusBadge, Textarea } from "@/components/ui/primitives";
-import { verifyQrScan, registerExit, registerEntry } from "@/server/actions/security";
+import { verifyQrScan, registerExit, registerEntry, prepareGatePhoto } from "@/server/actions/security";
+import { QrScanner } from "@/components/scan/qr-scanner";
 import { formatDateTime } from "@/lib/utils";
 import {
   ScanLine,
@@ -29,7 +29,7 @@ interface Props {
   gates: { id: string; name: string; location: string | null }[];
 }
 
-type ScanState = "idle" | "scanning_qr" | "verified" | "capturing_photo" | "registering" | "done" | "error";
+type ScanState = "idle" | "scanning_qr" | "verifying" | "verified" | "capturing_photo" | "registering" | "done" | "error";
 
 export function ScanClient({ user, gates }: Props) {
   const [state, setState] = useState<ScanState>("idle");
@@ -43,9 +43,20 @@ export function ScanClient({ user, gates }: Props) {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const scanLoopRef = useRef<number | null>(null);
   const isCameraIntendedRef = useRef<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Photo uploads in the background as soon as it is taken; Register just waits for it
+  const photoUploadRef = useRef<Promise<string | null> | null>(null);
+
+  function acceptPhoto(dataUrl: string) {
+    setCapturedImage(dataUrl);
+    const permissionId = verifyResult?.permission?.id;
+    photoUploadRef.current = permissionId
+      ? prepareGatePhoto(permissionId, dataUrl)
+          .then((r: any) => (r && "path" in r && r.path ? (r.path as string) : null))
+          .catch(() => null)
+      : null;
+  }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -62,7 +73,7 @@ export function ScanClient({ user, gates }: Props) {
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          setCapturedImage(canvas.toDataURL("image/jpeg", 0.7));
+          acceptPhoto(canvas.toDataURL("image/jpeg", 0.7));
           stopCamera();
           setState("verified");
         }
@@ -84,10 +95,6 @@ export function ScanClient({ user, gates }: Props) {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-    if (scanLoopRef.current) {
-      cancelAnimationFrame(scanLoopRef.current);
-      scanLoopRef.current = null;
-    }
   }, []);
 
   // Cleanup on unmount
@@ -97,68 +104,17 @@ export function ScanClient({ user, gates }: Props) {
     };
   }, [stopCamera]);
 
-  // Start QR Scanning mode
-  const startQrScanner = async () => {
+  // Start QR scanning (the scanner component owns the camera)
+  const startQrScanner = () => {
     stopCamera();
-    isCameraIntendedRef.current = true;
-    setState("scanning_qr");
     setError(null);
     setVerifyResult(null);
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } },
-      });
-      if (!isCameraIntendedRef.current) {
-        stream.getTracks().forEach((t) => t.stop());
-        return;
-      }
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute("playsinline", "true"); // required to tell iOS safari we don't want fullscreen
-        await videoRef.current.play();
-        scanLoop();
-      }
-    } catch (err) {
-      console.error("Camera error:", err);
-      stopCamera();
-      setError("Camera access required to scan QR code. Please allow camera access.");
-      setState("error");
-    }
-  };
-
-  const scanLoop = () => {
-    if (!videoRef.current || videoRef.current.readyState !== videoRef.current.HAVE_ENOUGH_DATA) {
-      scanLoopRef.current = requestAnimationFrame(scanLoop);
-      return;
-    }
-
-    const canvas = document.createElement("canvas");
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-
-    if (ctx) {
-      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: "dontInvert",
-      });
-
-      if (code && code.data) {
-        stopCamera();
-        handleVerify(code.data);
-        return;
-      }
-    }
-
-    scanLoopRef.current = requestAnimationFrame(scanLoop);
+    setState("scanning_qr");
   };
 
   // Verify QR code once detected
   async function handleVerify(token: string) {
-    setState("registering"); // Temporary loading state
+    setState("verifying");
     setError(null);
 
     try {
@@ -223,7 +179,7 @@ export function ScanClient({ user, gates }: Props) {
     if (ctx) {
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
       const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-      setCapturedImage(dataUrl);
+      acceptPhoto(dataUrl);
       stopCamera();
       setState("verified");
     }
@@ -231,6 +187,7 @@ export function ScanClient({ user, gates }: Props) {
 
   function retakePhoto() {
     setCapturedImage(null);
+    photoUploadRef.current = null;
     startPhotoCapture();
   }
 
@@ -255,11 +212,14 @@ export function ScanClient({ user, gates }: Props) {
       : notes || undefined;
 
     try {
+      // Use the photo already uploaded in the background; fall back to sending it now
+      const uploaded = photoUploadRef.current ? await photoUploadRef.current : null;
+      const photo = uploaded || capturedImage || undefined;
       let result;
       if (action === "EXIT") {
-        result = await registerExit(verifyResult.permission.id, selectedGate, capturedImage || undefined, finalNotes);
+        result = await registerExit(verifyResult.permission.id, selectedGate, photo, finalNotes);
       } else {
-        result = await registerEntry(verifyResult.permission.id, selectedGate, capturedImage || undefined, finalNotes);
+        result = await registerEntry(verifyResult.permission.id, selectedGate, photo, finalNotes);
       }
 
       if (result.error) {
@@ -281,6 +241,7 @@ export function ScanClient({ user, gates }: Props) {
     setState("idle");
     setVerifyResult(null);
     setCapturedImage(null);
+    photoUploadRef.current = null;
     setManualToken("");
     setNotes("");
     setError(null);
@@ -395,43 +356,17 @@ export function ScanClient({ user, gates }: Props) {
 
         {/* SCANNING QR */}
         {state === "scanning_qr" && (
-          <div className="fixed inset-0 z-[100] bg-black flex flex-col sm:relative sm:z-auto sm:bg-transparent">
-            {/* Header for mobile */}
-            <div className="sm:hidden flex items-center justify-between p-4 bg-zinc-950/80 backdrop-blur-md absolute top-0 left-0 right-0 z-10 border-b border-zinc-800/50">
-              <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                <ScanLine className="h-5 w-5 text-indigo-400" />
-                Scan QR Code
-              </h3>
-              <button onClick={resetScan} className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-full text-white transition-colors">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            
-            <div className="flex-1 flex flex-col justify-center sm:block">
-              <Card className="sm:border sm:border-zinc-800 border-none bg-transparent sm:bg-zinc-900 rounded-none sm:rounded-xl">
-                <CardContent className="p-0 sm:p-6 space-y-4 text-center h-full flex flex-col justify-center">
-                  <h3 className="hidden sm:block font-bold text-zinc-200">Scanning QR Code...</h3>
-                  <div className="relative overflow-hidden sm:rounded-xl border-y-2 sm:border-2 border-indigo-500/50 w-full flex-1 sm:flex-none flex items-center bg-black">
-                    <video
-                      ref={videoRef}
-                      className="w-full h-full object-cover sm:h-auto"
-                      style={{ minHeight: "100%", maxHeight: "100vh" }}
-                    />
-                    {/* Viewfinder overlay */}
-                    <div className="absolute inset-0 pointer-events-none border-[60px] sm:border-[40px] border-black/60 flex items-center justify-center">
-                       <div className="w-full h-full border-2 border-white/50 rounded-lg relative">
-                         {/* Scanning animation line */}
-                         <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-indigo-500 shadow-[0_0_15px_3px_rgba(99,102,241,0.8)]"></div>
-                       </div>
-                    </div>
-                  </div>
-                  <Button onClick={resetScan} variant="outline" className="w-full hidden sm:flex">
-                    Cancel
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+          <QrScanner title="Scan gate pass" onResult={handleVerify} onCancel={resetScan} />
+        )}
+
+        {/* VERIFYING */}
+        {state === "verifying" && (
+          <Card>
+            <CardContent className="p-8 text-center space-y-3">
+              <div className="mx-auto h-10 w-10 rounded-full border-4 border-zinc-700 border-t-emerald-400 animate-spin" />
+              <p className="text-zinc-300 font-medium">Verifying pass…</p>
+            </CardContent>
+          </Card>
         )}
 
         {/* VERIFIED — Show student info + actions */}
@@ -706,7 +641,7 @@ export function ScanClient({ user, gates }: Props) {
             <CardContent className="p-8 text-center">
               <div className="animate-pulse">
                 <ShieldCheck className="h-12 w-12 text-indigo-400 mx-auto mb-4" />
-                <p className="text-zinc-400">Processing...</p>
+                <p className="text-zinc-400">Registering…</p>
               </div>
             </CardContent>
           </Card>

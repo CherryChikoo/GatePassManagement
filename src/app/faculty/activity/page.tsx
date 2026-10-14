@@ -9,11 +9,14 @@ export const revalidate = 0;
 export default async function FacultyActivityPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; date?: string }>;
+  searchParams: Promise<{ page?: string; date?: string; q?: string; tab?: string }>;
 }) {
   const resolvedParams = await searchParams;
   const page = parsePageParam(resolvedParams.page);
   const pageSize = 25;
+  // Search and the Entries / Exits tab are applied on the server, so they cover every page
+  const q = typeof resolvedParams.q === "string" ? resolvedParams.q.trim().slice(0, 100) : "";
+  const tab = resolvedParams.tab === "ENTRIES" || resolvedParams.tab === "EXITS" ? resolvedParams.tab : "ALL";
 
   // IST calendar day; invalid ?date falls back to today
   const { start: startDate, end: dayEnd, dateStr } = istDayRangeFromParam(resolvedParams.date);
@@ -37,12 +40,27 @@ export default async function FacultyActivityPage({
     ],
   };
 
+  const studentsWhere = {
+    AND: [
+      { student: { facultyId: faculty.id } },
+      dateCondition,
+      ...(tab === "ENTRIES" ? [{ type: "ENTRY" as const }] : tab === "EXITS" ? [{ type: "EXIT" as const }] : []),
+      ...(q
+        ? [{
+            student: {
+              OR: [
+                { studentRoll: { contains: q, mode: "insensitive" as const } },
+                { profile: { name: { contains: q, mode: "insensitive" as const } } },
+              ],
+            },
+          }]
+        : []),
+    ],
+  };
+
   const [permissions, total, ownPasses] = await Promise.all([
     prisma.permission.findMany({
-      where: {
-        student: { facultyId: faculty.id },
-        ...dateCondition,
-      },
+      where: studentsWhere,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -55,12 +73,7 @@ export default async function FacultyActivityPage({
         }
       },
     }),
-    prisma.permission.count({
-      where: {
-        student: { facultyId: faculty.id },
-        ...dateCondition,
-      }
-    }),
+    prisma.permission.count({ where: studentsWhere }),
     // The faculty member's own passes on this date (My Passes shows only today)
     prisma.permission.findMany({
       where: { facultyId: faculty.id, ...dateCondition },
@@ -85,7 +98,10 @@ export default async function FacultyActivityPage({
       ownPasses={ownPasses}
       total={total}
       currentPage={page}
+      pageSize={pageSize}
       selectedDate={dateStr}
+      search={q}
+      tab={tab}
     />
   );
 }

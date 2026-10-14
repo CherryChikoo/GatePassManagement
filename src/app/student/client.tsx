@@ -11,6 +11,7 @@ import { logoutAction } from "@/server/actions/auth";
 import {
   createPermissionRequest,
   createEntryRequest,
+  createHostelVisitRequest,
   cancelPermissionRequest,
   generateLiveQrToken,
 } from "@/server/actions/permissions";
@@ -20,6 +21,13 @@ import { normalizeTime } from "@/lib/time/parse-time";
 import { TimeField } from "@/components/ui/time-field";
 import { AssignedApproverCard, type AssignedApprover } from "@/components/student/assigned-approver";
 import QRCode from "qrcode";
+
+/** Phone: 10–15 digits, optional +, spaces or dashes (same rule as the server). */
+const PHONE_RE = /^\+?[0-9][0-9\s-]{8,16}[0-9]$/;
+/** Keeps only characters that can appear in a phone number. */
+export function phoneOnly(value: string): string {
+  return value.replace(/[^0-9+\s-]/g, "");
+}
 import Link from "next/link";
 import {
   Clock,
@@ -36,6 +44,7 @@ import {
   Hourglass,
   Sparkles,
   X,
+  Home,
 } from "lucide-react";
 import { useAppStore, logoutAndClear } from "@/stores/app-store";
 import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
@@ -106,7 +115,7 @@ export function StudentDashboardClient({ user }: Props) {
     );
   }
 
-  const { student, isHosteller, assignedApprover, latestPermission } = dashboardData;
+  const { student, isHosteller, assignedApprover, latestPermission, hostelPassApprover } = dashboardData;
   const showRejected = state === "REJECTED" && latestPermission && dismissedRejectionId !== latestPermission.id;
   const showForm = state === "FORM" || (state === "REJECTED" && !showRejected);
 
@@ -137,6 +146,7 @@ export function StudentDashboardClient({ user }: Props) {
           <PermissionFormView
             student={student}
             assignedApprover={assignedApprover}
+            hostelPassApprover={hostelPassApprover}
             isHosteller={isHosteller}
             latestPermission={latestPermission}
           />
@@ -251,6 +261,8 @@ function QrCodeView({
   student: any;
   permission: any;
 }) {
+  // Hostel pass: HOD-approved, scanned by the hostel warden (not gate security)
+  const isHostelPass = permission?.passKind === "HOSTEL";
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<string>("");
@@ -274,8 +286,8 @@ function QrCodeView({
         }
         if ("token" in res && res.token) {
           const url = await QRCode.toDataURL(res.token, {
-            width: 300,
-            margin: 2,
+            width: 360, // rendered large: crisp dots scan faster from a screen
+            margin: 4, // the standard white border scanners need
             color: { dark: "#000000", light: "#ffffff" },
             errorCorrectionLevel: "M",
           });
@@ -343,13 +355,15 @@ function QrCodeView({
             : "bg-orange-500/15 border border-orange-500/30 text-orange-400"
         }`}>
           <ShieldCheck className="h-4 w-4" />
-          <span>{permission.type === "ENTRY" ? "Active Campus ENTRY Pass" : "Active Campus EXIT Pass"}</span>
+          <span>{isHostelPass ? "Active HOSTEL Pass" : permission.type === "ENTRY" ? "Active Campus ENTRY Pass" : "Active Campus EXIT Pass"}</span>
         </div>
         <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">
-          Scan at Campus Gate
+          {isHostelPass ? "Show to Your Hostel Warden" : "Scan at Campus Gate"}
         </h1>
         <p className="text-sm text-zinc-400">
-          {permission.type === "ENTRY"
+          {isHostelPass
+            ? "Your HOD approved this pass. Show this QR code to your hostel warden when you reach the hostel."
+            : permission.type === "ENTRY"
             ? "Present this QR code to the gate security officer to enter campus."
             : "Present this QR code to the gate security officer to exit campus."}
         </p>
@@ -421,8 +435,14 @@ function QrCodeView({
           </div>
 
           <p className="text-xs text-zinc-500 max-w-sm">
-            This QR code refreshes automatically every minute — screenshots will not work at the gate.
-            Once scanned by security, your {permission.type === "ENTRY" ? "entry" : "exit"} will be logged and this pass will be completed.
+            {isHostelPass ? (
+              <>This QR code refreshes automatically every minute — screenshots will not work. Once your warden scans it, your arrival at the hostel is recorded and this pass is completed.</>
+            ) : (
+              <>
+                This QR code refreshes automatically every minute — screenshots will not work at the gate.
+                Once scanned by security, your {permission.type === "ENTRY" ? "entry" : "exit"} will be logged and this pass will be completed.
+              </>
+            )}
           </p>
         </CardContent>
       </Card>
@@ -589,17 +609,30 @@ function PendingApprovalView({
 function PermissionFormView({
   student,
   assignedApprover,
+  hostelPassApprover,
   isHosteller,
   latestPermission,
 }: {
   student: any;
   assignedApprover: AssignedApprover | undefined;
+  /** Hostellers going to the hostel: their department HOD */
+  hostelPassApprover?: AssignedApprover | null;
   isHosteller: boolean;
   latestPermission: any | null;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Errors shown under the input they belong to
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const showFieldError = (field: string, message: string) => {
+    setFieldErrors({ [field]: message });
+    setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[name="${field}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      el?.focus();
+    }, 0);
+  };
 
   const [hideExpiryAlert, setHideExpiryAlert] = useState<boolean>(false);
 
@@ -618,7 +651,7 @@ function PermissionFormView({
   }, [wasExpired, hideExpiryAlert]);
 
   const isOutside = student?.status === "OUTSIDE";
-  const [requestType, setRequestType] = useState<"EXIT" | "ENTRY">(() => isOutside ? "ENTRY" : "EXIT");
+  const [requestType, setRequestType] = useState<"EXIT" | "ENTRY" | "HOSTEL">(() => isOutside ? "ENTRY" : "EXIT");
   // Hostellers' exit requests are outing passes (date range + parent contact)
   const isOuting = isHosteller && requestType === "EXIT";
   const studentName = useAppStore((s) => s.user?.name) ?? "";
@@ -628,8 +661,19 @@ function PermissionFormView({
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setFieldErrors({});
 
     const formData = new FormData(e.currentTarget);
+
+    // Phone numbers: checked here so the message appears at the field
+    for (const field of ["contactNumber", "videoCallNumber"] as const) {
+      const v = String(formData.get(field) ?? "").trim();
+      if (v && !PHONE_RE.test(v)) {
+        showFieldError(field, "Enter a valid phone number (10–15 digits)");
+        setLoading(false);
+        return;
+      }
+    }
 
     // The time picker already gives "HH:mm"; normalize anyway for older browsers
     // that fall back to a plain text box (accepts "11 59 am", "4pm", "16:30", ...).
@@ -645,11 +689,15 @@ function PermissionFormView({
       formData.set(field, normalized);
     }
     try {
-      const result = requestType === "ENTRY"
-        ? await createEntryRequest(formData)
-        : await createPermissionRequest(formData);
+      const result: { error?: string; field?: string; success?: boolean } =
+        requestType === "ENTRY"
+          ? await createEntryRequest(formData)
+          : requestType === "HOSTEL"
+          ? await createHostelVisitRequest(formData)
+          : await createPermissionRequest(formData);
       if (result?.error) {
-        setError(result.error);
+        if (result.field && document.querySelector(`[name="${result.field}"]`)) showFieldError(result.field, result.error);
+        else setError(result.error);
         setLoading(false);
       } else if (result?.success) {
         useAppStore.getState().refresh(true);
@@ -672,11 +720,13 @@ function PermissionFormView({
       {/* Title */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
-          {requestType === "ENTRY" ? "Request Campus Entry Pass" : "Request Campus Exit Pass"}
+          {requestType === "ENTRY" ? "Request Campus Entry Pass" : requestType === "HOSTEL" ? "Request Hostel Pass" : "Request Campus Exit Pass"}
         </h1>
         <p className="text-sm text-zinc-400 mt-1">
-          {requestType === "ENTRY" 
-            ? "Submit an entry request to obtain approval and an Entry QR code to enter campus." 
+          {requestType === "ENTRY"
+            ? "Submit an entry request to obtain approval and an Entry QR code to enter campus."
+            : requestType === "HOSTEL"
+            ? "Going from college to the hostel. Your HOD approves it and your hostel warden scans the QR when you arrive."
             : "Submit an exit request to leave the campus."}
         </p>
       </div>
@@ -714,6 +764,27 @@ function PermissionFormView({
           </div>
           <p className="text-[10px] sm:text-xs text-zinc-500 text-center mt-1 truncate">Enter campus</p>
         </button>
+
+        {isHosteller && (
+          <button
+            type="button"
+            onClick={() => {
+              setRequestType("HOSTEL");
+              setFieldErrors({});
+            }}
+            className={`flex-1 rounded-xl border-2 px-3 sm:px-6 py-3 sm:py-4 transition-all cursor-pointer text-left min-w-0 ${
+              requestType === "HOSTEL"
+                ? "border-sky-500 bg-sky-500/15 ring-2 ring-sky-500/20"
+                : "border-zinc-800 bg-zinc-900/40 hover:bg-zinc-800/40 opacity-70"
+            }`}
+          >
+            <div className={`flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm ${requestType === "HOSTEL" ? "text-sky-300 font-bold" : "text-zinc-400"}`}>
+              <Home className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+              <span className="truncate">HOSTEL Pass</span>
+            </div>
+            <p className="text-[10px] sm:text-xs text-zinc-500 text-center mt-1 truncate">Go to hostel</p>
+          </button>
+        )}
       </div>
 
       {/* Expiry Alert Banner */}
@@ -753,18 +824,20 @@ function PermissionFormView({
             <div className="space-y-2">
               <label className="text-sm font-medium text-zinc-300 flex items-center gap-2">
                 <FileText className={`h-4 w-4 ${requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}`} />
-                {requestType === "ENTRY" ? "Purpose of Campus Entry" : "Purpose of Exit"} <span className={requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}>*</span>
+                {requestType === "ENTRY" ? "Purpose of Campus Entry" : requestType === "HOSTEL" ? "Purpose of Going to Hostel" : "Purpose of Exit"} <span className={requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}>*</span>
               </label>
 
               <Input
                 name="purpose"
                 placeholder={requestType === "ENTRY" ? "e.g. Returning from home, Doctor visit return, Project return..." : "e.g. Doctor's appointment, Home visit, Project work..."}
                 required
+                error={fieldErrors.purpose}
                 className={`bg-zinc-950/60 border-zinc-800 ${requestType === "ENTRY" ? "focus:border-emerald-500" : "focus:border-orange-500"}`}
               />
             </div>
 
-            {/* Destination / Coming From */}
+            {/* Destination / Coming From (a hostel pass always goes to the hostel) */}
+            {requestType !== "HOSTEL" && (
             <div className="space-y-2">
               <label className="text-sm font-medium text-zinc-300 flex items-center gap-2">
                 <MapPin className={`h-4 w-4 ${requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}`} />
@@ -774,14 +847,16 @@ function PermissionFormView({
                 name="destination"
                 placeholder={requestType === "ENTRY" ? "e.g. Home, Hospital, City Center" : "e.g. Apollo Hospital, City Center, Home"}
                 required
+                error={fieldErrors.destination}
                 className={`bg-zinc-950/60 border-zinc-800 ${requestType === "ENTRY" ? "focus:border-emerald-500" : "focus:border-orange-500"}`}
               />
             </div>
+            )}
 
             {/* Approver (assigned automatically — students cannot choose) */}
             <AssignedApproverCard
-              approver={assignedApprover}
-              isHosteller={isHosteller}
+              approver={requestType === "HOSTEL" ? hostelPassApprover ?? undefined : assignedApprover}
+              isHosteller={isHosteller && requestType !== "HOSTEL"}
               accent={requestType === "ENTRY" ? "emerald" : "orange"}
             />
 
@@ -792,6 +867,7 @@ function PermissionFormView({
                 todayStr={todayStr}
                 outingFrom={outingFrom}
                 setOutingFrom={setOutingFrom}
+                fieldErrors={fieldErrors}
               />
             ) : (
             /* Timings Grid */
@@ -817,6 +893,7 @@ function PermissionFormView({
                   {requestType === "ENTRY" ? "Expected Entry Time" : "Expected Exit Time"} <span className={requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}>*</span>
                 </label>
                 <TimeField name="expectedExit" required defaultToNow />
+                {fieldErrors.expectedExit && <p className="text-xs text-red-400">{fieldErrors.expectedExit}</p>}
               </div>
             </div>
             )}
@@ -830,8 +907,13 @@ function PermissionFormView({
               <Input
                 name="contactNumber"
                 type="tel"
-                maxLength={10}
+                inputMode="tel"
+                maxLength={15}
                 placeholder="+91-9876543210"
+                onInput={(e) => {
+                  e.currentTarget.value = phoneOnly(e.currentTarget.value);
+                }}
+                error={fieldErrors.contactNumber}
                 className={`bg-zinc-950/60 border-zinc-800 ${requestType === "ENTRY" ? "focus:border-emerald-500" : "focus:border-orange-500"}`}
               />
             </div>
@@ -852,7 +934,7 @@ function PermissionFormView({
             {/* Submit Button */}
             <Button
               type="submit"
-              disabled={loading || !assignedApprover?.available}
+              disabled={loading || !(requestType === "HOSTEL" ? hostelPassApprover?.available : assignedApprover?.available)}
               className={`w-full h-11 text-white font-semibold text-sm cursor-pointer shadow-none ${
                 requestType === "ENTRY"
                   ? "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600"
@@ -862,12 +944,12 @@ function PermissionFormView({
               {loading ? (
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-                  <span>Submitting {requestType === "ENTRY" ? "Entry" : "Exit"} Request...</span>
+                  <span>Submitting {requestType === "ENTRY" ? "Entry" : requestType === "HOSTEL" ? "Hostel" : "Exit"} Request...</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
                   <Send className="h-4 w-4" />
-                  <span>Submit {requestType === "ENTRY" ? "ENTRY" : "EXIT"} Request</span>
+                  <span>Submit {requestType} Request</span>
                 </div>
               )}
             </Button>
@@ -885,12 +967,15 @@ function HostelOutingFields({
   todayStr,
   outingFrom,
   setOutingFrom,
+  fieldErrors = {},
 }: {
   student: any;
   studentName: string;
   todayStr: string;
   outingFrom: string;
   setOutingFrom: (v: string) => void;
+  /** Errors shown under the input they belong to */
+  fieldErrors?: Record<string, string>;
 }) {
   const maxDate = istDateString(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
   const [outingTo, setOutingTo] = useState(todayStr);
@@ -953,6 +1038,7 @@ function HostelOutingFields({
             min={outingFrom}
             onChange={(e) => setOutingTo(e.target.value)}
             required
+            error={fieldErrors.outingDateTo}
             className={`${inputCls} [color-scheme:dark]`}
           />
         </div>
@@ -961,12 +1047,14 @@ function HostelOutingFields({
             <Clock className="h-3.5 w-3.5 text-zinc-500" /> Out Time (on the From date) <span className="text-orange-400">*</span>
           </label>
           <TimeField name="expectedExit" required defaultToNow />
+          {fieldErrors.expectedExit && <p className="text-xs text-red-400">{fieldErrors.expectedExit}</p>}
         </div>
         <div className="space-y-2">
           <label htmlFor="inTime" className={label}>
             <Clock className="h-3.5 w-3.5 text-zinc-500" /> In Time (on the To date)
           </label>
           <TimeField name="inTime" />
+          {fieldErrors.inTime && <p className="text-xs text-red-400">{fieldErrors.inTime}</p>}
         </div>
       </div>
 
@@ -1010,7 +1098,19 @@ function HostelOutingFields({
           <label htmlFor="videoCallNumber" className={label}>
             <Phone className="h-3.5 w-3.5 text-zinc-500" /> Video Call Made to Phone
           </label>
-          <Input id="videoCallNumber" name="videoCallNumber" type="tel" maxLength={15} className={inputCls} />
+          <Input
+            id="videoCallNumber"
+            name="videoCallNumber"
+            type="tel"
+            inputMode="tel"
+            maxLength={15}
+            placeholder="Phone number"
+            onInput={(e) => {
+              e.currentTarget.value = phoneOnly(e.currentTarget.value);
+            }}
+            error={fieldErrors.videoCallNumber}
+            className={inputCls}
+          />
         </div>
       </div>
 

@@ -108,7 +108,7 @@ export const createUserSchema = z.object({
   name: z.string().min(2, "Name is required").max(100),
   email: z.string().email("Invalid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["STUDENT", "FACULTY", "WARDEN", "SECURITY", "SECURITY_SUPERVISOR", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "ADMIN"]),
+  role: z.enum(["STUDENT", "FACULTY", "WARDEN", "SECURITY", "HEAD_SECURITY", "SECURITY_SUPERVISOR", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "ADMIN"]),
   phone: z.string().optional().or(z.literal("")),
   // Student-specific
   studentRoll: z.string().optional().or(z.literal("")),
@@ -164,6 +164,8 @@ export const adminUserUpdateSchema = z.object({
   employeeId: optionalText(50),
   hostelBlock: optionalText(50),
   gateId: z.string().uuid().optional().nullable().or(z.literal("")),
+  /** Security accounts only: Head Security can take staff attendance */
+  isHeadSecurity: z.boolean().optional(),
 });
 
 export const updateGateSchema = createGateSchema;

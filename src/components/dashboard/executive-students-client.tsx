@@ -1,4 +1,5 @@
 "use client";
+import { PassHistoryPanel } from "@/components/passes/pass-history-panel";
 import { oversightRoleMeta, type OversightRole } from "@/components/dashboard/oversight-role";
 
 import React, { useState, useMemo } from "react";
@@ -439,6 +440,7 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
           open={true}
           onClose={() => setSelectedStudent(null)}
           title="Student Profile & Academic Details"
+          className="max-w-2xl"
         >
           <div className="space-y-5 pt-2">
             <p className="text-xs text-zinc-400">
@@ -521,6 +523,10 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
                   {selectedStudent.warden?.profile?.name || "None assigned"}
                 </p>
               </div>
+            </div>
+
+            <div className="border-t border-zinc-800 pt-4">
+              <PassHistoryPanel person={{ kind: "student", id: selectedStudent.id }} />
             </div>
 
             <div className="flex justify-end pt-2">

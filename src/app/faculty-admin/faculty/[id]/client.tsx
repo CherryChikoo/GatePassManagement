@@ -1,4 +1,6 @@
 "use client";
+import { ResetPasswordButton } from "@/components/users/reset-password-button";
+import { istDateString } from "@/lib/time/ist";
 
 import React, { useState } from "react";
 import Link from "next/link";
@@ -77,6 +79,7 @@ interface Props {
 export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props) {
   const [activeTab, setActiveTab] = useState<"ALL" | "APPROVED" | "PENDING" | "REJECTED">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const [passDate, setPassDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
@@ -88,6 +91,14 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
       if (p.status !== "PENDING") return false;
     } else if (activeTab === "REJECTED") {
       if (!["REJECTED", "CANCELLED", "EXPIRED"].includes(p.status)) return false;
+    }
+
+    // Filter by IST date (requested, scheduled, or a gate movement that day)
+    if (passDate) {
+      const days = [p.createdAt, p.exitDate, ...(p.movements ?? []).map((m: any) => m.createdAt)]
+        .filter(Boolean)
+        .map((d: string) => istDateString(new Date(d)));
+      if (!days.includes(passDate)) return false;
     }
 
     // Filter by search query
@@ -153,6 +164,7 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
                   <Badge variant={faculty.active ? "success" : "danger"}>
                     {faculty.active ? "Active" : "Disabled"}
                   </Badge>
+                  <ResetPasswordButton profileId={faculty.profileId} name={faculty.name} className="h-7" />
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-400 pt-1">
@@ -243,6 +255,32 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
               </span>
             </button>
           ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            aria-label="Filter by date"
+            value={passDate}
+            max={istDateString()}
+            onChange={(e) => {
+              setPassDate(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 text-xs text-zinc-200 [color-scheme:dark]"
+          />
+          {passDate && (
+            <button
+              type="button"
+              onClick={() => {
+                setPassDate("");
+                setCurrentPage(1);
+              }}
+              className="h-9 px-2.5 rounded-md border border-zinc-800 text-xs text-zinc-400 hover:text-zinc-200"
+            >
+              All dates
+            </button>
+          )}
         </div>
 
         <div className="relative w-full sm:w-72">

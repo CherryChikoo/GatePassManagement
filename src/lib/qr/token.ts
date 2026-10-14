@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 if (!process.env.QR_JWT_SECRET) {
   throw new Error(
@@ -101,4 +102,65 @@ export async function verifyQrToken(
     }
     return { valid: false, error: "Invalid or tampered QR code" };
   }
+}
+
+// ──────────────────────────────────────────────────────────────
+// Compact live QR code
+//
+//   GP1.<pass id, 32 hex>.<QR credential id, 32 hex>.<expiry, base36 seconds>.<signature>
+//
+// About 110 characters instead of a ~360-character JWT, so the QR has far fewer
+// dots and scans quickly from a phone screen. Signed with the same secret
+// (HMAC-SHA256, 128-bit tag) and valid for 60 seconds.
+// ──────────────────────────────────────────────────────────────
+
+const COMPACT_PREFIX = "GP1";
+const COMPACT_TTL_SECONDS = 60;
+const HEX32 = /^[0-9a-f]{32}$/;
+
+function compactSignature(body: string): string {
+  return createHmac("sha256", QR_SECRET).update(body).digest().subarray(0, 16).toString("base64url");
+}
+
+const toHex32 = (uuid: string) => uuid.replace(/-/g, "").toLowerCase();
+const fromHex32 = (h: string) => `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+
+/** Rotating 60-second code shown on the pass holder's screen. */
+export function generateCompactLiveQr(input: { permissionId: string; tokenId: string; expiresAt: Date }): string {
+  const passEnd = Math.floor(input.expiresAt.getTime() / 1000);
+  const exp = Math.min(Math.floor(Date.now() / 1000) + COMPACT_TTL_SECONDS, passEnd);
+  const body = `${COMPACT_PREFIX}.${toHex32(input.permissionId)}.${toHex32(input.tokenId)}.${exp.toString(36)}`;
+  return `${body}.${compactSignature(body)}`;
+}
+
+/**
+ * Verifies a scanned code: the compact format above, or a legacy JWT.
+ * Returns the pass id and the QR credential id it was issued for.
+ */
+export async function verifyScannedQr(
+  value: string
+): Promise<{ valid: boolean; payload?: Pick<QrPayload, "permissionId" | "tokenId" | "live">; error?: string }> {
+  const v = value.trim();
+  if (v.startsWith(`${COMPACT_PREFIX}.`)) {
+    const parts = v.split(".");
+    if (parts.length !== 5) return { valid: false, error: "Invalid QR code" };
+    const [, perm, tok, exp36, sig] = parts;
+    if (!HEX32.test(perm) || !HEX32.test(tok) || !/^[0-9a-z]{1,10}$/.test(exp36)) return { valid: false, error: "Invalid QR code" };
+    const expected = Buffer.from(compactSignature(`${COMPACT_PREFIX}.${perm}.${tok}.${exp36}`));
+    const given = Buffer.from(sig);
+    if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+      return { valid: false, error: "Invalid or tampered QR code" };
+    }
+    if (parseInt(exp36, 36) * 1000 < Date.now()) {
+      return { valid: false, error: "QR code has expired. Ask the pass holder to refresh their screen." };
+    }
+    return { valid: true, payload: { permissionId: fromHex32(perm), tokenId: fromHex32(tok), live: true } };
+  }
+  if (v.split(".").length === 3) {
+    const r = await verifyQrToken(v);
+    return r.valid && r.payload
+      ? { valid: true, payload: { permissionId: r.payload.permissionId, tokenId: r.payload.tokenId, live: r.payload.live } }
+      : { valid: false, error: r.error };
+  }
+  return { valid: false, error: "Not a GatePass QR code" };
 }

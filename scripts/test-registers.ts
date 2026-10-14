@@ -14,7 +14,7 @@ import {
   isEntryRegister,
   type EntryRegister,
 } from "../src/lib/registers/definitions";
-import { effectiveData, validateCompletion, validateNewRecord, type StaffResolver } from "../src/lib/registers/validate";
+import { effectiveData, validateAdminEdit, validateCompletion, validateNewRecord, type StaffResolver } from "../src/lib/registers/validate";
 import { istDateString } from "../src/lib/time/ist";
 
 let passed = 0;
@@ -68,34 +68,36 @@ async function main() {
     assert.equal(entry("SIROS_LABOUR_CONTRACT").groups![0].max, null);
     assert.equal(entry("RETURNABLE").groups![0].max, 5);
   });
-  await test("no register field is mandatory", () => {
+  await test("each register marks its important details as mandatory (and they exist)", () => {
     for (const r of REGISTERS.filter(isEntryRegister)) {
-      for (const f of [...r.fields, ...(r.groups ?? []).flatMap((g) => g.fields)]) {
-        assert.equal((f as any).required, undefined, `${r.title}: ${f.label}`);
-      }
+      assert.ok(r.required.length > 0, `${r.title} has no mandatory details`);
+      for (const k of r.required) assert.ok(r.fields.some((f) => f.key === k), `${r.title}: unknown field ${k}`);
+      for (const g of r.groups ?? []) for (const k of g.required ?? []) assert.ok(g.fields.some((f) => f.key === k), `${r.title}: unknown ${k}`);
     }
   });
 
   console.log("Validation");
-  await test("every input is optional, but a record needs at least one detail", async () => {
-    const empty = await validateNewRecord(entry("KEYS"), { fields: {}, direction: "OUT" }, noStaff);
-    assert.ok("error" in empty && /at least one detail/.test(empty.error));
-    const one = await validateNewRecord(entry("KEYS"), { fields: { keyName: "Lab 1" }, direction: "OUT" }, noStaff);
-    assert.ok(!("error" in one), JSON.stringify(one));
-    const labour = await validateNewRecord(entry("DAILY_LABOUR"), { fields: { workArea: "Block C" } }, noStaff);
-    assert.ok(!("error" in labour), JSON.stringify(labour));
+  await test("important details are mandatory, everything else optional", async () => {
+    const missing = await validateNewRecord(entry("KEYS"), { fields: { keyName: "Lab 1" }, direction: "OUT" }, noStaff);
+    assert.ok("error" in missing && /Person Name is required/.test(missing.error), JSON.stringify(missing));
+    const ok = await validateNewRecord(entry("KEYS"), { fields: { keyName: "Lab 1", personName: "Ravi" }, direction: "OUT" }, noStaff);
+    assert.ok(!("error" in ok), JSON.stringify(ok));
+    if (!("error" in ok)) assert.equal(ok.data.department, null, "optional fields may stay empty");
   });
   await test("In / Out registers must choose In or Out", async () => {
-    const r = await validateNewRecord(entry("CAR_BOOK"), { fields: { driverName: "Suresh" } }, noStaff);
+    const r = await validateNewRecord(entry("CAR_BOOK"), { fields: { driverName: "Suresh", vehicleNumber: "AP 39 1234" } }, noStaff);
     assert.ok("error" in r && /In or Out/.test(r.error));
-    const bad = await validateNewRecord(entry("SIROS_LABOUR_CONTRACT"), { fields: { contractorName: "K" }, direction: "OUT" }, noStaff);
+    const bad = await validateNewRecord(entry("SIROS_LABOUR_CONTRACT"), { fields: { contractorName: "K", phone: "9876543210" }, direction: "OUT" }, noStaff);
     assert.ok("error" in bad, "the contractor book starts with In only");
   });
   await test("date is always today and time is the server clock (typed values ignored)", async () => {
     const now = new Date("2026-10-14T10:16:00Z"); // 15:46 IST
     const r = await validateNewRecord(
       entry("CAR_BOOK"),
-      { fields: { driverName: "Suresh", date: "2020-01-01", timeOut: "01:00", timeIn: "02:00", outReading: "100", inReading: "999" }, direction: "OUT" },
+      {
+        fields: { driverName: "Suresh", vehicleNumber: "AP 39 1234", date: "2020-01-01", timeOut: "01:00", timeIn: "02:00", outReading: "100", inReading: "999" },
+        direction: "OUT",
+      },
       noStaff,
       now
     );
@@ -110,40 +112,62 @@ async function main() {
     assert.equal(r.data.direction, "OUT");
   });
   await test("College Daily Book stores the chosen In / Out", async () => {
-    const r = await validateNewRecord(entry("COLLEGE_DAILY"), { fields: { whoReferred: "Principal" }, direction: "IN" }, noStaff);
+    const r = await validateNewRecord(entry("COLLEGE_DAILY"), { fields: { whoReferred: "Principal", purpose: "Meeting" }, direction: "IN" }, noStaff);
     assert.ok(!("error" in r) && r.data.inOut === "In" && typeof r.data.time === "string", JSON.stringify(r));
   });
   await test("bad phones, numbers and unknown options are rejected", async () => {
-    const phone = await validateNewRecord(entry("KEYS"), { fields: { phone: "12ab" }, direction: "OUT" }, noStaff);
+    const keys = { keyName: "Lab 1", personName: "Ravi" };
+    const phone = await validateNewRecord(entry("KEYS"), { fields: { ...keys, phone: "12ab" }, direction: "OUT" }, noStaff);
     assert.ok("error" in phone && /phone/.test(phone.error));
-    assert.ok("error" in (await validateNewRecord(entry("SIROS_STOCK"), { fields: { direction: "Sideways" } }, noStaff)));
-    assert.ok("error" in (await validateNewRecord(entry("SIROS_STOCK"), { fields: { quantity: "-5" } }, noStaff)));
+    const stock = { itemName: "Cement", quantity: "5", direction: "Inward" };
+    assert.ok("error" in (await validateNewRecord(entry("SIROS_STOCK"), { fields: { ...stock, direction: "Sideways" } }, noStaff)));
+    assert.ok("error" in (await validateNewRecord(entry("SIROS_STOCK"), { fields: { ...stock, quantity: "-5" } }, noStaff)));
+    assert.ok(!("error" in (await validateNewRecord(entry("SIROS_STOCK"), { fields: stock }, noStaff))));
   });
   await test("staff fields must be a real security staff member", async () => {
     const d = entry("SECURITY_ATTENDANCE");
-    const bad = await validateNewRecord(d, { fields: { staff: "typed name" }, direction: "IN" }, oneStaff);
+    const bad = await validateNewRecord(d, { fields: { staff: "typed name", attendanceStatus: "Present" }, direction: "IN" }, oneStaff);
     assert.ok("error" in bad);
-    const ok = await validateNewRecord(d, { fields: { staff: "11111111-1111-1111-1111-111111111111" }, direction: "IN" }, oneStaff);
-    assert.ok(!("error" in ok) && (ok.data.staff as any).name === "Ravi");
+    const ok = await validateNewRecord(d, { fields: { staff: "11111111-1111-1111-1111-111111111111", attendanceStatus: "Present" }, direction: "IN" }, oneStaff);
+    assert.ok(!("error" in ok) && (ok.data.staff as any).name === "Ravi", JSON.stringify(ok));
   });
   await test("Form 10 accepts more than 20 workers, stamps in-times and checks the total", async () => {
     const d = entry("SIROS_LABOUR_CONTRACT");
+    const fields = { contractorName: "K Rao", phone: "9876543210" };
     const workers = Array.from({ length: 25 }, (_, i) => ({ name: `Worker ${i + 1}`, gender: i % 2 ? "Female" : "Male", assignedBy: "Supervisor" }));
-    const ok = await validateNewRecord(d, { fields: { contractorName: "K Rao", totalWorkers: "30" }, groups: { workers }, direction: "IN" }, noStaff);
+    const ok = await validateNewRecord(d, { fields: { ...fields, totalWorkers: "30" }, groups: { workers }, direction: "IN" }, noStaff);
     assert.ok(!("error" in ok), JSON.stringify(ok));
     if (!("error" in ok)) {
       const rows = ok.data.workers as any[];
       assert.equal(rows.length, 25);
       assert.ok(rows.every((r) => typeof r.inTime === "string" && r.outTime === null));
     }
-    const tooMany = await validateNewRecord(d, { fields: { contractorName: "K Rao", totalWorkers: "10" }, groups: { workers }, direction: "IN" }, noStaff);
+    const tooMany = await validateNewRecord(d, { fields: { ...fields, totalWorkers: "10" }, groups: { workers }, direction: "IN" }, noStaff);
     assert.ok("error" in tooMany && /listed 25 workers/.test(tooMany.error));
+    const noName = await validateNewRecord(d, { fields, groups: { workers: [{ gender: "Male" }] }, direction: "IN" }, noStaff);
+    assert.ok("error" in noName && /Worker Name is required/.test(noName.error), JSON.stringify(noName));
   });
   await test("Form 19 takes up to 5 items", async () => {
     const d = entry("RETURNABLE");
+    const fields = { fromName: "Dr. Rao", purpose: "Repair", itemType: "Returnable" };
     const items = (n: number) => Array.from({ length: n }, (_, i) => ({ description: `Item ${i + 1}`, quantity: "1" }));
-    assert.ok(!("error" in (await validateNewRecord(d, { fields: { fromName: "Dr. Rao" }, groups: { items: items(5) }, direction: "OUT" }, noStaff))));
-    assert.ok("error" in (await validateNewRecord(d, { fields: { fromName: "Dr. Rao" }, groups: { items: items(6) }, direction: "OUT" }, noStaff)));
+    assert.ok(!("error" in (await validateNewRecord(d, { fields, groups: { items: items(5) }, direction: "OUT" }, noStaff))));
+    assert.ok("error" in (await validateNewRecord(d, { fields, groups: { items: items(6) }, direction: "OUT" }, noStaff)));
+  });
+
+  await test("Main Admin edits can change dates, times and readings, but keep mandatory details", async () => {
+    const d = entry("CAR_BOOK");
+    const current = { driverName: "S", vehicleNumber: "X", date: today, direction: "OUT", timeOut: "09:00", outReading: 100 };
+    const ok = await validateAdminEdit(d, current as any, { fields: { driverName: "Suresh", vehicleNumber: "AP 39", date: "2026-10-01", timeOut: "08:30", timeIn: "11:00", outReading: "100", inReading: "150" } }, noStaff);
+    assert.ok(!("error" in ok), JSON.stringify(ok));
+    if (!("error" in ok)) {
+      assert.equal(ok.data.timeOut, "08:30");
+      assert.equal(ok.data.inReading, 150);
+      assert.equal(ok.entryDateStr, "2026-10-01");
+      assert.equal(ok.data.direction, "OUT");
+    }
+    const noName = await validateAdminEdit(d, current as any, { fields: { vehicleNumber: "AP 39" } }, noStaff);
+    assert.ok("error" in noName && /Driver Name is required/.test(noName.error));
   });
 
   console.log("Recording the other side later");
@@ -217,35 +241,45 @@ async function databaseChecks() {
 
   try {
     const triggers: { tgname: string }[] = await prisma.$queryRawUnsafe(
-      `select tgname from pg_trigger where tgname in ('gp_register_entries_immutable','gp_movements_immutable','gp_permission_submission_locked','gp_outsider_locked','gp_permissions_no_delete')`
+      `select tgname from pg_trigger where tgname in ('gp_movements_immutable','gp_permission_submission_locked','gp_outsider_locked','gp_permissions_no_delete')`
     );
     await test("register_entries table exists", async () => {
       await prisma.registerEntry.count();
     });
-    if (triggers.length < 5) {
+    if (triggers.length < 4) {
       console.log("  - immutability triggers not applied yet (run prisma/migrations/registers_immutability.sql); skipping those checks");
       return;
     }
+    await test("attendance: guards cannot see it; Head Security, Supervisor and Admin can", async () => {
+      const { getRegisterAccess } = await import("../src/lib/registers/access");
+      const guard = await prisma.securityStaff.findFirst({ where: { isHead: false }, select: { profileId: true } });
+      const base = { id: "x", userId: "x", name: "t", email: "t@t" };
+      if (guard) {
+        const a = await getRegisterAccess({ ...base, role: "SECURITY", profileId: guard.profileId } as any);
+        assert.equal(a.canView("SECURITY_ATTENDANCE"), false);
+        assert.equal(a.canCreate("SECURITY_ATTENDANCE"), false);
+        assert.equal(a.canCreate("CAR_BOOK"), true);
+      }
+      const sup = await getRegisterAccess({ ...base, role: "SECURITY_SUPERVISOR", profileId: "none" } as any);
+      assert.equal(sup.canView("SECURITY_ATTENDANCE"), true);
+      assert.equal(sup.canCreate("SECURITY_ATTENDANCE"), false);
+      const admin = await getRegisterAccess({ ...base, role: "ADMIN", profileId: "none" } as any);
+      assert.equal(admin.canView("SECURITY_ATTENDANCE"), true);
+      assert.equal(admin.canCreate("SECURITY_ATTENDANCE"), true);
+      assert.equal(admin.canCreate("CAR_BOOK"), false);
+    });
     const profile = await prisma.profile.findFirst({ select: { id: true } });
     assert.ok(profile, "needs at least one profile");
 
-    await test("a saved register record cannot be updated", async () => {
+    await test("register records can be edited and deleted (Main Admin only, enforced in the portal)", async () => {
       const err = await attempt(async (tx) => {
         const e = await tx.registerEntry.create({
           data: { register: "KEYS", entryDate: new Date(), data: {}, recordedById: profile!.id, recordedByName: "t", recordedByRole: "SECURITY", clientToken: `test-${Date.now()}` },
         });
         await tx.registerEntry.update({ where: { id: e.id }, data: { searchText: "changed" } });
-      });
-      assert.ok(err && /permanent/.test(err), err ?? "update was allowed");
-    });
-    await test("a saved register record cannot be deleted", async () => {
-      const err = await attempt(async (tx) => {
-        const e = await tx.registerEntry.create({
-          data: { register: "KEYS", entryDate: new Date(), data: {}, recordedById: profile!.id, recordedByName: "t", recordedByRole: "SECURITY", clientToken: `test-d-${Date.now()}` },
-        });
         await tx.registerEntry.delete({ where: { id: e.id } });
       });
-      assert.ok(err && /permanent/.test(err), err ?? "delete was allowed");
+      assert.equal(err, null, err ?? "");
     });
     const movement = await prisma.movement.findFirst({ select: { id: true } });
     if (movement) {

@@ -576,6 +576,7 @@ async function preloadStudent(profileId: string) {
         exitDate: true, expectedExit: true, expectedReturn: true,
         contactNumber: true, remarks: true, rejectionReason: true,
         approverType: true, approverId: true, createdAt: true, rejectedAt: true,
+        passKind: true,
         // The stored QR token is never sent to the browser; the pass screen
         // fetches rotating 60-second tokens instead.
         qr: { select: QR_PUBLIC_SELECT },
@@ -608,6 +609,15 @@ async function preloadStudent(profileId: string) {
   const assignedApprover = resolution.ok
     ? { name: resolution.approver.name, label: resolution.approver.label, available: true }
     : { name: null, label: null, available: false, reason: resolution.error };
+
+  // Hostellers going to the hostel: their department HOD approves
+  let hostelPassApprover: typeof assignedApprover | null = null;
+  if (isHosteller) {
+    const hod = await resolveStudentApprover({ ...student, studentType: "DAY_SCHOLAR" });
+    hostelPassApprover = hod.ok
+      ? { name: hod.approver.name, label: hod.approver.label, available: true }
+      : { name: null, label: null, available: false, reason: hod.error };
+  }
 
   // Name of whoever the latest request was routed to
   let approverName: string | null = null;
@@ -682,6 +692,7 @@ async function preloadStudent(profileId: string) {
       student: studentPublic,
       isHosteller,
       assignedApprover,
+      hostelPassApprover,
       state,
       latestPermission: serializedPermission,
     },
@@ -724,6 +735,7 @@ async function preloadSecurity() {
       select: {
         id: true, type: true, createdAt: true, notes: true,
         student: { select: { studentRoll: true, profile: { select: { name: true } } } },
+        faculty: { select: { employeeId: true, profile: { select: { name: true } } } },
         gate: { select: { name: true } },
         permission: { select: { purpose: true, destination: true } },
       },

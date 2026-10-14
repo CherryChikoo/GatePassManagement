@@ -1,4 +1,5 @@
 "use client";
+import { PassHistoryPanel } from "@/components/passes/pass-history-panel";
 import { oversightRoleMeta, type OversightRole } from "@/components/dashboard/oversight-role";
 
 import React, { useState, useMemo } from "react";
@@ -417,6 +418,7 @@ export function ExecutiveHodsClient({ role }: ExecutiveHodsClientProps) {
           open={true}
           onClose={() => setSelectedHOD(null)}
           title="Head of Department Profile"
+          className="max-w-2xl"
         >
           <div className="space-y-5 pt-2">
             <p className="text-xs text-zinc-400">
@@ -529,6 +531,10 @@ export function ExecutiveHodsClient({ role }: ExecutiveHodsClientProps) {
                   Director & Academic Dean
                 </span>
               </div>
+            </div>
+
+            <div className="border-t border-zinc-800 pt-4">
+              <PassHistoryPanel person={{ kind: "staff", profileId: selectedHOD.id }} />
             </div>
 
             {/* Close Button */}

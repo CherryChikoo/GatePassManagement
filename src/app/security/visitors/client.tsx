@@ -413,12 +413,12 @@ export function OutsidersClient({ user, inside, history }: Props) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Full Name</label>
-                    <Input placeholder="Enter full name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                    <label className="text-sm font-medium leading-none text-zinc-200">Full Name <span className="text-orange-400">*</span></label>
+                    <Input required placeholder="Enter full name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Phone Number</label>
-                    <Input placeholder="Enter phone" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                    <label className="text-sm font-medium leading-none text-zinc-200">Phone Number <span className="text-orange-400">*</span></label>
+                    <Input required type="tel" maxLength={15} placeholder="Enter phone" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium leading-none text-zinc-200">Category</label>

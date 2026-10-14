@@ -214,3 +214,16 @@ input:-webkit-autofill:active {
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
 }
 
+
+/* QR scanner: line sweeping inside the viewfinder */
+@keyframes qr-sweep {
+  0% { top: 6%; }
+  50% { top: 94%; }
+  100% { top: 6%; }
+}
+.animate-qr-sweep {
+  animation: qr-sweep 2.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-qr-sweep { animation: none; top: 50%; }
+}

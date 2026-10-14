@@ -1,13 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FilePlus2, History, LogIn, LogOut } from "lucide-react";
+import { FilePlus2, History, LogIn, LogOut, Pencil, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Modal } from "@/components/ui/primitives";
 import type { EntryRegister } from "@/lib/registers/definitions";
 import { pendingActions } from "@/lib/registers/definitions";
-import { completeRegisterEntry, createRegisterEntry, getRegisterStaffOptions, listRegisterEntries } from "@/server/actions/registers";
+import {
+  adminDeleteRegisterEntry,
+  adminUpdateRegisterEntry,
+  completeRegisterEntry,
+  createRegisterEntry,
+  getRegisterStaffOptions,
+  listRegisterEntries,
+} from "@/server/actions/registers";
 import { actionErrorMessage } from "@/lib/deployment";
-import { MovementForm, RegisterForm, type StaffOption } from "./register-form";
+import { AdminEditForm, MovementForm, RegisterForm, type StaffOption } from "./register-form";
 import { formatFieldValue, formatInstant, newClientToken } from "./format";
 import { Pager, RegisterToolbar, useRegisterFilters } from "./toolbar";
 
@@ -47,14 +55,24 @@ function nextActionLabel(def: EntryRegister, current: Record<string, any>): stri
   return null;
 }
 
-export function EntryRegisterView({ def, canCreate }: { def: EntryRegister; canCreate: boolean }) {
+export function EntryRegisterView({
+  def,
+  canCreate,
+  canAdminEdit = false,
+}: {
+  def: EntryRegister;
+  canCreate: boolean;
+  /** Main Admin: edit and delete saved records */
+  canAdminEdit?: boolean;
+}) {
   const filters = useRegisterFilters();
   const [data, setData] = useState<{ entries: Entry[]; total: number; pageSize: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [selected, setSelected] = useState<Entry | null>(null);
-  const [mode, setMode] = useState<null | "new" | "record">(null);
+  const [mode, setMode] = useState<null | "new" | "record" | "edit">(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -84,7 +102,7 @@ export function EntryRegisterView({ def, canCreate }: { def: EntryRegister; canC
     if (needsStaff) getRegisterStaffOptions().then(setStaff).catch(() => setStaff([]));
   }, [needsStaff]);
 
-  function openMode(m: "new" | "record", entry?: Entry | null) {
+  function openMode(m: "new" | "record" | "edit", entry?: Entry | null) {
     setFormError(null);
     setToken(newClientToken());
     setFormKey((k) => k + 1);
@@ -194,6 +212,8 @@ export function EntryRegisterView({ def, canCreate }: { def: EntryRegister; canC
             def={def}
             entry={selected}
             onRecord={canCreate && pendingActions(def, selected.current).any ? () => openMode("record") : undefined}
+            onEdit={canAdminEdit ? () => openMode("edit") : undefined}
+            onDelete={canAdminEdit ? () => setConfirmDelete(true) : undefined}
           />
         )}
       </Modal>
@@ -202,7 +222,15 @@ export function EntryRegisterView({ def, canCreate }: { def: EntryRegister; canC
       <Modal
         open={mode !== null}
         onClose={() => !busy && setMode(null)}
-        title={mode === "new" ? `New entry — ${def.title}` : selected ? nextActionLabel(def, selected.current) ?? def.title : def.title}
+        title={
+          mode === "new"
+            ? `New entry — ${def.title}`
+            : mode === "edit"
+            ? `Edit record — ${def.title}`
+            : selected
+            ? nextActionLabel(def, selected.current) ?? def.title
+            : def.title
+        }
         className="max-w-2xl"
       >
         {formError && <div role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">{formError}</div>}
@@ -215,6 +243,16 @@ export function EntryRegisterView({ def, canCreate }: { def: EntryRegister; canC
             onSubmit={(payload) => run(() => createRegisterEntry(def.key, payload, token), "Record saved.")}
           />
         )}
+        {mode === "edit" && selected && (
+          <AdminEditForm
+            key={formKey}
+            def={def}
+            current={selected.current}
+            staff={staff}
+            busy={busy}
+            onSubmit={(payload) => run(() => adminUpdateRegisterEntry(selected.id, payload), "Record updated.")}
+          />
+        )}
         {mode === "record" && selected && (
           <MovementForm
             key={formKey}
@@ -225,6 +263,22 @@ export function EntryRegisterView({ def, canCreate }: { def: EntryRegister; canC
           />
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Delete this record?"
+        description="The record is removed permanently from this register and cannot be recovered."
+        confirmText="Delete"
+        variant="danger"
+        onConfirm={() => {
+          setConfirmDelete(false);
+          if (selected) {
+            const id = selected.id;
+            run(() => adminDeleteRegisterEntry(id), "Record deleted.");
+          }
+        }}
+      />
     </div>
   );
 }
@@ -297,7 +351,19 @@ function ValuesGrid({ def, values }: { def: EntryRegister; values: Record<string
   );
 }
 
-function EntryDetails({ def, entry, onRecord }: { def: EntryRegister; entry: Entry; onRecord?: () => void }) {
+function EntryDetails({
+  def,
+  entry,
+  onRecord,
+  onEdit,
+  onDelete,
+}: {
+  def: EntryRegister;
+  entry: Entry;
+  onRecord?: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}) {
   const label = nextActionLabel(def, entry.current);
   const p = pendingActions(def, entry.current);
   const Icon = p.next?.direction === "OUT" ? LogOut : LogIn;
@@ -320,11 +386,23 @@ function EntryDetails({ def, entry, onRecord }: { def: EntryRegister; entry: Ent
         </ul>
       </div>
 
-      {onRecord && label && (
-        <button onClick={onRecord} className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold">
-          <Icon className="h-4 w-4" /> {label}
-        </button>
-      )}
+      <div className="flex flex-wrap gap-2">
+        {onRecord && label && (
+          <button onClick={onRecord} className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold">
+            <Icon className="h-4 w-4" /> {label}
+          </button>
+        )}
+        {onEdit && (
+          <button onClick={onEdit} className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-zinc-700 text-zinc-200 hover:bg-zinc-800 text-sm font-semibold">
+            <Pencil className="h-4 w-4" /> Edit
+          </button>
+        )}
+        {onDelete && (
+          <button onClick={onDelete} className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-red-500/40 text-red-300 hover:bg-red-500/10 text-sm font-semibold">
+            <Trash2 className="h-4 w-4" /> Delete
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -3,13 +3,15 @@ import { DashboardLayout } from "@/components/dashboard/layout";
 import { requireRole } from "@/lib/auth/helpers";
 import { logoutAction } from "@/server/actions/auth";
 import { StoreHydrator } from "@/components/providers/store-hydrator";
+import { getLeadershipTitle } from "@/lib/auth/titles";
 
 export default async function DeanLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
   const isCollapsed = cookieStore.get("gatepass_sidebar_collapsed")?.value === "true";
 
   const user = await requireRole("DEAN");
-  
+  const roleTitle = await getLeadershipTitle(user.profileId, "DEAN");
+
   return (
     <DashboardLayout
       defaultCollapsed={isCollapsed}
@@ -17,6 +19,7 @@ export default async function DeanLayout({ children }: { children: React.ReactNo
       userName={user.name}
       userEmail={user.email}
       onLogout={logoutAction}
+      roleTitle={roleTitle}
     >
       <StoreHydrator user={{ name: user.name, email: user.email, role: user.role, profileId: user.profileId }} />
       {children}

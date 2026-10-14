@@ -5,7 +5,7 @@
 -- are new rows that point at the original. Workflow state (approval status,
 -- QR use, visitor exit) is still allowed to move forward.
 --
---   register_entries      no UPDATE, no DELETE
+--   register_entries      only Main Admin edits / deletes (enforced in the portal)
 --   movements             no UPDATE, no DELETE (actual gate exits/entries)
 --   permission_approvals  no UPDATE, no DELETE (approval decisions)
 --   permissions           no DELETE; submitted request details cannot change
@@ -49,10 +49,9 @@ begin
 end;
 $$;
 
+-- register_entries: Main Admin may edit / delete these (registers_admin_edit.sql),
+-- so no update/delete trigger here.
 drop trigger if exists gp_register_entries_immutable on public.register_entries;
-create trigger gp_register_entries_immutable
-  before update or delete on public.register_entries
-  for each row execute function public.gp_block_change();
 
 drop trigger if exists gp_movements_immutable on public.movements;
 create trigger gp_movements_immutable
@@ -85,13 +84,13 @@ begin
       new.expected_exit, new.expected_return, new.contact_number, new.remarks, new.created_at,
       new.request_type, new.end_date, new.number_of_days, new.parent_informed, new.video_call_number,
       new.guardian_name, new.guardian_relation, new.hostel_incharge_details, new.warden_details,
-      new.approval_mode)
+      new.approval_mode, new.pass_kind)
      is distinct from
      (old.student_id, old.faculty_id, old.type, old.purpose, old.destination, old.exit_date,
       old.expected_exit, old.expected_return, old.contact_number, old.remarks, old.created_at,
       old.request_type, old.end_date, old.number_of_days, old.parent_informed, old.video_call_number,
       old.guardian_name, old.guardian_relation, old.hostel_incharge_details, old.warden_details,
-      old.approval_mode)
+      old.approval_mode, old.pass_kind)
   then
     raise exception 'Submitted pass details are permanent and cannot be changed (pass %)', old.id
       using errcode = 'insufficient_privilege';

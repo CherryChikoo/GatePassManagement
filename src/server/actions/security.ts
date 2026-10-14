@@ -2,9 +2,9 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { requireRole, getAuthUser, type AuthUser } from "@/lib/auth/helpers";
-import { verifyQrToken } from "@/lib/qr/token";
+import { verifyScannedQr } from "@/lib/qr/token";
 import { revalidatePath } from "next/cache";
-import { uploadExitPhotoAdmin } from "@/lib/storage/storage-admin";
+import { gatePhotoFolder, isSafeStoragePath, uploadExitPhotoAdmin } from "@/lib/storage/storage-admin";
 import { istDateString, istDayRangeFromParam, istStartOfDay } from "@/lib/time/ist";
 
 let securityDashboardCache: { data: any; expiresAt: number } | null = null;
@@ -45,18 +45,20 @@ export async function verifyQrScan(token: string) {
   const input = token.trim();
 
   let permissionId: string | null = null;
+  let scannedTokenId: string | null = null;
   let manualOverride = false;
   let tokenError: string | undefined;
 
-  if (input.split(".").length === 3) {
-    // Signed JWT. Only the rotating on-screen tokens are accepted, so
-    // screenshots of an old QR stop working within a minute.
-    const result = await verifyQrToken(input);
+  if (input.startsWith("GP1.") || input.split(".").length === 3) {
+    // Signed rotating code (compact, or a legacy JWT). Only live codes are
+    // accepted, so screenshots of an old QR stop working within a minute.
+    const result = await verifyScannedQr(input);
     if (result.valid && result.payload) {
       if (!result.payload.live) {
         return { valid: false, error: "Outdated QR code. Ask the pass holder to open their live pass screen." };
       }
       permissionId = result.payload.permissionId;
+      scannedTokenId = result.payload.tokenId || null;
     } else {
       tokenError = result.error;
     }
@@ -67,6 +69,8 @@ export async function verifyQrScan(token: string) {
         student: { studentRoll: { equals: input, mode: "insensitive" } },
         status: "APPROVED",
         qr: { active: true },
+        // Hostel passes are scanned by the warden, not at the gate
+        OR: [{ passKind: null }, { passKind: { not: "HOSTEL" } }],
       },
       orderBy: { createdAt: "desc" },
       select: { id: true },
@@ -123,6 +127,15 @@ export async function verifyQrScan(token: string) {
 
   if (!permission) {
     return { valid: false, error: "Permission not found" };
+  }
+
+  // The code must match the current QR credential of this pass
+  if (scannedTokenId && permission.qr && permission.qr.id !== scannedTokenId) {
+    return { valid: false, error: "Outdated QR code. Ask the pass holder to refresh their pass screen." };
+  }
+
+  if (permission.passKind === "HOSTEL") {
+    return { valid: false, error: "This is a hostel pass. It is scanned by the hostel warden, not at the gate." };
   }
 
   if (!permission.qr) {
@@ -243,6 +256,8 @@ function assertPassWindow(exitDate: Date, qrExpiresAt: Date) {
 /**
  * Gate photo rule: required for student passes; faculty passes are just
  * verified and marked (a photo, if one is sent anyway, is still stored).
+ * `imagePath` is either a photo already uploaded with prepareGatePhoto (fast
+ * path) or the captured image itself.
  */
 async function resolveGatePhoto(
   permissionId: string,
@@ -251,7 +266,7 @@ async function resolveGatePhoto(
 ): Promise<{ path: string | null } | { error: string }> {
   const owner = await prisma.permission.findUnique({
     where: { id: permissionId },
-    select: { studentId: true },
+    select: { studentId: true, facultyId: true },
   });
   if (!owner) return { error: "Permission not found" };
 
@@ -261,7 +276,14 @@ async function resolveGatePhoto(
       : { path: null };
   }
   if (typeof imagePath !== "string") return { error: "Invalid photo" };
-  return storeGatePhoto(imagePath, permissionId);
+
+  // Already uploaded in the background while the guard checked the details
+  if (!imagePath.startsWith("data:")) {
+    const folder = gatePhotoFolder(owner.studentId || owner.facultyId || "unknown");
+    if (isSafeStoragePath(imagePath) && imagePath.startsWith(`${folder}/`)) return { path: imagePath };
+    return { error: "Invalid photo" };
+  }
+  return storeGatePhoto(imagePath, permissionId, owner.studentId || owner.facultyId || "unknown");
 }
 
 /**
@@ -269,24 +291,33 @@ async function resolveGatePhoto(
  * If Storage is unavailable the (size-checked) inline image is kept so the
  * gate is never blocked.
  */
-async function storeGatePhoto(imageData: string, permissionId: string): Promise<{ path: string } | { error: string }> {
+async function storeGatePhoto(imageData: string, permissionId: string, ownerId: string): Promise<{ path: string } | { error: string }> {
   if (imageData.length > 700_000) {
     return { error: "Captured image is too large. Please retake with lower resolution." };
   }
   if (!/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(imageData)) {
     return { error: "Invalid photo format" };
   }
-  const owner = await prisma.permission.findUnique({
-    where: { id: permissionId },
-    select: { studentId: true, facultyId: true },
-  });
-  if (!owner) return { error: "Permission not found" };
-
-  const upload = await uploadExitPhotoAdmin(imageData, owner.studentId || owner.facultyId || "unknown", permissionId);
+  const upload = await uploadExitPhotoAdmin(imageData, ownerId, permissionId);
   if (upload.path) return { path: upload.path };
 
   console.error("[storeGatePhoto] storage upload failed, keeping inline image:", upload.error);
   return { path: imageData };
+}
+
+/**
+ * Uploads the gate photo as soon as it is taken, so "Register" only has to
+ * save the movement. Returns the stored path to send with registerExit / registerEntry.
+ */
+export async function prepareGatePhoto(permissionId: string, imageData: string) {
+  await requireRole("SECURITY");
+  if (typeof permissionId !== "string" || typeof imageData !== "string") return { error: "Invalid photo" };
+  const pass = await prisma.permission.findUnique({
+    where: { id: permissionId },
+    select: { status: true, studentId: true, facultyId: true },
+  });
+  if (!pass || pass.status !== "APPROVED") return { error: "This pass can no longer be used" };
+  return storeGatePhoto(imageData, permissionId, pass.studentId || pass.facultyId || "unknown");
 }
 
 /**
@@ -331,6 +362,7 @@ export async function registerExit(
       });
 
       if (!permission) throw new Error("Permission not found");
+      if (permission.passKind === "HOSTEL") throw new Error("Hostel passes are scanned by the hostel warden, not at the gate");
       if (permission.status !== "APPROVED") {
         throw new Error(`Cannot register exit — permission status is ${permission.status}`);
       }

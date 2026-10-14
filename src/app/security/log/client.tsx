@@ -1,4 +1,5 @@
 "use client";
+import { MovementDetails, VisitorDetails } from "@/components/registers/derived-views";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,6 @@ import { BackButton } from "@/components/ui/back-button";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/primitives";
-import { getExitPhotoUrl } from "@/lib/storage/image-upload";
 
 export function SecurityLogClient({ 
   user, 
@@ -34,25 +34,6 @@ export function SecurityLogClient({
     setPage(1);
   }, [activeTab, searchQuery]);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function fetchUrl() {
-      const path = selectedRecord?.photoUrl || selectedRecord?.imagePath;
-      if (path) {
-        if (path.startsWith("data:") || path.startsWith("http")) {
-          setPhotoUrl(path);
-        } else {
-          setPhotoUrl(null);
-          const url = await getExitPhotoUrl(path);
-          setPhotoUrl(url);
-        }
-      } else {
-        setPhotoUrl(null);
-      }
-    }
-    fetchUrl();
-  }, [selectedRecord]);
 
   
   const ITEMS_PER_PAGE = 10;
@@ -324,94 +305,15 @@ export function SecurityLogClient({
       <Modal
         open={!!selectedRecord}
         onClose={() => setSelectedRecord(null)}
-        title={selectedRecord?.student ? "Student Movement Details" : "Visitor Details"}
+        title={selectedRecord && !selectedRecord.entryTime ? "Gate Movement Details" : "Visitor Details"}
+        className="max-w-xl"
       >
-        {selectedRecord && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
-              <div className="h-28 w-28 shrink-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 flex items-center justify-center">
-                {(selectedRecord.photoUrl || selectedRecord.imagePath) ? (
-                  photoUrl ? (
-                    <img src={photoUrl} alt="Photo" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="animate-pulse bg-zinc-800 h-full w-full flex items-center justify-center">
-                      <span className="text-xs text-zinc-500">Loading...</span>
-                    </div>
-                  )
-                ) : (
-                  <Users className="h-8 w-8 text-zinc-700" />
-                )}
-              </div>
-              <div className="text-center sm:text-left">
-                <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
-                  <h3 className="text-xl font-bold text-zinc-100">
-                    {selectedRecord.name || selectedRecord.student?.profile?.name}
-                  </h3>
-                  {selectedRecord.status && <StatusBadge status={selectedRecord.status} />}
-                </div>
-                <p className="text-zinc-400 font-medium mb-3">
-                  {selectedRecord.phone || selectedRecord.student?.profile?.phone}
-                  {selectedRecord.student?.studentRoll && ` • ${selectedRecord.student.studentRoll}`}
-                </p>
-                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                  <span className="px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 text-xs font-medium border border-zinc-700">
-                    {selectedRecord.category || (selectedRecord.type === "ENTRY" ? "Entry" : "Exit")}
-                  </span>
-                  {(selectedRecord.vehicleNumber) && (
-                    <span className="px-2.5 py-1 rounded-md bg-zinc-800/50 text-zinc-400 text-xs font-medium border border-zinc-800">
-                      Vehicle: {selectedRecord.vehicleNumber}
-                    </span>
-                  )}
-                  {(selectedRecord.gate) && (
-                    <span className="px-2.5 py-1 rounded-md bg-zinc-800/50 text-zinc-400 text-xs font-medium border border-zinc-800">
-                      {selectedRecord.gate.name}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 rounded-xl border border-zinc-800/60 bg-zinc-900/40 col-span-2 sm:col-span-1">
-                <p className="text-xs font-medium text-zinc-500 mb-1">Purpose</p>
-                <p className="text-sm text-zinc-200">
-                  {selectedRecord.purpose || selectedRecord.permission?.purpose || "Direct Exit/Entry"}
-                </p>
-              </div>
-              {(selectedRecord.visitingStudent || selectedRecord.permission?.destination) && (
-                <div className="p-4 rounded-xl border border-zinc-800/60 bg-zinc-900/40 col-span-2 sm:col-span-1">
-                  <p className="text-xs font-medium text-zinc-500 mb-1">
-                    {selectedRecord.visitingStudent ? "Visiting" : "Destination"}
-                  </p>
-                  <p className="text-sm text-zinc-200">
-                    {selectedRecord.visitingStudent || selectedRecord.permission?.destination}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900 flex flex-col sm:flex-row gap-4 justify-between">
-              <div>
-                <p className="text-xs font-medium text-zinc-500 mb-1 flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> Time Log
-                </p>
-                <p className="text-sm text-zinc-200 font-medium">
-                  {formatDateTime(new Date(selectedRecord.entryTime || selectedRecord.createdAt))}
-                </p>
-              </div>
-              {selectedRecord.exitTime && (
-                <div className="text-left sm:text-right">
-                  <p className="text-xs font-medium text-zinc-500 mb-1 flex items-center sm:justify-end gap-1">
-                    <Clock className="h-3 w-3" /> Exit Time
-                  </p>
-                  <p className="text-sm text-zinc-200 font-medium">
-                    {formatDateTime(new Date(selectedRecord.exitTime))}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {selectedRecord &&
+          (selectedRecord.entryTime ? (
+            <VisitorDetails id={selectedRecord.id} />
+          ) : (
+            <MovementDetails id={selectedRecord.id} />
+          ))}
       </Modal>
 
     </div>

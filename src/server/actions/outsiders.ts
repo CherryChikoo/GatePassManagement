@@ -47,10 +47,9 @@ export async function registerOutsider(data: Record<string, unknown>) {
   // Entry time is always the live time of registration (never typed in)
   const entryTime = new Date();
 
-  // Every input is optional, but a visitor record needs at least one detail
-  if (![input.name, input.phone, input.purpose, input.visitingStudent, input.vehicleNumber, input.address, input.department, input.remarks, input.photoUrl].some((v) => v && String(v).trim())) {
-    return { success: false, error: "Enter at least one detail" };
-  }
+  // Name and mobile number are mandatory; every other input is optional
+  if (!input.name || input.name.trim().length < 2) return { success: false, error: "Visitor name is required" };
+  if (!input.phone) return { success: false, error: "Mobile number is required" };
 
   try {
     const outsider = await prisma.outsider.create({

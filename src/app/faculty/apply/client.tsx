@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MapPin, Calendar as CalendarIcon, Clock, Phone, FileText, Send, CheckCircle2, History, LogIn, LogOut, Search, QrCode, ShieldCheck, X } from "lucide-react";
-import { createFacultyPermissionRequest } from "@/server/actions/faculty-permissions";
+import { createFacultyPermissionRequest, cancelFacultyPermissionRequest } from "@/server/actions/faculty-permissions";
 import { generateLiveQrToken } from "@/server/actions/permissions";
 import { istDateString } from "@/lib/time/ist";
 import { FACULTY_REQUEST_TYPES, facultyRequestDays, facultyRequestTypeLabel } from "@/lib/registers/definitions";
@@ -125,6 +125,7 @@ export function FacultyApplyClient() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   
   const [type, setType] = useState<"EXIT" | "ENTRY">("EXIT");
 
@@ -169,8 +170,8 @@ export function FacultyApplyClient() {
         }
         if ("token" in res && res.token) {
           const url = await QRCode.toDataURL(res.token, {
-            width: 280,
-            margin: 2,
+            width: 360, // rendered large: crisp dots scan faster from a screen
+            margin: 4, // the standard white border scanners need
             color: { dark: "#000000", light: "#ffffff" },
             errorCorrectionLevel: "M",
           });
@@ -262,6 +263,88 @@ export function FacultyApplyClient() {
     const activeApprovedPass = (myPasses || []).find(
       (p: any) => p.status === "APPROVED" && p.qr?.active && (!p.qr?.expiresAt || new Date(p.qr.expiresAt) > new Date())
     );
+    const pendingPass = (myPasses || []).find((p: any) => p.status === "PENDING");
+
+    // One request at a time: while a pass is pending or approved-but-unused, no new form
+    if (pendingPass || activeApprovedPass) {
+      const pass = pendingPass ?? activeApprovedPass;
+      const waitingFor =
+        pass.approvalMode === "BOTH"
+          ? [!pass.hodApprovedAt && "HOD", !pass.deanApprovedAt && "Dean"].filter(Boolean).join(" and ")
+          : pass.approverType === "DEAN"
+          ? "Dean"
+          : "HOD";
+      return (
+        <Card className={pendingPass ? "border-amber-500/30" : "border-emerald-500/30"}>
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              {pendingPass ? (
+                <Clock className="h-6 w-6 text-amber-400 shrink-0" />
+              ) : (
+                <ShieldCheck className="h-6 w-6 text-emerald-400 shrink-0" />
+              )}
+              <div>
+                <p className={`text-base font-semibold ${pendingPass ? "text-amber-300" : "text-emerald-300"}`}>
+                  {pendingPass ? `Request pending — waiting for the ${waitingFor || "approver"}` : `Your ${pass.type} pass is approved`}
+                </p>
+                <p className="text-xs text-zinc-400">
+                  {pendingPass
+                    ? "You can request another pass after this one is approved and used, rejected, or cancelled."
+                    : "Show the QR at the gate. You can request another pass after this one is used."}
+                </p>
+              </div>
+            </div>
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
+              {[
+                ["Request Type", facultyRequestTypeLabel(pass.requestType) || pass.type],
+                ["Dates", passDates(pass)],
+                ["Reason", pass.purpose],
+                ["Note", pass.remarks],
+                ["Requested", pass.createdAt ? formatDateTime(pass.createdAt) : null],
+                ["Approval", pass.approvalMode === "BOTH" ? `HOD ${pass.hodApprovedAt ? "✓" : "…"} • Dean ${pass.deanApprovedAt ? "✓" : "…"}` : waitingFor],
+              ].map(([k, v]) => (
+                <div key={k as string} className="min-w-0">
+                  <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{k}</dt>
+                  <dd className="text-zinc-200 break-words">{(v as any) || "—"}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="flex flex-wrap gap-2">
+              {activeApprovedPass && !pendingPass && (
+                <Button
+                  onClick={() => setSelectedQrPass(activeApprovedPass)}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                >
+                  <QrCode className="h-4 w-4" /> View QR
+                </Button>
+              )}
+              {pendingPass && (
+                <Button
+                  variant="outline"
+                  disabled={cancelling}
+                  onClick={async () => {
+                    setCancelling(true);
+                    setError(null);
+                    try {
+                      const res: any = await cancelFacultyPermissionRequest(pendingPass.id);
+                      if (res?.error) setError(res.error);
+                      useAppStore.getState().refresh(true);
+                    } catch {
+                      setError("Could not cancel the request. Please try again.");
+                    }
+                    setCancelling(false);
+                  }}
+                  className="border-zinc-700 text-zinc-200 hover:bg-zinc-800"
+                >
+                  {cancelling ? "Cancelling…" : "Cancel request"}
+                </Button>
+              )}
+            </div>
+            {error && <p className="text-sm text-red-400">{error}</p>}
+          </CardContent>
+        </Card>
+      );
+    }
 
     return (
       <div className="space-y-6">
@@ -319,7 +402,15 @@ export function FacultyApplyClient() {
               </div>
             )}
 
-            <form action={handleSubmit} className="space-y-6">
+            <form
+              // Not a form action: React resets action forms after submit, which would
+              // wipe what was typed when the request is refused.
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSubmit(new FormData(e.currentTarget));
+              }}
+              className="space-y-6"
+            >
               {/* Faculty details (from the profile) */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
                 {[

@@ -33,7 +33,7 @@ interface Props {
   user?: { name: string; email: string; role: string; profileId: string };
 }
 
-export function DirectorDashboardClient({ user }: Props) {
+export function DirectorDashboardClient({ user, title }: Props & { title?: string }) {
   const [selectedActivity, setSelectedActivity] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState<"ALL" | "FACULTY" | "PENDING" | "APPROVED" | "REJECTED">("ALL");
 
@@ -126,7 +126,7 @@ export function DirectorDashboardClient({ user }: Props) {
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2.5 flex-wrap">
-              Director Dashboard
+              {title ?? "Director Dashboard"}
               <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30">
                 Campus Executive
               </span>

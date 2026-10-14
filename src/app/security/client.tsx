@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { StatCard, StatusBadge } from "@/components/ui/primitives";
+import { Modal, StatCard, StatusBadge } from "@/components/ui/primitives";
+import { MovementDetails } from "@/components/registers/derived-views";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { logoutAction } from "@/server/actions/auth";
@@ -27,6 +28,8 @@ interface Props {
 
 export function SecurityDashboardClient({ user }: Props) {
   const [page, setPage] = useState(1);
+  // Movement opened in the details popup
+  const [selectedMovement, setSelectedMovement] = useState<string | null>(null);
   const isReady = useStoreReady();
   const dashboardData = useAppStore((s) => s.data.dashboard);
 
@@ -150,9 +153,11 @@ export function SecurityDashboardClient({ user }: Props) {
             ) : (
               <div className="space-y-2 p-4 sm:p-6 pt-0 sm:pt-0">
                 {paginatedMovements.map((mov: any) => (
-                  <div
+                  <button
+                    type="button"
                     key={mov.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 rounded-xl bg-zinc-800/30 p-3 sm:px-4 sm:py-3 table-row-hover transition-colors"
+                    onClick={() => setSelectedMovement(mov.id)}
+                    className="w-full text-left flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 rounded-xl bg-zinc-800/30 p-3 sm:px-4 sm:py-3 table-row-hover transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div
@@ -170,8 +175,8 @@ export function SecurityDashboardClient({ user }: Props) {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-zinc-200 truncate">
-                          {mov.student?.profile?.name || "Unknown"} —{" "}
-                          {mov.student?.studentRoll || ""}
+                          {mov.student?.profile?.name || mov.faculty?.profile?.name || "Unknown"} —{" "}
+                          {mov.student?.studentRoll || mov.faculty?.employeeId || "Faculty"}
                         </p>
                         <p className="text-xs text-zinc-500 truncate">
                           {mov.gate?.name || "Unknown Gate"} •{" "}
@@ -185,7 +190,7 @@ export function SecurityDashboardClient({ user }: Props) {
                       </span>
                       <StatusBadge status={mov.type} />
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -259,7 +264,10 @@ export function SecurityDashboardClient({ user }: Props) {
           </CardContent>
         </Card>
       </div>
-    
+
+      <Modal open={!!selectedMovement} onClose={() => setSelectedMovement(null)} title="Gate Movement Details" className="max-w-xl">
+        {selectedMovement && <MovementDetails id={selectedMovement} />}
+      </Modal>
     </>
   );
 }

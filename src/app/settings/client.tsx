@@ -44,6 +44,16 @@ export function SettingsClient({ user }: Props) {
   const [phone, setPhone] = useState(user.phone || "");
   const department = user.department || "";
   const designation = user.designation || "";
+  // Directors, Deans and HODs manage their own email, Employee ID and title
+  const selfManaged = ["DIRECTOR", "DEAN", "FACULTY_ADMIN"].includes(user.role);
+  const [email, setEmail] = useState(user.email || "");
+  const [employeeId, setEmployeeId] = useState(user.employeeId || "");
+  const [title, setTitle] = useState(() =>
+    user.role === "DEAN"
+      ? designation.replace(/^dean(\s+of)?\s*/i, "")
+      : designation || (user.role === "DIRECTOR" ? "" : user.role === "FACULTY_ADMIN" ? "Head of Department" : "")
+  );
+  const emailChanged = selfManaged && email.trim().toLowerCase() !== (user.email || "").toLowerCase();
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
 
@@ -98,9 +108,14 @@ export function SettingsClient({ user }: Props) {
     const formData = new FormData();
     formData.append("name", name);
     formData.append("phone", phone);
-    if (password) {
+    if (selfManaged) {
+      formData.append("email", email.trim());
+      formData.append("employeeId", employeeId.trim());
+      formData.append("title", title.trim());
+    }
+    if (password || emailChanged) {
       formData.append("currentPassword", currentPassword);
-      formData.append("password", password);
+      if (password) formData.append("password", password);
     }
 
     try {
@@ -181,12 +196,16 @@ export function SettingsClient({ user }: Props) {
                     label="Email Address"
                     name="email"
                     type="email"
-                    value={user.email}
-                    disabled
+                    value={selfManaged ? email : user.email}
+                    onChange={selfManaged ? (e) => setEmail(e.target.value) : undefined}
+                    disabled={!selfManaged}
+                    required={selfManaged}
                     icon={<Mail className="h-4 w-4" />}
                   />
                   <p className="text-[11px] text-zinc-500 mt-1 ml-1">
-                    Primary login email registered with campus authentication.
+                    {selfManaged
+                      ? "This is also your login email. Changing it needs your current password (below)."
+                      : "Primary login email registered with campus authentication."}
                   </p>
                 </div>
 
@@ -215,27 +234,57 @@ export function SettingsClient({ user }: Props) {
                         Department is assigned by the administrator.
                       </p>
                     </div>
-                    <div>
+                    {selfManaged && user.role === "DEAN" ? (
+                      <div className="space-y-1">
+                        <label htmlFor="settings-dean-of" className="block text-sm font-medium text-zinc-300">Dean of</label>
+                        <div className="flex items-stretch rounded-xl border border-zinc-700/50 bg-zinc-900 focus-within:ring-2 focus-within:ring-orange-500/40">
+                          <span className="flex items-center px-3.5 text-sm font-semibold text-zinc-400 border-r border-zinc-700/50 whitespace-nowrap">Dean of</span>
+                          <input
+                            id="settings-dean-of"
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
+                            required
+                            maxLength={80}
+                            placeholder="e.g. Placements, Internal Affairs"
+                            className="h-12 w-full min-w-0 bg-transparent px-3.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    ) : selfManaged ? (
                       <Input
-                        label="Designation"
-                        name="designation"
-                        value={
-                          designation ||
-                          (user.role === "DIRECTOR"
-                            ? "Director"
-                            : user.role === "DEAN"
-                            ? "Dean"
-                            : user.role === "FACULTY_ADMIN"
-                            ? "Head of Department"
-                            : "Faculty Member")
-                        }
-                        disabled
+                        label={user.role === "DIRECTOR" ? "Title" : "Designation"}
+                        name="title"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        required={user.role === "DIRECTOR"}
+                        maxLength={100}
+                        placeholder={user.role === "DIRECTOR" ? "e.g. Managing Director" : "e.g. Head of Department"}
                         icon={<Briefcase className="h-4 w-4" />}
                       />
-                      <p className="text-[11px] text-zinc-500 mt-1 ml-1">
-                        Designation is assigned administratively.
-                      </p>
-                    </div>
+                    ) : (
+                      <div>
+                        <Input
+                          label="Designation"
+                          name="designation"
+                          value={designation || "Faculty Member"}
+                          disabled
+                          icon={<Briefcase className="h-4 w-4" />}
+                        />
+                        <p className="text-[11px] text-zinc-500 mt-1 ml-1">
+                          Designation is assigned administratively.
+                        </p>
+                      </div>
+                    )}
+                    {selfManaged && (
+                      <Input
+                        label="Employee ID"
+                        name="employeeId"
+                        value={employeeId}
+                        onChange={(e) => setEmployeeId(e.target.value)}
+                        maxLength={50}
+                        icon={<Briefcase className="h-4 w-4" />}
+                      />
+                    )}
                   </div>
                 )}
 
@@ -257,7 +306,7 @@ export function SettingsClient({ user }: Props) {
                       placeholder="Leave blank to keep current password"
                       icon={<Lock className="h-4 w-4" />}
                     />
-                    {password && (
+                    {(password || emailChanged) && (
                       <Input
                         label="Current Password"
                         name="currentPassword"
@@ -265,7 +314,7 @@ export function SettingsClient({ user }: Props) {
                         autoComplete="current-password"
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
-                        placeholder="Required to change your password"
+                        placeholder={emailChanged && !password ? "Required to change your email" : "Required to change your password"}
                         required
                         icon={<Lock className="h-4 w-4" />}
                       />

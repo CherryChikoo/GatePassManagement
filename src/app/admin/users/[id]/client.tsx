@@ -1,4 +1,7 @@
 "use client";
+import { ResetPasswordButton } from "@/components/users/reset-password-button";
+import { Pager } from "@/components/registers/toolbar";
+import { istDateString } from "@/lib/time/ist";
 import { scheduledNote } from "@/lib/pass-dates";
 import { actionErrorMessage } from "@/lib/deployment";
 import { adminNavItems, facultyNavItems, wardenNavItems, securityNavItems } from "@/components/dashboard/layout";
@@ -87,7 +90,10 @@ export function UserDetailClient({
   const [success, setSuccess] = useState<string | null>(null);
   const [toggling, setToggling] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
-  const [dateFilter, setDateFilter] = useState("ALL"); // ALL, TODAY, WEEK, MONTH
+  const [dateFilter, setDateFilter] = useState("ALL"); // ALL, TODAY, WEEK, MONTH, DATE
+  const [specificDate, setSpecificDate] = useState(() => istDateString());
+  const [permPage, setPermPage] = useState(1);
+  const PERM_PAGE_SIZE = 10;
   const [editStudentType, setEditStudentType] = useState(targetUser?.student?.studentType || "DAY_SCHOLAR");
 
   // Determine back link and nav items based on viewer's role
@@ -129,6 +135,8 @@ export function UserDetailClient({
   const isWithinDate = (dateString: string) => {
     if (dateFilter === "ALL") return true;
     if (!dateString) return true;
+    // A specific IST day
+    if (dateFilter === "DATE") return !specificDate || istDateString(new Date(dateString)) === specificDate;
     const date = new Date(dateString);
     const now = new Date();
     if (dateFilter === "TODAY") {
@@ -164,6 +172,11 @@ export function UserDetailClient({
 
     return matchesFilter && matchesSearch;
   });
+
+  // 10 passes per page (filters reset to page 1)
+  const permPages = Math.max(1, Math.ceil(filteredPermissions.length / PERM_PAGE_SIZE));
+  const safePermPage = Math.min(permPage, permPages);
+  const pagedPermissions = filteredPermissions.slice((safePermPage - 1) * PERM_PAGE_SIZE, safePermPage * PERM_PAGE_SIZE);
 
   // Filtered movements
   const filteredMovements = movements.filter((m) => {
@@ -265,14 +278,32 @@ export function UserDetailClient({
           <div className="flex items-center gap-3">
             <select
               value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
+              onChange={(e) => {
+                setDateFilter(e.target.value);
+                setPermPage(1);
+              }}
+              aria-label="Date range"
               className="h-8 px-2.5 bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500/50"
             >
               <option value="ALL">All Time</option>
               <option value="TODAY">Today</option>
               <option value="WEEK">Last 7 Days</option>
               <option value="MONTH">Last 30 Days</option>
+              <option value="DATE">Pick a date…</option>
             </select>
+            {dateFilter === "DATE" && (
+              <input
+                type="date"
+                aria-label="Date"
+                value={specificDate}
+                max={istDateString()}
+                onChange={(e) => {
+                  setSpecificDate(e.target.value);
+                  setPermPage(1);
+                }}
+                className="h-8 px-2 bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs rounded-md [color-scheme:dark]"
+              />
+            )}
           </div>
         </div>
 
@@ -399,6 +430,10 @@ export function UserDetailClient({
                     <Power className="h-3.5 w-3.5 mr-1.5" />
                     {user.active ? "Disable" : "Enable"}
                   </Button>
+                )}
+                {((currentUser.role === "ADMIN" && user.role !== "ADMIN") ||
+                  (currentUser.role === "FACULTY_ADMIN" && (user.role === "STUDENT" || user.role === "FACULTY"))) && (
+                  <ResetPasswordButton profileId={user.id} name={user.name} className="h-8" />
                 )}
               </div>
             </div>
@@ -1013,7 +1048,7 @@ export function UserDetailClient({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-800/40">
-                        {filteredPermissions.map((p) => {
+                        {pagedPermissions.map((p) => {
                           const exitMove = p.movements?.find(
                             (m: any) => m.type === "EXIT",
                           );
@@ -1133,6 +1168,12 @@ export function UserDetailClient({
                       </tbody>
                     </table>
                   </div>
+
+                  {filteredPermissions.length > 0 && (
+                    <div className="px-4 py-3 border-t border-zinc-800/60">
+                      <Pager page={safePermPage} pageSize={PERM_PAGE_SIZE} total={filteredPermissions.length} onPage={setPermPage} />
+                    </div>
+                  )}
 
                   {filteredPermissions.length === 0 && (
                     <div className="py-12 text-center">

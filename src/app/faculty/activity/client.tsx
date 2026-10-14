@@ -8,7 +8,7 @@ import { formatDateTime } from "@/lib/utils";
 import { DoorOpen, DoorClosed, ArrowLeft, MapPin, Calendar, Clock, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { logoutAction } from "@/server/actions/auth";
 import { BackButton } from "@/components/ui/back-button";
 import { istDateString } from "@/lib/time/ist";
@@ -22,43 +22,53 @@ export function FacultyActivityClient({
   ownPasses = [],
   total = 0,
   currentPage,
-  selectedDate
+  pageSize = 25,
+  selectedDate,
+  search: initialSearch = "",
+  tab = "ALL",
 }: {
   user: any;
   permissions: any[];
   ownPasses?: any[];
   total: number;
   currentPage: number;
+  pageSize?: number;
   selectedDate: string;
+  search?: string;
+  tab?: "ALL" | "ENTRIES" | "EXITS";
 }) {
   const router = useRouter();
   const [selectedPermission, setSelectedPermission] = useState<any>(null);
-  const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState<"ALL" | "ENTRIES" | "EXITS">("ALL");
-  
-  // Filter locally
-  const filteredPermissions = permissions.filter(p => {
-    // Tab filtering
-    if (activeTab === "ENTRIES" && p.type !== "ENTRY") return false;
-    if (activeTab === "EXITS" && p.type !== "EXIT") return false;
-    
-    // Search filtering
-    if (search) {
-      const q = search.toLowerCase();
-      if (!p.student?.profile?.name?.toLowerCase().includes(q) && 
-          !p.student?.studentRoll?.toLowerCase().includes(q)) {
-        return false;
-      }
-    }
-    return true;
-  });
-  
-  const displayTotal = search || activeTab !== "ALL" ? filteredPermissions.length : total;
-  const totalPages = Math.ceil(displayTotal / 25) || 1;
-  
+  const [search, setSearch] = useState(initialSearch);
+  const activeTab = tab;
+
+  // Date, search, tab and page live in the URL; the server filters and pages
+  const buildUrl = (patch: { date?: string; q?: string; tab?: string; page?: number }) => {
+    const p = new URLSearchParams();
+    p.set("date", patch.date ?? selectedDate);
+    const q = patch.q ?? search.trim();
+    if (q) p.set("q", q);
+    const t = patch.tab ?? activeTab;
+    if (t !== "ALL") p.set("tab", t);
+    const pg = patch.page ?? 1;
+    if (pg > 1) p.set("page", String(pg));
+    return `/faculty/activity?${p.toString()}`;
+  };
+  const setActiveTab = (t: "ALL" | "ENTRIES" | "EXITS") => router.push(buildUrl({ tab: t }));
+
+  // Search after the guard stops typing
+  useEffect(() => {
+    if (search.trim() === initialSearch) return;
+    const t = setTimeout(() => router.replace(buildUrl({ q: search.trim() })), 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  const filteredPermissions = permissions;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    router.push(`/faculty/activity?date=${e.target.value}`);
+    router.push(buildUrl({ date: e.target.value }));
   };
 
   return (
@@ -160,7 +170,9 @@ export function FacultyActivityClient({
           <CardContent className="p-0">
             {filteredPermissions.length === 0 ? (
               <p className="text-center text-sm text-zinc-500 py-8">
-                No activity found for the selected date.
+                {initialSearch || activeTab !== "ALL"
+                  ? "No passes match this search or filter on the selected date."
+                  : "No activity found for the selected date."}
               </p>
             ) : (
               <div className="divide-y divide-zinc-800/30">
@@ -210,34 +222,32 @@ export function FacultyActivityClient({
         </Card>
 
         {/* Pagination */}
-        {total > 25 && (
-          <div className="flex justify-between items-center py-4 px-6 border-t border-zinc-800/50">
+        {total > 0 && (
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-3 py-4 px-1 sm:px-6 border-t border-zinc-800/50">
             <p className="text-sm text-zinc-400">
-              Showing {(currentPage - 1) * 25 + 1} to {Math.min(currentPage * 25, total)} of {displayTotal} records
+              Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, total)} of {total} records
             </p>
             <div className="flex items-center gap-3">
               <span className="text-xs text-zinc-500">
                 Page {currentPage} of {totalPages}
               </span>
               <div className="flex gap-2">
-                <Link href={`/faculty/activity?date=${selectedDate}&page=${currentPage - 1}`}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={currentPage <= 1}
-                  >
-                    Previous
-                  </Button>
-                </Link>
-                <Link href={`/faculty/activity?date=${selectedDate}&page=${currentPage + 1}`}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={currentPage >= totalPages}
-                  >
-                    Next
-                  </Button>
-                </Link>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage <= 1}
+                  onClick={() => router.push(buildUrl({ page: currentPage - 1 }))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => router.push(buildUrl({ page: currentPage + 1 }))}
+                >
+                  Next
+                </Button>
               </div>
             </div>
           </div>

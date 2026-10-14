@@ -45,6 +45,8 @@ interface DashboardLayoutProps {
   userEmail: string;
   onLogout: () => void;
   defaultCollapsed?: boolean;
+  /** Shown instead of "<ROLE> Dashboard", e.g. "Dean of Placements" */
+  roleTitle?: string;
 }
 
 export function DashboardLayout({
@@ -54,7 +56,11 @@ export function DashboardLayout({
   userEmail,
   onLogout,
   defaultCollapsed = false,
+  roleTitle,
 }: DashboardLayoutProps) {
+  const roleLine =
+    roleTitle ||
+    `${role === "FACULTY_ADMIN" ? "HOD" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : role === "SECURITY_SUPERVISOR" ? "SUPERVISOR" : role} Dashboard`;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [desktopCollapsed, setDesktopCollapsed] = useState(defaultCollapsed);
   const pathname = usePathname();
@@ -185,7 +191,7 @@ export function DashboardLayout({
                 GatePass Portal
               </h1>
               <p className="text-xs text-zinc-500 font-medium truncate">
-                {role === "FACULTY_ADMIN" ? "HOD" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : role === "SECURITY_SUPERVISOR" ? "SUPERVISOR" : role} Dashboard
+                {roleLine}
               </p>
             </div>
           </div>
@@ -341,7 +347,7 @@ export function DashboardLayout({
                 <h1 className="text-sm font-bold text-zinc-100 tracking-tight leading-tight truncate">
                   GatePass Portal
                 </h1>
-                <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider truncate">{role === "FACULTY_ADMIN" ? "HOD" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : role === "SECURITY_SUPERVISOR" ? "SUPERVISOR" : role} Dashboard</p>
+                <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider truncate">{roleLine}</p>
               </div>
             </div>
           )}
@@ -482,6 +488,7 @@ export const wardenNavItems: NavItem[] = [
   { label: "Dashboard", href: "/warden", icon: <LayoutDashboard className="h-5 w-5" /> },
   { label: "Hostel Students", href: "/warden/students", icon: <Users className="h-5 w-5" /> },
   { label: "Requests", href: "/warden/requests", icon: <ClipboardCheck className="h-5 w-5" /> },
+  { label: "Scan Hostel Pass", href: "/warden/scan", icon: <ScanLine className="h-5 w-5" /> },
   { label: "Activity", href: "/warden/activity", icon: <History className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
   // Unimplemented:

@@ -227,7 +227,7 @@ export async function getFacultyPassHistory(profileIdOrFacultyId: string) {
   const permissions = await prisma.permission.findMany({
     where: { facultyId: faculty.id },
     orderBy: { createdAt: "desc" },
-    take: 200,
+    take: 500,
     include: {
       approval: {
         include: {

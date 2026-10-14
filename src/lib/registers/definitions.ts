@@ -7,7 +7,8 @@
  * (passes, gate movements, visitors), so nothing is entered twice.
  *
  * Rules for every entry register:
- * - Every input is optional; a record needs at least one detail.
+ * - The important details (names, numbers, the item or key) are mandatory;
+ *   every other input is optional.
  * - Dates are always today and times are the live time when saved — both are
  *   set by the server and cannot be typed in.
  * - Registers with In / Out start with the guard choosing In or Out; the other
@@ -51,6 +52,8 @@ export type GroupDef = {
   fields: FieldDef[];
   /** Maximum number of rows (null = no limit) */
   max: number | null;
+  /** Fields that must be filled in every row that is added */
+  required?: string[];
 };
 
 export type Direction = "IN" | "OUT";
@@ -78,6 +81,8 @@ export type EntryRegister = {
   fields: FieldDef[];
   groups?: GroupDef[];
   movement?: MovementDef;
+  /** The important details that must be filled in; every other input is optional */
+  required: string[];
   /** Fixed values printed on the form (e.g. the "To" block of Form 19) */
   fixed?: { label: string; value: string }[];
   /** Fields shown in the list table (first is the headline) */
@@ -179,6 +184,7 @@ export const REGISTERS: RegisterDef[] = [
     number: 3,
     title: "Admission Book & Pass",
     description: "Admission enquiries and reporting visits by parents and guardians.",
+    required: ["parentName", "parentMobile"],
     movement: { in: { label: "In", timeKey: "timeIn" }, out: { label: "Out", timeKey: "timeOut" }, firstDirections: BOTH },
     listFields: ["parentName", "programRequested", "admissionReporting", "timeIn", "timeOut"],
     fields: [
@@ -208,6 +214,7 @@ export const REGISTERS: RegisterDef[] = [
     number: 4,
     title: "Car Book",
     description: "College cars going out and coming back, with odometer readings.",
+    required: ["driverName", "vehicleNumber"],
     movement: {
       in: { label: "In", timeKey: "timeIn", readingKey: "inReading" },
       out: { label: "Out", timeKey: "timeOut", readingKey: "outReading" },
@@ -233,6 +240,7 @@ export const REGISTERS: RegisterDef[] = [
     number: 5,
     title: "Auto Book",
     description: "College autos going out on trips, with readings.",
+    required: ["autoNumber"],
     movement: {
       in: { label: "In", timeKey: "inTime", readingKey: "inReading" },
       out: { label: "Out", timeKey: "outTime", readingKey: "outReading" },
@@ -255,6 +263,7 @@ export const REGISTERS: RegisterDef[] = [
     number: 6,
     title: "College Daily Labour Book",
     description: "Daily labour arriving for college work.",
+    required: ["workerType", "workerCount", "mainWorker"],
     listFields: ["workerType", "workerCount", "workType", "workArea"],
     fields: labourFields,
   },
@@ -264,6 +273,7 @@ export const REGISTERS: RegisterDef[] = [
     number: 7,
     title: "College Labour Contract Book",
     description: "Contract labour arriving for college work.",
+    required: ["workerType", "workerCount", "mainWorker"],
     listFields: ["workerType", "workerCount", "workType", "workArea"],
     fields: [...labourFields, { key: "remarks", label: "Remarks", type: "textarea" }],
   },
@@ -273,6 +283,7 @@ export const REGISTERS: RegisterDef[] = [
     number: 8,
     title: "Siros Venture Main Gate Stock Register",
     description: "Material coming in or going out at the Siros Venture main gate.",
+    required: ["itemName", "quantity", "direction"],
     listFields: ["itemName", "direction", "quantity", "unit", "supplierName"],
     fields: stockFields,
   },
@@ -282,6 +293,7 @@ export const REGISTERS: RegisterDef[] = [
     number: 9,
     title: "College Main Gate Stock Entry Register",
     description: "Material coming in or going out at the college main gate.",
+    required: ["itemName", "quantity", "direction"],
     listFields: ["itemName", "direction", "quantity", "unit", "supplierName"],
     fields: stockFields,
   },
@@ -291,6 +303,7 @@ export const REGISTERS: RegisterDef[] = [
     number: 10,
     title: "Siros Venture Daily Labour & Contract Book",
     description: "Contractors and every worker under them, with in and out times.",
+    required: ["contractorName", "phone"],
     movement: {
       in: { label: "In", timeKey: "contractorIn" },
       out: { label: "Out", timeKey: "contractorOut" },
@@ -315,6 +328,7 @@ export const REGISTERS: RegisterDef[] = [
         label: "Workers",
         itemLabel: "Worker",
         max: null,
+        required: ["name"],
         fields: [
           { key: "name", label: "Worker Name", type: "text" },
           { key: "gender", label: "Gender", type: "select", options: ["Male", "Female"] },
@@ -331,6 +345,7 @@ export const REGISTERS: RegisterDef[] = [
     number: 11,
     title: "College Daily Book",
     description: "General daily in / out entries.",
+    required: ["whoReferred", "purpose"],
     movement: {
       in: { label: "In", timeKey: "time" },
       out: { label: "Out", timeKey: "time" },
@@ -367,6 +382,7 @@ export const REGISTERS: RegisterDef[] = [
     number: 14,
     title: "Security Daily Book",
     description: "Security duty for each shift.",
+    required: ["shift", "staff"],
     movement: {
       in: { label: "Duty start", timeKey: "dutyStart" },
       out: { label: "Duty end", timeKey: "dutyEnd" },
@@ -388,6 +404,7 @@ export const REGISTERS: RegisterDef[] = [
     number: 15,
     title: "Security Attendance Register Book",
     description: "Attendance of security staff.",
+    required: ["staff", "attendanceStatus"],
     movement: { in: { label: "In", timeKey: "inTime" }, out: { label: "Out", timeKey: "outTime" }, firstDirections: ["IN"] },
     listFields: ["staff", "shift", "attendanceStatus", "inTime", "outTime"],
     fields: [
@@ -414,6 +431,7 @@ export const REGISTERS: RegisterDef[] = [
     number: 17,
     title: "Auto In & Out Book",
     description: "Outside autos entering and leaving the campus.",
+    required: ["autoNumber", "driverName"],
     movement: { in: { label: "In", timeKey: "inTime" }, out: { label: "Out", timeKey: "outTime" }, firstDirections: BOTH },
     listFields: ["autoNumber", "driverName", "inTime", "outTime"],
     fields: [
@@ -431,6 +449,7 @@ export const REGISTERS: RegisterDef[] = [
     number: 18,
     title: "College Purpose & Keys Book",
     description: "Keys handed out and returned.",
+    required: ["personName", "keyName"],
     movement: {
       in: { label: "Key returned", timeKey: "keyReturnedTime" },
       out: { label: "Key taken", timeKey: "keyTakenTime" },
@@ -457,6 +476,7 @@ export const REGISTERS: RegisterDef[] = [
     number: 19,
     title: "Returnable & Non-Returnable Book",
     description: "Material taken out by faculty or staff, returnable or not.",
+    required: ["fromName", "purpose", "itemType"],
     movement: { in: { label: "In", timeKey: "inTime" }, out: { label: "Out", timeKey: "outTime" }, firstDirections: BOTH },
     listFields: ["fromName", "itemType", "purpose", "outTime", "inTime"],
     fixed: [
@@ -482,6 +502,7 @@ export const REGISTERS: RegisterDef[] = [
         label: "Material Details",
         itemLabel: "Item",
         max: 5,
+        required: ["description"],
         fields: [
           { key: "description", label: "Name and Description", type: "text" },
           { key: "quantity", label: "Quantity", type: "number" },

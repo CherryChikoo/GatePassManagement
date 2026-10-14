@@ -9,6 +9,7 @@ import { istDateString } from "@/lib/time/ist";
 import {
   getFacultyBook,
   getHomeOutingDay,
+  getMovementDetails,
   getHomeOutingSummary,
   getHostelOutingBook,
   getPassGatePhotos,
@@ -279,7 +280,7 @@ export function VisitorsBookView({ canRegister }: { canRegister: boolean }) {
   );
 }
 
-function VisitorDetails({ id }: { id: string }) {
+export function VisitorDetails({ id }: { id: string }) {
   const { data, error, loading } = useLoader<any>(() => getVisitorDetails(id), id);
   if (error) return <p className="text-sm text-red-300">{error}</p>;
   if (loading || !data) return <p className="text-sm text-zinc-500">Loading…</p>;
@@ -317,7 +318,7 @@ function VisitorDetails({ id }: { id: string }) {
   );
 }
 
-function DetailGrid({ items }: { items: [string, unknown][] }) {
+export function DetailGrid({ items }: { items: [string, unknown][] }) {
   return (
     <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
       {items.map(([k, v]) => (
@@ -457,6 +458,16 @@ export function HomeOutingSummaryView() {
   const [to, setTo] = useState(today);
   const [from, setFrom] = useState(() => istDateString(new Date(Date.now() - 13 * 86_400_000)));
   const { data, error, loading } = useLoader<any>(() => getHomeOutingSummary({ from, to }), `${from}|${to}`);
+  // 14 days per page (a range can be up to 62 days)
+  const DAYS_PER_PAGE = 14;
+  const [page, setPage] = useState(1);
+  const [rangeKey, setRangeKey] = useState(`${from}|${to}`);
+  if (rangeKey !== `${from}|${to}`) {
+    setRangeKey(`${from}|${to}`);
+    setPage(1);
+  }
+  const days: any[] = data?.days ?? [];
+  const pageDays = days.slice((page - 1) * DAYS_PER_PAGE, page * DAYS_PER_PAGE);
   const [day, setDay] = useState<string | null>(null);
 
   const cols = [
@@ -481,7 +492,7 @@ export function HomeOutingSummaryView() {
         </label>
       </div>
       <p className="text-xs text-zinc-500">
-        Totals are counted from approved passes (by pass date) and actual gate exits (by exit date). Nothing is entered here.
+        Totals are counted from approved passes (by pass date) and actual gate exits (by exit date). The Total row covers the whole selected range.
       </p>
       <Shell loading={loading} error={error} empty={!!data && data.days.length === 0}>
         <table className="w-full text-sm">
@@ -494,7 +505,7 @@ export function HomeOutingSummaryView() {
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800/70 text-zinc-300">
-            {data?.days.map((d: any) => (
+            {pageDays.map((d: any) => (
               <tr key={d.date} onClick={() => setDay(d.date)} className="cursor-pointer hover:bg-zinc-800/40">
                 <td className={td}>{formatDay(`${d.date}T00:00:00+05:30`)}</td>
                 {cols.map(([k]) => (
@@ -515,6 +526,8 @@ export function HomeOutingSummaryView() {
           )}
         </table>
       </Shell>
+
+      {data && <Pager page={page} pageSize={DAYS_PER_PAGE} total={days.length} onPage={setPage} />}
 
       <Modal open={!!day} onClose={() => setDay(null)} title={day ? `Passes on ${formatDay(`${day}T00:00:00+05:30`)}` : ""} className="max-w-2xl">
         {day && <DayDetails date={day} />}
@@ -574,6 +587,64 @@ function DayDetails({ date }: { date: string }) {
       {section("Boys hostel", data.boys)}
       {section("Ladies hostel", data.ladies)}
       {section("Faculty", data.faculty, true)}
+    </div>
+  );
+}
+
+/** Full details of one gate exit / entry (student or faculty), in the registers layout. */
+export function MovementDetails({ id }: { id: string }) {
+  const { data, error, loading } = useLoader<any>(() => getMovementDetails(id), id);
+  if (error) return <p className="text-sm text-red-300">{error}</p>;
+  if (loading || !data) return <p className="text-sm text-zinc-500">Loading…</p>;
+  const m = data.movement;
+  const p = m.pass;
+  const person = m.person;
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${m.type === "EXIT" ? "bg-orange-500/15 text-orange-300" : "bg-emerald-500/15 text-emerald-300"}`}>
+          {m.type === "EXIT" ? "Exit" : "Entry"}
+        </span>
+        <span className="text-sm text-zinc-300">{formatInstant(m.at)}</span>
+      </div>
+      {m.photoUrl ? (
+         
+        <img src={m.photoUrl} alt={`Gate photo of ${person?.name ?? "the person"}`} className="h-40 w-40 rounded-xl object-cover border border-zinc-800" />
+      ) : (
+        <p className="text-xs text-zinc-500">No photo for this {person?.kind === "Faculty" ? "faculty pass" : "movement"}.</p>
+      )}
+      <DetailGrid
+        items={[
+          [person?.kind === "Faculty" ? "Faculty Name" : "Student Name", person?.name],
+          [person?.kind === "Faculty" ? "Employee ID" : "Roll Number", person?.id],
+          ["Department", person?.department],
+          [person?.kind === "Faculty" ? "Designation" : "Year / Semester", person?.detail],
+          ["Type", person?.type],
+          ["Phone", person?.phone],
+          ["Gate", m.gate],
+          ["Recorded by", m.guard],
+          ["Notes", m.notes],
+        ]}
+      />
+      {p && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Pass</p>
+          <DetailGrid
+            items={[
+              ["Pass", p.hostelPass ? "Hostel pass" : p.requestType ?? (p.type === "EXIT" ? "Exit pass" : "Entry pass")],
+              ["Purpose / Reason", p.purpose],
+              ["Destination", p.destination],
+              ["Dates", p.dates.from ? `${formatDay(p.dates.from)}${p.dates.to && formatDay(p.dates.to) !== formatDay(p.dates.from) ? ` – ${formatDay(p.dates.to)}` : ""}` : null],
+              ["Expected Out", p.expectedExit ? formatInstant(p.expectedExit) : null],
+              ["Expected Return", p.expectedReturn ? formatInstant(p.expectedReturn) : null],
+              ["Contact", p.contactNumber],
+              ["Remarks", p.remarks],
+              ["Requested", formatInstant(p.requestedAt)],
+              ["Approved", p.approvedAt ? `${formatInstant(p.approvedAt)} • ${p.approvedBy}` : null],
+            ]}
+          />
+        </div>
+      )}
     </div>
   );
 }

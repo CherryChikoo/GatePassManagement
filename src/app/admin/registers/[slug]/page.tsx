@@ -1,12 +1,14 @@
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/helpers";
+import { getRegisterAccess } from "@/lib/registers/access";
 import { registerFromSlug } from "@/lib/registers/definitions";
 import { RegisterPage } from "@/components/registers/register-pages";
 
 export default async function RegisterDetailPage({ params }: { params: Promise<{ slug: string }> }) {
-  await requireRole("ADMIN");
+  const user = await requireRole("ADMIN");
   const { slug } = await params;
   const def = registerFromSlug(slug);
-  if (!def) notFound();
-  return <RegisterPage registerKey={def.key} viewer="ADMIN" />;
+  const access = await getRegisterAccess(user);
+  if (!def || !access.canView(def.key)) notFound();
+  return <RegisterPage registerKey={def.key} viewer="ADMIN" canCreate={access.canCreate(def.key)} />;
 }

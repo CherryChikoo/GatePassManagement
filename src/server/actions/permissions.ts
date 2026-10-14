@@ -6,7 +6,7 @@ import { permissionRequestSchema, batchGrantSchema, hostelOutingSchema } from "@
 import { revalidatePath } from "next/cache";
 import { resolveStudentActivePass } from "@/lib/permissions/auto-expire";
 import { resolveStudentApprover } from "@/lib/permissions/approver";
-import { generateQrToken, generateLiveQrJwt } from "@/lib/qr/token";
+import { generateQrToken, generateCompactLiveQr } from "@/lib/qr/token";
 import { getStaffScope, studentWhereForScope } from "@/lib/auth/scope";
 import { istDateString, istDateTime, istDateToInstant, istDayRange, istStartOfDay } from "@/lib/time/ist";
 
@@ -50,19 +50,19 @@ async function parseHostelOuting(formData: FormData, fromDate: string, expectedE
     guardianRelation: (formData.get("guardianRelation") as string) || "",
     hostelInchargeDetails: (formData.get("hostelInchargeDetails") as string) || "",
   });
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!parsed.success) return { error: parsed.error.issues[0].message, field: String(parsed.error.issues[0].path[0] ?? "") };
   const o = parsed.data;
 
-  if (o.outingDateTo < fromDate) return { error: "Outing date to cannot be before the outing date from" };
+  if (o.outingDateTo < fromDate) return { error: "Outing date to cannot be before the outing date from", field: "outingDateTo" };
   if (istDateToInstant(o.outingDateTo).getTime() - istDateToInstant(fromDate).getTime() > MAX_DAYS_AHEAD * DAY_MS) {
-    return { error: `An outing can be at most ${MAX_DAYS_AHEAD} days long` };
+    return { error: `An outing can be at most ${MAX_DAYS_AHEAD} days long`, field: "outingDateTo" };
   }
 
   let expectedReturn: Date | null = null;
   if (o.inTime) {
     expectedReturn = istDateTime(o.outingDateTo, o.inTime);
     if (!expectedReturn || expectedReturn <= expectedExit) {
-      return { error: "In time and date must be after the out time and date" };
+      return { error: "In time and date must be after the out time and date", field: "inTime" };
     }
   }
 
@@ -112,7 +112,7 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
 
   const parsed = permissionRequestSchema.safeParse(raw);
   if (!parsed.success) {
-    return { error: parsed.error.issues[0].message };
+    return { error: parsed.error.issues[0].message, field: String(parsed.error.issues[0].path[0] ?? "") };
   }
   const input = parsed.data;
 
@@ -140,9 +140,9 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
   }
 
   const expectedExit = istDateTime(input.exitDate, input.expectedExit);
-  if (!expectedExit) return { error: "Invalid time" };
+  if (!expectedExit) return { error: "Invalid time", field: "expectedExit" };
   if (input.exitDate === istDateString() && expectedExit.getTime() < Date.now() - 30 * 60 * 1000) {
-    return { error: "The selected time has already passed. Please choose a later time." };
+    return { error: "The selected time has already passed. Please choose a later time.", field: "expectedExit" };
   }
 
   let expectedReturn: Date | null = null;
@@ -158,7 +158,7 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
   let outing: Awaited<ReturnType<typeof parseHostelOuting>> | null = null;
   if (type === "EXIT" && student.studentType === "HOSTELLER") {
     outing = await parseHostelOuting(formData, input.exitDate, expectedExit, student.wardenId);
-    if ("error" in outing) return { error: outing.error };
+    if ("error" in outing) return { error: outing.error, field: "field" in outing ? outing.field : undefined };
     if (outing.expectedReturn) expectedReturn = outing.expectedReturn;
   }
   const outingData = outing && !("error" in outing) ? outing.data : {};
@@ -438,12 +438,91 @@ export async function generateLiveQrToken(permissionId: string) {
     return { error: `This pass becomes valid on ${istDateString(permission.exitDate)}.`, validFrom };
   }
 
-  const token = await generateLiveQrJwt({
+  // Compact signed code (~110 characters): far fewer QR dots, so it scans quickly from a screen
+  const token = generateCompactLiveQr({
     permissionId: permission.id,
     tokenId: permission.qr.id,
-    ownerId: permission.studentId || permission.facultyId || "",
     expiresAt: permission.qr.expiresAt,
   });
 
   return { token, expiresAt: permission.qr.expiresAt };
+}
+
+/**
+ * Hostel student going from college to the hostel. Short form like a day
+ * scholar's pass; approved by the department HOD; the QR is scanned by the
+ * hostel warden on arrival (not by gate security).
+ */
+export async function createHostelVisitRequest(formData: FormData) {
+  const user = await requireRole("STUDENT");
+
+  const parsed = permissionRequestSchema.safeParse({
+    purpose: (formData.get("purpose") as string) || "",
+    destination: "Hostel",
+    exitDate: istDateString(),
+    expectedExit: (formData.get("expectedExit") as string) || "",
+    expectedReturn: "",
+    contactNumber: (formData.get("contactNumber") as string) || "",
+    remarks: (formData.get("remarks") as string) || "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message, field: String(parsed.error.issues[0].path[0] ?? "") };
+  const input = parsed.data;
+
+  const student = await prisma.student.findUnique({
+    where: { profileId: user.profileId },
+    select: { id: true, studentType: true, department: true, wardenId: true },
+  });
+  if (!student) return { error: "Student record not found. Contact admin." };
+  if (student.studentType !== "HOSTELLER") return { error: "Hostel passes are only for hostel students." };
+
+  // The department HOD approves (same as a day scholar's pass)
+  const resolution = await resolveStudentApprover({ ...student, studentType: "DAY_SCHOLAR" });
+  if (!resolution.ok) return { error: resolution.error };
+
+  const expectedExit = istDateTime(input.exitDate, input.expectedExit);
+  if (!expectedExit) return { error: "Invalid time", field: "expectedExit" };
+  if (expectedExit.getTime() < Date.now() - 30 * 60 * 1000) {
+    return { error: "The selected time has already passed. Please choose a later time.", field: "expectedExit" };
+  }
+
+  await resolveStudentActivePass(student.id);
+
+  try {
+    const permission = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"permission-request:" + student.id}))`;
+      const active = await tx.permission.findFirst({
+        where: { studentId: student.id, status: { in: ["PENDING", "APPROVED"] } },
+        select: { status: true },
+      });
+      if (active?.status === "PENDING") throw new Error("PENDING_EXISTS");
+      if (active?.status === "APPROVED") throw new Error("APPROVED_EXISTS");
+      return tx.permission.create({
+        data: {
+          studentId: student.id,
+          approverType: resolution.approver.approverType,
+          approverId: resolution.approver.approverId,
+          type: "EXIT",
+          passKind: "HOSTEL",
+          purpose: input.purpose,
+          destination: "Hostel",
+          exitDate: istDateToInstant(input.exitDate),
+          expectedExit,
+          contactNumber: input.contactNumber || null,
+          remarks: input.remarks || null,
+          status: "PENDING",
+        },
+        select: { id: true },
+      });
+    });
+
+    revalidatePath("/student");
+    revalidatePath("/faculty-admin");
+    revalidatePath("/faculty-admin/requests");
+    return { success: true, permissionId: permission.id };
+  } catch (err: any) {
+    if (err?.message === "PENDING_EXISTS") return { error: "You already have a pending request. Please wait for approval or cancel it first." };
+    if (err?.message === "APPROVED_EXISTS") return { error: "You have an approved pass. Please use it before requesting another." };
+    console.error("[createHostelVisitRequest] failed:", err?.message);
+    return { error: "Failed to submit request. Please try again." };
+  }
 }

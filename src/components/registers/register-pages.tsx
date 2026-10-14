@@ -17,7 +17,7 @@ const BASE: Record<RegisterViewer, string> = {
   SECURITY_SUPERVISOR: "/supervisor",
 };
 
-export function RegistersHub({ viewer }: { viewer: RegisterViewer }) {
+export function RegistersHub({ viewer, hidden = [] }: { viewer: RegisterViewer; hidden?: string[] }) {
   const base = BASE[viewer];
   const [counts, setCounts] = useState<Record<string, number>>({});
   useEffect(() => {
@@ -37,11 +37,11 @@ export function RegistersHub({ viewer }: { viewer: RegisterViewer }) {
           )}
         </h1>
         <p className="text-sm text-zinc-400 mt-1">
-          All gate registers. Saved records are permanent and cannot be edited.
+          All gate registers. Security cannot change saved records; only Main Admin can edit or delete them.
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        {REGISTERS.map((r) => (
+        {REGISTERS.filter((r) => !hidden.includes(r.key)).map((r) => (
           <Link
             key={r.key}
             href={`${base}/registers/${registerSlug(r.key)}`}
@@ -67,14 +67,23 @@ export function RegistersHub({ viewer }: { viewer: RegisterViewer }) {
   );
 }
 
-export function RegisterPage({ registerKey, viewer }: { registerKey: RegisterKey; viewer: RegisterViewer }) {
+export function RegisterPage({
+  registerKey,
+  viewer,
+  canCreate,
+}: {
+  registerKey: RegisterKey;
+  viewer: RegisterViewer;
+  /** May add entries (decided on the server, e.g. attendance = Head Security / Admin) */
+  canCreate: boolean;
+}) {
   const def = REGISTER_BY_KEY[registerKey];
   const base = BASE[viewer];
   const isSecurity = viewer === "SECURITY";
 
   let body: React.ReactNode;
   if (isEntryRegister(def)) {
-    body = <EntryRegisterView def={def} canCreate={isSecurity} />;
+    body = <EntryRegisterView def={def} canCreate={canCreate} canAdminEdit={viewer === "ADMIN"} />;
   } else if (def.key === "FACULTY_BOOK") {
     body = <FacultyBookView canMarkIn={isSecurity} />;
   } else if (def.key === "VISITORS") {

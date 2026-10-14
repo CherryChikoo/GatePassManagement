@@ -102,6 +102,8 @@ model SecurityStaff {
   id         String     @id @default(uuid())
   profileId  String     @unique @map("profile_id")
   employeeId String?    @unique @map("employee_id")
+  /// Head Security: everything a guard can do, plus taking staff attendance
+  isHead     Boolean    @default(false) @map("is_head")
   gateId     String?    @map("gate_id")
   createdAt  DateTime   @default(now()) @map("created_at")
   movements  Movement[]
@@ -149,6 +151,12 @@ model Permission {
   hostelInchargeDetails String?       @map("hostel_incharge_details")
   /// Snapshot of the warden at request time
   wardenDetails         String?       @map("warden_details")
+  /// "HOSTEL" = hosteller going from college to the hostel: HOD approves,
+  /// the hostel warden scans the QR (not gate security). Null = normal pass.
+  passKind              String?       @map("pass_kind")
+  /// Hostel pass: when / which warden scanned the student in at the hostel
+  wardenScannedAt       DateTime?     @map("warden_scanned_at")
+  wardenScannedById     String?       @map("warden_scanned_by_id")
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
   movements       Movement[]

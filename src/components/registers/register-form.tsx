@@ -41,7 +41,21 @@ function emptyRow(g: GroupDef): Values {
   return Object.fromEntries(g.fields.filter((f) => f.type !== "time").map((f) => [f.key, ""]));
 }
 
-function FieldInput({ f, id, value, onChange, staff }: { f: FieldDef; id: string; value: any; onChange: (v: any) => void; staff: StaffOption[] }) {
+function FieldInput({
+  f,
+  id,
+  value,
+  onChange,
+  staff,
+  required = false,
+}: {
+  f: FieldDef;
+  id: string;
+  value: any;
+  onChange: (v: any) => void;
+  staff: StaffOption[];
+  required?: boolean;
+}) {
   switch (f.type) {
     case "textarea":
       return (
@@ -51,6 +65,7 @@ function FieldInput({ f, id, value, onChange, staff }: { f: FieldDef; id: string
           maxLength={1000}
           rows={2}
           placeholder={f.placeholder}
+          required={required}
           onChange={(e) => onChange(e.target.value)}
           className={`${inputCls} h-auto min-h-[70px] py-2.5 resize-none`}
         />
@@ -65,7 +80,7 @@ function FieldInput({ f, id, value, onChange, staff }: { f: FieldDef; id: string
           ? staff.map((s) => ({ v: s.id, l: `${s.name}${s.employeeId ? ` (${s.employeeId})` : ""}` }))
           : (f.options ?? []).map((o) => ({ v: o, l: o }));
       return (
-        <select id={id} value={value} onChange={(e) => onChange(e.target.value)} className={`${inputCls} [&>option]:bg-zinc-900`}>
+        <select id={id} value={value} required={required} onChange={(e) => onChange(e.target.value)} className={`${inputCls} [&>option]:bg-zinc-900`}>
           <option value="">— Select —</option>
           {options.map((o) => (
             <option key={o.v} value={o.v}>{o.l}</option>
@@ -74,18 +89,20 @@ function FieldInput({ f, id, value, onChange, staff }: { f: FieldDef; id: string
       );
     }
     case "number":
-      return <input id={id} type="number" inputMode="decimal" min={0} step="any" value={value} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
+      return <input id={id} type="number" inputMode="decimal" min={0} step="any" value={value} required={required} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
     case "phone":
-      return <input id={id} type="tel" maxLength={15} value={value} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
+      return <input id={id} type="tel" maxLength={15} value={value} placeholder={f.placeholder} required={required} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
     default:
-      return <input id={id} type="text" maxLength={200} value={value} placeholder={f.placeholder} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
+      return <input id={id} type="text" maxLength={200} value={value} placeholder={f.placeholder} required={required} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
   }
 }
 
-function FieldBlock({ f, id, children }: { f: FieldDef; id: string; children: React.ReactNode }) {
+function FieldBlock({ f, id, required = false, children }: { f: FieldDef; id: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div className={`space-y-1.5 min-w-0 ${f.type === "textarea" ? "sm:col-span-2" : ""}`}>
-      <label htmlFor={id} className="block text-xs sm:text-sm font-medium text-zinc-300">{f.label}</label>
+      <label htmlFor={id} className="block text-xs sm:text-sm font-medium text-zinc-300">
+        {f.label} {required && <span className="text-orange-400">*</span>}
+      </label>
       {children}
       {f.hint && <p className="text-[11px] text-zinc-500">{f.hint}</p>}
     </div>
@@ -197,8 +214,15 @@ export function RegisterForm({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {visible.map((f) => (
-          <FieldBlock key={f.key} f={f} id={`rf-${f.key}`}>
-            <FieldInput f={f} id={`rf-${f.key}`} value={values[f.key] ?? ""} onChange={(v) => setValues((s) => ({ ...s, [f.key]: v }))} staff={staff} />
+          <FieldBlock key={f.key} f={f} id={`rf-${f.key}`} required={def.required.includes(f.key)}>
+            <FieldInput
+              f={f}
+              id={`rf-${f.key}`}
+              value={values[f.key] ?? ""}
+              onChange={(v) => setValues((s) => ({ ...s, [f.key]: v }))}
+              staff={staff}
+              required={def.required.includes(f.key)}
+            />
           </FieldBlock>
         ))}
       </div>
@@ -207,6 +231,8 @@ export function RegisterForm({
         const list = rows[g.key] ?? [];
         const atMax = g.max !== null && list.length >= g.max;
         const typed = g.fields.filter((f) => f.type !== "time");
+        // A row's required details apply once anything in that row is filled
+        const rowStarted = (row: Values) => typed.some((f) => String(row[f.key] ?? "").trim() !== "");
         return (
           <fieldset key={g.key} className="space-y-3 rounded-xl border border-zinc-800 p-3 sm:p-4">
             <legend className="px-1 text-sm font-semibold text-zinc-200">
@@ -232,8 +258,9 @@ export function RegisterForm({
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {typed.map((f) => (
-                    <FieldBlock key={f.key} f={f} id={`rf-${g.key}-${i}-${f.key}`}>
+                    <FieldBlock key={f.key} f={f} id={`rf-${g.key}-${i}-${f.key}`} required={!!g.required?.includes(f.key)}>
                       <FieldInput
+                        required={!!g.required?.includes(f.key) && rowStarted(row)}
                         f={f}
                         id={`rf-${g.key}-${i}-${f.key}`}
                         value={row[f.key] ?? ""}
@@ -345,6 +372,120 @@ export function MovementForm({
       })}
       <button type="submit" disabled={busy} className="w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-60">
         {busy ? "Saving…" : "Save"}
+      </button>
+    </form>
+  );
+}
+
+/** Main Admin: correct every value of a saved record, including date and times. */
+export function AdminEditForm({
+  def,
+  current,
+  staff,
+  busy,
+  onSubmit,
+}: {
+  def: EntryRegister;
+  current: Record<string, any>;
+  staff: StaffOption[];
+  busy: boolean;
+  onSubmit: (payload: { fields: Values; groups: Record<string, Values[]>; direction?: Direction }) => void;
+}) {
+  const m = def.movement;
+  const toText = (f: FieldDef, v: any) =>
+    v === null || v === undefined ? "" : f.type === "staff" ? v.id ?? "" : f.type === "yesno" ? (v ? "yes" : "no") : String(v);
+  const [direction, setDirection] = useState<Direction | null>(current.direction === "IN" || current.direction === "OUT" ? current.direction : null);
+  const [values, setValues] = useState<Values>(() =>
+    Object.fromEntries(def.fields.map((f) => [f.key, toText(f, current[f.key])]))
+  );
+  const [rows, setRows] = useState<Record<string, Values[]>>(() =>
+    Object.fromEntries(
+      (def.groups ?? []).map((g) => {
+        const list = Array.isArray(current[g.key]) ? (current[g.key] as Values[]) : [];
+        return [g.key, list.map((r) => Object.fromEntries(g.fields.map((f) => [f.key, toText(f, r[f.key])])))];
+      })
+    )
+  );
+
+  const input = (f: FieldDef, id: string, value: any, onChange: (v: any) => void, required: boolean) =>
+    f.type === "date" ? (
+      <input id={id} type="date" value={value} onChange={(e) => onChange(e.target.value)} required={required} className={inputCls} />
+    ) : f.type === "time" ? (
+      <input id={id} type="time" step={60} value={value} onChange={(e) => onChange(e.target.value)} className={inputCls} />
+    ) : (
+      <FieldInput f={f} id={id} value={value} onChange={onChange} staff={staff} required={required} />
+    );
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit({ fields: values, groups: rows, direction: direction ?? undefined });
+      }}
+      className="space-y-5"
+    >
+      <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+        Saving overwrites this record. The previous values are not kept.
+      </p>
+      {m && !m.single && <DirectionPicker def={{ ...def, movement: { ...m, firstDirections: ["IN", "OUT"] } }} value={direction} onChange={setDirection} />}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {def.fields
+          .filter((f) => f.key !== m?.directionField)
+          .map((f) => (
+            <FieldBlock key={f.key} f={f} id={`ae-${f.key}`} required={def.required.includes(f.key)}>
+              {input(f, `ae-${f.key}`, values[f.key] ?? "", (v) => setValues((s) => ({ ...s, [f.key]: v })), def.required.includes(f.key))}
+            </FieldBlock>
+          ))}
+      </div>
+      {(def.groups ?? []).map((g) => {
+        const list = rows[g.key] ?? [];
+        const atMax = g.max !== null && list.length >= g.max;
+        return (
+          <fieldset key={g.key} className="space-y-3 rounded-xl border border-zinc-800 p-3 sm:p-4">
+            <legend className="px-1 text-sm font-semibold text-zinc-200">{g.label} ({list.length})</legend>
+            {list.map((row, i) => (
+              <div key={i} className="rounded-lg border border-zinc-800/80 bg-zinc-950/30 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-zinc-400">{g.itemLabel} {i + 1}</p>
+                  <button
+                    type="button"
+                    onClick={() => setRows((s) => ({ ...s, [g.key]: s[g.key].filter((_, idx) => idx !== i) }))}
+                    className="text-zinc-500 hover:text-red-400 p-1"
+                    aria-label={`Remove ${g.itemLabel.toLowerCase()} ${i + 1}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {g.fields.map((f) => (
+                    <FieldBlock key={f.key} f={f} id={`ae-${g.key}-${i}-${f.key}`} required={!!g.required?.includes(f.key)}>
+                      {input(
+                        f,
+                        `ae-${g.key}-${i}-${f.key}`,
+                        row[f.key] ?? "",
+                        (v) => setRows((s) => ({ ...s, [g.key]: s[g.key].map((r, idx) => (idx === i ? { ...r, [f.key]: v } : r)) })),
+                        !!g.required?.includes(f.key)
+                      )}
+                    </FieldBlock>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              disabled={atMax}
+              onClick={() =>
+                setRows((s) => ({ ...s, [g.key]: [...(s[g.key] ?? []), Object.fromEntries(g.fields.map((f) => [f.key, ""]))] }))
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add {g.itemLabel.toLowerCase()}
+            </button>
+          </fieldset>
+        );
+      })}
+      <button type="submit" disabled={busy} className="w-full h-11 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold disabled:opacity-60">
+        {busy ? "Saving…" : "Save changes"}
       </button>
     </form>
   );

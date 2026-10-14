@@ -35,11 +35,16 @@ export async function getFacultyApproverOptions(user: {
   role: string;
   profileId: string;
 }): Promise<FacultyApproverOptions> {
-  const dean = await prisma.profile.findFirst({
+  const deanRow = await prisma.profile.findFirst({
     where: { role: "DEAN", active: true, id: { not: user.profileId } },
     orderBy: { createdAt: "asc" },
-    select: { id: true, name: true },
+    select: { id: true, name: true, faculty: { select: { designation: true } } },
   });
+  // Show the Dean with their title, e.g. "Dr. Rao (Dean of Academics)"
+  const deanDesignation = deanRow?.faculty?.designation?.trim();
+  const dean = deanRow
+    ? { id: deanRow.id, name: deanDesignation && deanDesignation !== "Dean" ? `${deanRow.name} (${deanDesignation})` : deanRow.name }
+    : null;
 
   if (user.role !== "FACULTY") {
     return { canChoose: false, hod: null, dean };

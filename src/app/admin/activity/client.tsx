@@ -868,13 +868,13 @@ export function ActivityClient({ user, data: initialData }: Props) {
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-400">Visitor Name</label>
-              <Input name="name" placeholder="e.g. Ramesh Nair" className="bg-zinc-950 border-zinc-800" />
+              <label className="text-xs font-semibold text-zinc-400">Visitor Name <span className="text-orange-400">*</span></label>
+              <Input name="name" required placeholder="e.g. Ramesh Nair" className="bg-zinc-950 border-zinc-800" />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-400">Phone Number</label>
-              <Input name="phone" placeholder="+91-9876543210" className="bg-zinc-950 border-zinc-800" />
+              <label className="text-xs font-semibold text-zinc-400">Phone Number <span className="text-orange-400">*</span></label>
+              <Input name="phone" required type="tel" maxLength={15} placeholder="+91-9876543210" className="bg-zinc-950 border-zinc-800" />
             </div>
 
             <div className="space-y-1.5">

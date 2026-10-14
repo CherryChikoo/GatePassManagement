@@ -14,6 +14,7 @@ import {
 import { getStaffScope, canAccessStudent, canViewProfile } from "@/lib/auth/scope";
 import { istDayRangeFromParam } from "@/lib/time/ist";
 import { getSyncReport, reconcilePortalWithLogins, deleteLoginWithoutPortal } from "@/lib/accounts/sync";
+import { deanTitle } from "@/lib/auth/titles";
 import { getDepartmentVariants } from "@/lib/constants";
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
@@ -83,7 +84,15 @@ export async function createUser(formData: FormData) {
     return { error: parsed.error.issues[0].message };
   }
 
-  const data = parsed.data;
+  // Deans are "Dean of <area>"; Directors carry a title such as "Managing Director"
+  const deanOf = ((formData.get("deanOf") as string) || "").trim();
+  if (parsed.data.role === "DEAN" && !deanOf) return { error: "Enter what the Dean is in charge of (Dean of …)" };
+  if (parsed.data.role === "DEAN" && deanOf.length > 80) return { error: "Dean of … is too long" };
+  if (parsed.data.role === "DIRECTOR" && !parsed.data.designation?.trim()) return { error: "Enter the Director’s title, e.g. Managing Director" };
+
+  // "Head Security" is a Security account that can also take staff attendance
+  const isHeadSecurity = parsed.data.role === "HEAD_SECURITY";
+  const data = { ...parsed.data, role: isHeadSecurity ? ("SECURITY" as const) : parsed.data.role };
 
   // Explicitly validate uniqueness before hitting Auth
   const existingEmail = await prisma.profile.findUnique({
@@ -194,7 +203,7 @@ export async function createUser(formData: FormData) {
             profileId: profile.id,
             employeeId: (formData.get("employeeId") as string) || `DIR-${Date.now().toString().slice(-4)}`,
             department: data.department || "All Departments",
-            designation: data.designation || "Director",
+            designation: data.designation?.trim() || "Director",
             maxApprovals: 999,
           },
         });
@@ -205,7 +214,7 @@ export async function createUser(formData: FormData) {
             profileId: profile.id,
             employeeId: (formData.get("employeeId") as string) || `DEAN-${Date.now().toString().slice(-4)}`,
             department: data.department || "All Departments",
-            designation: data.designation || "Dean",
+            designation: deanOf ? deanTitle(deanOf) : "Dean",
             maxApprovals: 999,
           },
         });
@@ -225,6 +234,7 @@ export async function createUser(formData: FormData) {
             profileId: profile.id,
             employeeId: formData.get("employeeId") as string || null,
             gateId: assignedGateId || null,
+            isHead: isHeadSecurity,
           },
         });
         break;
@@ -610,6 +620,7 @@ export async function getUsers(
           select: {
             id: true,
             employeeId: true,
+            isHead: true,
             gate: {
               select: { id: true, name: true },
             },
@@ -858,6 +869,7 @@ export async function updateUserDetails(profileId: string, rawData: Record<strin
       data: {
         ...(data.gateId !== undefined ? { gateId: data.gateId || null } : {}),
         ...(data.employeeId !== undefined ? { employeeId: data.employeeId || null } : {}),
+        ...(typeof data.isHeadSecurity === "boolean" ? { isHead: data.isHeadSecurity } : {}),
       },
     });
   }
@@ -975,7 +987,7 @@ export async function getUserFullHistory(profileId: string): Promise<any> {
   const scope = await getStaffScope(user);
   if (!(await canViewProfile(scope, profileId))) return null;
 
-  const HISTORY_LIMIT = 100;
+  const HISTORY_LIMIT = 500;
 
   const profile = await prisma.profile.findUnique({
     where: { id: profileId },
@@ -1460,3 +1472,37 @@ export async function getWardenStudents() {
 
 
 
+
+/**
+ * Sets a new password for someone else's login.
+ * - Main Admin: any account except other Admins.
+ * - HOD: students and faculty of their own department only.
+ */
+export async function resetUserPassword(profileId: string, newPassword: string) {
+  const user = await requireRole("ADMIN", "FACULTY_ADMIN");
+  if (typeof profileId !== "string" || !profileId) return { error: "User not found" };
+  if (typeof newPassword !== "string" || newPassword.length < 8) return { error: "Password must be at least 8 characters" };
+  if (newPassword.length > 72) return { error: "Password must be at most 72 characters" };
+
+  const target = await prisma.profile.findUnique({ where: { id: profileId }, select: { userId: true, role: true, name: true } });
+  if (!target) return { error: "User not found" };
+  if (target.userId === user.userId) return { error: "Change your own password in Settings" };
+
+  if (user.role === "ADMIN") {
+    if (target.role === "ADMIN") return { error: "Admin passwords cannot be reset here" };
+  } else {
+    // HOD: only their department's students and faculty
+    if (target.role !== "STUDENT" && target.role !== "FACULTY") {
+      return { error: "You can reset passwords only for students and faculty" };
+    }
+    const scope = await getStaffScope(user);
+    if (!(await canViewProfile(scope, profileId))) return { error: "This person is not in your department" };
+  }
+
+  const { error } = await getAdminSupabase().auth.admin.updateUserById(target.userId, { password: newPassword });
+  if (error) {
+    console.error("[resetUserPassword] failed:", error.message);
+    return { error: "Could not change the password. Please try again." };
+  }
+  return { success: true };
+}

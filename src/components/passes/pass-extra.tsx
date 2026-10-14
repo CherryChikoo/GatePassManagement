@@ -3,6 +3,7 @@ import { formatDate } from "@/lib/utils";
 
 type PassLike = {
   facultyId?: string | null;
+  passKind?: string | null;
   requestType?: string | null;
   exitDate?: string | Date | null;
   endDate?: string | Date | null;
@@ -25,6 +26,14 @@ export function PassExtraDetails({ pass, className = "" }: { pass: PassLike; cla
       : pass.exitDate
       ? formatDate(pass.exitDate)
       : null;
+
+  if (pass.passKind === "HOSTEL") {
+    return (
+      <p className={`text-xs text-zinc-300 ${className}`}>
+        <span className="font-semibold text-sky-300">Hostel pass</span> • going from college to the hostel; the hostel warden scans the QR on arrival
+      </p>
+    );
+  }
 
   if (pass.requestType) {
     return (

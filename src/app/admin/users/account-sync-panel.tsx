@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, RefreshCw } from "lucide-react";
 import { getAccountSyncStatus, fixAccountSync, removeLoginWithoutPortal } from "@/server/actions/admin";
 import { actionErrorMessage } from "@/lib/deployment";
 
@@ -68,13 +68,8 @@ export function AccountSyncPanel() {
     load();
   }
 
-  if (!report && !error) {
-    return (
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-xs text-zinc-400 flex items-center gap-2">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking portal ⇄ Supabase account sync…
-      </div>
-    );
-  }
+  // Stays out of the way: shown only when something needs attention
+  if (!report && !error) return null;
 
   if (error && !report) {
     return (
@@ -88,6 +83,9 @@ export function AccountSyncPanel() {
   const r = report!;
   const orphans = r.portalWithoutLogin.filter((p) => !p.archived);
   const portalIssues = orphans.length + r.emailMismatch.length;
+
+  // In sync: nothing to show (the confirmation after a fix still appears)
+  if (r.inSync && !notice) return null;
 
   return (
     <div
