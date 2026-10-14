@@ -1,4 +1,5 @@
 "use client";
+import { oversightRoleMeta, type OversightRole } from "@/components/dashboard/oversight-role";
 
 import React, { useState, useMemo } from "react";
 import { useAppStore } from "@/stores/app-store";
@@ -22,7 +23,7 @@ import {
 } from "lucide-react";
 
 interface ExecutiveHodsClientProps {
-  role: "DIRECTOR" | "DEAN";
+  role: OversightRole;
 }
 
 export function ExecutiveHodsClient({ role }: ExecutiveHodsClientProps) {
@@ -110,11 +111,8 @@ export function ExecutiveHodsClient({ role }: ExecutiveHodsClientProps) {
     return <DashboardSkeleton />;
   }
 
-  const roleTitle = role === "DIRECTOR" ? "Director Oversight" : "Dean Oversight";
-  const roleAccentBg =
-    role === "DIRECTOR"
-      ? "bg-purple-500/15 text-purple-400 border-purple-500/30"
-      : "bg-sky-500/15 text-sky-400 border-sky-500/30";
+  const { title: roleTitle, accent: roleAccentBg } = oversightRoleMeta(role);
+
 
   return (
     <div className="space-y-6">

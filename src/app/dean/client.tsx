@@ -201,25 +201,25 @@ export function DeanDashboardClient({ user }: Props) {
             title="Approved Today"
             value={stats.approvedToday}
             icon={<CheckCircle2 className="h-5 w-5 text-emerald-400" />}
-            description="Passes granted today"
+            description="Your faculty passes approved today"
           />
           <StatCard
             title="Rejected Today"
             value={stats.rejectedToday}
             icon={<XCircle className="h-5 w-5 text-red-400" />}
-            description="Passes denied today"
+            description="Your faculty passes rejected today"
           />
           <StatCard
             title="Faculty Exits"
             value={stats.exitsToday}
             icon={<DoorOpen className="h-5 w-5 text-orange-400" />}
-            description="Gate exits registered"
+            description="Exits on passes sent to you"
           />
           <StatCard
             title="Faculty Entries"
             value={stats.entriesToday}
             icon={<MapPin className="h-5 w-5 text-cyan-400" />}
-            description="Gate returns registered"
+            description="Returns on passes sent to you"
           />
         </div>
 

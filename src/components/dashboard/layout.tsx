@@ -84,6 +84,7 @@ export function DashboardLayout({
   else if (role === "STUDENT") navItems = studentNavItems;
   else if (role === "DIRECTOR") navItems = directorNavItems;
   else if (role === "DEAN") navItems = deanNavItems;
+  else if (role === "SECURITY_SUPERVISOR") navItems = supervisorNavItems;
 
   useEffect(() => {
     const saved = localStorage.getItem("gatepass_sidebar_collapsed");
@@ -106,6 +107,7 @@ export function DashboardLayout({
     SECURITY: "from-red-600 to-rose-600",
     DIRECTOR: "from-emerald-600 to-teal-600",
     DEAN: "from-sky-600 to-blue-600",
+    SECURITY_SUPERVISOR: "from-teal-600 to-emerald-600",
   };
 
   const roleGlow: Record<string, string> = {
@@ -117,6 +119,7 @@ export function DashboardLayout({
     SECURITY: "shadow-red-500/20",
     DIRECTOR: "shadow-emerald-500/20",
     DEAN: "shadow-sky-500/20",
+    SECURITY_SUPERVISOR: "shadow-teal-500/20",
   };
 
   const isMobileNavRole = role === "STUDENT" || role === "SECURITY";
@@ -181,7 +184,7 @@ export function DashboardLayout({
                 GatePass Portal
               </h1>
               <p className="text-xs text-zinc-500 font-medium truncate">
-                {role === "FACULTY_ADMIN" ? "HOD" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : role} Dashboard
+                {role === "FACULTY_ADMIN" ? "HOD" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : role === "SECURITY_SUPERVISOR" ? "SUPERVISOR" : role} Dashboard
               </p>
             </div>
           </div>
@@ -203,6 +206,7 @@ export function DashboardLayout({
               item.href === "/faculty-admin" ||
               item.href === "/director" ||
               item.href === "/dean" ||
+              item.href === "/supervisor" ||
               item.href === "/warden" ||
               item.href === "/student" ||
               item.href === "/security";
@@ -336,7 +340,7 @@ export function DashboardLayout({
                 <h1 className="text-sm font-bold text-zinc-100 tracking-tight leading-tight truncate">
                   GatePass Portal
                 </h1>
-                <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider truncate">{role === "FACULTY_ADMIN" ? "HOD" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : role} Dashboard</p>
+                <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider truncate">{role === "FACULTY_ADMIN" ? "HOD" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : role === "SECURITY_SUPERVISOR" ? "SUPERVISOR" : role} Dashboard</p>
               </div>
             </div>
           )}
@@ -393,6 +397,7 @@ export function DashboardLayout({
               item.href === "/faculty-admin" ||
               item.href === "/director" ||
               item.href === "/dean" ||
+              item.href === "/supervisor" ||
               item.href === "/warden" ||
               item.href === "/student" ||
               item.href === "/security";
@@ -505,5 +510,15 @@ export const deanNavItems: NavItem[] = [
   { label: "All HODs", href: "/dean/hods", icon: <Users className="h-5 w-5" /> },
   { label: "All Faculty", href: "/dean/faculty", icon: <Users className="h-5 w-5" /> },
   { label: "Activity", href: "/dean/activity", icon: <History className="h-5 w-5" /> },
+  { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
+];
+
+// Security Supervisor: view-only oversight (no approve / reject anywhere)
+export const supervisorNavItems: NavItem[] = [
+  { label: "Dashboard", href: "/supervisor", icon: <LayoutDashboard className="h-5 w-5" /> },
+  { label: "Requests", href: "/supervisor/requests", icon: <ClipboardCheck className="h-5 w-5" /> },
+  { label: "Students", href: "/supervisor/students", icon: <GraduationCap className="h-5 w-5" /> },
+  { label: "Faculty", href: "/supervisor/faculty", icon: <Users className="h-5 w-5" /> },
+  { label: "Activity", href: "/supervisor/activity", icon: <History className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
 ];

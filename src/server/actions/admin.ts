@@ -1,5 +1,6 @@
 "use server";
 
+import { Role } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole, getAuthUser, invalidateProfileCache } from "@/lib/auth/helpers";
 import {
@@ -12,6 +13,7 @@ import {
 } from "@/lib/validation/schemas";
 import { getStaffScope, canAccessStudent, canViewProfile } from "@/lib/auth/scope";
 import { istDayRangeFromParam } from "@/lib/time/ist";
+import { getSyncReport, reconcilePortalWithLogins, deleteLoginWithoutPortal } from "@/lib/accounts/sync";
 import { getDepartmentVariants } from "@/lib/constants";
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
@@ -105,6 +107,8 @@ export async function createUser(formData: FormData) {
       email: data.email,
       password: data.password,
       email_confirm: true,
+      // Same name on the login as on the portal account
+      user_metadata: { name: data.name, full_name: data.name, display_name: data.name, phone: data.phone || null },
     });
 
   if (authError) {
@@ -229,7 +233,11 @@ export async function createUser(formData: FormData) {
   } catch (error: any) {
     // Roll back the auth user if the database records could not be created
     await adminSupabase.auth.admin.deleteUser(authData.user.id).catch(() => {});
+    console.error("[createUser] failed:", error?.code, error?.message);
     if (error?.code === "P2002") return { error: "Email, roll number or employee ID is already in use." };
+    if (/invalid input value for enum/i.test(String(error?.message))) {
+      return { error: "This role is not set up in the database yet. Run `npx prisma db push`, then try again." };
+    }
     return { error: error?.message?.startsWith("Selected") ? error.message : "Failed to create user record" };
   }
 }
@@ -323,13 +331,16 @@ export async function deleteUser(profileId: string) {
   }
 
   const { error: authError } = await getAdminSupabase().auth.admin.deleteUser(profile.userId);
-  if (authError && !/not.*found/i.test(authError.message)) {
-    console.error("[deleteUser] auth delete failed:", authError.message);
-  }
-
   invalidateProfileCache(profile.userId);
   invalidateAdminCaches();
   revalidatePath("/admin/users");
+
+  if (authError && !/not.*found/i.test(authError.message)) {
+    console.error("[deleteUser] auth delete failed:", authError.message);
+    return {
+      error: "The portal account was deleted, but its Supabase login could not be removed. Use 'Delete login' in the account-sync panel above.",
+    };
+  }
   return { success: true };
 }
 
@@ -514,14 +525,26 @@ export async function getUsers(
   roleFilter?: string
 ) {
   await requireRole("ADMIN");
+
+  // Validate inputs: an unknown role (e.g. a client generated before a new role
+  // was added) or a bad page number must not crash the page.
+  const safePage = Number.isInteger(page) && page >= 1 ? page : 1;
+  const safePageSize = Math.min(Math.max(Number(pageSize) || 20, 1), 100);
+  const knownRoles = Object.values(Role) as string[];
+  if (roleFilter && !knownRoles.includes(roleFilter)) {
+    return { users: [], total: 0 };
+  }
+  page = safePage;
+  pageSize = safePageSize;
+
   const cacheKey = `${page}-${pageSize}-${roleFilter || "ALL"}`;
   const cached = usersListCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.data;
   }
-  const where = roleFilter 
-    ? { role: roleFilter as any } 
-    : { role: { not: "ADMIN" } as any };
+  const where = roleFilter
+    ? { role: roleFilter as Role }
+    : { role: { not: Role.ADMIN } };
 
   const [users, total] = await Promise.all([
     prisma.profile.findMany({
@@ -659,12 +682,22 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
   }
 
   const emailChanged = isAdmin && input.email && input.email !== student.profile.email;
-  if (emailChanged) {
+  const nameChanged = !!input.name && input.name !== student.profile.name;
+  const phoneChanged = input.phone !== undefined && (input.phone || null) !== student.profile.phone;
+  // Keep the Supabase login identical to the portal account (email, name, phone)
+  if (emailChanged || nameChanged || phoneChanged) {
     const { error: authError } = await getAdminSupabase().auth.admin.updateUserById(student.profile.userId, {
-      email: input.email,
-      email_confirm: true,
+      ...(emailChanged ? { email: input.email, email_confirm: true } : {}),
+      ...(nameChanged || phoneChanged
+        ? {
+            user_metadata: {
+              ...(nameChanged ? { name: input.name, full_name: input.name, display_name: input.name } : {}),
+              ...(phoneChanged ? { phone: input.phone || null } : {}),
+            },
+          }
+        : {}),
     });
-    if (authError) return { error: "Failed to update authentication email: " + authError.message };
+    if (authError) return { error: "Failed to update the login account: " + authError.message };
   }
 
   try {
@@ -693,9 +726,15 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
       }),
     ]);
   } catch (err: any) {
-    if (emailChanged) {
-      // Keep auth and profile email consistent
-      await getAdminSupabase().auth.admin.updateUserById(student.profile.userId, { email: student.profile.email }).catch(() => {});
+    if (emailChanged || nameChanged || phoneChanged) {
+      // Put the login back so the two never disagree
+      const p = student.profile;
+      await getAdminSupabase()
+        .auth.admin.updateUserById(p.userId, {
+          ...(emailChanged ? { email: p.email } : {}),
+          user_metadata: { name: p.name, full_name: p.name, display_name: p.name, phone: p.phone },
+        })
+        .catch(() => {});
     }
     if (err?.code === "P2002") return { error: "Email or roll number is already in use." };
     return { error: "Failed to update student" };
@@ -732,31 +771,56 @@ export async function updateUserDetails(profileId: string, rawData: Record<strin
   if (!profile) return { error: "User not found" };
 
   const emailChanged = !!data.email && data.email !== profile.email;
+  const nameChanged = !!data.name && data.name !== profile.name;
+  const phoneChanged = data.phone !== undefined && (data.phone || null) !== profile.phone;
   if (emailChanged) {
     const existing = await prisma.profile.findUnique({ where: { email: data.email! } });
     if (existing && existing.id !== profileId) {
       return { error: `Email ${data.email} is already registered to another user.` };
     }
-    const { error: authError } = await getAdminSupabase().auth.admin.updateUserById(profile.userId, {
-      email: data.email,
-      email_confirm: true,
-    });
-    if (authError) return { error: "Failed to update authentication email: " + authError.message };
   }
 
   if (data.gateId && !(await prisma.gate.findUnique({ where: { id: data.gateId }, select: { id: true } }))) {
     return { error: "Selected gate does not exist" };
   }
 
-  if (data.name !== undefined || data.phone !== undefined || emailChanged) {
-    await prisma.profile.update({
-      where: { id: profileId },
-      data: {
-        ...(data.name ? { name: data.name } : {}),
-        ...(emailChanged ? { email: data.email } : {}),
-        ...(data.phone !== undefined ? { phone: data.phone || null } : {}),
-      },
+  // Keep the Supabase login identical to the portal account (email, name, phone)
+  if (emailChanged || nameChanged || phoneChanged) {
+    const { error: authError } = await getAdminSupabase().auth.admin.updateUserById(profile.userId, {
+      ...(emailChanged ? { email: data.email, email_confirm: true } : {}),
+      ...(nameChanged || phoneChanged
+        ? {
+            user_metadata: {
+              ...(nameChanged ? { name: data.name, full_name: data.name, display_name: data.name } : {}),
+              ...(phoneChanged ? { phone: data.phone || null } : {}),
+            },
+          }
+        : {}),
     });
+    if (authError) return { error: "Failed to update the login account: " + authError.message };
+  }
+
+  if (data.name !== undefined || data.phone !== undefined || emailChanged) {
+    try {
+      await prisma.profile.update({
+        where: { id: profileId },
+        data: {
+          ...(data.name ? { name: data.name } : {}),
+          ...(emailChanged ? { email: data.email } : {}),
+          ...(data.phone !== undefined ? { phone: data.phone || null } : {}),
+        },
+      });
+    } catch (err: any) {
+      // Put the login back so the two never disagree
+      await getAdminSupabase()
+        .auth.admin.updateUserById(profile.userId, {
+          ...(emailChanged ? { email: profile.email } : {}),
+          user_metadata: { name: profile.name, full_name: profile.name, display_name: profile.name, phone: profile.phone },
+        })
+        .catch(() => {});
+      if (err?.code === "P2002") return { error: "Email is already in use." };
+      return { error: "Failed to update user" };
+    }
   }
 
   if (["FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN"].includes(profile.role) && profile.faculty) {
@@ -1307,6 +1371,44 @@ export async function getActivityData(dateString?: string) {
   return activityData;
 }
 
+
+// ──────────────────────────────────────────────────────────────
+// PORTAL ⇄ SUPABASE AUTH SYNC (Admin only)
+// ──────────────────────────────────────────────────────────────
+
+/** Compares portal accounts with Supabase Auth logins. */
+export async function getAccountSyncStatus() {
+  await requireRole("ADMIN");
+  try {
+    return { report: await getSyncReport() };
+  } catch (err: any) {
+    console.error("[getAccountSyncStatus]", err?.message);
+    return { error: "Could not read Supabase Auth logins. Try again shortly." };
+  }
+}
+
+/** Removes/disables portal accounts without a login and fixes email differences. */
+export async function fixAccountSync() {
+  await requireRole("ADMIN");
+  try {
+    const result = await reconcilePortalWithLogins();
+    invalidateAdminCaches();
+    revalidatePath("/admin/users");
+    return { success: true, ...result };
+  } catch (err: any) {
+    console.error("[fixAccountSync]", err?.message);
+    return { error: "Sync failed. No changes were made where the login list could not be read." };
+  }
+}
+
+/** Deletes a Supabase login that has no portal account. */
+export async function removeLoginWithoutPortal(authUserId: string) {
+  await requireRole("ADMIN");
+  if (typeof authUserId !== "string" || !authUserId) return { error: "Invalid login" };
+  const res = await deleteLoginWithoutPortal(authUserId);
+  if (res.error) return { error: res.error };
+  return { success: true };
+}
 
 // Outsider / visitor actions live in ./outsiders.ts (single implementation).
 

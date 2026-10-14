@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/primitives";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, formatTime } from "@/lib/utils";
 import { DoorOpen, DoorClosed, Users, Search, Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useEffect } from "react";
 import { BackButton } from "@/components/ui/back-button";
@@ -169,7 +169,7 @@ export function SecurityLogClient({
                 </div>
                 <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-1 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800/60">
                   <p className="text-xs sm:text-sm text-zinc-300 font-medium">
-                    {new Date(mov.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {formatTime(mov.createdAt)}
                   </p>
                   <p className="text-xs text-zinc-500">
                     {mov.student?.profile?.phone}
@@ -225,12 +225,12 @@ export function SecurityLogClient({
                 <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-1.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800/60">
                   <div className="flex items-center gap-1.5 text-xs sm:text-sm text-zinc-300 font-medium">
                     <DoorClosed className="h-3.5 w-3.5 text-blue-400" />
-                    {new Date(outsider.entryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {formatTime(outsider.entryTime)}
                   </div>
                   {outsider.exitTime && (
                     <div className="flex items-center gap-1.5 text-xs sm:text-sm text-zinc-400">
                       <DoorOpen className="h-3.5 w-3.5 text-orange-400" />
-                      {new Date(outsider.exitTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatTime(outsider.exitTime)}
                     </div>
                   )}
                 </div>

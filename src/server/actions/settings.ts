@@ -69,8 +69,9 @@ export async function updateProfileSettings(formData: FormData) {
   }
 
   try {
+    const before = await prisma.profile.findUnique({ where: { id: user.id }, select: { name: true, phone: true } });
     const { error: authError } = await getAdminSupabase().auth.admin.updateUserById(user.userId, {
-      user_metadata: { name, full_name: name, display_name: name },
+      user_metadata: { name, full_name: name, display_name: name, phone },
       ...(password ? { password } : {}),
     });
     if (authError) {
@@ -78,10 +79,20 @@ export async function updateProfileSettings(formData: FormData) {
       return { error: "Failed to update account" };
     }
 
-    await prisma.profile.update({
-      where: { id: user.id },
-      data: { name, phone },
-    });
+    try {
+      await prisma.profile.update({
+        where: { id: user.id },
+        data: { name, phone },
+      });
+    } catch (err) {
+      // Put the login's name/phone back so the two never disagree
+      await getAdminSupabase()
+        .auth.admin.updateUserById(user.userId, {
+          user_metadata: { name: before?.name, full_name: before?.name, display_name: before?.name, phone: before?.phone ?? null },
+        })
+        .catch(() => {});
+      throw err;
+    }
 
     invalidateProfileCache(user.userId);
 

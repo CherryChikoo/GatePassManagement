@@ -38,6 +38,7 @@ export async function GET() {
       ADMIN: () => preloadAdmin(),
       DIRECTOR: () => preloadDirector(user.profileId),
       DEAN: () => preloadDean(user.profileId),
+      SECURITY_SUPERVISOR: () => preloadSupervisor(),
     };
     const loader = loaders[user.role];
     if (!loader) {
@@ -391,9 +392,17 @@ async function preloadFaculty(profileId: string) {
       select: { id: true, hostelBlock: true, profile: { select: { name: true } } },
       orderBy: { profile: { name: "asc" } },
     }),
-    // Faculty's own passes
+    // Faculty's own passes: today's plus any still active (pending / approved /
+    // currently out). Older passes are shown in the Activity tab by date.
     prisma.permission.findMany({
-      where: { facultyId: faculty.id },
+      where: {
+        facultyId: faculty.id,
+        OR: [
+          { createdAt: { gte: today } },
+          { exitDate: { gte: today } },
+          { status: { in: ["PENDING", "APPROVED", "EXITED"] } },
+        ],
+      },
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {
@@ -903,6 +912,135 @@ async function preloadAdmin() {
 // DIRECTOR PRELOAD — Full campus oversight (all departments, all data)
 // ──────────────────────────────────────────────────────────────
 
+// ──────────────────────────────────────────────────────────────
+// SECURITY SUPERVISOR PRELOAD — read-only oversight of student & faculty
+// passes and people. The supervisor cannot approve or reject anything.
+// ──────────────────────────────────────────────────────────────
+
+async function preloadSupervisor() {
+  const today = istStartOfDay();
+
+  // Requests view = today's work + anything still pending (history is in Activity)
+  const requestsWhere = {
+    OR: [
+      { createdAt: { gte: today } },
+      { approvedAt: { gte: today } },
+      { rejectedAt: { gte: today } },
+      { status: "PENDING" as const },
+    ],
+  };
+
+  const [
+    totalStudents,
+    totalFaculty,
+    requestsToday,
+    pendingStudent,
+    pendingFaculty,
+    approvedToday,
+    rejectedToday,
+    exitsToday,
+    entriesToday,
+    studentsOutside,
+    facultyOutside,
+    visitorsInside,
+    requests,
+    students,
+    allFaculty,
+  ] = await Promise.all([
+    prisma.student.count(),
+    prisma.profile.count({ where: { role: { in: ["FACULTY", "FACULTY_ADMIN"] } } }),
+    prisma.permission.count({ where: { createdAt: { gte: today } } }),
+    prisma.permission.count({ where: { status: "PENDING", studentId: { not: null } } }),
+    prisma.permission.count({ where: { status: "PENDING", facultyId: { not: null } } }),
+    prisma.permission.count({
+      where: { status: { in: ["APPROVED", "EXITED", "COMPLETED"] }, approvedAt: { gte: today } },
+    }),
+    prisma.permission.count({ where: { status: "REJECTED", rejectedAt: { gte: today } } }),
+    prisma.movement.count({ where: { type: "EXIT", createdAt: { gte: today } } }),
+    prisma.movement.count({ where: { type: "ENTRY", createdAt: { gte: today } } }),
+    prisma.student.count({ where: { status: "OUTSIDE" } }),
+    prisma.permission.count({ where: { status: "EXITED", facultyId: { not: null } } }),
+    prisma.outsider.count({ where: { status: "INSIDE" } }),
+    prisma.permission.findMany({
+      where: requestsWhere,
+      orderBy: { createdAt: "desc" },
+      take: 500,
+      select: {
+        id: true, type: true, status: true, purpose: true, destination: true,
+        exitDate: true, expectedExit: true, expectedReturn: true, contactNumber: true, remarks: true,
+        createdAt: true, approvedAt: true, rejectedAt: true, rejectionReason: true,
+        approverType: true, approvalMode: true, hodApprovedAt: true, deanApprovedAt: true,
+        studentId: true, facultyId: true,
+        student: {
+          select: {
+            studentRoll: true, department: true, year: true, section: true, studentType: true,
+            profile: { select: { name: true, phone: true } },
+          },
+        },
+        faculty: {
+          select: {
+            employeeId: true, department: true, designation: true,
+            profile: { select: { name: true, phone: true, role: true } },
+          },
+        },
+        approval: {
+          select: {
+            approved: true,
+            approverType: true,
+            faculty: { select: { profile: { select: { name: true } } } },
+            warden: { select: { profile: { select: { name: true } } } },
+          },
+        },
+        movements: {
+          select: { type: true, createdAt: true, gate: { select: { name: true } } },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    }),
+    // Student directory (same shape as the Director/Dean directory)
+    prisma.student.findMany({
+      orderBy: { studentRoll: "asc" },
+      include: {
+        profile: { select: { id: true, name: true, email: true, phone: true, active: true } },
+        faculty: { select: { id: true, department: true, profile: { select: { name: true } } } },
+        warden: { select: { id: true, hostelBlock: true, profile: { select: { name: true } } } },
+      },
+    }),
+    // Faculty & HOD directory
+    prisma.profile.findMany({
+      where: { role: { in: ["FACULTY", "FACULTY_ADMIN"] } },
+      orderBy: { name: "asc" },
+      select: {
+        id: true, name: true, email: true, phone: true, active: true, role: true,
+        faculty: { select: { id: true, department: true, designation: true, employeeId: true, maxApprovals: true } },
+      },
+    }),
+  ]);
+
+  return {
+    dashboard: {
+      stats: {
+        totalStudents,
+        totalFaculty,
+        requestsToday,
+        pendingStudent,
+        pendingFaculty,
+        approvedToday,
+        rejectedToday,
+        exitsToday,
+        entriesToday,
+        studentsOutside,
+        facultyOutside,
+        visitorsInside,
+      },
+      recentRequests: requests.slice(0, 8),
+    },
+    requests,
+    students,
+    allFaculty,
+  };
+}
+
 async function preloadDirector(profileId: string) {
   // Director uses Faculty model for their own record (designation, department, employeeId)
   let faculty = await prisma.faculty.findUnique({
@@ -1170,23 +1308,19 @@ async function preloadDean(profileId: string) {
     prisma.profile.count({ where: { role: "FACULTY" } }),
     prisma.profile.count({ where: { role: "FACULTY_ADMIN" } }),
     prisma.student.count(),
+    // The Dean only deals with faculty passes sent to the Dean (or to Both):
+    // dashboard figures are scoped the same way.
     prisma.permission.count({
-      where: {
-        status: { in: ["APPROVED", "EXITED", "COMPLETED"] },
-        approvedAt: { gte: today },
-      },
+      where: { ...deanScope, status: { in: ["APPROVED", "EXITED", "COMPLETED"] }, approvedAt: { gte: today } },
     }),
     prisma.permission.count({
-      where: {
-        status: "REJECTED",
-        rejectedAt: { gte: today },
-      },
+      where: { ...deanScope, status: "REJECTED", rejectedAt: { gte: today } },
     }),
     prisma.movement.count({
-      where: { type: "EXIT", createdAt: { gte: today } },
+      where: { type: "EXIT", createdAt: { gte: today }, permission: deanScope },
     }),
     prisma.movement.count({
-      where: { type: "ENTRY", createdAt: { gte: today } },
+      where: { type: "ENTRY", createdAt: { gte: today }, permission: deanScope },
     }),
     prisma.permission.count({
       where: { ...deanScope, status: "PENDING" },

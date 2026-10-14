@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, formatTime } from "@/lib/utils";
 import {
   Users,
   UserPlus,
@@ -582,7 +582,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                       </td>
                       <td className="px-6 py-4">
                         <span className="text-zinc-300 font-medium">
-                          {new Date(person.entryTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {formatTime(person.entryTime)}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">

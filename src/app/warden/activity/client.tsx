@@ -1,4 +1,6 @@
 "use client";
+import { istDateString } from "@/lib/time/ist";
+import { scheduledNote } from "@/lib/pass-dates";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -84,13 +86,7 @@ export function WardenActivityClient({
               <input
                 type="date"
                 value={selectedDate}
-                max={(() => {
-                  const today = new Date();
-                  const year = today.getFullYear();
-                  const month = String(today.getMonth() + 1).padStart(2, '0');
-                  const day = String(today.getDate()).padStart(2, '0');
-                  return `${year}-${month}-${day}`;
-                })()}
+                max={istDateString()}
                 onChange={handleDateChange}
                 className="relative w-full sm:w-auto h-9 pl-9 pr-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500/50 [color-scheme:dark] cursor-pointer hover:border-zinc-700 hover:bg-zinc-800 transition-colors [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
               />
@@ -145,7 +141,7 @@ export function WardenActivityClient({
                                </div>
                             )}
                             <span className="text-[11px] text-zinc-500 flex items-center gap-1">
-                               <Clock className="h-3 w-3" /> Requested: {formatDateTime(perm.createdAt)}
+                               <Clock className="h-3 w-3" /> Requested: {formatDateTime(perm.createdAt)}{scheduledNote(perm)}
                             </span>
                           </div>
                         </div>
@@ -209,7 +205,7 @@ export function WardenActivityClient({
               <div>
                 <p className="text-xs text-zinc-500 mb-1">Pass Status</p>
                 <StatusBadge status={selectedPermission.status} />
-                <p className="text-xs text-zinc-500 mt-1">Requested: {formatDateTime(selectedPermission.createdAt)}</p>
+                <p className="text-xs text-zinc-500 mt-1">Requested: {formatDateTime(selectedPermission.createdAt)}{scheduledNote(selectedPermission)}</p>
               </div>
 
               <div className="col-span-2">

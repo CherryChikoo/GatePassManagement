@@ -1,4 +1,5 @@
 "use client";
+import { scheduledNote } from "@/lib/pass-dates";
 
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -584,7 +585,7 @@ export function DeanRequestsClient() {
                           )}
                           <div className="flex items-center gap-1.5 text-zinc-400">
                             <Clock className="h-3.5 w-3.5 text-zinc-500" />
-                            <span>Requested: {formatDateTime(item.createdAt)}</span>
+                            <span>Requested: {formatDateTime(item.createdAt)}{scheduledNote(item)}</span>
                           </div>
                           {item.rejectionReason && (
                             <div className="text-red-400 font-medium">

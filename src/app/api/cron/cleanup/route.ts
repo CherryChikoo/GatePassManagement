@@ -4,6 +4,7 @@ import { deleteOldPhotos } from "@/lib/storage/storage-admin";
 import { isAuthorizedCronRequest } from "@/lib/auth/cron";
 import { logger } from "@/lib/logger";
 import { RETENTION } from "@/lib/constants";
+import { getSyncReport, reconcilePortalWithLogins } from "@/lib/accounts/sync";
 
 /**
  * Automated cleanup cron job.
@@ -76,7 +77,23 @@ export async function GET(request: NextRequest) {
     if (photoResult.error) results.errors.push(`Photo cleanup: ${photoResult.error}`);
     results.deletedPhotos = photoResult.deleted;
 
-    logger.info("[CLEANUP] Cleanup job completed", results);
+    // 5. Portal ⇄ Supabase Auth safety net (database triggers handle it live)
+    let accountSync: Record<string, unknown> = {};
+    try {
+      const fixed = await reconcilePortalWithLogins();
+      const after = await getSyncReport();
+      accountSync = {
+        ...fixed,
+        loginsWithoutPortalAccount: after.loginWithoutPortal.map((l) => l.email),
+        inSync: after.inSync,
+      };
+      if (!after.inSync) logger.warn("[CLEANUP] Accounts still out of sync — review in Admin → Users", accountSync);
+    } catch (err: any) {
+      results.errors.push(`Account sync: ${err.message}`);
+      logger.error("[CLEANUP] Account sync failed", err);
+    }
+
+    logger.info("[CLEANUP] Cleanup job completed", { ...results, accountSync });
     return NextResponse.json({ success: results.errors.length === 0, timestamp: new Date().toISOString(), results });
   } catch (error: any) {
     logger.error("[CLEANUP] Fatal error", error);

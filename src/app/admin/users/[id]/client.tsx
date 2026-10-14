@@ -1,4 +1,5 @@
 "use client";
+import { scheduledNote } from "@/lib/pass-dates";
 import { actionErrorMessage } from "@/lib/deployment";
 import { adminNavItems, facultyNavItems, wardenNavItems, securityNavItems } from "@/components/dashboard/layout";
 
@@ -1037,7 +1038,7 @@ export function UserDetailClient({
                                   </p>
                                 )}
                                 <p className="text-[11px] text-zinc-500 mt-1">
-                                  Requested {formatDateTime(p.createdAt)}
+                                  Requested {formatDateTime(p.createdAt)}{scheduledNote(p)}
                                 </p>
                               </td>
 

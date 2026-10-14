@@ -135,6 +135,8 @@ export function getRoleDashboardPath(role: Role): string {
       return "/director";
     case "DEAN":
       return "/dean";
+    case "SECURITY_SUPERVISOR":
+      return "/supervisor";
     default:
       return "/login";
   }

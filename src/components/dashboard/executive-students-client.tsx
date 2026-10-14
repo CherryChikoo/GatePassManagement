@@ -1,4 +1,5 @@
 "use client";
+import { oversightRoleMeta, type OversightRole } from "@/components/dashboard/oversight-role";
 
 import React, { useState, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,7 +28,7 @@ import {
 } from "lucide-react";
 
 interface Props {
-  role: "DIRECTOR" | "DEAN";
+  role: OversightRole;
   roleTitle: string;
 }
 
@@ -108,7 +109,7 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
     return <DashboardSkeleton />;
   }
 
-  const roleAccentBg = role === "DIRECTOR" ? "bg-purple-500/15 text-purple-400 border-purple-500/30" : "bg-sky-500/15 text-sky-400 border-sky-500/30";
+  const roleAccentBg = oversightRoleMeta(role).accent;
 
   return (
     <div className="space-y-6">

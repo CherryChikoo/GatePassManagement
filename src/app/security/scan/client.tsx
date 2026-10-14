@@ -234,7 +234,9 @@ export function ScanClient({ user, gates }: Props) {
     if (!verifyResult || !selectedGate) return;
     const action = verifyResult.allowedAction as "EXIT" | "ENTRY";
     
-    if (!capturedImage) {
+    // Photo is required for students only; faculty passes are verified and marked
+    const photoRequired = verifyResult.photoRequired !== false;
+    if (photoRequired && !capturedImage) {
       setError(`Photo is mandatory for ${action === "EXIT" ? "exit" : "entry"} registration`);
       return;
     }
@@ -250,9 +252,9 @@ export function ScanClient({ user, gates }: Props) {
     try {
       let result;
       if (action === "EXIT") {
-        result = await registerExit(verifyResult.permission.id, selectedGate, capturedImage!, finalNotes);
+        result = await registerExit(verifyResult.permission.id, selectedGate, capturedImage || undefined, finalNotes);
       } else {
-        result = await registerEntry(verifyResult.permission.id, selectedGate, capturedImage, finalNotes);
+        result = await registerEntry(verifyResult.permission.id, selectedGate, capturedImage || undefined, finalNotes);
       }
 
       if (result.error) {
@@ -530,8 +532,16 @@ export function ScanClient({ user, gates }: Props) {
               </div>
             )}
 
-            {/* Camera / Photo Section */}
-            {state === "verified" && !capturedImage && (
+            {/* Faculty passes: verify details and mark — no photo */}
+            {state === "verified" && verifyResult.photoRequired === false && (
+              <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-200 flex items-center gap-2">
+                <Camera className="h-4 w-4 text-indigo-300 shrink-0" />
+                Faculty pass — no photo needed. Check the details above and register the {verifyResult.allowedAction === "EXIT" ? "exit" : "entry"}.
+              </div>
+            )}
+
+            {/* Camera / Photo Section (students only) */}
+            {state === "verified" && verifyResult.photoRequired !== false && !capturedImage && (
               <Card>
                 <CardContent className="p-6 space-y-4">
                   <div className="flex items-center gap-2">
@@ -610,7 +620,7 @@ export function ScanClient({ user, gates }: Props) {
                   ? "bg-red-600 hover:bg-red-500 text-white" 
                   : "bg-emerald-600 hover:bg-emerald-500 text-white"
               }`}
-              disabled={!capturedImage}
+              disabled={verifyResult.photoRequired !== false && !capturedImage}
             >
               <DoorOpen className="h-5 w-5" />
               Register {verifyResult.allowedAction}

@@ -37,7 +37,7 @@ export default async function FacultyActivityPage({
     ],
   };
 
-  const [permissions, total] = await Promise.all([
+  const [permissions, total, ownPasses] = await Promise.all([
     prisma.permission.findMany({
       where: {
         student: { facultyId: faculty.id },
@@ -47,7 +47,7 @@ export default async function FacultyActivityPage({
       skip: (page - 1) * pageSize,
       take: pageSize,
       select: {
-        id: true, purpose: true, destination: true, expectedExit: true, expectedReturn: true, status: true, createdAt: true, type: true,
+        id: true, purpose: true, destination: true, exitDate: true, expectedExit: true, expectedReturn: true, status: true, createdAt: true, type: true,
         student: { select: { studentRoll: true, profile: { select: { name: true } } } },
         movements: {
           select: { type: true, createdAt: true, notes: true, gate: { select: { name: true } } },
@@ -61,12 +61,28 @@ export default async function FacultyActivityPage({
         ...dateCondition,
       }
     }),
+    // The faculty member's own passes on this date (My Passes shows only today)
+    prisma.permission.findMany({
+      where: { facultyId: faculty.id, ...dateCondition },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      select: {
+        id: true, type: true, purpose: true, destination: true, status: true, createdAt: true, exitDate: true,
+        expectedExit: true, approvedAt: true, rejectedAt: true, rejectionReason: true,
+        approverType: true, approvalMode: true,
+        movements: {
+          select: { type: true, createdAt: true, gate: { select: { name: true } } },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    }),
   ]);
 
   return (
-    <FacultyActivityClient 
-      user={user} 
-      permissions={permissions} 
+    <FacultyActivityClient
+      user={user}
+      permissions={permissions}
+      ownPasses={ownPasses}
       total={total}
       currentPage={page}
       selectedDate={dateStr}

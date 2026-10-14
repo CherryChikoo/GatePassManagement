@@ -251,6 +251,8 @@ enum Role {
   SECURITY
   DIRECTOR
   DEAN
+  /// View-only oversight of student and faculty passes and details
+  SECURITY_SUPERVISOR
 }
 
 enum StudentType {

@@ -1,4 +1,7 @@
 "use client";
+import { istDateString } from "@/lib/time/ist";
+import { scheduledNote } from "@/lib/pass-dates";
+import { oversightRoleMeta, type OversightRole } from "@/components/dashboard/oversight-role";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,7 +33,7 @@ type Tab = "STUDENTS" | "FACULTY" | "ALL";
 type SubTab = "ALL" | "PENDING" | "ENTRIES" | "EXITS";
 
 interface ExecutiveActivityClientProps {
-  role: "DIRECTOR" | "DEAN";
+  role: OversightRole;
   user: any;
   permissions?: any[]; // student permissions
   facultyPermissions?: any[]; // faculty permissions
@@ -241,12 +244,7 @@ export function ExecutiveActivityClient({
     );
   }, [visibleItems, currentPage, pageSize]);
 
-  const rolePath = role === "DIRECTOR" ? "director" : "dean";
-  const roleTitle = role === "DIRECTOR" ? "Director Oversight" : "Dean Oversight";
-  const roleAccent =
-    role === "DIRECTOR"
-      ? "bg-purple-500/15 text-purple-400 border-purple-500/30"
-      : "bg-sky-500/15 text-sky-400 border-sky-500/30";
+  const { path: rolePath, title: roleTitle, accent: roleAccent } = oversightRoleMeta(role);
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     router.push(`/${rolePath}/activity?date=${e.target.value}`);
@@ -307,13 +305,7 @@ export function ExecutiveActivityClient({
               <input
                 type="date"
                 value={selectedDate}
-                max={(() => {
-                  const today = new Date();
-                  const year = today.getFullYear();
-                  const month = String(today.getMonth() + 1).padStart(2, "0");
-                  const day = String(today.getDate()).padStart(2, "0");
-                  return `${year}-${month}-${day}`;
-                })()}
+                max={istDateString()}
                 onChange={handleDateChange}
                 className="relative w-full sm:w-auto h-9 pl-9 pr-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-medium rounded-md focus:outline-none focus:ring-1 focus:ring-purple-500/50 [color-scheme:dark] cursor-pointer hover:border-zinc-700 hover:bg-zinc-800 transition-colors [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
               />
@@ -515,7 +507,7 @@ export function ExecutiveActivityClient({
                               {perm.createdAt && (
                                 <span className="text-[11px] text-zinc-500 flex items-center gap-1">
                                   <Clock className="h-3 w-3 text-zinc-400" />
-                                  Requested: {formatDateTime(perm.createdAt)}
+                                  Requested: {formatDateTime(perm.createdAt)}{scheduledNote(perm)}
                                 </span>
                               )}
 
@@ -602,7 +594,7 @@ export function ExecutiveActivityClient({
                               {perm.createdAt && (
                                 <span className="text-[11px] text-zinc-500 flex items-center gap-1">
                                   <Clock className="h-3 w-3 text-zinc-400" />
-                                  Requested: {formatDateTime(perm.createdAt)}
+                                  Requested: {formatDateTime(perm.createdAt)}{scheduledNote(perm)}
                                 </span>
                               )}
 

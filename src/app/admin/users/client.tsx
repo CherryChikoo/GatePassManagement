@@ -19,6 +19,7 @@ import {
   updateUserDetails,
 } from "@/server/actions/admin";
 import { useAppStore } from "@/stores/app-store";
+import { AccountSyncPanel } from "./account-sync-panel";
 import { Search,
   UserPlus,
   Users,
@@ -334,9 +335,10 @@ export function UserManagementClient({
     SECURITY: "bg-red-500",
     DIRECTOR: "bg-purple-500",
     DEAN: "bg-cyan-500",
+    SECURITY_SUPERVISOR: "bg-teal-500",
   };
 
-  const ROLES = ["STUDENT", "FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "WARDEN", "SECURITY"];
+  const ROLES = ["STUDENT", "FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "WARDEN", "SECURITY", "SECURITY_SUPERVISOR"];
 
   const filteredUsers = usersData.users.filter((u: any) => {
     const q = searchQuery.toLowerCase().trim();
@@ -371,6 +373,8 @@ export function UserManagementClient({
           </Button>
         </div>
 
+        <AccountSyncPanel />
+
         {success && (
           <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400 animate-fade-in">
             {success}
@@ -396,7 +400,7 @@ export function UserManagementClient({
                     : "border-zinc-700/50 capitalize"
               }
             >
-              {role === "FACULTY" ? "Faculty" : role === "FACULTY_ADMIN" ? "HOD" : role === "SECURITY" ? "Security" : role === "DIRECTOR" ? "Director" : role === "DEAN" ? "Dean" : `${role.toLowerCase()}s`}
+              {role === "FACULTY" ? "Faculty" : role === "FACULTY_ADMIN" ? "HOD" : role === "SECURITY" ? "Security" : role === "SECURITY_SUPERVISOR" ? "Security Supervisors" : role === "DIRECTOR" ? "Director" : role === "DEAN" ? "Dean" : `${role.toLowerCase()}s`}
             </Button>
           ))}
           </div>
@@ -422,7 +426,7 @@ export function UserManagementClient({
               <div key={role} className="space-y-4">
                 <h2 className="text-lg font-semibold text-zinc-100 font-heading border-b border-zinc-800/50 pb-2 flex items-center gap-2">
                   <div className={`w-2.5 h-2.5 rounded-full ${roleColors[role]}`}></div>
-                  {role === "FACULTY" ? "FACULTY" : role === "FACULTY_ADMIN" ? "HOD (HEAD OF DEPARTMENT)" : role === "SECURITY" ? "SECURITY" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : `${role}S`}
+                  {role === "FACULTY" ? "FACULTY" : role === "FACULTY_ADMIN" ? "HOD (HEAD OF DEPARTMENT)" : role === "SECURITY" ? "SECURITY" : role === "SECURITY_SUPERVISOR" ? "SECURITY SUPERVISOR" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : `${role}S`}
                 </h2>
                 <Card>
                   <CardContent className="p-0">
@@ -957,6 +961,7 @@ export function UserManagementClient({
               <option value="DIRECTOR">Director</option>
               <option value="WARDEN">Warden</option>
               <option value="SECURITY">Security</option>
+              <option value="SECURITY_SUPERVISOR">Security Supervisor (view only)</option>
             </Select>
 
             {/* Student-specific fields */}

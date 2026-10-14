@@ -27,17 +27,24 @@ export default async function WardenActivityPage({
     return <div>Warden not found</div>;
   }
 
+  // A pass belongs to a day if it was requested OR scheduled on that day
+  // (same rule as every other Activity page)
+  const dayWhere = {
+    student: { wardenId: warden.id },
+    OR: [
+      { createdAt: { gte: startDate, lte: endDate } },
+      { exitDate: { gte: startDate, lte: endDate } },
+    ],
+  };
+
   const [permissions, total] = await Promise.all([
     prisma.permission.findMany({
-      where: {
-        student: { wardenId: warden.id },
-        createdAt: { gte: startDate, lte: endDate }
-      },
+      where: dayWhere,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
       select: {
-        id: true, purpose: true, destination: true, expectedExit: true, expectedReturn: true, status: true, createdAt: true, type: true,
+        id: true, purpose: true, destination: true, exitDate: true, expectedExit: true, expectedReturn: true, status: true, createdAt: true, type: true,
         student: { select: { studentRoll: true, profile: { select: { name: true } } } },
         movements: {
           select: { type: true, createdAt: true, notes: true, gate: { select: { name: true } } },
@@ -45,12 +52,7 @@ export default async function WardenActivityPage({
         }
       },
     }),
-    prisma.permission.count({
-      where: {
-        student: { wardenId: warden.id },
-        createdAt: { gte: startDate, lte: endDate }
-      }
-    }),
+    prisma.permission.count({ where: dayWhere }),
   ]);
 
   return (

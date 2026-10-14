@@ -271,13 +271,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
             <input
               type="date"
               value={date}
-              max={(() => {
-                const today = new Date();
-                const year = today.getFullYear();
-                const month = String(today.getMonth() + 1).padStart(2, '0');
-                const day = String(today.getDate()).padStart(2, '0');
-                return `${year}-${month}-${day}`;
-              })()}
+              max={istDateString()}
               onChange={(e) => handleDateChange(e.target.value)}
               disabled={loading}
               className="h-9 px-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50 [color-scheme:dark] cursor-pointer hover:border-zinc-700 transition-colors"

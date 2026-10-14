@@ -422,19 +422,10 @@ export function FacultyApplyClient() {
     const candidates = [p.exitDate, p.createdAt, p.expectedExit, p.expectedReturn];
     for (const cand of candidates) {
       if (!cand) continue;
-      if (typeof cand === "string") {
-        if (cand.startsWith(targetDate) || cand.includes(targetDate)) return true;
-      }
-      try {
-        const d = new Date(cand);
-        if (isNaN(d.getTime())) continue;
-        const utcStr = d.toISOString().slice(0, 10);
-        if (utcStr === targetDate) return true;
-        const localStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        if (localStr === targetDate) return true;
-      } catch {
-        // continue
-      }
+      // Compare calendar days in campus time (IST) only — UTC/device dates can be a day off
+      const d = new Date(cand);
+      if (isNaN(d.getTime())) continue;
+      if (istDateString(d) === targetDate) return true;
     }
     return false;
   };
@@ -481,7 +472,7 @@ export function FacultyApplyClient() {
                     { id: "ALL", label: "All Passes" },
                     { id: "APPROVED", label: "Approved" },
                     { id: "PENDING", label: "Pending" },
-                    { id: "REJECTED", label: "Rejected" },
+                    { id: "REJECTED", label: "Rejected / Expired" },
                   ] as const
                 ).map((tab) => {
                   const count = dateFilteredPasses.filter((p: any) => {
@@ -682,7 +673,7 @@ export function FacultyApplyClient() {
           My Passes
         </h1>
         <p className="text-sm text-zinc-500 mt-1">
-          Apply for new passes and view your request history.
+          Apply for a pass and see today&apos;s passes. Past passes are in the Activity tab.
         </p>
       </div>
 
@@ -698,7 +689,7 @@ export function FacultyApplyClient() {
                 : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
             }`}
           >
-            {tab.charAt(0) + tab.slice(1).toLowerCase()}
+            {tab === "APPLY" ? "Apply" : "Today's Passes"}
           </button>
         ))}
       </div>

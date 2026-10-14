@@ -1,4 +1,5 @@
 "use client";
+import { scheduledNote } from "@/lib/pass-dates";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,16 +11,22 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { logoutAction } from "@/server/actions/auth";
 import { BackButton } from "@/components/ui/back-button";
+import { istDateString } from "@/lib/time/ist";
 
-export function FacultyActivityClient({ 
-  user, 
-  permissions = [], 
-  total = 0, 
+const approverLabel = (p: any) =>
+  p.approvalMode === "BOTH" ? "HOD + Dean" : p.approverType === "DEAN" ? "Dean" : p.approverType === "FACULTY_ADMIN" ? "HOD" : p.approverType || "—";
+
+export function FacultyActivityClient({
+  user,
+  permissions = [],
+  ownPasses = [],
+  total = 0,
   currentPage,
   selectedDate
-}: { 
-  user: any; 
-  permissions: any[]; 
+}: {
+  user: any;
+  permissions: any[];
+  ownPasses?: any[];
   total: number;
   currentPage: number;
   selectedDate: string;
@@ -61,8 +68,8 @@ export function FacultyActivityClient({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <BackButton href="/faculty" label="Back to Dashboard" />
-            <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Student Activity Log</h1>
-            <p className="text-sm text-zinc-500 mt-1">{displayTotal} records found for your students</p>
+            <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Activity Log</h1>
+            <p className="text-sm text-zinc-500 mt-1">Your passes and your students&apos; passes for the selected date</p>
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
             {/* Search */}
@@ -84,19 +91,63 @@ export function FacultyActivityClient({
               <input
                 type="date"
                 value={selectedDate}
-                max={(() => {
-                  const today = new Date();
-                  const year = today.getFullYear();
-                  const month = String(today.getMonth() + 1).padStart(2, '0');
-                  const day = String(today.getDate()).padStart(2, '0');
-                  return `${year}-${month}-${day}`;
-                })()}
+                max={istDateString()}
                 onChange={handleDateChange}
                 className="relative w-full sm:w-auto h-9 pl-9 pr-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500/50 [color-scheme:dark] cursor-pointer hover:border-zinc-700 hover:bg-zinc-800 transition-colors [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
               />
             </div>
           </div>
         </div>
+
+        {/* The faculty member's own passes on the selected date */}
+        <Card>
+          <CardContent className="p-4 sm:p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-zinc-100">My Passes on this date</h2>
+              <span className="text-xs text-zinc-500">{ownPasses.length} pass{ownPasses.length === 1 ? "" : "es"}</span>
+            </div>
+            {ownPasses.length === 0 ? (
+              <p className="text-xs text-zinc-500">You had no gate passes on this date.</p>
+            ) : (
+              <div className="space-y-2">
+                {ownPasses.map((p: any) => (
+                  <div key={p.id} className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${p.type === "EXIT" ? "bg-orange-500/20 text-orange-400" : "bg-emerald-500/20 text-emerald-400"}`}>
+                        {p.type}
+                      </span>
+                      <span className="text-sm font-semibold text-zinc-100 break-words">{p.purpose}</span>
+                      <StatusBadge status={p.status} />
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-400">
+                      {p.destination && (
+                        <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{p.destination}</span>
+                      )}
+                      <span className="flex items-center gap-1"><Clock className="h-3 w-3" />Requested {formatDateTime(p.createdAt)}{scheduledNote(p)}</span>
+                      <span>Approver: {approverLabel(p)}</span>
+                      {p.approvedAt && <span className="text-emerald-400">Approved {formatDateTime(p.approvedAt)}</span>}
+                      {p.rejectedAt && (
+                        <span className="text-red-400">Rejected{p.rejectionReason ? `: ${p.rejectionReason}` : ""}</span>
+                      )}
+                    </div>
+                    {p.movements?.length > 0 && (
+                      <div className="flex flex-wrap gap-x-4 text-xs text-zinc-500">
+                        {p.movements.map((m: any, i: number) => (
+                          <span key={i}>
+                            {m.type === "EXIT" ? "Exited" : "Entered"} {formatDateTime(m.createdAt)}
+                            {m.gate?.name ? ` • ${m.gate.name}` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <h2 className="text-sm font-semibold text-zinc-100 pt-2">Students&apos; Passes</h2>
 
         {/* Tabs */}
         <div className="flex gap-2 p-1 bg-zinc-900 border border-zinc-800 rounded-lg w-fit">
@@ -145,7 +196,7 @@ export function FacultyActivityClient({
                                </div>
                             )}
                             <span className="text-[11px] text-zinc-500 flex items-center gap-1">
-                               <Clock className="h-3 w-3" /> Requested: {formatDateTime(perm.createdAt)}
+                               <Clock className="h-3 w-3" /> Requested: {formatDateTime(perm.createdAt)}{scheduledNote(perm)}
                             </span>
                           </div>
                         </div>
@@ -209,7 +260,7 @@ export function FacultyActivityClient({
               <div>
                 <p className="text-xs text-zinc-500 mb-1">Pass Status</p>
                 <StatusBadge status={selectedPermission.status} />
-                <p className="text-xs text-zinc-500 mt-1">Requested: {formatDateTime(selectedPermission.createdAt)}</p>
+                <p className="text-xs text-zinc-500 mt-1">Requested: {formatDateTime(selectedPermission.createdAt)}{scheduledNote(selectedPermission)}</p>
               </div>
 
               <div className="col-span-2">

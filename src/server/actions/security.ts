@@ -194,6 +194,9 @@ export async function verifyQrScan(token: string) {
     valid: true,
     allowedAction,
     manualOverride,
+    /** Faculty passes: security only verifies and marks the movement (no photo). */
+    isFaculty: !!permission.facultyId && !permission.studentId,
+    photoRequired: !!permission.studentId,
     permission: {
       id: permission.id,
       type: permission.type,
@@ -225,6 +228,30 @@ function assertPassWindow(exitDate: Date, qrExpiresAt: Date) {
   if (istStartOfDay(exitDate) > now) {
     throw new Error(`This pass is valid only from ${istDateString(exitDate)}`);
   }
+}
+
+/**
+ * Gate photo rule: required for student passes; faculty passes are just
+ * verified and marked (a photo, if one is sent anyway, is still stored).
+ */
+async function resolveGatePhoto(
+  permissionId: string,
+  imagePath: string | undefined,
+  movement: "exit" | "entry"
+): Promise<{ path: string | null } | { error: string }> {
+  const owner = await prisma.permission.findUnique({
+    where: { id: permissionId },
+    select: { studentId: true },
+  });
+  if (!owner) return { error: "Permission not found" };
+
+  if (!imagePath) {
+    return owner.studentId
+      ? { error: `Photo capture is mandatory for student ${movement} registration` }
+      : { path: null };
+  }
+  if (typeof imagePath !== "string") return { error: "Invalid photo" };
+  return storeGatePhoto(imagePath, permissionId);
 }
 
 /**
@@ -276,13 +303,10 @@ export async function registerExit(
     return { error: "Notes must be at most 500 characters" };
   }
 
-  // Validate inputs before entering the transaction
-  if (!imagePath || typeof imagePath !== "string") {
-    return { error: "Photo capture is mandatory for exit registration" };
-  }
-  const photo = await storeGatePhoto(imagePath, permissionId);
-  if ("error" in photo) return { error: photo.error };
-  const storedImage = photo.path;
+  // Photo: mandatory for student passes, not needed for faculty passes
+  const photoResult = await resolveGatePhoto(permissionId, imagePath, "exit");
+  if ("error" in photoResult) return { error: photoResult.error };
+  const storedImage = photoResult.path;
 
   try {
     // Interactive transaction: reads + checks + writes are all atomic
@@ -389,13 +413,10 @@ export async function registerEntry(
     return { error: "Notes must be at most 500 characters" };
   }
 
-  // Photo is mandatory for entry, same as exit
-  if (!imagePath || typeof imagePath !== "string") {
-    return { error: "Photo capture is mandatory for entry registration" };
-  }
-  const photo = await storeGatePhoto(imagePath, permissionId);
-  if ("error" in photo) return { error: photo.error };
-  const storedImage = photo.path;
+  // Photo: mandatory for student passes, not needed for faculty passes
+  const photoResult = await resolveGatePhoto(permissionId, imagePath, "entry");
+  if ("error" in photoResult) return { error: photoResult.error };
+  const storedImage = photoResult.path;
 
   try {
     // Interactive transaction: reads + checks + writes are all atomic
