@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/deployment";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -115,7 +116,7 @@ export function SettingsClient({ user }: Props) {
         router.refresh();
       }
     } catch (err: any) {
-      setError(err?.message || "Failed to update settings");
+      setError(actionErrorMessage(err, "Failed to update settings"));
     } finally {
       setLoading(false);
     }

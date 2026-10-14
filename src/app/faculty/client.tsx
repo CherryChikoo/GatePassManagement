@@ -74,12 +74,12 @@ export function FacultyDashboardClient({ user }: Props) {
             icon={<Users className="h-5 w-5" />}
           />
           <StatCard
-            title="Approved Today"
+            title="Approved Today (My Students)"
             value={stats.approvedToday}
             icon={<CheckCircle2 className="h-5 w-5 text-emerald-400" />}
           />
           <StatCard
-            title="Rejected Today"
+            title="Rejected Today (My Students)"
             value={stats.rejectedToday}
             icon={<XCircle className="h-5 w-5 text-red-400" />}
           />
@@ -98,7 +98,7 @@ export function FacultyDashboardClient({ user }: Props) {
         {/* Requests */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle>Requests</CardTitle>
+            <CardTitle>My Students&apos; Recent Passes</CardTitle>
             <div className="flex items-center gap-2 mt-4 overflow-x-auto pb-1 scrollbar-none">
                {(["ALL", "PENDING", "ACCEPTED", "REJECTED"] as const).map((tab) => (
                   <button
@@ -110,7 +110,7 @@ export function FacultyDashboardClient({ user }: Props) {
                           : "bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:text-zinc-200"
                      }`}
                   >
-                     {tab === "ALL" ? "All Requests" : tab.charAt(0) + tab.slice(1).toLowerCase()}
+                     {tab === "ALL" ? "All" : tab.charAt(0) + tab.slice(1).toLowerCase()}
                   </button>
                ))}
             </div>
@@ -118,7 +118,7 @@ export function FacultyDashboardClient({ user }: Props) {
           <CardContent>
             {filteredActivity.length === 0 ? (
               <p className="text-center text-sm text-zinc-500 py-8">
-                No {activeTab === "ALL" ? "recent" : activeTab.toLowerCase().replace('_', ' ')} requests found.
+                No {activeTab === "ALL" ? "recent" : activeTab.toLowerCase().replace('_', ' ')} passes found.
               </p>
             ) : (
               <div className="space-y-3">

@@ -139,7 +139,7 @@ export function DeanRequestsClient() {
     }));
 
     try {
-      const res = await handleApproval(id, "APPROVE", undefined, mins);
+      const res: any = await handleApproval(id, "APPROVE", undefined, mins);
       if (res?.error) {
         // Rollback and tell the user why
         setLocalOverrides((prev) => {
@@ -148,6 +148,18 @@ export function DeanRequestsClient() {
           return next;
         });
         window.alert(res.error);
+        useAppStore.getState().refresh(true);
+      } else if (res?.action === "PARTIAL") {
+        // "Both HOD & Dean" pass: still pending until the HOD approves
+        setLocalOverrides((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        updateData("requests", (prev: any[]) =>
+          (prev || []).map((p: any) => (p.id === id ? { ...p, deanApprovedAt: new Date().toISOString() } : p))
+        );
+        window.alert(res.message || "Approved. Waiting for the HOD's approval.");
         useAppStore.getState().refresh(true);
       } else {
         updateData("requests", (prev: any[]) =>
@@ -234,11 +246,26 @@ export function DeanRequestsClient() {
       const failedIds: string[] = res?.success
         ? []
         : (res?.results?.filter((r: any) => !r.success).map((r: any) => r.id) ?? ids);
-      const okIds = ids.filter((id) => !failedIds.includes(id));
+      // "Both HOD & Dean" passes stay pending until the HOD also approves
+      const partialIds: string[] = (res?.results || [])
+        .filter((r: any) => r.success && r.action === "PARTIAL")
+        .map((r: any) => r.id);
+      const okIds = ids.filter((id) => !failedIds.includes(id) && !partialIds.includes(id));
       if (okIds.length > 0) {
         updateData("requests", (prev: any[]) =>
           (prev || []).map((p: any) => (okIds.includes(p.id) ? { ...p, status: "APPROVED", approvedAt: now } : p))
         );
+      }
+      if (partialIds.length > 0) {
+        setLocalOverrides((prev) => {
+          const next = { ...prev };
+          partialIds.forEach((id) => delete next[id]);
+          return next;
+        });
+        updateData("requests", (prev: any[]) =>
+          (prev || []).map((p: any) => (partialIds.includes(p.id) ? { ...p, deanApprovedAt: now } : p))
+        );
+        useAppStore.getState().refresh(true);
       }
       if (failedIds.length > 0) {
         // Roll back only the ones that failed
@@ -339,7 +366,7 @@ export function DeanRequestsClient() {
             </span>
           </h1>
           <p className="text-sm text-zinc-400 mt-1">
-            Authorize off-campus gate passes for faculty across all academic divisions
+            Today&apos;s faculty gate pass requests. Past requests are in the Activity tab.
           </p>
         </div>
 
@@ -569,8 +596,16 @@ export function DeanRequestsClient() {
                     </div>
 
                     {/* Right: Actions */}
-                    {item.status === "PENDING" && (
+                    {item.status === "PENDING" && item.approvalMode === "BOTH" && item.deanApprovedAt && (
+                      <div className="shrink-0 sm:self-center text-xs text-emerald-300">
+                        ✓ You approved — waiting for the HOD
+                      </div>
+                    )}
+                    {item.status === "PENDING" && !(item.approvalMode === "BOTH" && item.deanApprovedAt) && (
                       <div className="flex items-center gap-2 shrink-0 sm:self-center">
+                        {item.approvalMode === "BOTH" && (
+                          <span className="text-[10px] font-semibold text-amber-300">Needs HOD + Dean</span>
+                        )}
                         <Button
                           size="sm"
                           onClick={() => setApproveModal({ id: item.id, name: facultyName })}

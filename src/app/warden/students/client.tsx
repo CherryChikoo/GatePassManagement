@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/deployment";
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -84,7 +85,7 @@ export function WardenStudentsClient({ user }: Props) {
       
       setTimeout(() => setSuccess(null), 4000);
     } catch (err: any) {
-      setBatchError(err.message || "Failed to grant passes");
+      setBatchError(actionErrorMessage(err, "Failed to grant passes"));
     } finally {
       setBatchLoading(false);
     }
@@ -164,7 +165,7 @@ export function WardenStudentsClient({ user }: Props) {
       // Clear success message after 4s
       setTimeout(() => setSuccess(null), 4000);
     } catch (err: any) {
-      setEditError(err.message || "Failed to update student");
+      setEditError(actionErrorMessage(err, "Failed to update student"));
     } finally {
       setEditLoading(false);
     }

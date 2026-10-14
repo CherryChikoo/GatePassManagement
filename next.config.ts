@@ -8,6 +8,13 @@ const nextConfig: NextConfig = {
   // Production optimizations
   poweredByHeader: false,
   compress: true,
+
+  // Version baked into the client bundle; compared with /api/version to detect
+  // that a newer deployment is live (see components/providers/version-watcher).
+  env: {
+    NEXT_PUBLIC_BUILD_VERSION:
+      process.env.VERCEL_GIT_COMMIT_SHA || process.env.VERCEL_DEPLOYMENT_ID || "dev",
+  },
   
   // Disable prefetching on hover for instant navigation
   experimental: {

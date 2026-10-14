@@ -8,12 +8,14 @@ import { revalidatePath } from "next/cache";
 import { resolveFacultyActivePass } from "@/lib/permissions/auto-expire";
 import { getDepartmentVariants } from "@/lib/constants";
 import { istDateTime, istDateToInstant, istStartOfDay } from "@/lib/time/ist";
+import { getFacultyApproverOptions, type FacultyApproverChoice } from "@/lib/permissions/approver";
 
 /**
  * Faculty submits a new permission request (EXIT or ENTRY)
  */
 export async function createFacultyPermissionRequest(formData: FormData, type: "EXIT" | "ENTRY" = "EXIT") {
-  const user = await requireRole("FACULTY", "FACULTY_ADMIN");
+  // Only regular faculty need a gate pass (not HODs, the Dean or the Director)
+  const user = await requireRole("FACULTY");
 
   const raw = {
     purpose: (formData.get("purpose") as string) || "",
@@ -54,47 +56,39 @@ export async function createFacultyPermissionRequest(formData: FormData, type: "
 
   if (type !== "EXIT" && type !== "ENTRY") return { error: "Invalid pass type" };
 
-  // Approver hierarchy:
-  // - HOD (FACULTY_ADMIN) → Dean, else Director
-  // - Faculty → HOD of their own department, else Dean/Director
-  // Never another department's HOD, never the requester themself.
-  let approverProfile: { id: string; role: string } | null = null;
+  // Faculty choose the approver: own-department HOD, Dean, or Both (both must approve).
+  // The Director never approves passes.
+  const options = await getFacultyApproverOptions(user);
+  let approverType: "FACULTY_ADMIN" | "DEAN";
+  let approverId: string;
+  let approvalMode: "SINGLE" | "BOTH" = "SINGLE";
 
-  const findLeadership = async () =>
-    (await prisma.profile.findFirst({
-      where: { role: "DEAN", active: true, id: { not: user.profileId } },
-      orderBy: { createdAt: "asc" },
-      select: { id: true, role: true },
-    })) ||
-    (await prisma.profile.findFirst({
-      where: { role: "DIRECTOR", active: true, id: { not: user.profileId } },
-      orderBy: { createdAt: "asc" },
-      select: { id: true, role: true },
-    }));
+  const rawChoice = String(formData.get("approverChoice") || "").toUpperCase();
+  // No choice sent (older client): HOD if available, otherwise Dean
+  const choice: FacultyApproverChoice =
+    rawChoice === "HOD" || rawChoice === "DEAN" || rawChoice === "BOTH"
+      ? rawChoice
+      : options.hod
+      ? "HOD"
+      : "DEAN";
 
-  if (user.role === "FACULTY_ADMIN") {
-    approverProfile = await findLeadership();
+  if (choice === "HOD") {
+    if (!options.hod) return { error: "No HOD is assigned to your department. Choose the Dean instead." };
+    approverType = "FACULTY_ADMIN";
+    approverId = options.hod.id;
+  } else if (choice === "DEAN") {
+    if (!options.dean) return { error: "No Dean is available. Choose your HOD instead." };
+    approverType = "DEAN";
+    approverId = options.dean.id;
   } else {
-    const deptVariants = getDepartmentVariants(faculty.department);
-    if (deptVariants.length > 0) {
-      approverProfile = await prisma.profile.findFirst({
-        where: {
-          role: "FACULTY_ADMIN",
-          active: true,
-          id: { not: user.profileId },
-          faculty: { department: { in: deptVariants } },
-        },
-        orderBy: { createdAt: "asc" },
-        select: { id: true, role: true },
-      });
+    if (!options.hod || !options.dean) {
+      return { error: "Both HOD and Dean must be available to request approval from both." };
     }
-    if (!approverProfile) approverProfile = await findLeadership();
+    // Routed to the HOD; the Dean sees it too. Both must approve.
+    approverType = "FACULTY_ADMIN";
+    approverId = options.hod.id;
+    approvalMode = "BOTH";
   }
-
-  if (!approverProfile) {
-    return { error: "No approver (HOD / Dean / Director) is available for your pass. Contact the administrator." };
-  }
-  const approverType = approverProfile.role as "FACULTY_ADMIN" | "DIRECTOR" | "DEAN";
 
   // Dates/times are IST wall-clock values
   const exitDate = istDateToInstant(parsed.data.exitDate);
@@ -117,7 +111,8 @@ export async function createFacultyPermissionRequest(formData: FormData, type: "
     data: {
       facultyId: faculty.id,
       approverType,
-      approverId: approverProfile.id,
+      approverId,
+      approvalMode,
       type,
       purpose: parsed.data.purpose,
       destination: parsed.data.destination,
@@ -131,11 +126,9 @@ export async function createFacultyPermissionRequest(formData: FormData, type: "
   });
 
   revalidatePath("/faculty");
-  revalidatePath("/faculty/requests");
   revalidatePath("/faculty-admin");
   revalidatePath("/faculty-admin/requests");
   revalidatePath("/director");
-  revalidatePath("/director/requests");
   revalidatePath("/dean");
   revalidatePath("/dean/requests");
 
@@ -143,7 +136,8 @@ export async function createFacultyPermissionRequest(formData: FormData, type: "
 }
 
 export async function cancelFacultyPermissionRequest(permissionId: string) {
-  const user = await requireRole("FACULTY", "FACULTY_ADMIN");
+  // Only regular faculty need a gate pass (not HODs, the Dean or the Director)
+  const user = await requireRole("FACULTY");
 
   const faculty = await prisma.faculty.findUnique({
     where: { profileId: user.profileId },
@@ -160,11 +154,9 @@ export async function cancelFacultyPermissionRequest(permissionId: string) {
   if (updated.count !== 1) return { error: "Request not found or can no longer be cancelled" };
 
   revalidatePath("/faculty");
-  revalidatePath("/faculty/requests");
   revalidatePath("/faculty-admin");
   revalidatePath("/faculty-admin/requests");
   revalidatePath("/director");
-  revalidatePath("/director/requests");
   revalidatePath("/dean");
   revalidatePath("/dean/requests");
   return { success: true };

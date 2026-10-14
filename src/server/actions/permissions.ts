@@ -338,7 +338,8 @@ export async function batchCreatePermissions(studentIds: string[], data: Record<
  * Works for students and for faculty/HOD passes.
  */
 export async function generateLiveQrToken(permissionId: string) {
-  const user = await requireRole("STUDENT", "FACULTY", "FACULTY_ADMIN");
+  // HODs, the Dean and the Director do not need gate passes
+  const user = await requireRole("STUDENT", "FACULTY");
   if (typeof permissionId !== "string" || !permissionId) return { error: "Permission not found" };
 
   let ownerFilter: { studentId: string } | { facultyId: string };

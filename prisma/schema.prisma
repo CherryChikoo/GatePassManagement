@@ -123,6 +123,12 @@ model Permission {
   approvedAt      DateTime?           @map("approved_at")
   rejectedAt      DateTime?           @map("rejected_at")
   cancelledAt     DateTime?           @map("cancelled_at")
+  /// "SINGLE" = one approver decides; "BOTH" = faculty pass needing HOD AND Dean approval
+  approvalMode    String              @default("SINGLE") @map("approval_mode")
+  hodApprovedAt   DateTime?           @map("hod_approved_at")
+  hodApproverId   String?             @map("hod_approver_id")
+  deanApprovedAt  DateTime?           @map("dean_approved_at")
+  deanApproverId  String?             @map("dean_approver_id")
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
   movements       Movement[]

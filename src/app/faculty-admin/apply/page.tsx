@@ -1,7 +1,7 @@
-import { requireRole } from "@/lib/auth/helpers";
-import { FacultyApplyClient } from "@/app/faculty/apply/client";
+import { redirect } from "next/navigation";
 
-export default async function FacultyAdminApplyPage() {
-  await requireRole("FACULTY_ADMIN");
-  return <FacultyApplyClient />;
+// HODs (like the Dean and Director) do not need a gate pass. Faculty pass
+// history is in the Requests and Activity tabs.
+export default function HodApplyPage() {
+  redirect("/faculty-admin");
 }

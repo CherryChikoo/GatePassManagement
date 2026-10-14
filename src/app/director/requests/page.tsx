@@ -1,7 +1,6 @@
-import { requireRole } from "@/lib/auth/helpers";
-import { DirectorRequestsClient } from "./client";
+import { redirect } from "next/navigation";
 
-export default async function DirectorRequestsPage() {
-  const user = await requireRole("DIRECTOR");
-  return <DirectorRequestsClient />;
+// The Director does not approve passes; past requests and approvals are in Activity.
+export default function DirectorRequestsPage() {
+  redirect("/director/activity");
 }

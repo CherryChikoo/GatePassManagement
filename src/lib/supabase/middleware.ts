@@ -84,6 +84,7 @@ function isPublicPath(pathname: string): boolean {
     pathname === "/login" ||
     pathname === "/api/auth/callback" ||
     pathname === "/api/health" ||
+    pathname === "/api/version" ||
     pathname.startsWith("/api/cron/")
   );
 }

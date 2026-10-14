@@ -1,7 +1,6 @@
-import { requireRole } from "@/lib/auth/helpers";
-import { FacultyRequestsClient } from "./client";
+import { redirect } from "next/navigation";
 
-export default async function FacultyRequestsPage() {
-  const user = await requireRole("FACULTY");
-  return <FacultyRequestsClient user={user} />;
+// Faculty no longer approve student passes (students go to their HOD / warden).
+export default function FacultyRequestsPage() {
+  redirect("/faculty");
 }

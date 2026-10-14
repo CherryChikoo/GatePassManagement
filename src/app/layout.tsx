@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import NextTopLoader from 'nextjs-toploader';
 import "./globals.css";
 import '@/lib/config/validate-env';
+import { VersionWatcher } from "@/components/providers/version-watcher";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -27,6 +28,7 @@ export default function RootLayout({
     <html lang="en" className="dark" data-scroll-behavior="smooth">
       <body className="font-sans min-h-screen bg-zinc-950 text-zinc-100 antialiased">
         <NextTopLoader color="#f97316" showSpinner={false} />
+        <VersionWatcher />
         {children}
       </body>
     </html>

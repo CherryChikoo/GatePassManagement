@@ -16,6 +16,8 @@ import {
 } from "@/server/actions/permissions";
 import { formatDateTime } from "@/lib/utils";
 import { istDateString } from "@/lib/time/ist";
+import { normalizeTime } from "@/lib/time/parse-time";
+import { TimeField } from "@/components/ui/time-field";
 import { AssignedApproverCard, type AssignedApprover } from "@/components/student/assigned-approver";
 import QRCode from "qrcode";
 import Link from "next/link";
@@ -601,27 +603,6 @@ function PermissionFormView({
 
   const [hideExpiryAlert, setHideExpiryAlert] = useState<boolean>(false);
 
-  const timeOptions = Array.from({ length: 48 }, (_, i) => {
-    const h = Math.floor(i / 2);
-    const m = i % 2 === 0 ? "00" : "30";
-    const ampm = h < 12 ? "AM" : "PM";
-    const displayH = h % 12 === 0 ? 12 : h % 12;
-    const label = `${displayH.toString().padStart(2, "0")}:${m} ${ampm}`;
-    return { value: label, label };
-  });
-
-  function parse12HourTime(timeStr: string): string {
-    if (!timeStr) return timeStr;
-    const match = timeStr.trim().match(/^(1[0-2]|0?[1-9]):([0-5][0-9])\s*(AM|PM)$/i);
-    if (!match) return timeStr;
-    let h = parseInt(match[1], 10);
-    const m = match[2];
-    const ampm = match[3].toUpperCase();
-    if (ampm === "PM" && h < 12) h += 12;
-    if (ampm === "AM" && h === 12) h = 0;
-    return `${h.toString().padStart(2, "0")}:${m}`;
-  }
-
   const wasExpired =
     latestPermission?.status === "EXPIRED" ||
     (latestPermission?.status === "APPROVED" &&
@@ -645,12 +626,20 @@ function PermissionFormView({
     setError(null);
 
     const formData = new FormData(e.currentTarget);
-    
-    // Parse 12-hour typed times to 24-hour HH:mm
-    const rawExit = formData.get("expectedExit") as string;
-    if (rawExit) formData.set("expectedExit", parse12HourTime(rawExit));
-    const rawReturn = formData.get("expectedReturn") as string;
-    if (rawReturn) formData.set("expectedReturn", parse12HourTime(rawReturn));
+
+    // The time picker already gives "HH:mm"; normalize anyway for older browsers
+    // that fall back to a plain text box (accepts "11 59 am", "4pm", "16:30", ...).
+    for (const field of ["expectedExit", "expectedReturn"] as const) {
+      const raw = formData.get(field) as string | null;
+      if (!raw) continue;
+      const normalized = normalizeTime(raw);
+      if (!normalized) {
+        setError("Please choose a valid time, e.g. 04:30 PM.");
+        setLoading(false);
+        return;
+      }
+      formData.set(field, normalized);
+    }
     try {
       const result = requestType === "ENTRY"
         ? await createEntryRequest(formData)
@@ -814,24 +803,9 @@ function PermissionFormView({
                   <Clock className="h-3.5 w-3.5 text-zinc-500" />
                   {requestType === "ENTRY" ? "Expected Entry Time" : "Expected Exit Time"} <span className={requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}>*</span>
                 </label>
-                <Input
-                  type="text"
-                  name="expectedExit"
-                  list="time-options"
-                  placeholder="e.g. 04:00 PM"
-                  defaultValue="04:00 PM"
-                  required
-                  className="bg-zinc-950/60 border-zinc-800 text-sm"
-                  autoComplete="off"
-                />
+                <TimeField name="expectedExit" required defaultToNow />
               </div>
             </div>
-            
-            <datalist id="time-options">
-              {timeOptions.map((t) => (
-                <option key={t.value} value={t.value} />
-              ))}
-            </datalist>
 
             {/* Contact Number */}
             <div className="space-y-2">

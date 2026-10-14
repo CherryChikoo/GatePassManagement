@@ -205,7 +205,7 @@ export function FacultyAdminRequestsClient() {
 
     try {
       setProcessing((prev) => new Set(prev).add(id));
-      const result = await handleApproval(id, action, reason, expiryMins);
+      const result: any = await handleApproval(id, action, reason, expiryMins);
       if (result.error) {
         setLocalOverrides((prev) => {
           const next = { ...prev };
@@ -213,6 +213,18 @@ export function FacultyAdminRequestsClient() {
           return next;
         });
         alert(result.error);
+        useAppStore.getState().refresh(true);
+      } else if (result.action === "PARTIAL") {
+        // "Both HOD & Dean" pass: still pending until the Dean approves
+        setLocalOverrides((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        const mark = (prev: any[]) => (prev || []).map((r) => (r.id === id ? { ...r, status: "PENDING", hodApprovedAt: nowIso } : r));
+        updateData("allRequests", mark);
+        updateData("requests", mark);
+        alert(result.message || "Approved. Waiting for the Dean's approval.");
         useAppStore.getState().refresh(true);
       } else {
         useAppStore.getState().refresh(true);
@@ -274,7 +286,7 @@ export function FacultyAdminRequestsClient() {
     updateData("requests", updateFn);
 
     try {
-      const result = await batchApproval(ids, action, reason);
+      const result: any = await batchApproval(ids, action, reason);
       if (result?.error || !result?.success) {
         setLocalOverrides((prev) => {
           const next = { ...prev };
@@ -282,6 +294,22 @@ export function FacultyAdminRequestsClient() {
           return next;
         });
         alert(result?.error || "Failed to process some batch requests");
+      } else {
+        // "Both HOD & Dean" passes stay pending until the Dean also approves
+        const partialIds: string[] = (result.results || [])
+          .filter((r: any) => r.action === "PARTIAL")
+          .map((r: any) => r.id);
+        if (partialIds.length > 0) {
+          setLocalOverrides((prev) => {
+            const next = { ...prev };
+            partialIds.forEach((id) => delete next[id]);
+            return next;
+          });
+          const mark = (prev: any[]) =>
+            (prev || []).map((r) => (partialIds.includes(r.id) ? { ...r, status: "PENDING", hodApprovedAt: nowIso } : r));
+          updateData("allRequests", mark);
+          updateData("requests", mark);
+        }
       }
       useAppStore.getState().refresh(true);
     } catch {
@@ -340,7 +368,7 @@ export function FacultyAdminRequestsClient() {
             )}
           </h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Review and approve pass requests for department faculty and students.
+            Today&apos;s pass requests for department faculty and students. Past requests are in the Activity tab.
           </p>
         </div>
 
@@ -709,8 +737,17 @@ export function FacultyAdminRequestsClient() {
                       </div>
                     </div>
 
-                    {activeTab === "PENDING" && (
+                    {activeTab === "PENDING" && req.approvalMode === "BOTH" && req.hodApprovedAt && (
+                      <div className="w-full md:w-40 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-zinc-800 text-xs text-emerald-300">
+                        ✓ You approved — waiting for the Dean
+                      </div>
+                    )}
+
+                    {activeTab === "PENDING" && !(req.approvalMode === "BOTH" && req.hodApprovedAt) && (
                       <div className="flex md:flex-col gap-2 w-full md:w-32 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-zinc-800">
+                        {req.approvalMode === "BOTH" && (
+                          <span className="text-[10px] font-semibold text-amber-300 text-center">Needs HOD + Dean</span>
+                        )}
                         <Button
                           variant="success"
                           onClick={() => setApproveModal({ id: req.id, name: applicantName })}

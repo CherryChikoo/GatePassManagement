@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/deployment";
 
 import React, { useState, useEffect, useTransition } from "react";
 import { Modal, Select, Badge, EmptyState } from "@/components/ui/primitives";
@@ -214,7 +215,7 @@ export function UserManagementClient({
       setEditingUser(null);
       router.refresh();
     } catch (err: any) {
-      setEditError(err.message || "Failed to update user");
+      setEditError(actionErrorMessage(err, "Failed to update user"));
     } finally {
       setEditLoading(false);
     }

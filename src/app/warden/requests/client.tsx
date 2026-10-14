@@ -168,7 +168,7 @@ export function WardenRequestsClient({ user }: Props) {
               Student Requests
             </h1>
             <p className="text-sm text-zinc-500 mt-1">
-              Manage and review all hostel permission requests
+              Today&apos;s hostel permission requests. Past requests are in the Activity tab.
             </p>
           </div>
           

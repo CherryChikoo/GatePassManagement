@@ -7,6 +7,8 @@ import { MapPin, Calendar as CalendarIcon, Clock, Phone, FileText, Send, CheckCi
 import { createFacultyPermissionRequest } from "@/server/actions/faculty-permissions";
 import { generateLiveQrToken } from "@/server/actions/permissions";
 import { istDateString } from "@/lib/time/ist";
+import { normalizeTime } from "@/lib/time/parse-time";
+import { TimeField } from "@/components/ui/time-field";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/stores/app-store";
 import { EmptyState, StatusBadge, Modal } from "@/components/ui/primitives";
@@ -16,10 +18,101 @@ import QRCode from "qrcode";
 
 type TabState = "APPLY" | "HISTORY";
 
+type FacultyApproverOptions = {
+  canChoose: boolean;
+  hod: { id: string; name: string } | null;
+  dean: { id: string; name: string } | null;
+};
+
+/**
+ * Faculty choose who approves their pass: their department HOD, the Dean, or
+ * Both (both must approve). An HOD's own pass always goes to the Dean.
+ */
+function ApproverChoice({ options }: { options: FacultyApproverOptions | undefined }) {
+  const choices = options?.canChoose
+    ? [
+        { value: "HOD", label: "HOD", detail: options.hod?.name ?? "Not available", available: !!options.hod },
+        { value: "DEAN", label: "Dean", detail: options.dean?.name ?? "Not available", available: !!options.dean },
+        {
+          value: "BOTH",
+          label: "Both HOD & Dean",
+          detail: "Both must approve",
+          available: !!options.hod && !!options.dean,
+        },
+      ]
+    : [];
+  const firstAvailable = choices.find((c) => c.available)?.value ?? "";
+  const [choice, setChoice] = useState<string>(firstAvailable);
+
+  useEffect(() => {
+    if (!choices.some((c) => c.value === choice && c.available)) setChoice(firstAvailable);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstAvailable]);
+
+  if (!options) return null;
+
+  if (!options.canChoose) {
+    return (
+      <div>
+        <p className="block text-sm font-medium text-zinc-300 mb-2">Approver</p>
+        <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 px-4 py-3 flex items-center justify-between gap-3">
+          <span className="text-sm font-semibold text-zinc-100">{options.dean?.name ?? "No Dean available"}</span>
+          <span className="text-xs font-medium text-orange-400">Dean</span>
+        </div>
+        <p className="text-xs text-zinc-500 mt-1.5">An HOD&apos;s own pass is approved by the Dean.</p>
+      </div>
+    );
+  }
+
+  return (
+    <fieldset>
+      <legend className="block text-sm font-medium text-zinc-300 mb-2">Request approval from *</legend>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {choices.map((c) => (
+          <label
+            key={c.value}
+            className={`flex flex-col gap-0.5 rounded-lg border px-3 py-2.5 transition-colors ${
+              !c.available
+                ? "border-zinc-800 bg-zinc-900/30 opacity-50 cursor-not-allowed"
+                : choice === c.value
+                ? "border-orange-500 bg-orange-500/10 cursor-pointer"
+                : "border-zinc-700 bg-zinc-900 hover:bg-zinc-800/60 cursor-pointer"
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="approverChoice"
+                value={c.value}
+                checked={choice === c.value}
+                disabled={!c.available}
+                onChange={() => setChoice(c.value)}
+                required
+                className="accent-orange-500"
+              />
+              <span className="text-sm font-semibold text-zinc-100">{c.label}</span>
+            </span>
+            <span className="text-xs text-zinc-400 pl-5 truncate">{c.detail}</span>
+          </label>
+        ))}
+      </div>
+      <p className="text-xs text-zinc-500 mt-1.5">
+        {choice === "BOTH"
+          ? "Your pass is issued only after both the HOD and the Dean approve. If either rejects, the request is rejected."
+          : "Only the selected approver needs to approve your pass."}
+      </p>
+      {!firstAvailable && (
+        <p className="text-xs text-red-400 mt-1.5">No HOD or Dean is available. Contact the administrator.</p>
+      )}
+    </fieldset>
+  );
+}
+
 export function FacultyApplyClient() {
   const router = useRouter();
   const isReady = useStoreReady();
   const myPasses = useAppStore((s) => s.data.myPasses);
+  const approverOptions = useAppStore((s) => s.data.approverOptions) as FacultyApproverOptions | undefined;
 
   const [activeTab, setActiveTab] = useState<TabState>("APPLY");
   const [error, setError] = useState<string | null>(null);
@@ -99,18 +192,6 @@ export function FacultyApplyClient() {
     return () => clearInterval(interval);
   }, []);
 
-  function parse12HourTime(timeStr: string): string {
-    if (!timeStr) return timeStr;
-    const match = timeStr.trim().match(/^(1[0-2]|0?[1-9]):([0-5][0-9])\s*(AM|PM)$/i);
-    if (!match) return timeStr;
-    let h = parseInt(match[1], 10);
-    const m = match[2];
-    const ampm = match[3].toUpperCase();
-    if (ampm === "PM" && h < 12) h += 12;
-    if (ampm === "AM" && h === 12) h = 0;
-    return `${h.toString().padStart(2, "0")}:${m}`;
-  }
-
   // Ensure fresh pass data on mount
   useEffect(() => {
     useAppStore.getState().refresh(true);
@@ -120,10 +201,18 @@ export function FacultyApplyClient() {
     setLoading(true);
     setError(null);
 
-    const rawExit = formData.get("expectedExit") as string;
-    if (rawExit) formData.set("expectedExit", parse12HourTime(rawExit));
-    const rawReturn = formData.get("expectedReturn") as string;
-    if (rawReturn) formData.set("expectedReturn", parse12HourTime(rawReturn));
+    // The time picker gives "HH:mm"; normalize for browsers that fall back to text
+    for (const field of ["expectedExit", "expectedReturn"] as const) {
+      const raw = formData.get(field) as string | null;
+      if (!raw) continue;
+      const normalized = normalizeTime(raw);
+      if (!normalized) {
+        setError("Please choose a valid time, e.g. 04:30 PM.");
+        setLoading(false);
+        return;
+      }
+      formData.set(field, normalized);
+    }
 
     try {
       const result = await createFacultyPermissionRequest(formData, type);
@@ -256,6 +345,9 @@ export function FacultyApplyClient() {
                 </div>
               </div>
 
+              {/* Approver choice */}
+              <ApproverChoice options={approverOptions} />
+
               {/* Date and Time */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -275,27 +367,12 @@ export function FacultyApplyClient() {
 
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-2">Time *</label>
-                  <div className="relative">
-                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
-                    <input
-                      type="text"
-                      name="expectedExit"
-                      list="time-options-12h"
-                      placeholder="--:--"
-                      required
-                      className="w-full pl-10 pr-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    />
-                    <datalist id="time-options-12h">
-                      {Array.from({ length: 48 }, (_, i) => {
-                        const hour24 = Math.floor(i / 2);
-                        const minute = i % 2 === 0 ? '00' : '30';
-                        const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
-                        const ampm = hour24 < 12 ? 'AM' : 'PM';
-                        const timeStr = `${String(hour12).padStart(2, '0')}:${minute} ${ampm}`;
-                        return <option key={i} value={timeStr} />;
-                      })}
-                    </datalist>
-                  </div>
+                  <TimeField
+                    name="expectedExit"
+                    required
+                    defaultToNow
+                    className="h-12 rounded-lg border-zinc-700 bg-zinc-900"
+                  />
                 </div>
               </div>
 
@@ -508,6 +585,12 @@ export function FacultyApplyClient() {
                           </span>
                           <span className="font-semibold text-zinc-100">{pass.purpose}</span>
                           <StatusBadge status={pass.status} />
+                          {pass.status === "PENDING" && pass.approvalMode === "BOTH" && (
+                            <span className="text-[11px] text-zinc-400">
+                              HOD {pass.hodApprovedAt ? "✓ approved" : "· waiting"} &nbsp;|&nbsp; Dean{" "}
+                              {pass.deanApprovedAt ? "✓ approved" : "· waiting"}
+                            </span>
+                          )}
                           {pass.status === "APPROVED" && pass.qr?.active && (
                             <Button
                               size="sm"

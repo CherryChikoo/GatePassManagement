@@ -14,6 +14,59 @@ export type ApproverResolution =
   | { ok: true; approver: ResolvedApprover }
   | { ok: false; error: string };
 
+// ─── Faculty / HOD passes ────────────────────────────────────────────────────
+
+export type FacultyApproverChoice = "HOD" | "DEAN" | "BOTH";
+
+export type FacultyApproverOptions = {
+  /** Only regular faculty choose; an HOD's own pass always goes to the Dean. */
+  canChoose: boolean;
+  hod: { id: string; name: string } | null;
+  dean: { id: string; name: string } | null;
+};
+
+/**
+ * Who can approve a faculty member's own pass:
+ * - FACULTY: the HOD of their department and/or the Dean (they choose HOD, Dean, or Both)
+ * - FACULTY_ADMIN (HOD): the Dean only
+ * Never the requester themself; the Director does not approve passes.
+ */
+export async function getFacultyApproverOptions(user: {
+  role: string;
+  profileId: string;
+}): Promise<FacultyApproverOptions> {
+  const dean = await prisma.profile.findFirst({
+    where: { role: "DEAN", active: true, id: { not: user.profileId } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, name: true },
+  });
+
+  if (user.role !== "FACULTY") {
+    return { canChoose: false, hod: null, dean };
+  }
+
+  const faculty = await prisma.faculty.findUnique({
+    where: { profileId: user.profileId },
+    select: { department: true },
+  });
+  const variants = getDepartmentVariants(faculty?.department);
+  const hod =
+    variants.length > 0
+      ? await prisma.profile.findFirst({
+          where: {
+            role: "FACULTY_ADMIN",
+            active: true,
+            id: { not: user.profileId },
+            faculty: { department: { in: variants } },
+          },
+          orderBy: { createdAt: "asc" },
+          select: { id: true, name: true },
+        })
+      : null;
+
+  return { canChoose: true, hod, dean };
+}
+
 /**
  * College rule: students never choose their approver.
  * - Day scholars → the HOD of their own department.

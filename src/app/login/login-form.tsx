@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Shield, Mail, Lock, ArrowRight } from "lucide-react";
 import { broadcastSessionEvent, hardNavigate } from "@/stores/app-store";
+import { isStaleDeploymentError, reloadForNewDeployment } from "@/lib/deployment";
 
 export function LoginForm() {
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +30,15 @@ export function LoginForm() {
         hardNavigate(result.redirectUrl);
       }
     } catch (err: any) {
-      setError(err?.message || "An unexpected error occurred. Please try again.");
+      // Page was opened before a new deployment → reload it and let the user sign in again
+      if (isStaleDeploymentError(err)) {
+        setError("A new version of GatePass is available. Reloading…");
+        if (reloadForNewDeployment()) return;
+        setError("A new version of GatePass is available. Please refresh this page and sign in again.");
+        setLoading(false);
+        return;
+      }
+      setError("Could not sign in. Check your connection and try again.");
       setLoading(false);
     }
   }

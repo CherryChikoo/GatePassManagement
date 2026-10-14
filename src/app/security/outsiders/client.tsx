@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/deployment";
 
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -179,7 +180,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
         setError(result.error || "Failed to register"); setTimeout(() => setError(null), 3000);
       }
     } catch (err: any) {
-      setError(err.message); setTimeout(() => setError(null), 3000);
+      setError(actionErrorMessage(err, "Failed to register visitor")); setTimeout(() => setError(null), 3000);
     } finally {
       setLoading(false);
     }

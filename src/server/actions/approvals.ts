@@ -27,17 +27,9 @@ async function getApprovableScope(user: AuthUser): Promise<{
   facultyRecordId: string | null;
   wardenRecordId: string | null;
 } | null> {
+  // Approvers: HOD (department students + department faculty), Warden (own
+  // hostellers), Dean (faculty / HOD passes). Faculty and the Director do not approve.
   switch (user.role) {
-    case "FACULTY": {
-      // Legacy: requests that were routed to an individual faculty member.
-      const faculty = await prisma.faculty.findUnique({ where: { profileId: user.profileId }, select: { id: true } });
-      if (!faculty) return null;
-      return {
-        where: { approverType: "FACULTY", approverId: faculty.id, studentId: { not: null } },
-        facultyRecordId: faculty.id,
-        wardenRecordId: null,
-      };
-    }
     case "WARDEN": {
       const warden = await prisma.warden.findUnique({ where: { profileId: user.profileId }, select: { id: true } });
       if (!warden) return null;
@@ -73,15 +65,19 @@ async function getApprovableScope(user: AuthUser): Promise<{
         wardenRecordId: null,
       };
     }
-    case "DIRECTOR":
     case "DEAN": {
       const faculty = await prisma.faculty.findUnique({ where: { profileId: user.profileId }, select: { id: true } });
       if (!faculty) return null;
-      // Campus leadership acts on faculty / HOD passes (never students, never their own).
+      // The Dean acts on faculty / HOD passes routed to the Dean, and on passes
+      // where the faculty member asked for BOTH HOD and Dean (never students,
+      // never their own). Legacy passes routed to the Director are handled here too.
       return {
         where: {
           facultyId: { not: null },
-          AND: [{ facultyId: { not: faculty.id } }],
+          AND: [
+            { facultyId: { not: faculty.id } },
+            { OR: [{ approverType: { in: ["DEAN", "DIRECTOR"] } }, { approvalMode: "BOTH" }] },
+          ],
         },
         facultyRecordId: faculty.id,
         wardenRecordId: null,
@@ -107,7 +103,7 @@ export async function handleApproval(
   reason?: string,
   expiryMinutes?: number
 ) {
-  const user = await requireRole("FACULTY", "WARDEN", "FACULTY_ADMIN", "DIRECTOR", "DEAN");
+  const user = await requireRole("WARDEN", "FACULTY_ADMIN", "DEAN");
 
   if (typeof permissionId !== "string" || !permissionId) return { error: "Invalid request" };
   if (action !== "APPROVE" && action !== "REJECT") return { error: "Invalid action" };
@@ -122,7 +118,15 @@ export async function handleApproval(
 
   const permission = await prisma.permission.findFirst({
     where: { AND: [{ id: permissionId, status: "PENDING" }, scope.where] },
-    select: { id: true, studentId: true, facultyId: true, exitDate: true },
+    select: {
+      id: true,
+      studentId: true,
+      facultyId: true,
+      exitDate: true,
+      approvalMode: true,
+      hodApprovedAt: true,
+      deanApprovedAt: true,
+    },
   });
 
   if (!permission) {
@@ -176,8 +180,39 @@ export async function handleApproval(
 
   const { token } = await generateQrToken(permissionId, qrTargetId, expiresAt);
 
+  // "BOTH" faculty passes: HOD and Dean must each approve; the second approval issues the QR.
+  const isDual = permission.approvalMode === "BOTH" && !!permission.facultyId;
+  const myStep: "HOD" | "DEAN" | null = isDual ? (user.role === "DEAN" ? "DEAN" : "HOD") : null;
+  let finalized = true;
+
   try {
     await prisma.$transaction(async (tx) => {
+      if (isDual) {
+        // Serialize HOD/Dean approvals of the same pass so the final step is never missed
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"approval:" + permissionId}))`;
+        const current = await tx.permission.findUnique({
+          where: { id: permissionId },
+          select: { status: true, hodApprovedAt: true, deanApprovedAt: true },
+        });
+        if (!current || current.status !== "PENDING") throw new Error(ALREADY_PROCESSED);
+        if (myStep === "HOD" && current.hodApprovedAt) throw new Error(ALREADY_APPROVED_BY_YOU);
+        if (myStep === "DEAN" && current.deanApprovedAt) throw new Error(ALREADY_APPROVED_BY_YOU);
+
+        await tx.permission.update({
+          where: { id: permissionId },
+          data:
+            myStep === "HOD"
+              ? { hodApprovedAt: now, hodApproverId: user.profileId }
+              : { deanApprovedAt: now, deanApproverId: user.profileId },
+        });
+
+        const otherApproved = myStep === "HOD" ? !!current.deanApprovedAt : !!current.hodApprovedAt;
+        if (!otherApproved) {
+          finalized = false; // waiting for the other approver
+          return;
+        }
+      }
+
       const updated = await tx.permission.updateMany({
         where: { id: permissionId, status: "PENDING" },
         data: { status: "APPROVED", approvedAt: now },
@@ -196,21 +231,33 @@ export async function handleApproval(
     });
   } catch (err: any) {
     if (err?.message === ALREADY_PROCESSED) return { error: "This request was already processed by someone else." };
+    if (err?.message === ALREADY_APPROVED_BY_YOU) {
+      return { error: `You already approved this pass. It is waiting for the ${myStep === "HOD" ? "Dean" : "HOD"}.` };
+    }
     console.error("[handleApproval] approve failed:", err?.message);
     return { error: "Failed to approve request" };
   }
 
   invalidateApprovalsCache();
   revalidateApprovalPaths();
-  return { success: true, action: "APPROVED" };
+  if (!finalized) {
+    return {
+      success: true,
+      action: "PARTIAL" as const,
+      message: `Approved. The pass now needs the ${myStep === "HOD" ? "Dean's" : "HOD's"} approval.`,
+    };
+  }
+  return { success: true, action: "APPROVED" as const };
 }
+
+const ALREADY_APPROVED_BY_YOU = "ALREADY_APPROVED_BY_YOU";
 
 const ALREADY_PROCESSED = "ALREADY_PROCESSED";
 
 function revalidateApprovalPaths() {
   for (const p of [
-    "/faculty", "/faculty/requests", "/warden", "/warden/requests",
-    "/faculty-admin", "/faculty-admin/requests", "/director", "/director/requests",
+    "/faculty", "/warden", "/warden/requests",
+    "/faculty-admin", "/faculty-admin/requests", "/director", "/director/activity",
     "/dean", "/dean/requests", "/student",
   ]) {
     revalidatePath(p);
@@ -225,7 +272,7 @@ export async function batchApproval(
   action: "APPROVE" | "REJECT",
   reason?: string
 ) {
-  await requireRole("FACULTY", "WARDEN", "FACULTY_ADMIN", "DIRECTOR", "DEAN");
+  await requireRole("WARDEN", "FACULTY_ADMIN", "DEAN");
 
   const parsed = batchApprovalSchema.safeParse({ permissionIds, action, reason: reason ?? "" });
   if (!parsed.success) {
@@ -236,11 +283,13 @@ export async function batchApproval(
   const results = await Promise.all(
     parsed.data.permissionIds.map(async (id) => {
       try {
-        const res = await handleApproval(id, action, reason);
+        const res: any = await handleApproval(id, action, reason);
         return {
           id,
           success: !res?.error,
           error: res?.error,
+          /** "PARTIAL" = a Both-HOD-and-Dean pass still waiting for the other approver */
+          action: res?.action as string | undefined,
         };
       } catch (err: any) {
         return {

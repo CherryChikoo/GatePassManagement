@@ -13,7 +13,6 @@ import {
   XCircle,
   MapPin,
   ClipboardCheck,
-  ShieldAlert,
   ArrowRight,
   GraduationCap,
   Briefcase,
@@ -140,41 +139,14 @@ export function DirectorDashboardClient({ user }: Props) {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/director/requests">
+            <Link href="/director/activity">
               <Button className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-lg shadow-purple-600/20">
-                <ClipboardCheck className="h-4 w-4 mr-1.5" />
-                Faculty Passes
-                {stats.pendingFacultyPasses > 0 && (
-                  <span className="ml-1.5 px-2 py-0.2 rounded-full bg-white/20 text-xs font-bold">
-                    {stats.pendingFacultyPasses}
-                  </span>
-                )}
+                <History className="h-4 w-4 mr-1.5" />
+                View Activity
               </Button>
             </Link>
           </div>
         </div>
-
-        {/* Pending Faculty Passes Alert Banner */}
-        {stats.pendingFacultyPasses > 0 && (
-          <div className="flex items-center justify-between rounded-xl border border-purple-500/30 bg-purple-500/10 p-4 text-purple-300">
-            <div className="flex items-center gap-3">
-              <ShieldAlert className="h-5 w-5 text-purple-400 shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-purple-200">
-                  {stats.pendingFacultyPasses} Faculty Pass Request{stats.pendingFacultyPasses > 1 ? "s" : ""} Pending Review
-                </p>
-                <p className="text-xs text-purple-300/80">
-                  Faculty members campus-wide are awaiting authorization for off-campus movements.
-                </p>
-              </div>
-            </div>
-            <Link href="/director/requests">
-              <Button size="sm" variant="outline" className="border-purple-500/40 text-purple-300 hover:bg-purple-500/20">
-                Review Now <ArrowRight className="h-3.5 w-3.5 ml-1" />
-              </Button>
-            </Link>
-          </div>
-        )}
 
         {/* Primary Metric Stats Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -203,10 +175,10 @@ export function DirectorDashboardClient({ user }: Props) {
             description={`${stats.totalWardens} Wardens • ${stats.totalSecurity} Security`}
           />
           <StatCard
-            title="Pending Passes"
+            title="Pending Faculty Passes"
             value={stats.pendingFacultyPasses}
             icon={<ClipboardCheck className="h-5 w-5 text-purple-400" />}
-            description="Awaiting approval"
+            description="Awaiting HOD / Dean"
           />
         </div>
 
@@ -240,18 +212,18 @@ export function DirectorDashboardClient({ user }: Props) {
 
         {/* Quick Hub Navigation Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Link href="/director/requests" className="group">
+          <Link href="/director/activity" className="group">
             <Card className="border-zinc-800 bg-zinc-900/60 hover:border-purple-500/40 hover:bg-zinc-900/90 transition-all duration-200 h-full">
               <CardContent className="p-5 flex items-start gap-4">
                 <div className="p-3 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 group-hover:scale-105 transition-transform">
-                  <ClipboardCheck className="h-6 w-6" />
+                  <History className="h-6 w-6" />
                 </div>
                 <div>
                   <h3 className="font-semibold text-zinc-100 group-hover:text-purple-400 transition-colors flex items-center gap-1.5">
-                    Faculty Passes <ArrowRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    Activity <ArrowRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </h3>
                   <p className="text-xs text-zinc-400 mt-1">
-                    Review and authorize campus faculty gate pass requests
+                    Past pass requests, approvals and gate movements across campus
                   </p>
                 </div>
               </CardContent>
@@ -566,19 +538,11 @@ export function DirectorDashboardClient({ user }: Props) {
               </div>
               <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
                 <span className="text-zinc-500 block">Approver Role</span>
-                <span className="text-zinc-200 font-medium">{selectedActivity.approverType || "DIRECTOR"}</span>
+                <span className="text-zinc-200 font-medium">
+                  {selectedActivity.approverType === "FACULTY_ADMIN" ? "HOD" : selectedActivity.approverType || "—"}
+                </span>
               </div>
             </div>
-
-            {selectedActivity.status === "PENDING" && !selectedActivity.student && (
-              <div className="pt-2">
-                <Link href="/director/requests">
-                  <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white">
-                    Go to Pass Review to Approve / Reject
-                  </Button>
-                </Link>
-              </div>
-            )}
           </div>
         </Modal>
       )}

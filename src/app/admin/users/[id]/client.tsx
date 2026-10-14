@@ -1,4 +1,5 @@
 "use client";
+import { actionErrorMessage } from "@/lib/deployment";
 import { adminNavItems, facultyNavItems, wardenNavItems, securityNavItems } from "@/components/dashboard/layout";
 
 import React, { useState } from "react";
@@ -239,7 +240,7 @@ export function UserDetailClient({
       router.refresh();
       setTimeout(() => setSuccess(null), 4000);
     } catch (err: any) {
-      setEditError(err.message || "Failed to update user");
+      setEditError(actionErrorMessage(err, "Failed to update user"));
     } finally {
       setEditLoading(false);
     }
