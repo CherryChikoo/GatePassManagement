@@ -68,8 +68,10 @@ export async function createUser(formData: FormData) {
     studentRoll: (formData.get("studentRoll") as string) || "",
     department: (formData.get("department") as string) || "",
     year: formData.get("year") ? Number(formData.get("year")) : undefined,
+    semester: formData.get("semester") ? Number(formData.get("semester")) : undefined,
     section: (formData.get("section") as string) || "",
     studentType: (formData.get("studentType") as string) || undefined,
+    hostelType: (formData.get("hostelType") as string) || undefined,
     roomNumber: (formData.get("roomNumber") as string) || "",
     hostelBlock: (formData.get("hostelBlock") as string) || "",
     designation: (formData.get("designation") as string) || "",
@@ -153,8 +155,10 @@ export async function createUser(formData: FormData) {
             studentRoll: data.studentRoll || `STU-${Date.now()}`,
             department: data.department || null,
             year: data.year || null,
+            semester: data.semester || null,
             section: data.section || null,
             studentType: (data.studentType as any) || "DAY_SCHOLAR",
+            hostelType: data.studentType === "HOSTELLER" ? data.hostelType || null : null,
             facultyId: facultyId || null,
             wardenId: wardenId || null,
             roomNumber: data.roomNumber || null,
@@ -293,6 +297,7 @@ export async function deleteUser(profileId: string) {
       faculty: { select: { id: true, _count: { select: { permissions: true, permissionApprovals: true, movements: true } } } },
       warden: { select: { id: true, _count: { select: { permissionApprovals: true } } } },
       securityStaff: { select: { id: true, _count: { select: { movements: true } } } },
+      _count: { select: { registerEntries: true, recordedOutsiders: true } },
     },
   });
 
@@ -300,6 +305,8 @@ export async function deleteUser(profileId: string) {
   if (profile.role === "ADMIN") return { error: "Cannot delete admin accounts" };
 
   const counts = [
+    profile._count.registerEntries,
+    profile._count.recordedOutsiders,
     profile.student?._count.permissions,
     profile.student?._count.movements,
     profile.faculty?._count.permissions,
@@ -559,8 +566,10 @@ export async function getUsers(
             studentRoll: true,
             department: true,
             year: true,
+            semester: true,
             section: true,
             studentType: true,
+            hostelType: true,
             status: true,
             roomNumber: true,
             hostelBlock: true,
@@ -616,7 +625,7 @@ export async function getUsers(
   return result;
 }
 
-const ADMIN_ONLY_STUDENT_FIELDS = ["email", "studentRoll", "department", "studentType", "facultyId", "wardenId"] as const;
+const ADMIN_ONLY_STUDENT_FIELDS = ["email", "studentRoll", "department", "studentType", "hostelType", "facultyId", "wardenId"] as const;
 
 /**
  * Update student details.
@@ -649,6 +658,7 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
       studentRoll: student.studentRoll,
       department: student.department,
       studentType: student.studentType,
+      hostelType: student.hostelType,
       facultyId: student.facultyId,
       wardenId: student.wardenId,
     };
@@ -716,8 +726,10 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
           ...(input.studentRoll ? { studentRoll: input.studentRoll } : {}),
           ...(input.department !== undefined ? { department: input.department || null } : {}),
           ...(input.year !== undefined ? { year: input.year ?? null } : {}),
+          ...(input.semester !== undefined ? { semester: input.semester ?? null } : {}),
           ...(input.section !== undefined ? { section: input.section || null } : {}),
           ...(input.studentType ? { studentType: input.studentType } : {}),
+          ...(input.hostelType !== undefined ? { hostelType: input.hostelType || null } : {}),
           ...(input.facultyId !== undefined ? { facultyId: input.facultyId || null } : {}),
           ...(input.wardenId !== undefined ? { wardenId: input.wardenId || null } : {}),
           ...(input.roomNumber !== undefined ? { roomNumber: input.roomNumber || null } : {}),
@@ -1238,7 +1250,6 @@ export async function getActivityData(dateString?: string) {
   const [
     entriesToday,
     exitsToday,
-    studentsOutside,
     totalMovements,
     recentEntries,
     recentExits,
@@ -1257,11 +1268,6 @@ export async function getActivityData(dateString?: string) {
       where: {
         type: "EXIT",
         createdAt: { gte: today, lt: endOfDay },
-      },
-    }),
-    prisma.student.count({
-      where: {
-        status: "OUTSIDE",
       },
     }),
     prisma.movement.count(),
@@ -1356,7 +1362,6 @@ export async function getActivityData(dateString?: string) {
       exitsToday,
       entryRequestsToday: entryPermissions.length,
       exitRequestsToday: exitPermissions.length,
-      studentsOutside,
       totalMovements,
       outsidersOnCampus: outsidersCount,
     },

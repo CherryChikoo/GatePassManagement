@@ -180,8 +180,10 @@ export function UserManagementClient({
           studentRoll: formData.get("studentRoll") as string,
           department: resolvedDept,
           year: formData.get("year") ? Number(formData.get("year")) : null,
+          semester: formData.get("semester") ? Number(formData.get("semester")) : null,
           section: formData.get("section") as string,
           studentType: formData.get("studentType") as any,
+          hostelType: formData.get("studentType") === "HOSTELLER" ? (formData.get("hostelType") as string) || null : null,
           facultyId: (formData.get("facultyId") as string) || null,
           wardenId: (formData.get("wardenId") as string) || null,
           roomNumber: (formData.get("roomNumber") as string) || null,
@@ -998,8 +1000,9 @@ export function UserManagementClient({
                     onChange={(e) => setCreateCustomDept(e.target.value)}
                   />
                 )}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <Input name="year" type="number" label="Year" id="create-year" />
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                  <Input name="year" type="number" min={1} max={6} label="Year" id="create-year" />
+                  <Input name="semester" type="number" min={1} max={12} label="Semester" id="create-semester" />
                   <Input name="section" label="Section" id="create-section" />
                   <Select name="studentType" label="Type" id="create-student-type" value={createStudentType} onChange={(e) => setCreateStudentType(e.target.value)}>
                     <option value="DAY_SCHOLAR">Day Scholar</option>
@@ -1019,7 +1022,12 @@ export function UserManagementClient({
                 
                 {createStudentType === "HOSTELLER" && (
                   <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <Select name="hostelType" label="Hostel" id="create-hostel-type" required defaultValue="">
+                        <option value="" disabled>Select hostel</option>
+                        <option value="BOYS">Boys Hostel</option>
+                        <option value="LADIES">Ladies Hostel</option>
+                      </Select>
                       <Input name="roomNumber" label="Room Number" id="create-room" />
                       <Input name="hostelBlock" label="Hostel Block" id="create-hostel" />
                     </div>
@@ -1339,6 +1347,18 @@ export function UserManagementClient({
                   </div>
 
                   <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-400">Semester</label>
+                    <Input
+                      name="semester"
+                      type="number"
+                      min={1}
+                      max={12}
+                      defaultValue={editingUser.student?.semester ?? ""}
+                      className="bg-zinc-900 border-zinc-800"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
                     <label className="text-xs font-medium text-zinc-400">Section</label>
                     <Input
                       name="section"
@@ -1391,6 +1411,19 @@ export function UserManagementClient({
                               {w.profile?.name} (Block {w.hostelBlock || "N/A"})
                             </option>
                           ))}
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-zinc-400">Hostel</label>
+                        <Select
+                          name="hostelType"
+                          defaultValue={editingUser.student?.hostelType || ""}
+                          className="bg-zinc-900 border-zinc-800"
+                        >
+                          <option value="">-- Not set --</option>
+                          <option value="BOYS">Boys Hostel</option>
+                          <option value="LADIES">Ladies Hostel</option>
                         </Select>
                       </div>
 

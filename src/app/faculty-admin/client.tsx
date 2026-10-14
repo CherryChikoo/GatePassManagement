@@ -6,6 +6,7 @@ import { StatCard, StatusBadge, Modal } from "@/components/ui/primitives";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/utils";
+import { gateMarkText } from "@/lib/pass-dates";
 import { getDepartmentCode, getDepartmentFullName } from "@/lib/constants";
 import {
   Users,
@@ -322,16 +323,12 @@ export function FacultyAdminDashboardClient({ user }: Props) {
                     : "None"}
                 </p>
               </div>
-              {selectedActivity.qr?.usedForExit && (
+              {gateMarkText(selectedActivity.qr) && (
                 <div className="col-span-2 p-3 bg-zinc-900/50 rounded-lg border border-zinc-800">
                   <p className="text-xs text-zinc-400 mb-1 flex items-center gap-2">
-                    <MapPin className="h-3 w-3" /> Gate Scan Status
+                    <MapPin className="h-3 w-3" /> Gate
                   </p>
-                  <p className="text-sm text-zinc-200">
-                    {selectedActivity.qr.usedForEntry
-                      ? "User has exited and returned."
-                      : "User is currently outside campus."}
-                  </p>
+                  <p className="text-sm text-zinc-200">{gateMarkText(selectedActivity.qr)}</p>
                 </div>
               )}
             </div>

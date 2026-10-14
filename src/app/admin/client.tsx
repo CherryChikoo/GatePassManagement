@@ -81,7 +81,7 @@ export function AdminDashboardClient({ user }: Props) {
           <h2 className="text-lg font-semibold text-zinc-100 font-heading border-b border-zinc-800/50 pb-2">Daily Operations</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
           <StatCard
-            title="Outsider Visits"
+            title="Visitor Visits"
             value={stats.outsidersCount}
             icon={<Users className="h-5 w-5 text-indigo-500" />}
           />

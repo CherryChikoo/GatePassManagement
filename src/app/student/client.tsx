@@ -619,6 +619,10 @@ function PermissionFormView({
 
   const isOutside = student?.status === "OUTSIDE";
   const [requestType, setRequestType] = useState<"EXIT" | "ENTRY">(() => isOutside ? "ENTRY" : "EXIT");
+  // Hostellers' exit requests are outing passes (date range + parent contact)
+  const isOuting = isHosteller && requestType === "EXIT";
+  const studentName = useAppStore((s) => s.user?.name) ?? "";
+  const [outingFrom, setOutingFrom] = useState(() => istDateString());
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -629,7 +633,7 @@ function PermissionFormView({
 
     // The time picker already gives "HH:mm"; normalize anyway for older browsers
     // that fall back to a plain text box (accepts "11 59 am", "4pm", "16:30", ...).
-    for (const field of ["expectedExit", "expectedReturn"] as const) {
+    for (const field of ["expectedExit", "expectedReturn", "inTime"] as const) {
       const raw = formData.get(field) as string | null;
       if (!raw) continue;
       const normalized = normalizeTime(raw);
@@ -781,7 +785,16 @@ function PermissionFormView({
               accent={requestType === "ENTRY" ? "emerald" : "orange"}
             />
 
-            {/* Timings Grid */}
+            {isOuting ? (
+              <HostelOutingFields
+                student={student}
+                studentName={studentName}
+                todayStr={todayStr}
+                outingFrom={outingFrom}
+                setOutingFrom={setOutingFrom}
+              />
+            ) : (
+            /* Timings Grid */
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-xs font-medium text-zinc-400 flex items-center gap-1.5">
@@ -806,6 +819,7 @@ function PermissionFormView({
                 <TimeField name="expectedExit" required defaultToNow />
               </div>
             </div>
+            )}
 
             {/* Contact Number */}
             <div className="space-y-2">
@@ -860,6 +874,156 @@ function PermissionFormView({
           </form>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** Hostel student outing pass (Forms 12/13): student details, outing dates, parent contact. */
+function HostelOutingFields({
+  student,
+  studentName,
+  todayStr,
+  outingFrom,
+  setOutingFrom,
+}: {
+  student: any;
+  studentName: string;
+  todayStr: string;
+  outingFrom: string;
+  setOutingFrom: (v: string) => void;
+}) {
+  const maxDate = istDateString(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+  const [outingTo, setOutingTo] = useState(todayStr);
+  const [informed, setInformed] = useState<"" | "yes" | "no">("");
+  const label = "text-xs font-medium text-zinc-400 flex items-center gap-1.5";
+  const inputCls = "bg-zinc-950/60 border-zinc-800 text-sm focus:border-orange-500";
+
+  const details = [
+    { k: "Name", v: studentName },
+    { k: "Roll Number", v: student?.studentRoll },
+    { k: "Branch", v: student?.department },
+    {
+      k: "Year & Semester",
+      v: [student?.year ? `Year ${student.year}` : null, student?.semester ? `Sem ${student.semester}` : null]
+        .filter(Boolean)
+        .join(" • "),
+    },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
+        {details.map((d) => (
+          <div key={d.k} className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wider text-zinc-500">{d.k}</p>
+            <p className="text-sm font-medium text-zinc-200 truncate">{d.v || "—"}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label htmlFor="exitDate" className={label}>
+            <Calendar className="h-3.5 w-3.5 text-zinc-500" /> Outing Date From <span className="text-orange-400">*</span>
+          </label>
+          <Input
+            id="exitDate"
+            type="date"
+            name="exitDate"
+            value={outingFrom}
+            min={todayStr}
+            max={maxDate}
+            onChange={(e) => {
+              setOutingFrom(e.target.value);
+              if (outingTo < e.target.value) setOutingTo(e.target.value);
+            }}
+            required
+            className={`${inputCls} [color-scheme:dark]`}
+          />
+        </div>
+        <div className="space-y-2">
+          <label htmlFor="outingDateTo" className={label}>
+            <Calendar className="h-3.5 w-3.5 text-zinc-500" /> Outing Date To <span className="text-orange-400">*</span>
+          </label>
+          <Input
+            id="outingDateTo"
+            type="date"
+            name="outingDateTo"
+            value={outingTo}
+            min={outingFrom}
+            onChange={(e) => setOutingTo(e.target.value)}
+            required
+            className={`${inputCls} [color-scheme:dark]`}
+          />
+        </div>
+        <div className="space-y-2">
+          <label htmlFor="expectedExit" className={label}>
+            <Clock className="h-3.5 w-3.5 text-zinc-500" /> Out Time (on the From date) <span className="text-orange-400">*</span>
+          </label>
+          <TimeField name="expectedExit" required defaultToNow />
+        </div>
+        <div className="space-y-2">
+          <label htmlFor="inTime" className={label}>
+            <Clock className="h-3.5 w-3.5 text-zinc-500" /> In Time (on the To date)
+          </label>
+          <TimeField name="inTime" />
+        </div>
+      </div>
+
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium text-zinc-300">
+          Informed to Parent / Guardian <span className="text-orange-400">*</span>
+        </legend>
+        <div className="flex gap-2">
+          {(["yes", "no"] as const).map((v) => (
+            <label
+              key={v}
+              className={`flex-1 cursor-pointer rounded-lg border px-3 py-2 text-sm text-center transition-colors ${
+                informed === v ? "border-orange-500 bg-orange-500/10 text-orange-300" : "border-zinc-800 text-zinc-300 hover:bg-zinc-800/40"
+              }`}
+            >
+              <input
+                type="radio"
+                name="parentInformed"
+                value={v}
+                checked={informed === v}
+                onChange={() => setInformed(v)}
+                required
+                className="sr-only"
+              />
+              {v === "yes" ? "Yes" : "No"}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <label htmlFor="guardianName" className={label}>Parent / Guardian Name</label>
+          <Input id="guardianName" name="guardianName" maxLength={100} className={inputCls} />
+        </div>
+        <div className="space-y-2">
+          <label htmlFor="guardianRelation" className={label}>Relation with Student</label>
+          <Input id="guardianRelation" name="guardianRelation" maxLength={50} placeholder="e.g. Father" className={inputCls} />
+        </div>
+        <div className="space-y-2">
+          <label htmlFor="videoCallNumber" className={label}>
+            <Phone className="h-3.5 w-3.5 text-zinc-500" /> Video Call Made to Phone
+          </label>
+          <Input id="videoCallNumber" name="videoCallNumber" type="tel" maxLength={15} className={inputCls} />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label htmlFor="hostelInchargeDetails" className={label}>Hostel In-charge Details</label>
+        <Input
+          id="hostelInchargeDetails"
+          name="hostelInchargeDetails"
+          maxLength={200}
+          placeholder="Name and contact of the hostel in-charge"
+          className={inputCls}
+        />
+      </div>
     </div>
   );
 }

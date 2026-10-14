@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation";
 import { Modal, StatusBadge } from "@/components/ui/primitives";
 import { getExitPhotoUrl } from "@/lib/storage/image-upload";
 import { BackButton } from "@/components/ui/back-button";
+import { LiveDateTime } from "@/components/registers/register-form";
 
 interface Props {
   user: any;
@@ -50,18 +51,6 @@ export function OutsidersClient({ user, inside, history }: Props) {
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   
-  // 12-hour time state
-  const now = new Date();
-  let currentHour = now.getHours();
-  const currentMinute = now.getMinutes().toString().padStart(2, '0');
-  const period = currentHour >= 12 ? 'PM' : 'AM';
-  currentHour = currentHour % 12 || 12;
-  const [time12h, setTime12h] = useState({
-    hour: currentHour.toString().padStart(2, '0'),
-    minute: currentMinute,
-    period: period
-  });
-
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -71,6 +60,9 @@ export function OutsidersClient({ user, inside, history }: Props) {
     gate: "",
     vehicleNumber: "",
     entryTime: "",
+    address: "",
+    department: "",
+    remarks: "",
   });
   const [photo, setPhoto] = useState<string | null>(null);
 
@@ -160,18 +152,13 @@ export function OutsidersClient({ user, inside, history }: Props) {
         path = upload.path;
       }
 
-      const now = new Date();
-      let hours24 = parseInt(time12h.hour);
-      if (time12h.period === "PM" && hours24 !== 12) hours24 += 12;
-      if (time12h.period === "AM" && hours24 === 12) hours24 = 0;
-      now.setHours(hours24, parseInt(time12h.minute), 0, 0);
-      
-      const result = await registerOutsider({ ...formData, photoUrl: path, entryTime: now.toISOString() });
+      const result = await registerOutsider({ ...formData, photoUrl: path });
       
       if (result.success) {
-        setSuccess("Outsider registered successfully!"); setTimeout(() => setSuccess(null), 3000);
+        setSuccess("Visitor registered successfully!"); setTimeout(() => setSuccess(null), 3000);
         setFormData({
-          name: "", phone: "", category: "GUEST", purpose: "", visitingStudent: "", gate: "", vehicleNumber: "", entryTime: new Date().toTimeString().slice(0, 5)
+          name: "", phone: "", category: "GUEST", purpose: "", visitingStudent: "", gate: "", vehicleNumber: "", entryTime: "",
+          address: "", department: "", remarks: "",
         });
         setPhoto(null);
         setActiveTab("INSIDE");
@@ -311,7 +298,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
         <div>
           <BackButton href="/security" label="Back to Dashboard" />
           <h1 className="text-2xl font-bold tracking-tight text-zinc-100 mt-2">
-            Outsider Management
+            Visitor Management
           </h1>
           <p className="text-sm text-zinc-500 mt-1">
             Manual registration and monitoring of campus visitors
@@ -320,7 +307,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <Input 
             type="search" 
-            placeholder="Search outsiders..." 
+            placeholder="Search visitors..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full sm:w-64 bg-zinc-900/50"
@@ -375,7 +362,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
           <Card>
             <CardHeader>
               <CardTitle>Manual Registration</CardTitle>
-              <CardDescription>Register a new outsider entry.</CardDescription>
+              <CardDescription>Register a new visitor.</CardDescription>
             </CardHeader>
             <CardContent className="p-4 sm:p-6">
               <form onSubmit={handleSubmit} className="space-y-6">
@@ -395,7 +382,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                 
                 {/* Photo Capture */}
                 <div className="space-y-3">
-                  <label className="text-sm font-medium leading-none text-zinc-200">Outsider Photo (Optional)</label>
+                  <label className="text-sm font-medium leading-none text-zinc-200">Visitor Photo</label>
                   <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                     <div className="relative h-32 w-32 shrink-0 rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-900/50 flex flex-col items-center justify-center overflow-hidden">
                       {photo ? (
@@ -418,7 +405,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                         onChange={handlePhotoCapture}
                       />
                       <p className="text-xs text-zinc-500">
-                        Optionally capture the visitor&apos;s face with the device camera.
+                        Capture the visitor&apos;s face with the device camera.
                       </p>
                     </div>
                   </div>
@@ -426,12 +413,12 @@ export function OutsidersClient({ user, inside, history }: Props) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Full Name *</label>
-                    <Input required placeholder="Enter full name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                    <label className="text-sm font-medium leading-none text-zinc-200">Full Name</label>
+                    <Input placeholder="Enter full name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Phone Number *</label>
-                    <Input required placeholder="Enter phone" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                    <label className="text-sm font-medium leading-none text-zinc-200">Phone Number</label>
+                    <Input placeholder="Enter phone" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium leading-none text-zinc-200">Category</label>
@@ -450,9 +437,8 @@ export function OutsidersClient({ user, inside, history }: Props) {
                   </div>
                   
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Reason / Purpose of Visit *</label>
+                    <label className="text-sm font-medium leading-none text-zinc-200">Reason / Purpose of Visit</label>
                     <Input 
-                      required 
                       list="purpose-options"
                       placeholder="Type or select a reason" 
                       value={formData.purpose} 
@@ -470,62 +456,33 @@ export function OutsidersClient({ user, inside, history }: Props) {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Visiting Student/Staff (Optional)</label>
-                    <Input placeholder="Roll No or Name" value={formData.visitingStudent} onChange={e => setFormData({...formData, visitingStudent: e.target.value})} />
+                    <label className="text-sm font-medium leading-none text-zinc-200">Person to Visit</label>
+                    <Input placeholder="Name or Roll No of the person" value={formData.visitingStudent} onChange={e => setFormData({...formData, visitingStudent: e.target.value})} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Vehicle Number (Optional)</label>
+                    <label className="text-sm font-medium leading-none text-zinc-200">Department</label>
+                    <Input placeholder="Department being visited" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <label className="text-sm font-medium leading-none text-zinc-200">Address</label>
+                    <Input placeholder="Visitor's address" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium leading-none text-zinc-200">Vehicle Number</label>
                     <Input placeholder="E.g., TS 09 EA 1234" value={formData.vehicleNumber} onChange={e => setFormData({...formData, vehicleNumber: e.target.value})} />
                   </div>
-                </div>
-
-                
-                
-                
-                
-                
-                <div className="space-y-2">
-                  <label className="text-sm font-medium leading-none text-zinc-200">Entry Time (Date is fixed)</label>
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                    <div className="flex h-10 items-center rounded-md border border-zinc-800 bg-zinc-900/50 px-4 py-2 text-sm text-zinc-400 font-medium shadow-sm">
-                      {formatDateTime(new Date()).split(',')[0]}
-                    </div>
-                    <div className="flex items-center h-10 rounded-md border border-input bg-zinc-900/50 px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
-                      <select 
-                        value={time12h.hour} 
-                        onChange={e => setTime12h({...time12h, hour: e.target.value})}
-                        className="bg-transparent border-none text-zinc-100 focus:outline-none appearance-none text-center w-8 cursor-pointer"
-                      >
-                        {Array.from({length: 12}, (_, i) => (i + 1).toString().padStart(2, '0')).map(h => (
-                          <option key={h} className="bg-zinc-900" value={h}>{h}</option>
-                        ))}
-                      </select>
-                      <span className="text-zinc-500 font-bold mx-1">:</span>
-                      <select 
-                        value={time12h.minute} 
-                        onChange={e => setTime12h({...time12h, minute: e.target.value})}
-                        className="bg-transparent border-none text-zinc-100 focus:outline-none appearance-none text-center w-8 cursor-pointer"
-                      >
-                        {Array.from({length: 60}, (_, i) => i.toString().padStart(2, '0')).map(m => (
-                          <option key={m} className="bg-zinc-900" value={m}>{m}</option>
-                        ))}
-                      </select>
-                      <select 
-                        value={time12h.period} 
-                        onChange={e => setTime12h({...time12h, period: e.target.value})}
-                        className="bg-transparent border-none text-zinc-100 focus:outline-none appearance-none ml-2 font-medium cursor-pointer"
-                      >
-                        <option className="bg-zinc-900" value="AM">AM</option>
-                        <option className="bg-zinc-900" value="PM">PM</option>
-                      </select>
-                    </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <label className="text-sm font-medium leading-none text-zinc-200">Remarks</label>
+                    <Input placeholder="Any notes" value={formData.remarks} onChange={e => setFormData({...formData, remarks: e.target.value})} />
                   </div>
                 </div>
 
-
-
-
-
+                
+                
+                
+                
+                
+                <LiveDateTime />
 
                 <Button type="submit" className="w-full" size="lg" disabled={loading}>
                   {loading ? "Registering..." : "Complete Registration & Allow Entry"}
@@ -630,7 +587,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                         <History className="h-8 w-8 text-zinc-700 mb-1" />
                         <p className="font-medium text-zinc-400">No visitor logs found</p>
                         <p className="text-xs text-zinc-600">
-                          {searchQuery ? "No records match your search query." : "Past outsider entries and exits will appear here."}
+                          {searchQuery ? "No records match your search query." : "Past visitor entries and exits will appear here."}
                         </p>
                       </div>
                     </td>
@@ -675,11 +632,11 @@ export function OutsidersClient({ user, inside, history }: Props) {
 
 
     
-      {/* Outsider Details Modal */}
+      {/* Visitor Details Modal */}
       <Modal
         open={!!selectedOutsider}
         onClose={() => setSelectedOutsider(null)}
-        title="Outsider Details"
+        title="Visitor Details"
       >
         {selectedOutsider && (
           <div className="space-y-6">
@@ -687,7 +644,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
               <div className="h-28 w-28 shrink-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 flex items-center justify-center">
                 {selectedOutsider.photoUrl ? (
                   photoUrl ? (
-                    <img src={photoUrl} alt="Outsider" className="h-full w-full object-cover" />
+                    <img src={photoUrl} alt="Visitor" className="h-full w-full object-cover" />
                   ) : (
                     <div className="animate-pulse bg-zinc-800 h-full w-full flex items-center justify-center">
                       <span className="text-xs text-zinc-500">Loading...</span>
@@ -722,9 +679,33 @@ export function OutsidersClient({ user, inside, history }: Props) {
                 <p className="text-sm text-zinc-200">{selectedOutsider.purpose}</p>
               </div>
               <div className="p-4 rounded-xl border border-zinc-800/60 bg-zinc-900/40">
-                <p className="text-xs font-medium text-zinc-500 mb-1">Visiting Student/Staff</p>
+                <p className="text-xs font-medium text-zinc-500 mb-1">Person to Visit</p>
                 <p className="text-sm text-zinc-200">{selectedOutsider.visitingStudent || "N/A"}</p>
               </div>
+              {selectedOutsider.department && (
+                <div className="p-4 rounded-xl border border-zinc-800/60 bg-zinc-900/40">
+                  <p className="text-xs font-medium text-zinc-500 mb-1">Department</p>
+                  <p className="text-sm text-zinc-200">{selectedOutsider.department}</p>
+                </div>
+              )}
+              {selectedOutsider.address && (
+                <div className="p-4 rounded-xl border border-zinc-800/60 bg-zinc-900/40">
+                  <p className="text-xs font-medium text-zinc-500 mb-1">Address</p>
+                  <p className="text-sm text-zinc-200">{selectedOutsider.address}</p>
+                </div>
+              )}
+              {selectedOutsider.remarks && (
+                <div className="p-4 rounded-xl border border-zinc-800/60 bg-zinc-900/40 sm:col-span-2">
+                  <p className="text-xs font-medium text-zinc-500 mb-1">Remarks</p>
+                  <p className="text-sm text-zinc-200">{selectedOutsider.remarks}</p>
+                </div>
+              )}
+              {selectedOutsider.recordedByName && (
+                <div className="p-4 rounded-xl border border-zinc-800/60 bg-zinc-900/40 sm:col-span-2">
+                  <p className="text-xs font-medium text-zinc-500 mb-1">Registered by</p>
+                  <p className="text-sm text-zinc-200">{selectedOutsider.recordedByName}</p>
+                </div>
+              )}
             </div>
 
             <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900 flex flex-col sm:flex-row gap-4 justify-between">

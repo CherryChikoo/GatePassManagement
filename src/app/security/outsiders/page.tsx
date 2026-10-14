@@ -1,16 +1,6 @@
-import { requireRole } from "@/lib/auth/helpers";
-import { getOutsiders } from "@/server/actions/outsiders";
-import { OutsidersClient } from "./client";
+import { redirect } from "next/navigation";
 
-export default async function OutsidersPage() {
-  const user = await requireRole("SECURITY");
-  const data = await getOutsiders();
-  
-  return (
-    <OutsidersClient 
-      user={user} 
-      inside={data.inside || []} 
-      history={data.history || []} 
-    />
-  );
+/** Old address of the Visitors page (kept so bookmarks still work). */
+export default function OutsidersRedirect() {
+  redirect("/security/visitors");
 }

@@ -9,7 +9,6 @@ import { outsiderSchema } from "@/lib/validation/schemas";
 import { isSafeStoragePath } from "@/lib/storage/storage-admin";
 import { istStartOfDay } from "@/lib/time/ist";
 
-const MAX_BACKDATE_MS = 24 * 60 * 60 * 1000;
 
 let cachedOutsiders: { data: any; expiresAt: number } | null = null;
 
@@ -27,12 +26,13 @@ async function afterOutsiderChange() {
   await invalidateAdminCaches();
   clearOutsidersCache();
   revalidatePath("/security");
-  revalidatePath("/security/outsiders");
+  revalidatePath("/security/visitors");
   revalidatePath("/admin/activity");
 }
 
 export async function registerOutsider(data: Record<string, unknown>) {
-  await requireRole("SECURITY", "ADMIN");
+  // The guard is taken from the session, never from the form
+  const user = await requireRole("SECURITY", "ADMIN");
 
   const parsed = outsiderSchema.safeParse(data ?? {});
   if (!parsed.success) {
@@ -44,32 +44,30 @@ export async function registerOutsider(data: Record<string, unknown>) {
     return { success: false, error: "Invalid photo reference" };
   }
 
-  // Entry time may be back-dated by the guard (late logging), but not into the
-  // future and not more than 24 hours.
-  let entryTime = new Date();
-  if (input.entryTime) {
-    const requested = new Date(input.entryTime);
-    if (Number.isNaN(requested.getTime())) return { success: false, error: "Invalid entry time" };
-    if (requested.getTime() > Date.now() + 5 * 60 * 1000) {
-      return { success: false, error: "Entry time cannot be in the future" };
-    }
-    if (requested.getTime() < Date.now() - MAX_BACKDATE_MS) {
-      return { success: false, error: "Entry time cannot be more than 24 hours ago" };
-    }
-    entryTime = requested;
+  // Entry time is always the live time of registration (never typed in)
+  const entryTime = new Date();
+
+  // Every input is optional, but a visitor record needs at least one detail
+  if (![input.name, input.phone, input.purpose, input.visitingStudent, input.vehicleNumber, input.address, input.department, input.remarks, input.photoUrl].some((v) => v && String(v).trim())) {
+    return { success: false, error: "Enter at least one detail" };
   }
 
   try {
     const outsider = await prisma.outsider.create({
       data: {
-        name: input.name,
-        phone: input.phone,
+        name: input.name || "",
+        phone: input.phone || "",
         category: input.category || "GUEST",
-        purpose: input.purpose,
+        purpose: input.purpose || "",
         visitingStudent: input.visitingStudent || null,
         gate: input.gate || null,
         vehicleNumber: input.vehicleNumber || null,
         photoUrl: input.photoUrl || null,
+        address: input.address || null,
+        department: input.department || null,
+        remarks: input.remarks || null,
+        recordedById: user.profileId,
+        recordedByName: user.name,
         status: "INSIDE",
         entryTime,
       },

@@ -12,7 +12,6 @@ import {
   History,
   Hourglass,
   LogIn,
-  UserCheck,
   Users,
   XCircle,
 } from "lucide-react";
@@ -61,12 +60,6 @@ export function SupervisorDashboardClient({ user }: { user: { name: string } }) 
         <StatCard title="Rejected Today" value={s.rejectedToday} icon={<XCircle className="h-5 w-5 text-red-400" />} />
         <StatCard title="Exits Today" value={s.exitsToday} icon={<DoorOpen className="h-5 w-5 text-orange-400" />} description="Gate scans" />
         <StatCard title="Entries Today" value={s.entriesToday} icon={<LogIn className="h-5 w-5 text-cyan-400" />} description="Gate scans" />
-        <StatCard
-          title="Currently Outside"
-          value={s.studentsOutside + s.facultyOutside}
-          icon={<UserCheck className="h-5 w-5 text-purple-400" />}
-          description={`${s.studentsOutside} students • ${s.facultyOutside} faculty`}
-        />
         <StatCard title="Students" value={s.totalStudents} icon={<GraduationCap className="h-5 w-5 text-blue-400" />} />
         <StatCard title="Faculty & HODs" value={s.totalFaculty} icon={<Briefcase className="h-5 w-5 text-indigo-400" />} />
         <StatCard title="Visitors Inside" value={s.visitorsInside} icon={<Users className="h-5 w-5 text-zinc-300" />} />

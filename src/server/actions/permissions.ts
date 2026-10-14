@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/helpers";
-import { permissionRequestSchema, batchGrantSchema } from "@/lib/validation/schemas";
+import { permissionRequestSchema, batchGrantSchema, hostelOutingSchema } from "@/lib/validation/schemas";
 import { revalidatePath } from "next/cache";
 import { resolveStudentActivePass } from "@/lib/permissions/auto-expire";
 import { resolveStudentApprover } from "@/lib/permissions/approver";
@@ -33,6 +33,64 @@ export async function getStudentFormData() {
     assignedApprover: resolution.ok
       ? { name: resolution.approver.name, label: resolution.approver.label, available: true as const }
       : { name: null, label: null, available: false as const, reason: resolution.error },
+  };
+}
+
+/**
+ * Hostel outing details (Forms 12/13): outing date range, planned in-time,
+ * parent / guardian contact, hostel in-charge, and a snapshot of the warden.
+ */
+async function parseHostelOuting(formData: FormData, fromDate: string, expectedExit: Date, wardenId: string | null) {
+  const parsed = hostelOutingSchema.safeParse({
+    outingDateTo: (formData.get("outingDateTo") as string) || "",
+    inTime: (formData.get("inTime") as string) || "",
+    parentInformed: (formData.get("parentInformed") as string) || "",
+    videoCallNumber: (formData.get("videoCallNumber") as string) || "",
+    guardianName: (formData.get("guardianName") as string) || "",
+    guardianRelation: (formData.get("guardianRelation") as string) || "",
+    hostelInchargeDetails: (formData.get("hostelInchargeDetails") as string) || "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const o = parsed.data;
+
+  if (o.outingDateTo < fromDate) return { error: "Outing date to cannot be before the outing date from" };
+  if (istDateToInstant(o.outingDateTo).getTime() - istDateToInstant(fromDate).getTime() > MAX_DAYS_AHEAD * DAY_MS) {
+    return { error: `An outing can be at most ${MAX_DAYS_AHEAD} days long` };
+  }
+
+  let expectedReturn: Date | null = null;
+  if (o.inTime) {
+    expectedReturn = istDateTime(o.outingDateTo, o.inTime);
+    if (!expectedReturn || expectedReturn <= expectedExit) {
+      return { error: "In time and date must be after the out time and date" };
+    }
+  }
+
+  const warden = wardenId
+    ? await prisma.warden.findUnique({
+        where: { id: wardenId },
+        select: { employeeId: true, hostelBlock: true, profile: { select: { name: true, phone: true } } },
+      })
+    : null;
+  const wardenDetails = warden
+    ? [warden.profile.name, warden.hostelBlock ? `Block ${warden.hostelBlock}` : null, warden.profile.phone, warden.employeeId]
+        .filter(Boolean)
+        .join(" • ")
+    : null;
+
+  return {
+    expectedReturn,
+    data: {
+      endDate: istDateToInstant(o.outingDateTo),
+      numberOfDays:
+        Math.round((istDateToInstant(o.outingDateTo).getTime() - istDateToInstant(fromDate).getTime()) / DAY_MS) + 1,
+      parentInformed: o.parentInformed === "yes",
+      videoCallNumber: o.videoCallNumber || null,
+      guardianName: o.guardianName || null,
+      guardianRelation: o.guardianRelation || null,
+      hostelInchargeDetails: o.hostelInchargeDetails || null,
+      wardenDetails,
+    },
   };
 }
 
@@ -96,6 +154,15 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
     }
   }
 
+  // Hostel outing pass: outing date range, planned in-time and parent contact
+  let outing: Awaited<ReturnType<typeof parseHostelOuting>> | null = null;
+  if (type === "EXIT" && student.studentType === "HOSTELLER") {
+    outing = await parseHostelOuting(formData, input.exitDate, expectedExit, student.wardenId);
+    if ("error" in outing) return { error: outing.error };
+    if (outing.expectedReturn) expectedReturn = outing.expectedReturn;
+  }
+  const outingData = outing && !("error" in outing) ? outing.data : {};
+
   // Expire anything stale first so the student is not falsely blocked.
   await resolveStudentActivePass(student.id);
 
@@ -124,6 +191,7 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
           expectedReturn,
           contactNumber: input.contactNumber || null,
           remarks: input.remarks || null,
+          ...outingData,
           status: "PENDING",
         },
         select: { id: true },

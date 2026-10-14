@@ -8,9 +8,8 @@ import { getSyncReport, reconcilePortalWithLogins } from "@/lib/accounts/sync";
 
 /**
  * Automated cleanup cron job.
- * Removes stale, finished records that carry no gate history, expired QR
- * credentials, and old photos. Gate movement history is kept for
- * RETENTION.OLD_MOVEMENTS_YEARS.
+ * Removes expired QR credentials and old gate photos, and re-checks account
+ * sync. Pass, movement and register records are permanent and never deleted.
  *
  * Auth: `Authorization: Bearer <CRON_SECRET>` (Vercel Cron) or `x-cron-secret`.
  */
@@ -21,8 +20,6 @@ export async function GET(request: NextRequest) {
   }
 
   const results = {
-    deletedPermissions: 0,
-    deletedMovements: 0,
     deletedQRs: 0,
     deletedPhotos: 0,
     errors: [] as string[],
@@ -31,33 +28,8 @@ export async function GET(request: NextRequest) {
   try {
     logger.info("[CLEANUP] Starting cleanup job...");
 
-    // 1. Movements older than the retention window (must go before their permissions: FK)
-    try {
-      const cutoff = new Date();
-      cutoff.setFullYear(cutoff.getFullYear() - RETENTION.OLD_MOVEMENTS_YEARS);
-      const deleted = await prisma.movement.deleteMany({ where: { createdAt: { lt: cutoff } } });
-      results.deletedMovements = deleted.count;
-    } catch (err: any) {
-      results.errors.push(`Movement cleanup: ${err.message}`);
-      logger.error("[CLEANUP] Movement cleanup failed", err);
-    }
-
-    // 2. Finished permissions older than N months that no longer have gate movements
-    try {
-      const cutoff = new Date();
-      cutoff.setMonth(cutoff.getMonth() - RETENTION.COMPLETED_PERMISSIONS_MONTHS);
-      const deleted = await prisma.permission.deleteMany({
-        where: {
-          status: { in: ["COMPLETED", "EXPIRED", "CANCELLED", "REJECTED"] },
-          createdAt: { lt: cutoff },
-          movements: { none: {} },
-        },
-      });
-      results.deletedPermissions = deleted.count;
-    } catch (err: any) {
-      results.errors.push(`Permission cleanup: ${err.message}`);
-      logger.error("[CLEANUP] Permission cleanup failed", err);
-    }
+    // Passes, gate movements, approvals and register records are permanent
+    // (see prisma/migrations/registers_immutability.sql) and are never deleted here.
 
     // 3. Inactive QR credentials that expired long ago
     try {
@@ -72,7 +44,7 @@ export async function GET(request: NextRequest) {
       logger.error("[CLEANUP] QR cleanup failed", err);
     }
 
-    // 4. Old photos in Supabase Storage
+    // 4. Old visitor photos (student gate photos are permanent)
     const photoResult = await deleteOldPhotos(RETENTION.EXIT_PHOTOS_DAYS);
     if (photoResult.error) results.errors.push(`Photo cleanup: ${photoResult.error}`);
     results.deletedPhotos = photoResult.deleted;

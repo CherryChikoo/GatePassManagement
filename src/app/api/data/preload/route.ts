@@ -554,8 +554,8 @@ async function preloadStudent(profileId: string) {
   const student = await prisma.student.findUnique({
     where: { profileId },
     select: {
-      id: true, studentRoll: true, department: true, year: true,
-      section: true, studentType: true, status: true,
+      id: true, studentRoll: true, department: true, year: true, semester: true,
+      section: true, studentType: true, hostelType: true, status: true,
       roomNumber: true, hostelBlock: true, wardenId: true,
     },
   });
@@ -940,8 +940,6 @@ async function preloadSupervisor() {
     rejectedToday,
     exitsToday,
     entriesToday,
-    studentsOutside,
-    facultyOutside,
     visitorsInside,
     requests,
     students,
@@ -958,8 +956,6 @@ async function preloadSupervisor() {
     prisma.permission.count({ where: { status: "REJECTED", rejectedAt: { gte: today } } }),
     prisma.movement.count({ where: { type: "EXIT", createdAt: { gte: today } } }),
     prisma.movement.count({ where: { type: "ENTRY", createdAt: { gte: today } } }),
-    prisma.student.count({ where: { status: "OUTSIDE" } }),
-    prisma.permission.count({ where: { status: "EXITED", facultyId: { not: null } } }),
     prisma.outsider.count({ where: { status: "INSIDE" } }),
     prisma.permission.findMany({
       where: requestsWhere,
@@ -968,6 +964,8 @@ async function preloadSupervisor() {
       select: {
         id: true, type: true, status: true, purpose: true, destination: true,
         exitDate: true, expectedExit: true, expectedReturn: true, contactNumber: true, remarks: true,
+        requestType: true, endDate: true, numberOfDays: true, parentInformed: true, videoCallNumber: true,
+        guardianName: true, guardianRelation: true, hostelInchargeDetails: true, wardenDetails: true,
         createdAt: true, approvedAt: true, rejectedAt: true, rejectionReason: true,
         approverType: true, approvalMode: true, hodApprovedAt: true, deanApprovedAt: true,
         studentId: true, facultyId: true,
@@ -1029,8 +1027,6 @@ async function preloadSupervisor() {
         rejectedToday,
         exitsToday,
         entriesToday,
-        studentsOutside,
-        facultyOutside,
         visitorsInside,
       },
       recentRequests: requests.slice(0, 8),

@@ -12,3 +12,14 @@ export function scheduledNote(pass: { createdAt?: string | Date | null; exitDate
   const requested = istDateString(new Date(pass.createdAt));
   return scheduled === requested ? "" : ` • Scheduled for ${formatDate(pass.exitDate)}`;
 }
+
+/**
+ * What security marked at the gate for this pass ("" if not scanned yet).
+ * Only states the recorded exit/entry; it does not claim where the person is now.
+ */
+export function gateMarkText(qr?: { usedForExit?: boolean | null; usedForEntry?: boolean | null } | null): string {
+  if (qr?.usedForExit && qr?.usedForEntry) return "Exit and entry marked at the gate";
+  if (qr?.usedForExit) return "Exit marked at the gate";
+  if (qr?.usedForEntry) return "Entry marked at the gate";
+  return "";
+}

@@ -76,6 +76,7 @@ export const RETENTION = {
   COMPLETED_PERMISSIONS_MONTHS: 6,
   OLD_MOVEMENTS_YEARS: 1,
   EXPIRED_QR_CODES_DAYS: 30,
+  /** Visitor (outsider) photos only; student gate photos are kept permanently */
   EXIT_PHOTOS_DAYS: 90,
 } as const;
 

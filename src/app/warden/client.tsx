@@ -18,6 +18,7 @@ import Link from "next/link";
 import { Modal, StatusBadge } from "@/components/ui/primitives";
 import { useState } from "react";
 import { formatDateTime } from "@/lib/utils";
+import { gateMarkText } from "@/lib/pass-dates";
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
@@ -230,14 +231,10 @@ export function WardenDashboardClient({ user }: Props) {
                   {selectedActivity.expectedReturn ? formatDateTime(selectedActivity.expectedReturn) : "None"}
                 </p>
               </div>
-              {selectedActivity.qr?.usedForExit && (
+              {gateMarkText(selectedActivity.qr) && (
                 <div className="col-span-2 p-3 bg-zinc-900/50 rounded-lg border border-zinc-800">
-                   <p className="text-xs text-zinc-400 mb-1 flex items-center gap-2"><MapPin className="h-3 w-3" /> Gate Scan Status</p>
-                   <p className="text-sm text-zinc-200">
-                     {selectedActivity.qr.usedForEntry 
-                       ? "Student has exited and returned."
-                       : "Student is currently outside."}
-                   </p>
+                   <p className="text-xs text-zinc-400 mb-1 flex items-center gap-2"><MapPin className="h-3 w-3" /> Gate</p>
+                   <p className="text-sm text-zinc-200">{gateMarkText(selectedActivity.qr)}</p>
                 </div>
               )}
             </div>

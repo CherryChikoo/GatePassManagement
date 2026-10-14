@@ -25,6 +25,7 @@ import { BackButton } from "@/components/ui/back-button";
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
+import { PassExtraDetails } from "@/components/passes/pass-extra";
 
 interface Props {
   user: { name: string; email: string; role: string; profileId: string };
@@ -288,6 +289,7 @@ export function WardenRequestsClient({ user }: Props) {
                               <span className="truncate">{req.destination}</span>
                             </div>
                           )}
+                          <PassExtraDetails pass={req} />
                           <div className="flex items-center gap-2 text-sm text-zinc-400 min-w-0">
                             <Clock className="h-3.5 w-3.5 text-zinc-600 shrink-0" />
                             <span className="truncate">{formatDate(req.exitDate)}</span>

@@ -43,7 +43,6 @@ interface Props {
     stats: {
       entriesToday: number;
       exitsToday: number;
-      studentsOutside: number;
       totalMovements: number;
     };
     recentEntries: any[];
@@ -105,7 +104,6 @@ export function ActivityClient({ user, data: initialData }: Props) {
   const stats = data?.stats || {
     entriesToday: 0,
     exitsToday: 0,
-    studentsOutside: 0,
     totalMovements: 0,
     outsidersOnCampus: 0,
   };
@@ -257,7 +255,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
               <History className="h-6 w-6 text-orange-500" /> Gate Movement Logs
             </h1>
             <p className="text-sm text-zinc-400 mt-1">
-              Live tracking of student entries, student exits, and students currently outside campus.
+              Gate entries and exits marked by security, plus visitors on campus.
             </p>
           </div>
 
@@ -313,12 +311,12 @@ export function ActivityClient({ user, data: initialData }: Props) {
               icon={<ArrowUpRight className="h-5 w-5 text-amber-400" />}
             />
             <StatCard
-              title="Total Outsider Visits"
+              title="Total Visitor Visits"
               value={(outsiders || []).length}
               icon={<Users className="h-5 w-5 text-blue-400" />}
             />
             <StatCard
-              title="Outsiders on Campus"
+              title="Visitors on Campus"
               value={activeOutsidersCount}
               icon={<UserCheck className="h-5 w-5 text-purple-400" />}
             />
@@ -362,7 +360,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
               </span>
             </button>
 
-            {/* Tab 3: Outsiders (Parents & Relatives) */}
+            {/* Tab 3: Visitors (Parents, Guests & Vendors) */}
             <button
               onClick={() => setActiveTab("outsiders")}
               className={`flex items-center gap-2 px-6 py-3 font-semibold text-sm transition-all border-b-2 whitespace-nowrap cursor-pointer ${
@@ -372,7 +370,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
               }`}
             >
               <UserCheck className="h-4 w-4" />
-              Outsiders (Parents & Relatives)
+              Visitors (Parents, Guests & Vendors)
               <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
                 {(outsiders || []).length}
               </span>
@@ -677,7 +675,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
                 <div className="p-3.5 sm:p-4 border-b border-zinc-800/80 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-zinc-950/40">
                   <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
                     {[
-                      { key: "ALL", label: "All Outsiders" },
+                      { key: "ALL", label: "All Visitors" },
                       { key: "PARENT", label: "Parents" },
                       { key: "RELATIVE", label: "Relatives" },
                       { key: "GUEST", label: "Official Guests" },
@@ -726,7 +724,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-zinc-800/80 bg-zinc-950/60 whitespace-nowrap">
-                          <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Visitor / Outsider</th>
+                          <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Visitor</th>
                           <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Category</th>
                           <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Visiting Student / Target</th>
                           <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Purpose & Vehicle</th>
@@ -823,7 +821,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
                     <div className="py-16 text-center">
                       <EmptyState
                         icon={<UserCheck className="h-8 w-8 text-zinc-500" />}
-                        title="No outsider records found"
+                        title="No visitor records found"
                         description={
                           outsiderSearch || outsiderCategory !== "ALL"
                             ? "No visitor records matched your search or category filter."
@@ -870,17 +868,17 @@ export function ActivityClient({ user, data: initialData }: Props) {
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-400">Visitor Name *</label>
-              <Input name="name" required placeholder="e.g. Ramesh Nair" className="bg-zinc-950 border-zinc-800" />
+              <label className="text-xs font-semibold text-zinc-400">Visitor Name</label>
+              <Input name="name" placeholder="e.g. Ramesh Nair" className="bg-zinc-950 border-zinc-800" />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-400">Phone Number *</label>
-              <Input name="phone" required placeholder="+91-9876543210" className="bg-zinc-950 border-zinc-800" />
+              <label className="text-xs font-semibold text-zinc-400">Phone Number</label>
+              <Input name="phone" placeholder="+91-9876543210" className="bg-zinc-950 border-zinc-800" />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-400">Visitor Category *</label>
+              <label className="text-xs font-semibold text-zinc-400">Visitor Category</label>
               <Select name="category" defaultValue="PARENT" className="bg-zinc-950 border-zinc-800">
                 <option value="PARENT">Parent / Guardian</option>
                 <option value="RELATIVE">Relative / Family</option>
@@ -895,27 +893,25 @@ export function ActivityClient({ user, data: initialData }: Props) {
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
-              <label className="text-xs font-semibold text-zinc-400">Visiting Student / Target *</label>
+              <label className="text-xs font-semibold text-zinc-400">Person to Visit</label>
               <Input
                 name="visitingStudent"
-                required
                 placeholder="e.g. Aditya Nair (Roll 21BCS1001, Block A)"
                 className="bg-zinc-950 border-zinc-800"
               />
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
-              <label className="text-xs font-semibold text-zinc-400">Purpose of Visit *</label>
+              <label className="text-xs font-semibold text-zinc-400">Purpose of Visit</label>
               <Input
                 name="purpose"
-                required
                 placeholder="e.g. Ward visit, fee clearance, emergency"
                 className="bg-zinc-950 border-zinc-800"
               />
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
-              <label className="text-xs font-semibold text-zinc-400">Vehicle Number (if any)</label>
+              <label className="text-xs font-semibold text-zinc-400">Vehicle Number</label>
               <Input
                 name="vehicleNumber"
                 placeholder="e.g. KA-04-MA-1234 or leave blank for Pedestrian"

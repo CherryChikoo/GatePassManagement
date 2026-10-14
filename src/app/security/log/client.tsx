@@ -197,7 +197,7 @@ export function SecurityLogClient({
       <div>
         {filtered.length === 0 ? (
           <p className="text-center text-sm text-zinc-500 py-12">
-            No outsider visits found for this date.
+            No visitor visits found for this date.
           </p>
         ) : (
           <div className="divide-y divide-zinc-800/30">
@@ -250,7 +250,7 @@ export function SecurityLogClient({
           <BackButton href="/security" label="Back to Dashboard" />
           <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Entries & Exits</h1>
           <p className="text-sm text-zinc-500 mt-1">
-            {studentEntries.length} entries, {studentExits.length} exits, {outsiderVisits.length} outsider visits
+            {studentEntries.length} entries, {studentExits.length} exits, {outsiderVisits.length} visitor visits
           </p>
         </div>
         
@@ -304,7 +304,7 @@ export function SecurityLogClient({
             activeTab === "OUTSIDERS" ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
           }`}
         >
-          Outsider Visits
+          Visitor Visits
           {activeTab === "OUTSIDERS" && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-zinc-400" />
           )}
@@ -324,7 +324,7 @@ export function SecurityLogClient({
       <Modal
         open={!!selectedRecord}
         onClose={() => setSelectedRecord(null)}
-        title={selectedRecord?.student ? "Student Movement Details" : "Outsider Details"}
+        title={selectedRecord?.student ? "Student Movement Details" : "Visitor Details"}
       >
         {selectedRecord && (
           <div className="space-y-6">

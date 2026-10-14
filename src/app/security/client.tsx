@@ -14,6 +14,7 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
+  BookOpen,
 } from "lucide-react";
 import Link from "next/link";
 import { useAppStore } from "@/stores/app-store";
@@ -65,7 +66,7 @@ export function SecurityDashboardClient({ user }: Props) {
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <StatCard
-            title="Outsider Visits"
+            title="Visitor Visits"
             value={stats.outsiderVisitsToday || 0}
             icon={<Users className="h-5 w-5" />}
             className="border-purple-500/20"
@@ -81,7 +82,7 @@ export function SecurityDashboardClient({ user }: Props) {
             icon={<DoorClosed className="h-5 w-5" />}
           />
           <StatCard
-            title="Outsiders Inside"
+            title="Visitors Inside"
             value={stats.outsidersInside || 0}
             icon={<MapPin className="h-5 w-5" />}
             className="border-amber-500/20"
@@ -103,15 +104,28 @@ export function SecurityDashboardClient({ user }: Props) {
               </CardContent>
             </Card>
           </Link>
-          <Link href="/security/outsiders">
+          <Link href="/security/visitors">
             <Card glow className="cursor-pointer hover:border-orange-500/40 transition-all group h-full">
               <CardContent className="p-4 sm:p-6 flex items-center gap-3 sm:gap-4">
                 <div className="rounded-xl bg-orange-500/15 p-2.5 sm:p-3 text-orange-400 group-hover:bg-orange-500/25 transition-colors shrink-0">
                   <Users className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div className="min-w-0">
-                  <p className="font-semibold text-zinc-200 text-sm sm:text-base">Outsider Registration</p>
-                  <p className="text-xs sm:text-sm text-zinc-500 truncate">Register visitors and outsiders</p>
+                  <p className="font-semibold text-zinc-200 text-sm sm:text-base">Visitor Registration</p>
+                  <p className="text-xs sm:text-sm text-zinc-500 truncate">Register visitors at the gate</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/security/registers" className="sm:col-span-2">
+            <Card glow className="cursor-pointer hover:border-amber-500/40 transition-all group h-full">
+              <CardContent className="p-4 sm:p-6 flex items-center gap-3 sm:gap-4">
+                <div className="rounded-xl bg-amber-500/15 p-2.5 sm:p-3 text-amber-400 group-hover:bg-amber-500/25 transition-colors shrink-0">
+                  <BookOpen className="h-5 w-5 sm:h-6 sm:w-6" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-zinc-200 text-sm sm:text-base">Registers</p>
+                  <p className="text-xs sm:text-sm text-zinc-500 truncate">Faculty book, vehicles, stock, labour, keys and more — all 19 books</p>
                 </div>
               </CardContent>
             </Card>

@@ -28,6 +28,7 @@ import {
   Landmark,
   GraduationCap,
   Loader2,
+  BookOpen,
 } from "lucide-react";
 
 export type NavItem = {
@@ -445,6 +446,7 @@ export const adminNavItems: NavItem[] = [
   { label: "User Management", href: "/admin/users", icon: <Users className="h-5 w-5" /> },
   { label: "Gate Management", href: "/admin/gates", icon: <DoorOpen className="h-5 w-5" /> },
   { label: "Activity Logs", href: "/admin/activity", icon: <History className="h-5 w-5" /> },
+  { label: "Registers", href: "/admin/registers", icon: <BookOpen className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
   // The following pages are not yet implemented in the initial build:
   // { label: "All Permissions", href: "/admin/permissions", icon: <ClipboardCheck className="h-5 w-5" /> },
@@ -489,8 +491,9 @@ export const wardenNavItems: NavItem[] = [
 export const securityNavItems: NavItem[] = [
   { label: "Dashboard", href: "/security", icon: <LayoutDashboard className="h-5 w-5" /> },
   { label: "Scan QR", href: "/security/scan", icon: <ScanLine className="h-5 w-5" /> },
-  { label: "Outsiders", href: "/security/outsiders", icon: <Users className="h-5 w-5" /> },
+  { label: "Visitors", href: "/security/visitors", icon: <Users className="h-5 w-5" /> },
   { label: "Gate Logs", href: "/security/log", icon: <History className="h-5 w-5" /> },
+  { label: "Registers", href: "/security/registers", icon: <BookOpen className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
 ];
 
@@ -520,5 +523,6 @@ export const supervisorNavItems: NavItem[] = [
   { label: "Students", href: "/supervisor/students", icon: <GraduationCap className="h-5 w-5" /> },
   { label: "Faculty", href: "/supervisor/faculty", icon: <Users className="h-5 w-5" /> },
   { label: "Activity", href: "/supervisor/activity", icon: <History className="h-5 w-5" /> },
+  { label: "Registers", href: "/supervisor/registers", icon: <BookOpen className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
 ];

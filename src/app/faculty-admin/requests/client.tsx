@@ -25,6 +25,7 @@ import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
 import { TopLoadingBar } from "@/components/ui/top-loading-bar";
+import { PassExtraDetails } from "@/components/passes/pass-extra";
 
 export function FacultyAdminRequestsClient() {
   const isReady = useStoreReady();
@@ -696,6 +697,7 @@ export function FacultyAdminRequestsClient() {
                         </p>
 
                         <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-zinc-400">
+                          <PassExtraDetails pass={req} className="w-full" />
                           {req.destination && (
                             <div className="flex items-center gap-1.5">
                               <MapPin className="h-3.5 w-3.5 text-zinc-500" />

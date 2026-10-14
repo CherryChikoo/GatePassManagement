@@ -3,12 +3,16 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/helpers";
-import { permissionRequestSchema } from "@/lib/validation/schemas";
+import { facultyRequestSchema } from "@/lib/validation/schemas";
 import { revalidatePath } from "next/cache";
 import { resolveFacultyActivePass } from "@/lib/permissions/auto-expire";
 import { getDepartmentVariants } from "@/lib/constants";
-import { istDateTime, istDateToInstant, istStartOfDay } from "@/lib/time/ist";
+import { istDateToInstant, istStartOfDay, parseDateParam } from "@/lib/time/ist";
 import { getFacultyApproverOptions, type FacultyApproverChoice } from "@/lib/permissions/approver";
+import { facultyRequestDays } from "@/lib/registers/definitions";
+
+const MAX_DAYS_AHEAD = 30;
+const MAX_FACULTY_DAYS = 31;
 
 /**
  * Faculty submits a new permission request (EXIT or ENTRY)
@@ -17,20 +21,30 @@ export async function createFacultyPermissionRequest(formData: FormData, type: "
   // Only regular faculty need a gate pass (not HODs, the Dean or the Director)
   const user = await requireRole("FACULTY");
 
-  const raw = {
-    purpose: (formData.get("purpose") as string) || "",
-    destination: (formData.get("destination") as string) || "",
-    exitDate: (formData.get("exitDate") as string) || "",
-    expectedExit: (formData.get("expectedExit") as string) || "",
-    expectedReturn: (formData.get("expectedReturn") as string) || "",
-    contactNumber: (formData.get("contactNumber") as string) || "",
-    remarks: (formData.get("remarks") as string) || "",
-  };
-
-  const parsed = permissionRequestSchema.safeParse(raw);
+  // Faculty Book (Form 1): request type, start/end date, reason, note — no times
+  const parsed = facultyRequestSchema.safeParse({
+    requestType: (formData.get("requestType") as string) || "",
+    startDate: (formData.get("startDate") as string) || "",
+    endDate: (formData.get("endDate") as string) || "",
+    reason: (formData.get("reason") as string) || "",
+    note: (formData.get("note") as string) || "",
+  });
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message };
   }
+  const input = parsed.data;
+
+  // Single-day types end on the start date; multi-day CL and OD need an end date
+  const multiDay = input.requestType === "MULTI_DAY_CL" || input.requestType === "OD";
+  const endDateStr = multiDay ? input.endDate || "" : input.startDate;
+  if (multiDay && !parseDateParam(endDateStr)) return { error: "End date is required" };
+  if (endDateStr < input.startDate) return { error: "End date cannot be before the start date" };
+  if (input.requestType === "MULTI_DAY_CL" && endDateStr === input.startDate) {
+    return { error: "A multiple-day CL must end after the start date" };
+  }
+  const numberOfDays = facultyRequestDays(input.requestType, input.startDate, endDateStr);
+  if (numberOfDays === null) return { error: "Invalid dates" };
+  if (numberOfDays > MAX_FACULTY_DAYS) return { error: `A request can cover at most ${MAX_FACULTY_DAYS} days` };
 
   // Get faculty record
   const faculty = await prisma.faculty.findUnique({
@@ -90,40 +104,51 @@ export async function createFacultyPermissionRequest(formData: FormData, type: "
     approvalMode = "BOTH";
   }
 
-  // Dates/times are IST wall-clock values
-  const exitDate = istDateToInstant(parsed.data.exitDate);
-  if (exitDate < istStartOfDay()) {
-    return { error: "Date cannot be in the past." };
+  // Dates are IST calendar days
+  const exitDate = istDateToInstant(input.startDate);
+  const today = istStartOfDay();
+  if (exitDate < today) {
+    return { error: "Start date cannot be in the past." };
+  }
+  if (exitDate.getTime() > today.getTime() + MAX_DAYS_AHEAD * 86_400_000) {
+    return { error: `Requests can be made at most ${MAX_DAYS_AHEAD} days in advance.` };
   }
 
-  const expectedExit = istDateTime(parsed.data.exitDate, parsed.data.expectedExit);
-  if (!expectedExit) return { error: "Invalid time" };
-
-  let expectedReturn: Date | null = null;
-  if (parsed.data.expectedReturn && type === "EXIT") {
-    expectedReturn = istDateTime(parsed.data.exitDate, parsed.data.expectedReturn);
-    if (expectedReturn && expectedReturn <= expectedExit) {
-      expectedReturn = new Date(expectedReturn.getTime() + 24 * 60 * 60 * 1000);
+  let permission: { id: string };
+  try {
+    permission = await prisma.$transaction(async (tx) => {
+      // Serialize double submissions for the same faculty member
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"faculty-request:" + faculty.id}))`;
+      const active = await tx.permission.findFirst({
+        where: { facultyId: faculty.id, status: { in: ["PENDING", "APPROVED"] } },
+        select: { id: true },
+      });
+      if (active) throw new Error("ACTIVE_EXISTS");
+      return tx.permission.create({
+        data: {
+          facultyId: faculty.id,
+          approverType,
+          approverId,
+          approvalMode,
+          type,
+          requestType: input.requestType,
+          purpose: input.reason,
+          remarks: input.note || null,
+          exitDate,
+          endDate: istDateToInstant(endDateStr),
+          numberOfDays,
+          status: "PENDING",
+        },
+        select: { id: true },
+      });
+    });
+  } catch (err: any) {
+    if (err?.message === "ACTIVE_EXISTS") {
+      return { error: "You already have a pending or approved pass. Use or cancel it before requesting another." };
     }
+    console.error("[createFacultyPermissionRequest] failed:", err?.message);
+    return { error: "Failed to submit request. Please try again." };
   }
-
-  const permission = await prisma.permission.create({
-    data: {
-      facultyId: faculty.id,
-      approverType,
-      approverId,
-      approvalMode,
-      type,
-      purpose: parsed.data.purpose,
-      destination: parsed.data.destination,
-      exitDate,
-      expectedExit,
-      expectedReturn,
-      contactNumber: parsed.data.contactNumber || null,
-      remarks: parsed.data.remarks || null,
-      status: "PENDING",
-    },
-  });
 
   revalidatePath("/faculty");
   revalidatePath("/faculty-admin");
@@ -229,6 +254,9 @@ export async function getFacultyPassHistory(profileIdOrFacultyId: string) {
     purpose: p.purpose,
     destination: p.destination,
     exitDate: p.exitDate ? p.exitDate.toISOString() : null,
+    requestType: p.requestType,
+    endDate: p.endDate ? p.endDate.toISOString() : null,
+    numberOfDays: p.numberOfDays,
     expectedExit: p.expectedExit ? p.expectedExit.toISOString() : null,
     expectedReturn: p.expectedReturn ? p.expectedReturn.toISOString() : null,
     remarks: p.remarks,

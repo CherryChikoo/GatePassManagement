@@ -38,6 +38,35 @@ export const permissionRequestSchema = z.object({
   remarks: z.string().max(500).optional().or(z.literal("")),
 });
 
+const dateField = (label: string) => z.string().regex(/^\d{4}-\d{2}-\d{2}$/, `${label} must be a valid date`);
+
+/** Faculty Book (Form 1) request — dates only, no time fields. */
+export const facultyRequestSchema = z.object({
+  requestType: z.enum(["ONE_HOUR", "HALF_DAY_CL", "FULL_DAY_CL", "MULTI_DAY_CL", "OD"], {
+    message: "Choose a request type",
+  }),
+  startDate: dateField("Start date"),
+  endDate: dateField("End date").optional().or(z.literal("")),
+  reason: z.string().trim().min(3, "Reason is required").max(500, "Reason too long"),
+  note: z.string().trim().max(500, "Note too long").optional().or(z.literal("")),
+});
+
+/** Extra details on a hostel student's outing pass (Forms 12/13). */
+export const hostelOutingSchema = z.object({
+  outingDateTo: dateField("Outing date to"),
+  inTime: z
+    .string()
+    .trim()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "In time must be a valid time")
+    .optional()
+    .or(z.literal("")),
+  parentInformed: z.enum(["yes", "no"], { message: "Say whether your parent / guardian was informed" }),
+  videoCallNumber: phoneField.optional().or(z.literal("")),
+  guardianName: z.string().trim().max(100).optional().or(z.literal("")),
+  guardianRelation: z.string().trim().max(50).optional().or(z.literal("")),
+  hostelInchargeDetails: z.string().trim().max(200).optional().or(z.literal("")),
+});
+
 /** Allowed QR validity windows (minutes) an approver may choose. */
 export const APPROVAL_EXPIRY_MINUTES = { MIN: 15, MAX: 720, DEFAULT: 60 } as const;
 
@@ -85,8 +114,10 @@ export const createUserSchema = z.object({
   studentRoll: z.string().optional().or(z.literal("")),
   department: z.string().optional().or(z.literal("")),
   year: z.coerce.number().optional(),
+  semester: z.coerce.number().int().min(1, "Semester must be 1–12").max(12, "Semester must be 1–12").optional(),
   section: z.string().optional().or(z.literal("")),
   studentType: z.enum(["DAY_SCHOLAR", "HOSTELLER"]).optional(),
+  hostelType: z.enum(["BOYS", "LADIES"]).optional(),
   roomNumber: z.string().optional().or(z.literal("")),
   hostelBlock: z.string().optional().or(z.literal("")),
   // Faculty-specific
@@ -107,6 +138,7 @@ export const staffStudentUpdateSchema = z.object({
   name: z.string().trim().min(2).max(100).optional(),
   phone: optionalText(20),
   year: z.coerce.number().int().min(1).max(6).optional().nullable(),
+  semester: z.coerce.number().int().min(1).max(12).optional().nullable(),
   section: optionalText(10),
   roomNumber: optionalText(20),
   hostelBlock: optionalText(50),
@@ -118,6 +150,7 @@ export const adminStudentUpdateSchema = staffStudentUpdateSchema.extend({
   studentRoll: z.string().trim().min(1).max(30).optional(),
   department: optionalText(100),
   studentType: z.enum(["DAY_SCHOLAR", "HOSTELLER"]).optional(),
+  hostelType: z.enum(["BOYS", "LADIES"]).optional().nullable().or(z.literal("")),
   facultyId: z.string().uuid().optional().nullable().or(z.literal("")),
   wardenId: z.string().uuid().optional().nullable().or(z.literal("")),
 });
@@ -135,16 +168,21 @@ export const adminUserUpdateSchema = z.object({
 
 export const updateGateSchema = createGateSchema;
 
+/** Visitors Book: every input is optional (at least one detail is checked in the action). */
 export const outsiderSchema = z.object({
-  name: z.string().trim().min(2, "Name is required").max(100),
-  phone: phoneField,
-  category: z.string().trim().min(1).max(30).default("GUEST"),
-  purpose: z.string().trim().min(2, "Purpose is required").max(500),
+  name: z.string().trim().max(100).optional().or(z.literal("")),
+  phone: phoneField.optional().or(z.literal("")),
+  category: z.string().trim().max(30).optional().or(z.literal("")),
+  purpose: z.string().trim().max(500).optional().or(z.literal("")),
   visitingStudent: z.string().trim().max(100).optional().or(z.literal("")),
   gate: z.string().trim().max(100).optional().or(z.literal("")),
   vehicleNumber: z.string().trim().max(30).optional().or(z.literal("")),
   photoUrl: z.string().max(300).optional().or(z.literal("")),
   entryTime: z.string().optional().or(z.literal("")),
+  // Visitors Book (Form 2)
+  address: z.string().trim().max(300).optional().or(z.literal("")),
+  department: z.string().trim().max(100).optional().or(z.literal("")),
+  remarks: z.string().trim().max(500).optional().or(z.literal("")),
 });
 
 // ──────────────────────────────────────────────────────────────

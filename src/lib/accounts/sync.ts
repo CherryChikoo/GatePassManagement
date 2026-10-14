@@ -44,12 +44,15 @@ async function profilesWithHistory(ids: string[]): Promise<Set<string>> {
       faculty: { select: { _count: { select: { permissions: true, permissionApprovals: true, movements: true } } } },
       warden: { select: { _count: { select: { permissionApprovals: true } } } },
       securityStaff: { select: { _count: { select: { movements: true } } } },
+      _count: { select: { registerEntries: true, recordedOutsiders: true } },
     },
   });
   return new Set(
     rows
       .filter((p) =>
         [
+          p._count.registerEntries,
+          p._count.recordedOutsiders,
           p.student?._count.permissions,
           p.student?._count.movements,
           p.faculty?._count.permissions,

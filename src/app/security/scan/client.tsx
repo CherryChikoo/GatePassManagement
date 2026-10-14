@@ -21,6 +21,8 @@ import {
   Upload,
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
+import { PassExtraDetails } from "@/components/passes/pass-extra";
+import { facultyRequestTypeLabel } from "@/lib/registers/definitions";
 
 interface Props {
   user: { name: string; email: string; role: string };
@@ -211,13 +213,16 @@ export function ScanClient({ user, gates }: Props) {
       setError("Camera is not ready yet. Wait a moment and try again.");
       return;
     }
+    // Student gate photos are kept permanently, so store them at a modest size
+    // (max 640 px wide) to stay within the free storage tier.
     const canvas = document.createElement("canvas");
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
+    const scale = Math.min(1, 640 / videoRef.current.videoWidth);
+    canvas.width = Math.round(videoRef.current.videoWidth * scale);
+    canvas.height = Math.round(videoRef.current.videoHeight * scale);
     const ctx = canvas.getContext("2d");
     if (ctx) {
-      ctx.drawImage(videoRef.current, 0, 0);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
       setCapturedImage(dataUrl);
       stopCamera();
       setState("verified");
@@ -479,12 +484,27 @@ export function ScanClient({ user, gates }: Props) {
                       {verifyResult.permission.purpose}
                     </p>
                   </div>
-                  <div className="rounded-xl bg-zinc-800/30 px-4 py-3">
-                    <p className="text-xs text-zinc-500">Destination</p>
-                    <p className="text-sm font-medium text-zinc-200">
-                      {verifyResult.permission.destination || "—"}
-                    </p>
-                  </div>
+                  {verifyResult.permission.requestType ? (
+                    <div className="rounded-xl bg-zinc-800/30 px-4 py-3">
+                      <p className="text-xs text-zinc-500">Request Type</p>
+                      <p className="text-sm font-medium text-zinc-200">
+                        {facultyRequestTypeLabel(verifyResult.permission.requestType)}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl bg-zinc-800/30 px-4 py-3">
+                      <p className="text-xs text-zinc-500">Destination</p>
+                      <p className="text-sm font-medium text-zinc-200">
+                        {verifyResult.permission.destination || "—"}
+                      </p>
+                    </div>
+                  )}
+                  {verifyResult.permission.endDate && (
+                    <div className="col-span-2 rounded-xl bg-zinc-800/30 px-4 py-3">
+                      <p className="text-xs text-zinc-500">Pass Dates</p>
+                      <PassExtraDetails pass={verifyResult.permission} className="text-sm" />
+                    </div>
+                  )}
                   {verifyResult.permission.expectedExit && (
                     <div className="rounded-xl bg-zinc-800/30 px-4 py-3">
                       <p className="text-xs text-zinc-500">Exit Time</p>

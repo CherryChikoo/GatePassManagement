@@ -207,6 +207,16 @@ export async function verifyQrScan(token: string) {
       expectedReturn: permission.expectedReturn,
       approverType: permission.approverType,
       approvedAt: permission.approvedAt,
+      // Faculty Book request type / hostel outing details
+      requestType: permission.requestType,
+      exitDate: permission.exitDate,
+      endDate: permission.endDate,
+      numberOfDays: permission.numberOfDays,
+      parentInformed: permission.parentInformed,
+      videoCallNumber: permission.videoCallNumber,
+      guardianName: permission.guardianName,
+      guardianRelation: permission.guardianRelation,
+      hostelInchargeDetails: permission.hostelInchargeDetails,
     },
     student: permission.student || (permission.faculty ? {
       id: permission.faculty.id,
@@ -554,43 +564,6 @@ export async function getSecurityDashboard() {
 
   securityDashboardCache = { data: result, expiresAt: Date.now() + 15_000 };
   return result;
-}
-
-/**
- * Get the currently outside students list
- */
-export async function getCurrentlyOutsideStudents() {
-  await requireRole("SECURITY", "ADMIN");
-
-  return prisma.student.findMany({
-    where: { status: "OUTSIDE" },
-    select: {
-      id: true,
-      studentRoll: true,
-      department: true,
-      profile: { select: { name: true, phone: true } },
-      permissions: {
-        where: { status: "EXITED" },
-        take: 1,
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          purpose: true,
-          destination: true,
-          expectedReturn: true,
-          movements: {
-            where: { type: "EXIT" },
-            take: 1,
-            orderBy: { createdAt: "desc" },
-            select: {
-              createdAt: true,
-              gate: { select: { name: true } },
-            },
-          },
-        },
-      },
-    },
-  });
 }
 
 export async function getSecurityLogData(dateStr?: string) {

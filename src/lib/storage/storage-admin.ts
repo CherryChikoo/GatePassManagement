@@ -76,8 +76,8 @@ export async function createSignedPhotoUrl(storagePath: string): Promise<string 
 }
 
 /**
- * Deletes photos older than `daysOld`, walking the nested folder layout
- * (students/<ownerId>/<file>, outsiders/<file>).
+ * Deletes visitor photos older than `daysOld` (outsiders/<file>). Student gate
+ * photos (students/<ownerId>/<file>) are permanent and never deleted.
  */
 export async function deleteOldPhotos(daysOld: number = 90): Promise<{ deleted: number; error: string | null }> {
   const storage = adminStorage().from(BUCKET_NAME);
@@ -103,7 +103,8 @@ export async function deleteOldPhotos(daysOld: number = 90): Promise<{ deleted: 
   }
 
   try {
-    await walk("students", 0);
+    // Student gate photos (exit / entry, under "students/") are permanent and
+    // never cleaned up. Only visitor photos expire.
     await walk("outsiders", 0);
     for (let i = 0; i < toDelete.length; i += 100) {
       const { error } = await storage.remove(toDelete.slice(i, i + 100));

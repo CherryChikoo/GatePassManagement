@@ -4,6 +4,7 @@ import { scheduledNote } from "@/lib/pass-dates";
 import { StatusBadge } from "@/components/ui/primitives";
 import { formatDateTime } from "@/lib/utils";
 import { Briefcase, Clock, GraduationCap, MapPin, Phone, ShieldCheck } from "lucide-react";
+import { PassExtraDetails } from "@/components/passes/pass-extra";
 
 /** Who the request was sent to, in plain words (with HOD + Dean progress for "Both"). */
 export function approverText(r: any): string {
@@ -75,6 +76,8 @@ export function RequestCard({ r, compact = false }: { r: any; compact?: boolean 
       </div>
 
       <p className="text-sm text-zinc-200 break-words">{r.purpose}</p>
+
+      <PassExtraDetails pass={r} />
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-400">
         {r.destination && (

@@ -7,8 +7,7 @@ import { MapPin, Calendar as CalendarIcon, Clock, Phone, FileText, Send, CheckCi
 import { createFacultyPermissionRequest } from "@/server/actions/faculty-permissions";
 import { generateLiveQrToken } from "@/server/actions/permissions";
 import { istDateString } from "@/lib/time/ist";
-import { normalizeTime } from "@/lib/time/parse-time";
-import { TimeField } from "@/components/ui/time-field";
+import { FACULTY_REQUEST_TYPES, facultyRequestDays, facultyRequestTypeLabel } from "@/lib/registers/definitions";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/stores/app-store";
 import { EmptyState, StatusBadge, Modal } from "@/components/ui/primitives";
@@ -17,6 +16,14 @@ import { useStoreReady } from "@/components/providers/store-hydrator";
 import QRCode from "qrcode";
 
 type TabState = "APPLY" | "HISTORY";
+
+/** "12 Oct 2026" or "12 Oct 2026 – 14 Oct 2026" */
+function passDates(p: { exitDate?: string | Date | null; endDate?: string | Date | null }): string {
+  if (!p.exitDate) return "—";
+  const start = formatDate(p.exitDate);
+  const end = p.endDate ? formatDate(p.endDate) : start;
+  return end === start ? start : `${start} – ${end}`;
+}
 
 type FacultyApproverOptions = {
   canChoose: boolean;
@@ -197,22 +204,20 @@ export function FacultyApplyClient() {
     useAppStore.getState().refresh(true);
   }, []);
 
+  // Faculty Book (Form 1) request fields
+  const userName = useAppStore((s) => s.user?.name) ?? "";
+  const facultyInfo = useAppStore((s) => (s.data.dashboard as any)?.faculty) as
+    | { designation?: string | null; department?: string | null }
+    | undefined;
+  const [requestType, setRequestType] = useState<string>("ONE_HOUR");
+  const [startDate, setStartDate] = useState<string>(() => istDateString());
+  const [endDate, setEndDate] = useState<string>("");
+  const isMultiDay = requestType === "MULTI_DAY_CL" || requestType === "OD";
+  const days = facultyRequestDays(requestType, startDate, isMultiDay ? endDate || startDate : startDate);
+
   async function handleSubmit(formData: FormData) {
     setLoading(true);
     setError(null);
-
-    // The time picker gives "HH:mm"; normalize for browsers that fall back to text
-    for (const field of ["expectedExit", "expectedReturn"] as const) {
-      const raw = formData.get(field) as string | null;
-      if (!raw) continue;
-      const normalized = normalizeTime(raw);
-      if (!normalized) {
-        setError("Please choose a valid time, e.g. 04:30 PM.");
-        setLoading(false);
-        return;
-      }
-      formData.set(field, normalized);
-    }
 
     try {
       const result = await createFacultyPermissionRequest(formData, type);
@@ -269,7 +274,7 @@ export function FacultyApplyClient() {
                   You have an active approved {activeApprovedPass.type} pass!
                 </p>
                 <p className="text-xs text-zinc-400">
-                  {activeApprovedPass.purpose} • {activeApprovedPass.destination}
+                  {facultyRequestTypeLabel(activeApprovedPass.requestType) || activeApprovedPass.purpose} • {passDates(activeApprovedPass)}
                 </p>
               </div>
             </div>
@@ -315,87 +320,104 @@ export function FacultyApplyClient() {
             )}
 
             <form action={handleSubmit} className="space-y-6">
-              {/* Purpose */}
-              <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Purpose *</label>
-                <div className="relative">
-                  <FileText className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
-                  <input
-                    type="text"
-                    name="purpose"
-                    placeholder="e.g., Official duty, Personal"
-                    required
-                    className="w-full pl-10 pr-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                </div>
+              {/* Faculty details (from the profile) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+                {[
+                  { label: "Faculty Name", value: userName },
+                  { label: "Designation", value: facultyInfo?.designation },
+                  { label: "Department", value: facultyInfo?.department },
+                ].map((d) => (
+                  <div key={d.label} className="min-w-0">
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500">{d.label}</p>
+                    <p className="text-sm font-medium text-zinc-200 truncate">{d.value || "—"}</p>
+                  </div>
+                ))}
               </div>
 
-              {/* Destination */}
+              {/* Request type */}
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Location/Destination *</label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
+                <label htmlFor="requestType" className="block text-sm font-medium text-zinc-300 mb-2">Request Type *</label>
+                <select
+                  id="requestType"
+                  name="requestType"
+                  value={requestType}
+                  onChange={(e) => setRequestType(e.target.value)}
+                  required
+                  className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500 [&>option]:bg-zinc-900"
+                >
+                  {FACULTY_REQUEST_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Dates (no time fields) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label htmlFor="startDate" className="block text-sm font-medium text-zinc-300 mb-2">Start Date *</label>
                   <input
-                    type="text"
-                    name="destination"
-                    placeholder="e.g., City Center"
+                    id="startDate"
+                    type="date"
+                    name="startDate"
+                    value={startDate}
+                    min={today}
+                    onChange={(e) => setStartDate(e.target.value)}
                     required
-                    className="w-full pl-10 pr-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500 [color-scheme:dark]"
                   />
+                </div>
+                <div>
+                  <label htmlFor="endDate" className="block text-sm font-medium text-zinc-300 mb-2">
+                    End Date {isMultiDay ? "*" : ""}
+                  </label>
+                  <input
+                    id="endDate"
+                    type="date"
+                    name="endDate"
+                    value={isMultiDay ? endDate : startDate}
+                    min={startDate || today}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    readOnly={!isMultiDay}
+                    required={isMultiDay}
+                    className={`w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500 [color-scheme:dark] ${isMultiDay ? "" : "opacity-60 cursor-not-allowed"}`}
+                  />
+                </div>
+                <div>
+                  <p className="block text-sm font-medium text-zinc-300 mb-2">Number of Days</p>
+                  <div className="px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-100">
+                    {days === null ? "—" : requestType === "ONE_HOUR" ? "1 hour" : days}
+                  </div>
                 </div>
               </div>
 
               {/* Approver choice */}
               <ApproverChoice options={approverOptions} />
 
-              {/* Date and Time */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">Date *</label>
-                  <div className="relative">
-                    <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
-                    <input
-                      type="date"
-                      name="exitDate"
-                      value={today}
-                      readOnly
-                      required
-                      className="w-full pl-10 pr-4 py-3 bg-zinc-900/50 border border-zinc-700 rounded-lg text-zinc-100 cursor-not-allowed focus:outline-none [&::-webkit-calendar-picker-indicator]:opacity-0"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">Time *</label>
-                  <TimeField
-                    name="expectedExit"
-                    required
-                    defaultToNow
-                    className="h-12 rounded-lg border-zinc-700 bg-zinc-900"
-                  />
-                </div>
-              </div>
-
-              {/* Contact Number */}
+              {/* Reason */}
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Contact Number</label>
+                <label htmlFor="reason" className="block text-sm font-medium text-zinc-300 mb-2">Reason *</label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
-                  <input
-                    type="tel"
-                    name="contactNumber"
-                    maxLength={10}
-                    className="w-full pl-10 pr-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  <FileText className="absolute left-3 top-3.5 h-4 w-4 text-zinc-500 pointer-events-none" />
+                  <textarea
+                    id="reason"
+                    name="reason"
+                    rows={2}
+                    required
+                    maxLength={500}
+                    placeholder="e.g., Personal work, Official duty at university"
+                    className="w-full pl-10 pr-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
                   />
                 </div>
               </div>
 
-              {/* Remarks */}
+              {/* Note */}
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-2">Additional Remarks</label>
+                <label htmlFor="note" className="block text-sm font-medium text-zinc-300 mb-2">Note</label>
                 <textarea
-                  name="remarks"
-                  rows={3}
+                  id="note"
+                  name="note"
+                  rows={2}
+                  maxLength={500}
                   className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
                 />
               </div>
@@ -594,8 +616,12 @@ export function FacultyApplyClient() {
                           )}
                         </div>
                         <div className="text-sm text-zinc-400 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                          <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {pass.destination}</span>
-                          <span className="flex items-center gap-1"><CalendarIcon className="h-3.5 w-3.5" /> {formatDate(pass.exitDate)}</span>
+                          {pass.requestType ? (
+                            <span className="flex items-center gap-1"><FileText className="h-3.5 w-3.5" /> {facultyRequestTypeLabel(pass.requestType)}</span>
+                          ) : pass.destination ? (
+                            <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {pass.destination}</span>
+                          ) : null}
+                          <span className="flex items-center gap-1"><CalendarIcon className="h-3.5 w-3.5" /> {passDates(pass)}</span>
                         </div>
                         {pass.rejectionReason && (
                           <p className="text-xs text-red-400 mt-2">
@@ -731,7 +757,9 @@ export function FacultyApplyClient() {
                 {selectedQrPass.type} PASS • APPROVED
               </span>
               <h4 className="font-semibold text-zinc-100 text-base">{selectedQrPass.purpose}</h4>
-              <p className="text-xs text-zinc-400">Destination: {selectedQrPass.destination || "—"}</p>
+              <p className="text-xs text-zinc-400">
+                {facultyRequestTypeLabel(selectedQrPass.requestType) || `Destination: ${selectedQrPass.destination || "—"}`} • {passDates(selectedQrPass)}
+              </p>
               {selectedQrPass.qr?.expiresAt && (
                 <p className="text-xs text-amber-400 font-mono">
                   Valid Until: {formatDateTime(selectedQrPass.qr.expiresAt)}

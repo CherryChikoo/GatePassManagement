@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { logoutAction } from "@/server/actions/auth";
 import { formatDateTime } from "@/lib/utils";
+import { gateMarkText } from "@/lib/pass-dates";
 import {
   Users,
   Clock,
@@ -194,14 +195,10 @@ export function FacultyDashboardClient({ user }: Props) {
                   {selectedActivity.expectedReturn ? formatDateTime(selectedActivity.expectedReturn) : "None"}
                 </p>
               </div>
-              {selectedActivity.qr?.usedForExit && (
+              {gateMarkText(selectedActivity.qr) && (
                 <div className="col-span-2 p-3 bg-zinc-900/50 rounded-lg border border-zinc-800">
-                   <p className="text-xs text-zinc-400 mb-1 flex items-center gap-2"><MapPin className="h-3 w-3" /> Gate Scan Status</p>
-                   <p className="text-sm text-zinc-200">
-                     {selectedActivity.qr.usedForEntry 
-                       ? "Student has exited and returned."
-                       : "Student is currently outside."}
-                   </p>
+                   <p className="text-xs text-zinc-400 mb-1 flex items-center gap-2"><MapPin className="h-3 w-3" /> Gate</p>
+                   <p className="text-sm text-zinc-200">{gateMarkText(selectedActivity.qr)}</p>
                 </div>
               )}
             </div>

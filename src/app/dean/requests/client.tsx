@@ -24,6 +24,7 @@ import {
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
+import { PassExtraDetails } from "@/components/passes/pass-extra";
 
 export function DeanRequestsClient() {
   const isReady = useStoreReady();
@@ -577,6 +578,7 @@ export function DeanRequestsClient() {
                             <span className="text-zinc-500 font-medium">Purpose:</span>
                             <span className="font-medium text-zinc-200">{item.purpose || "Official Duty"}</span>
                           </div>
+                          <PassExtraDetails pass={item} className="w-full" />
                           {item.destination && (
                             <div className="flex items-center gap-1.5 text-zinc-300">
                               <span className="text-zinc-500 font-medium">Destination:</span>
