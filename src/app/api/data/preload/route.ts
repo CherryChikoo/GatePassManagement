@@ -392,15 +392,18 @@ async function preloadFaculty(profileId: string) {
       select: { id: true, hostelBlock: true, profile: { select: { name: true } } },
       orderBy: { profile: { name: "asc" } },
     }),
-    // Faculty's own passes: today's plus any still active (pending / approved /
-    // currently out). Older passes are shown in the Activity tab by date.
+    // Faculty's own passes for today (IST): requested today, scheduled today or
+    // later, a multi-day pass covering today, or still pending / approved.
+    // A pass from an earlier day that was used to go out (EXITED) is history
+    // and appears in the Activity tab, not here.
     prisma.permission.findMany({
       where: {
         facultyId: faculty.id,
         OR: [
           { createdAt: { gte: today } },
           { exitDate: { gte: today } },
-          { status: { in: ["PENDING", "APPROVED", "EXITED"] } },
+          { exitDate: { lt: today }, endDate: { gte: today } },
+          { status: { in: ["PENDING", "APPROVED"] } },
         ],
       },
       orderBy: { createdAt: "desc" },
