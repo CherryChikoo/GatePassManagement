@@ -58,7 +58,7 @@ export function SupervisorRequestsClient() {
 
   const tabBtn = (active: boolean) =>
     `px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-      active ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
+      active ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
     }`;
 
   return (

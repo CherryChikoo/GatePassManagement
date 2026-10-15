@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
 
 import { useState } from "react";
@@ -34,6 +35,7 @@ interface Props {
 }
 
 export function SettingsClient({ user }: Props) {
+  const t = useT();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,14 +126,14 @@ export function SettingsClient({ user }: Props) {
       if (result?.error) {
         setError(result.error);
       } else {
-        setSuccess("Profile settings updated.");
+        setSuccess(t("Profile settings updated."));
         setPassword("");
         setCurrentPassword("");
         // Refresh server components and sidebar to show updated profile details
         router.refresh();
       }
     } catch (err: any) {
-      setError(actionErrorMessage(err, "Failed to update settings"));
+      setError(actionErrorMessage(err, t("Failed to update settings")));
     } finally {
       setLoading(false);
     }
@@ -144,15 +146,15 @@ export function SettingsClient({ user }: Props) {
       <div className="max-w-3xl mx-auto space-y-8 pb-16">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-3">
-            Account Settings
+            {t("Account Settings")}
             <span
               className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${currentRoleInfo.color}`}
             >
-              {currentRoleInfo.title}
+              {t(currentRoleInfo.title)}
             </span>
           </h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Manage your personal profile information, department details, and authentication credentials.
+            {t("Manage your personal profile information, department details, and authentication credentials.")}
           </p>
         </div>
 
@@ -160,7 +162,7 @@ export function SettingsClient({ user }: Props) {
           <CardHeader className="border-b border-zinc-800/80 pb-4">
             <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
               <User className="h-4 w-4 text-orange-500" />
-              Profile Details
+              {t("Profile Details")}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 sm:p-6">
@@ -168,7 +170,7 @@ export function SettingsClient({ user }: Props) {
               {error && (
                 <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400 flex items-center gap-2.5 animate-in fade-in">
                   <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
-                  <span>{error}</span>
+                  <span>{t(error)}</span>
                 </div>
               )}
               {success && (
@@ -181,11 +183,11 @@ export function SettingsClient({ user }: Props) {
               <div className="space-y-5">
                 {/* Full Name */}
                 <Input
-                  label="Full Name"
+                  label={t("Full Name")}
                   name="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter full name"
+                  placeholder={t("Enter full name")}
                   required
                   icon={<User className="h-4 w-4" />}
                 />
@@ -193,7 +195,7 @@ export function SettingsClient({ user }: Props) {
                 {/* Email Address (Read-only) */}
                 <div>
                   <Input
-                    label="Email Address"
+                    label={t("Email Address")}
                     name="email"
                     type="email"
                     value={selfManaged ? email : user.email}
@@ -205,17 +207,17 @@ export function SettingsClient({ user }: Props) {
                   <p className="text-[11px] text-zinc-500 mt-1 ml-1">
                     {selfManaged
                       ? "This is also your login email. Changing it needs your current password (below)."
-                      : "Primary login email registered with campus authentication."}
+                      : t("Primary login email registered with campus authentication.")}
                   </p>
                 </div>
 
                 {/* Phone Number */}
                 <Input
-                  label="Phone Number"
+                  label={t("Phone Number")}
                   name="phone"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="e.g. +91 9876543210"
+                  placeholder={t("e.g. +91 9876543210")}
                   icon={<Phone className="h-4 w-4" />}
                 />
 
@@ -293,35 +295,35 @@ export function SettingsClient({ user }: Props) {
                 {/* Change Password Section */}
                 <div>
                   <h3 className="text-sm font-semibold text-zinc-200 mb-3 flex items-center gap-2">
-                    <Lock className="h-4 w-4 text-orange-500" /> Change Password
+                    <Lock className="h-4 w-4 text-orange-500" /> {t("Change Password")}
                   </h3>
                   <div className="space-y-4">
                     <Input
-                      label="New Password (Optional)"
+                      label={t("New Password (Optional)")}
                       name="password"
                       type="password"
                       autoComplete="new-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Leave blank to keep current password"
+                      placeholder={t("Leave blank to keep current password")}
                       icon={<Lock className="h-4 w-4" />}
                     />
                     {(password || emailChanged) && (
                       <Input
-                        label="Current Password"
+                        label={t("Current Password")}
                         name="currentPassword"
                         type="password"
                         autoComplete="current-password"
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
-                        placeholder={emailChanged && !password ? "Required to change your email" : "Required to change your password"}
+                        placeholder={emailChanged && !password ? t("Required to change your email") : t("Required to change your password")}
                         required
                         icon={<Lock className="h-4 w-4" />}
                       />
                     )}
                   </div>
                   <p className="text-xs text-zinc-500 mt-2">
-                    A new password must be at least 8 characters. Your current password is required to change it.
+                    {t("A new password must be at least 8 characters. Your current password is required to change it.")}
                   </p>
                 </div>
               </div>
@@ -333,7 +335,7 @@ export function SettingsClient({ user }: Props) {
                   className="w-full sm:w-auto bg-orange-600 hover:bg-orange-500 text-white font-semibold shadow-none flex items-center justify-center gap-2"
                 >
                   <Save className="h-4 w-4" />
-                  {loading ? "Saving Changes..." : "Save Changes"}
+                  {loading ? t("Saving Changes...") : t("Save Changes")}
                 </Button>
               </div>
             </form>

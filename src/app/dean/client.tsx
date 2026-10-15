@@ -386,7 +386,7 @@ export function DeanDashboardClient({ user, title }: Props & { title?: string })
                   onClick={() => setActiveTab("ALL")}
                   className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
                     activityCategory === "ALL"
-                      ? "bg-zinc-800 text-white shadow-sm"
+                      ? "bg-zinc-900 text-zinc-100 shadow-card shadow-sm"
                       : "text-zinc-400 hover:text-zinc-200"
                   }`}
                   onClickCapture={() => setActivityCategory("ALL")}

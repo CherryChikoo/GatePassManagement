@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Shield, LogOut, Loader2 } from "lucide-react";
+import Image from "next/image";
+import { LogOut, Loader2 } from "lucide-react";
 import { logoutAndClear } from "@/stores/app-store";
 import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
+import { useT } from "@/components/providers/language-provider";
 
 /**
  * Minimal student layout: a slim top bar (brand, student, sign out) and the
@@ -21,6 +23,7 @@ export function StudentShell({
   onLogout: () => Promise<unknown> | void;
   children: React.ReactNode;
 }) {
+  const t = useT();
   const [signingOut, setSigningOut] = useState(false);
 
   const handleLogout = async () => {
@@ -38,14 +41,14 @@ export function StudentShell({
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <header className="sticky top-0 z-30 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
+      <header className="sticky top-0 z-30 px-3 pt-3">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-[22px] glass shadow-card px-3 sm:px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-700 shadow-lg shadow-orange-600/20">
-              <Shield className="h-5 w-5 text-white" aria-hidden="true" />
-            </div>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-zinc-900 border border-zinc-800 shadow-card">
+              <Image src="/brand/logo-mark.webp" alt="Ramachandra College of Engineering" width={28} height={28} priority />
+            </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold tracking-tight">GatePass Portal</p>
+              <p className="truncate text-[15px] font-semibold tracking-tight">Gate Pass</p>
               <p className="truncate text-xs text-zinc-500" title={userEmail}>
                 {userName}
               </p>
@@ -57,14 +60,15 @@ export function StudentShell({
             onClick={handleLogout}
             disabled={signingOut}
             aria-busy={signingOut}
-            className="flex shrink-0 items-center gap-2 rounded-lg border border-zinc-800 px-3 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-red-500/40 hover:text-red-400 disabled:opacity-60 disabled:cursor-wait"
+            aria-label={t("Sign out")}
+            className="flex shrink-0 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-3.5 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-60 disabled:cursor-wait"
           >
             {signingOut ? (
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
             ) : (
               <LogOut className="h-4 w-4" aria-hidden="true" />
             )}
-            {signingOut ? "Signing out…" : "Sign out"}
+            <span className="hidden sm:inline">{signingOut ? t("Signing out…") : t("Sign out")}</span>
           </button>
         </div>
       </header>

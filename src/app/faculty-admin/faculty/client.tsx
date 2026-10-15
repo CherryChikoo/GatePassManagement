@@ -192,7 +192,7 @@ export function FacultyAdminFacultyClient({ user }: Props) {
                             <Link
                               href={`/faculty-admin/faculty/${f.id}`}
                               prefetch={true}
-                              className="inline-flex items-center justify-center gap-1.5 border border-zinc-700/80 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-200 hover:text-white px-2.5 h-8 text-xs font-semibold rounded-lg transition-colors shadow-none"
+                              className="inline-flex items-center justify-center gap-1.5 border border-zinc-700/80 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-200 hover:text-zinc-100 px-2.5 h-8 text-xs font-semibold rounded-lg transition-colors shadow-none"
                               title="View full gate pass and permissions history"
                             >
                               <History className="h-3.5 w-3.5 text-indigo-400" />
@@ -356,7 +356,7 @@ export function FacultyAdminFacultyClient({ user }: Props) {
 
       {/* Pagination Bar (Matching Student Section) */}
       {total > 0 && (
-        <div className="fixed bottom-0 left-0 lg:left-72 right-0 z-50 flex justify-between items-center py-3 px-4 lg:px-8 border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.5)]">
+        <div className="fixed bottom-0 left-0 lg:left-72 right-0 z-50 flex justify-between items-center py-3 px-4 lg:px-8 border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl shadow-[0_-10px_40px_-10px_rgba(16,24,40,0.12)]">
           <p className="text-sm text-zinc-400 font-medium">
             Showing {(currentPage - 1) * pageSize + 1} to{" "}
             {Math.min(currentPage * pageSize, total)} of {total} faculty members

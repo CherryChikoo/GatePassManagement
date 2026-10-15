@@ -272,7 +272,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
               max={istDateString()}
               onChange={(e) => handleDateChange(e.target.value)}
               disabled={loading}
-              className="h-9 px-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50 [color-scheme:dark] cursor-pointer hover:border-zinc-700 transition-colors"
+              className="h-9 px-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:opacity-50 [color-scheme:light] cursor-pointer hover:border-zinc-700 transition-colors"
             />
             {activeTab === "outsiders" && (
               <Button
@@ -425,7 +425,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
                             <td className="px-5 py-3.5">
                               <div className="flex items-center gap-2.5">
                                 <div className="h-8 w-8 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold text-xs shrink-0">
-                                  {m.student?.profile?.name?.slice(0, 2).toUpperCase() || "ST"}
+                                  {m.student?.profile?.name?.slice(0, 2).toUpperCase() || "—"}
                                 </div>
                                 <div className="min-w-0 pr-2">
                                   <div className="flex items-center gap-2 flex-wrap">
@@ -433,9 +433,14 @@ export function ActivityClient({ user, data: initialData }: Props) {
                                       href={`/admin/users/${m.student?.profileId || m.student?.profile?.id}`}
                                       className="font-semibold text-zinc-100 hover:text-orange-400 transition-colors inline-flex items-center gap-1 truncate"
                                     >
-                                      <span className="truncate">{m.student?.profile?.name || "Student"}</span>
+                                      <span className="truncate">{m.student?.profile?.name || "Unknown person"}</span>
                                       <ExternalLink className="h-3 w-3 text-zinc-500 shrink-0" />
                                     </Link>
+                                    {m.student?.isFaculty && (
+                                      <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400 shrink-0">
+                                        Faculty
+                                      </span>
+                                    )}
                                     {m.student?.studentRoll && (
                                       <span className="text-[11px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-300 shrink-0">
                                         {m.student.studentRoll}
@@ -567,7 +572,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
                             <td className="px-5 py-3.5">
                               <div className="flex items-center gap-2.5">
                                 <div className="h-8 w-8 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 font-bold text-xs shrink-0">
-                                  {m.student?.profile?.name?.slice(0, 2).toUpperCase() || "ST"}
+                                  {m.student?.profile?.name?.slice(0, 2).toUpperCase() || "—"}
                                 </div>
                                 <div className="min-w-0 pr-2">
                                   <div className="flex items-center gap-2 flex-wrap">
@@ -575,9 +580,14 @@ export function ActivityClient({ user, data: initialData }: Props) {
                                       href={`/admin/users/${m.student?.profileId || m.student?.profile?.id}`}
                                       className="font-semibold text-zinc-100 hover:text-orange-400 transition-colors inline-flex items-center gap-1 truncate"
                                     >
-                                      <span className="truncate">{m.student?.profile?.name || "Student"}</span>
+                                      <span className="truncate">{m.student?.profile?.name || "Unknown person"}</span>
                                       <ExternalLink className="h-3 w-3 text-zinc-500 shrink-0" />
                                     </Link>
+                                    {m.student?.isFaculty && (
+                                      <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400 shrink-0">
+                                        Faculty
+                                      </span>
+                                    )}
                                     {m.student?.studentRoll && (
                                       <span className="text-[11px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-300 shrink-0">
                                         {m.student.studentRoll}
@@ -996,9 +1006,15 @@ export function ActivityClient({ user, data: initialData }: Props) {
                   <p className="font-medium text-zinc-200">{selectedRecord.vehicleNumber}</p>
                 </div>
               )}
+              {selectedRecord.student?.isFaculty && (
+                <div>
+                  <p className="text-zinc-500">Role</p>
+                  <p className="font-medium text-zinc-200">Faculty{selectedRecord.student.designation ? ` • ${selectedRecord.student.designation}` : ""}</p>
+                </div>
+              )}
               {selectedRecord.student?.studentRoll && (
                 <div>
-                  <p className="text-zinc-500">Roll Number</p>
+                  <p className="text-zinc-500">{selectedRecord.student?.isFaculty ? "Employee ID" : "Roll Number"}</p>
                   <p className="font-medium text-zinc-200">{selectedRecord.student.studentRoll}</p>
                 </div>
               )}

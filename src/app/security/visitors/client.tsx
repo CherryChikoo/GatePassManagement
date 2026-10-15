@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
 
 import { useState, useEffect } from "react";
@@ -35,6 +36,7 @@ interface Props {
 }
 
 export function OutsidersClient({ user, inside, history }: Props) {
+  const t = useT();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"REGISTER" | "INSIDE" | "HISTORY">("REGISTER");
   const [searchQuery, setSearchQuery] = useState("");
@@ -71,7 +73,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
     if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      setError("Image must be less than 5MB"); setTimeout(() => setError(null), 3000);
+      setError(t("Image must be less than 5MB")); setTimeout(() => setError(null), 3000);
       return;
     }
 
@@ -145,7 +147,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
       if (photo) {
         const upload = await uploadOutsiderPhoto(photo, formData.name);
         if (upload.error || !upload.path) {
-          setError("Photo upload failed: " + (upload.error || "unknown error")); setTimeout(() => setError(null), 3000);
+          setError(t("Photo upload failed:") + " " + (upload.error || t("unknown error"))); setTimeout(() => setError(null), 3000);
           setLoading(false);
           return;
         }
@@ -155,7 +157,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
       const result = await registerOutsider({ ...formData, photoUrl: path });
       
       if (result.success) {
-        setSuccess("Visitor registered successfully!"); setTimeout(() => setSuccess(null), 3000);
+        setSuccess(t("Visitor registered successfully!")); setTimeout(() => setSuccess(null), 3000);
         setFormData({
           name: "", phone: "", category: "GUEST", purpose: "", visitingStudent: "", gate: "", vehicleNumber: "", entryTime: "",
           address: "", department: "", remarks: "",
@@ -164,10 +166,10 @@ export function OutsidersClient({ user, inside, history }: Props) {
         setActiveTab("INSIDE");
         router.refresh();
       } else {
-        setError(result.error || "Failed to register"); setTimeout(() => setError(null), 3000);
+        setError(result.error || t("Failed to register")); setTimeout(() => setError(null), 3000);
       }
     } catch (err: any) {
-      setError(actionErrorMessage(err, "Failed to register visitor")); setTimeout(() => setError(null), 3000);
+      setError(actionErrorMessage(err, t("Failed to register visitor"))); setTimeout(() => setError(null), 3000);
     } finally {
       setLoading(false);
     }
@@ -177,10 +179,10 @@ export function OutsidersClient({ user, inside, history }: Props) {
     
     const res = await markOutsiderExited(id);
     if (res.success) {
-      setSuccess("Marked as exited"); setTimeout(() => setSuccess(null), 3000);
+      setSuccess(t("Marked as exited")); setTimeout(() => setSuccess(null), 3000);
       router.refresh();
     } else {
-      setError(res.error || "Failed to mark exited"); setTimeout(() => setError(null), 3000);
+      setError(res.error || t("Failed to mark exited")); setTimeout(() => setError(null), 3000);
     }
   };
 
@@ -195,9 +197,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
     return (
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-zinc-800/40 px-4 sm:px-6 py-3.5 bg-zinc-950/40 rounded-b-xl">
         <p className="text-xs sm:text-sm text-zinc-400">
-          Showing <span className="font-semibold text-zinc-200">{startItem}</span> to{" "}
-          <span className="font-semibold text-zinc-200">{endItem}</span> of{" "}
-          <span className="font-semibold text-zinc-200">{totalItems}</span> results
+          {t("Showing {from}–{to} of {total} results", { from: startItem, to: endItem, total: totalItems })}
         </p>
         <div className="flex items-center gap-1.5 sm:gap-2">
           <Button
@@ -208,7 +208,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
             disabled={page <= 1}
           >
             <ChevronLeft className="h-4 w-4 sm:mr-1" />
-            <span className="hidden sm:inline">Previous</span>
+            <span className="hidden sm:inline">{t("Previous")}</span>
           </Button>
 
           {totalPages > 1 ? (
@@ -241,7 +241,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                 })}
             </div>
           ) : (
-            <span className="text-xs text-zinc-500 px-2">Page 1 of 1</span>
+            <span className="text-xs text-zinc-500 px-2">{t("Page {page} of {pages}", { page: 1, pages: 1 })}</span>
           )}
 
           <Button
@@ -251,7 +251,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages || totalPages === 0}
           >
-            <span className="hidden sm:inline">Next</span>
+            <span className="hidden sm:inline">{t("Next")}</span>
             <ChevronRight className="h-4 w-4 sm:ml-1" />
           </Button>
         </div>
@@ -296,18 +296,18 @@ export function OutsidersClient({ user, inside, history }: Props) {
       
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <BackButton href="/security" label="Back to Dashboard" />
+          <BackButton href="/security" label={t("Back to Dashboard")} />
           <h1 className="text-2xl font-bold tracking-tight text-zinc-100 mt-2">
-            Visitor Management
+            {t("Visitor Management")}
           </h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Manual registration and monitoring of campus visitors
+            {t("Manual registration and monitoring of campus visitors")}
           </p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <Input 
             type="search" 
-            placeholder="Search visitors..." 
+            placeholder={t("Search visitors...")} 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full sm:w-64 bg-zinc-900/50"
@@ -327,7 +327,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
           }`}
         >
           <UserPlus className="h-4 w-4" />
-          New Entry Form
+          {t("New Entry Form")}
         </button>
         <button
           onClick={() => setActiveTab("INSIDE")}
@@ -338,7 +338,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
           }`}
         >
           <MapPin className="h-4 w-4" />
-          Active Inside
+          {t("Active Inside")}
           <span className="ml-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-zinc-800 text-xs">
             {inside.length}
           </span>
@@ -352,7 +352,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
           }`}
         >
           <History className="h-4 w-4" />
-          Entry/Exit Log
+          {t("Entry/Exit Log")}
         </button>
       </div>
 
@@ -361,8 +361,8 @@ export function OutsidersClient({ user, inside, history }: Props) {
         <div className="max-w-2xl mx-auto">
           <Card>
             <CardHeader>
-              <CardTitle>Manual Registration</CardTitle>
-              <CardDescription>Register a new visitor.</CardDescription>
+              <CardTitle>{t("Manual Registration")}</CardTitle>
+              <CardDescription>{t("Register a new visitor.")}</CardDescription>
             </CardHeader>
             <CardContent className="p-4 sm:p-6">
               <form onSubmit={handleSubmit} className="space-y-6">
@@ -382,7 +382,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                 
                 {/* Photo Capture */}
                 <div className="space-y-3">
-                  <label className="text-sm font-medium leading-none text-zinc-200">Visitor Photo (Optional)</label>
+                  <label className="text-sm font-medium leading-none text-zinc-200">{t("Visitor Photo (Optional)")}</label>
                   <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                     <div className="relative h-32 w-32 shrink-0 rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-900/50 flex flex-col items-center justify-center overflow-hidden">
                       {photo ? (
@@ -394,7 +394,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                     <div className="flex-1 space-y-2">
                       <label htmlFor="photo-upload" className="cursor-pointer inline-flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
                         <Upload className="h-4 w-4" />
-                        {photo ? "Retake Photo" : "Take Photo"}
+                        {photo ? t("Retake Photo") : t("Take Photo")}
                       </label>
                       <input 
                         id="photo-upload"
@@ -413,34 +413,34 @@ export function OutsidersClient({ user, inside, history }: Props) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Full Name <span className="text-orange-400">*</span></label>
-                    <Input required placeholder="Enter full name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                    <label className="text-sm font-medium leading-none text-zinc-200">{t("Full Name")} <span className="text-orange-400">*</span></label>
+                    <Input required placeholder={t("Enter full name")} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Phone Number <span className="text-orange-400">*</span></label>
-                    <Input required type="tel" maxLength={15} placeholder="Enter phone" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                    <label className="text-sm font-medium leading-none text-zinc-200">{t("Phone Number")} <span className="text-orange-400">*</span></label>
+                    <Input required type="tel" maxLength={15} placeholder={t("Enter phone")} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Category</label>
+                    <label className="text-sm font-medium leading-none text-zinc-200">{t("Category")}</label>
                     <select 
                       className="flex h-10 w-full rounded-md border border-zinc-800 bg-zinc-900/50 text-zinc-100 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       value={formData.category} 
                       onChange={e => setFormData({...formData, category: e.target.value})}
                     >
                       
-                      <option className="bg-zinc-900 text-zinc-100" value="GUEST">Guest / Visitor</option>
-                      <option className="bg-zinc-900 text-zinc-100" value="PARENT">Parent / Guardian</option>
-                      <option className="bg-zinc-900 text-zinc-100" value="VENDOR">Vendor / Delivery</option>
-                      <option className="bg-zinc-900 text-zinc-100" value="WORKER">Worker / Staff</option>
+                      <option className="bg-zinc-900 text-zinc-100" value="GUEST">{t("Guest / Visitor")}</option>
+                      <option className="bg-zinc-900 text-zinc-100" value="PARENT">{t("Parent / Guardian")}</option>
+                      <option className="bg-zinc-900 text-zinc-100" value="VENDOR">{t("Vendor / Delivery")}</option>
+                      <option className="bg-zinc-900 text-zinc-100" value="WORKER">{t("Worker / Staff")}</option>
 
                     </select>
                   </div>
                   
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Reason / Purpose of Visit</label>
+                    <label className="text-sm font-medium leading-none text-zinc-200">{t("Reason / Purpose of Visit")}</label>
                     <Input 
                       list="purpose-options"
-                      placeholder="Type or select a reason" 
+                      placeholder={t("Type or select a reason")} 
                       value={formData.purpose} 
                       onChange={e => setFormData({...formData, purpose: e.target.value})} 
                     />
@@ -456,24 +456,24 @@ export function OutsidersClient({ user, inside, history }: Props) {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Person to Visit</label>
-                    <Input placeholder="Name or Roll No of the person" value={formData.visitingStudent} onChange={e => setFormData({...formData, visitingStudent: e.target.value})} />
+                    <label className="text-sm font-medium leading-none text-zinc-200">{t("Person to Visit")}</label>
+                    <Input placeholder={t("Name or Roll No of the person")} value={formData.visitingStudent} onChange={e => setFormData({...formData, visitingStudent: e.target.value})} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Department</label>
-                    <Input placeholder="Department being visited" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} />
+                    <label className="text-sm font-medium leading-none text-zinc-200">{t("Department")}</label>
+                    <Input placeholder={t("Department being visited")} value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} />
                   </div>
                   <div className="space-y-2 sm:col-span-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Address</label>
-                    <Input placeholder="Visitor's address" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                    <label className="text-sm font-medium leading-none text-zinc-200">{t("Address")}</label>
+                    <Input placeholder={t("Visitor's address")} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Vehicle Number</label>
-                    <Input placeholder="E.g., TS 09 EA 1234" value={formData.vehicleNumber} onChange={e => setFormData({...formData, vehicleNumber: e.target.value})} />
+                    <label className="text-sm font-medium leading-none text-zinc-200">{t("Vehicle Number")}</label>
+                    <Input placeholder={t("E.g., TS 09 EA 1234")} value={formData.vehicleNumber} onChange={e => setFormData({...formData, vehicleNumber: e.target.value})} />
                   </div>
                   <div className="space-y-2 sm:col-span-2">
-                    <label className="text-sm font-medium leading-none text-zinc-200">Remarks</label>
-                    <Input placeholder="Any notes" value={formData.remarks} onChange={e => setFormData({...formData, remarks: e.target.value})} />
+                    <label className="text-sm font-medium leading-none text-zinc-200">{t("Remarks")}</label>
+                    <Input placeholder={t("Any notes")} value={formData.remarks} onChange={e => setFormData({...formData, remarks: e.target.value})} />
                   </div>
                 </div>
 
@@ -485,7 +485,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                 <LiveDateTime />
 
                 <Button type="submit" className="w-full" size="lg" disabled={loading}>
-                  {loading ? "Registering..." : "Complete Registration & Allow Entry"}
+                  {loading ? t("Registering…") : t("Complete Registration & Allow Entry")}
                 </Button>
               </form>
             </CardContent>
@@ -501,10 +501,10 @@ export function OutsidersClient({ user, inside, history }: Props) {
             <table className="w-full min-w-[550px] text-sm text-left">
               <thead className="text-xs text-zinc-400 uppercase bg-zinc-900/50 border-b border-zinc-800">
                 <tr>
-                  <th className="px-6 py-4 font-medium">Name & Phone</th>
-                  <th className="px-6 py-4 font-medium">Category / Purpose</th>
-                  <th className="px-6 py-4 font-medium">Entry Time</th>
-                  <th className="px-6 py-4 font-medium text-right">Action</th>
+                  <th className="px-6 py-4 font-medium">{t("Name & Phone")}</th>
+                  <th className="px-6 py-4 font-medium">{t("Category / Purpose")}</th>
+                  <th className="px-6 py-4 font-medium">{t("Entry Time")}</th>
+                  <th className="px-6 py-4 font-medium text-right">{t("Action")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50">
@@ -513,9 +513,9 @@ export function OutsidersClient({ user, inside, history }: Props) {
                     <td colSpan={4} className="px-6 py-12 text-center text-sm text-zinc-500">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Users className="h-8 w-8 text-zinc-700 mb-1" />
-                        <p className="font-medium text-zinc-400">No active visitors inside campus</p>
+                        <p className="font-medium text-zinc-400">{t("No active visitors inside campus")}</p>
                         <p className="text-xs text-zinc-600">
-                          {searchQuery ? "No active visitors match your search." : "Visitors currently on campus will appear here."}
+                          {searchQuery ? t("No active visitors match your search.") : t("Visitors currently on campus will appear here.")}
                         </p>
                       </div>
                     </td>
@@ -533,7 +533,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                       </td>
                       <td className="px-6 py-4">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20 mb-1">
-                          {person.category}
+                          {t(person.category)}
                         </span>
                         <p className="text-xs text-zinc-400 truncate max-w-[200px]">{person.purpose}</p>
                       </td>
@@ -550,7 +550,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                           onClick={(e) => { e.stopPropagation(); handleMarkExited(person.id); }}
                         >
                           <LogOut className="h-3 w-3 mr-1.5" />
-                          Mark Exited
+                          {t("Mark Exited")}
                         </Button>
                       </td>
                     </tr>
@@ -572,11 +572,11 @@ export function OutsidersClient({ user, inside, history }: Props) {
             <table className="w-full min-w-[650px] text-sm text-left">
               <thead className="text-xs text-zinc-400 uppercase bg-zinc-900/50 border-b border-zinc-800">
                 <tr>
-                  <th className="px-6 py-4 font-medium">Name & Phone</th>
-                  <th className="px-6 py-4 font-medium">Category / Purpose</th>
-                  <th className="px-6 py-4 font-medium">Entry Time</th>
-                  <th className="px-6 py-4 font-medium">Exit Time</th>
-                  <th className="px-6 py-4 font-medium text-right">Status</th>
+                  <th className="px-6 py-4 font-medium">{t("Name & Phone")}</th>
+                  <th className="px-6 py-4 font-medium">{t("Category / Purpose")}</th>
+                  <th className="px-6 py-4 font-medium">{t("Entry Time")}</th>
+                  <th className="px-6 py-4 font-medium">{t("Exit Time")}</th>
+                  <th className="px-6 py-4 font-medium text-right">{t("Status")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50">
@@ -585,9 +585,9 @@ export function OutsidersClient({ user, inside, history }: Props) {
                     <td colSpan={5} className="px-6 py-12 text-center text-sm text-zinc-500">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <History className="h-8 w-8 text-zinc-700 mb-1" />
-                        <p className="font-medium text-zinc-400">No visitor logs found</p>
+                        <p className="font-medium text-zinc-400">{t("No visitor logs found")}</p>
                         <p className="text-xs text-zinc-600">
-                          {searchQuery ? "No records match your search query." : "Past visitor entries and exits will appear here."}
+                          {searchQuery ? t("No records match your search query.") : t("Past visitor entries and exits will appear here.")}
                         </p>
                       </div>
                     </td>
@@ -604,7 +604,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                         <p className="text-xs text-zinc-500 mt-0.5">{mov.phone}</p>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-zinc-300 font-medium">{mov.category}</span>
+                        <span className="text-zinc-300 font-medium">{t(mov.category)}</span>
                         <p className="text-xs text-zinc-500 mt-0.5 truncate max-w-[200px]">{mov.purpose}</p>
                       </td>
                       <td className="px-6 py-4">
@@ -636,7 +636,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
       <Modal
         open={!!selectedOutsider}
         onClose={() => setSelectedOutsider(null)}
-        title="Visitor Details"
+        title={t("Visitor Details")}
       >
         {selectedOutsider && (
           <div className="space-y-6">
@@ -647,7 +647,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                     <img src={photoUrl} alt="Visitor" className="h-full w-full object-cover" />
                   ) : (
                     <div className="animate-pulse bg-zinc-800 h-full w-full flex items-center justify-center">
-                      <span className="text-xs text-zinc-500">Loading...</span>
+                      <span className="text-xs text-zinc-500">{t("Loading…")}</span>
                     </div>
                   )
                 ) : (
@@ -662,7 +662,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                 <p className="text-zinc-400 font-medium mb-3">{selectedOutsider.phone}</p>
                 <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                   <span className="px-2.5 py-1 rounded-md bg-zinc-800 text-zinc-300 text-xs font-medium border border-zinc-700">
-                    {selectedOutsider.category}
+                    {t(selectedOutsider.category)}
                   </span>
                   {selectedOutsider.vehicleNumber && (
                     <span className="px-2.5 py-1 rounded-md bg-zinc-800/50 text-zinc-400 text-xs font-medium border border-zinc-800">
@@ -675,34 +675,34 @@ export function OutsidersClient({ user, inside, history }: Props) {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div className="p-4 rounded-xl border border-zinc-800/60 bg-zinc-900/40">
-                <p className="text-xs font-medium text-zinc-500 mb-1">Purpose of Visit</p>
+                <p className="text-xs font-medium text-zinc-500 mb-1">{t("Purpose of Visit")}</p>
                 <p className="text-sm text-zinc-200">{selectedOutsider.purpose}</p>
               </div>
               <div className="p-4 rounded-xl border border-zinc-800/60 bg-zinc-900/40">
-                <p className="text-xs font-medium text-zinc-500 mb-1">Person to Visit</p>
+                <p className="text-xs font-medium text-zinc-500 mb-1">{t("Person to Visit")}</p>
                 <p className="text-sm text-zinc-200">{selectedOutsider.visitingStudent || "N/A"}</p>
               </div>
               {selectedOutsider.department && (
                 <div className="p-4 rounded-xl border border-zinc-800/60 bg-zinc-900/40">
-                  <p className="text-xs font-medium text-zinc-500 mb-1">Department</p>
+                  <p className="text-xs font-medium text-zinc-500 mb-1">{t("Department")}</p>
                   <p className="text-sm text-zinc-200">{selectedOutsider.department}</p>
                 </div>
               )}
               {selectedOutsider.address && (
                 <div className="p-4 rounded-xl border border-zinc-800/60 bg-zinc-900/40">
-                  <p className="text-xs font-medium text-zinc-500 mb-1">Address</p>
+                  <p className="text-xs font-medium text-zinc-500 mb-1">{t("Address")}</p>
                   <p className="text-sm text-zinc-200">{selectedOutsider.address}</p>
                 </div>
               )}
               {selectedOutsider.remarks && (
                 <div className="p-4 rounded-xl border border-zinc-800/60 bg-zinc-900/40 sm:col-span-2">
-                  <p className="text-xs font-medium text-zinc-500 mb-1">Remarks</p>
+                  <p className="text-xs font-medium text-zinc-500 mb-1">{t("Remarks")}</p>
                   <p className="text-sm text-zinc-200">{selectedOutsider.remarks}</p>
                 </div>
               )}
               {selectedOutsider.recordedByName && (
                 <div className="p-4 rounded-xl border border-zinc-800/60 bg-zinc-900/40 sm:col-span-2">
-                  <p className="text-xs font-medium text-zinc-500 mb-1">Registered by</p>
+                  <p className="text-xs font-medium text-zinc-500 mb-1">{t("Registered by")}</p>
                   <p className="text-sm text-zinc-200">{selectedOutsider.recordedByName}</p>
                 </div>
               )}
@@ -739,7 +739,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                   }}
                 >
                   <LogOut className="h-4 w-4 mr-2" />
-                  Mark as Exited Now
+                  {t("Mark as Exited Now")}
                 </Button>
               </div>
             )}

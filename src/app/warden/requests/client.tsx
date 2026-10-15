@@ -354,14 +354,14 @@ export function WardenRequestsClient({ user }: Props) {
             <button
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="px-3 py-1 text-sm border border-zinc-700 bg-zinc-800 rounded-md disabled:opacity-50 text-white transition-colors hover:bg-zinc-700"
+              className="px-3 py-1 text-sm border border-zinc-700 bg-zinc-800 rounded-md disabled:opacity-50 text-zinc-200 transition-colors hover:bg-zinc-700"
             >
               Previous
             </button>
             <button
               onClick={() => setCurrentPage(p => Math.min(Math.ceil(filteredRequests.length / PAGE_SIZE), p + 1))}
               disabled={currentPage === Math.ceil(filteredRequests.length / PAGE_SIZE)}
-              className="px-3 py-1 text-sm border border-zinc-700 bg-zinc-800 rounded-md disabled:opacity-50 text-white transition-colors hover:bg-zinc-700"
+              className="px-3 py-1 text-sm border border-zinc-700 bg-zinc-800 rounded-md disabled:opacity-50 text-zinc-200 transition-colors hover:bg-zinc-700"
             >
               Next
             </button>

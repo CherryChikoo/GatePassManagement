@@ -267,7 +267,7 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
               setPassDate(e.target.value);
               setCurrentPage(1);
             }}
-            className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 text-xs text-zinc-200 [color-scheme:dark]"
+            className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 text-xs text-zinc-200 [color-scheme:light]"
           />
           {passDate && (
             <button
@@ -468,7 +468,7 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
 
       {/* Pagination Bar (Sticky at bottom, touches sidebar seamlessly with 0px gap) */}
       {filteredPermissions.length > 0 && (
-        <div className="sticky bottom-0 -mx-4 lg:-mx-8 -mb-4 lg:-mb-8 mt-10 border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl z-30 shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.5)]">
+        <div className="sticky bottom-0 -mx-4 lg:-mx-8 -mb-4 lg:-mb-8 mt-10 border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl z-30 shadow-[0_-10px_40px_-10px_rgba(16,24,40,0.12)]">
           <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
             <p className="text-sm text-zinc-400 font-medium">
               Showing {(currentPage - 1) * pageSize + 1} to{" "}

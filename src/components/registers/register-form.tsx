@@ -1,20 +1,22 @@
 "use client";
+import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useState } from "react";
 import { CalendarDays, Clock, LogIn, LogOut, Plus, Trash2 } from "lucide-react";
 import type { Direction, EntryRegister, FieldDef, GroupDef } from "@/lib/registers/definitions";
 import { pendingActions } from "@/lib/registers/definitions";
 import { formatDate } from "@/lib/utils";
-import { formatFieldValue } from "./format";
+import { displayValue } from "./localize";
 
 export type StaffOption = { id: string; name: string; employeeId: string | null };
 type Values = Record<string, any>;
 
 const inputCls =
-  "flex h-11 w-full rounded-xl border border-zinc-700/50 bg-zinc-900/50 px-3.5 text-sm text-zinc-100 placeholder:text-zinc-500 [color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500/50 disabled:opacity-60";
+  "flex h-11 w-full rounded-xl border border-zinc-700/50 bg-zinc-900/50 px-3.5 text-sm text-zinc-100 placeholder:text-zinc-500 [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500/50 disabled:opacity-60";
 
 /** Today's date and a live clock. The server records its own time when saving. */
 export function LiveDateTime() {
+  const tr = useT();
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
     setNow(new Date());
@@ -32,7 +34,7 @@ export function LiveDateTime() {
       <span className="flex items-center gap-2 text-zinc-300 tabular-nums">
         <Clock className="h-4 w-4 text-zinc-500" /> {time}
       </span>
-      <span className="text-[11px] text-zinc-500">Date and time are recorded automatically when you save.</span>
+      <span className="text-[11px] text-zinc-500">{tr("Date and time are recorded automatically when you save.")}</span>
     </div>
   );
 }
@@ -56,6 +58,7 @@ function FieldInput({
   staff: StaffOption[];
   required?: boolean;
 }) {
+  const t = useT();
   switch (f.type) {
     case "textarea":
       return (
@@ -75,13 +78,13 @@ function FieldInput({
     case "staff": {
       const options =
         f.type === "yesno"
-          ? [{ v: "yes", l: "Yes" }, { v: "no", l: "No" }]
+          ? [{ v: "yes", l: t("Yes") }, { v: "no", l: t("No") }]
           : f.type === "staff"
           ? staff.map((s) => ({ v: s.id, l: `${s.name}${s.employeeId ? ` (${s.employeeId})` : ""}` }))
-          : (f.options ?? []).map((o) => ({ v: o, l: o }));
+          : (f.options ?? []).map((o) => ({ v: o, l: t(o) }));
       return (
         <select id={id} value={value} required={required} onChange={(e) => onChange(e.target.value)} className={`${inputCls} [&>option]:bg-zinc-900`}>
-          <option value="">— Select —</option>
+          <option value="">{t("— Select —")}</option>
           {options.map((o) => (
             <option key={o.v} value={o.v}>{o.l}</option>
           ))}
@@ -118,11 +121,12 @@ function DirectionPicker({
   value: Direction | null;
   onChange: (d: Direction) => void;
 }) {
+  const t = useT();
   const m = def.movement!;
   const choices = (["IN", "OUT"] as Direction[]).filter((d) => m.firstDirections.includes(d));
   return (
     <fieldset>
-      <legend className="block text-sm font-medium text-zinc-300 mb-2">In or Out</legend>
+      <legend className="block text-sm font-medium text-zinc-300 mb-2">{t("In or Out")}</legend>
       <div className="grid grid-cols-2 gap-2">
         {choices.map((d) => {
           const side = d === "IN" ? m.in : m.out;
@@ -166,6 +170,7 @@ export function RegisterForm({
   busy: boolean;
   onSubmit: (payload: { fields: Values; groups: Record<string, Values[]>; direction?: Direction }) => void;
 }) {
+  const t = useT();
   const m = def.movement;
   const [direction, setDirection] = useState<Direction | null>(m && m.firstDirections.length === 1 ? m.firstDirections[0] : null);
   const [values, setValues] = useState<Values>({});
@@ -189,7 +194,7 @@ export function RegisterForm({
       onSubmit={(e) => {
         e.preventDefault();
         if (m && !direction) {
-          setLocalError("Choose In or Out");
+          setLocalError(t("Choose In or Out"));
           return;
         }
         setLocalError(null);
@@ -236,10 +241,10 @@ export function RegisterForm({
         return (
           <fieldset key={g.key} className="space-y-3 rounded-xl border border-zinc-800 p-3 sm:p-4">
             <legend className="px-1 text-sm font-semibold text-zinc-200">
-              {g.label} <span className="text-xs font-normal text-zinc-500">({list.length}{g.max !== null ? ` of max ${g.max}` : ""})</span>
+              {g.label} <span className="text-xs font-normal text-zinc-500">({list.length}{g.max !== null ? ` / ${g.max}` : ""})</span>
             </legend>
             {g.fields.some((f) => f.type === "time") && (
-              <p className="text-[11px] text-zinc-500">In-time is recorded now; out-times are marked later from the record.</p>
+              <p className="text-[11px] text-zinc-500">{t("In-time is recorded now; out-times are marked later from the record.")}</p>
             )}
             {list.map((row, i) => (
               <div key={i} className="rounded-lg border border-zinc-800/80 bg-zinc-950/30 p-3 space-y-3">
@@ -250,7 +255,7 @@ export function RegisterForm({
                       type="button"
                       onClick={() => setRows((s) => ({ ...s, [g.key]: s[g.key].filter((_, idx) => idx !== i) }))}
                       className="text-zinc-500 hover:text-red-400 p-1"
-                      aria-label={`Remove ${g.itemLabel.toLowerCase()} ${i + 1}`}
+                      aria-label={t("Remove {item}", { item: `${g.itemLabel} ${i + 1}` })}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -278,7 +283,7 @@ export function RegisterForm({
               onClick={() => setRows((s) => ({ ...s, [g.key]: [...(s[g.key] ?? []), emptyRow(g)] }))}
               className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
             >
-              <Plus className="h-3.5 w-3.5" /> Add {g.itemLabel.toLowerCase()}
+              <Plus className="h-3.5 w-3.5" /> {t("Add {item}", { item: g.itemLabel.toLowerCase() })}
             </button>
           </fieldset>
         );
@@ -287,9 +292,9 @@ export function RegisterForm({
       {localError && <p role="alert" className="text-sm text-red-300">{localError}</p>}
 
       <button type="submit" disabled={busy} className="w-full h-11 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold disabled:opacity-60">
-        {busy ? "Saving…" : side ? `Save — ${side.label} now` : "Save record"}
+        {busy ? t("Saving…") : side ? t("Save — {side} now", { side: side.label }) : t("Save record")}
       </button>
-      <p className="text-[11px] text-zinc-500 text-center">Saved records are permanent and cannot be edited.</p>
+      <p className="text-[11px] text-zinc-500 text-center">{t("Saved records are permanent and cannot be edited.")}</p>
     </form>
   );
 }
@@ -309,12 +314,13 @@ export function MovementForm({
   busy: boolean;
   onSubmit: (payload: { markMovement: boolean; reading?: string; groupMarks: Record<string, number[]> }) => void;
 }) {
+  const t = useT();
   const pending = pendingActions(def, current);
   const [mark, setMark] = useState<boolean>(!!pending.next);
   const [reading, setReading] = useState("");
   const [marks, setMarks] = useState<Record<string, number[]>>({});
 
-  if (!pending.any) return <p className="text-sm text-zinc-400">Everything for this record has already been recorded.</p>;
+  if (!pending.any) return <p className="text-sm text-zinc-400">{t("Everything for this record has already been recorded.")}</p>;
   const next = pending.next;
 
   return (
@@ -330,12 +336,12 @@ export function MovementForm({
         <div className="space-y-3 rounded-xl border border-zinc-800 p-3">
           <label className="flex items-center gap-2 text-sm text-zinc-200">
             <input type="checkbox" checked={mark} onChange={(e) => setMark(e.target.checked)} className="accent-emerald-500 h-4 w-4" />
-            Record <span className="font-semibold">{next.label}</span> now
+            {t("Record {side} now", { side: next.label })}
           </label>
           {next.readingKey && mark && (
             <div className="space-y-1.5">
               <label htmlFor="mv-reading" className="block text-xs sm:text-sm font-medium text-zinc-300">
-                {def.fields.find((f) => f.key === next.readingKey)?.label ?? "Reading"}
+                {def.fields.find((f) => f.key === next.readingKey)?.label ?? t("Reading")}
               </label>
               <input id="mv-reading" type="number" inputMode="decimal" min={0} step="any" value={reading} onChange={(e) => setReading(e.target.value)} className={inputCls} />
             </div>
@@ -350,20 +356,20 @@ export function MovementForm({
         return (
           <div key={group.key} className="space-y-2 rounded-xl border border-zinc-800 p-3">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-zinc-200">Mark {group.label.toLowerCase()} out now</p>
+              <p className="text-sm font-semibold text-zinc-200">{t("Mark {group} out now", { group: group.label })}</p>
               <button
                 type="button"
                 onClick={() => setMarks((s) => ({ ...s, [group.key]: selected.length === open.length ? [] : open }))}
                 className="text-xs text-zinc-400 underline"
               >
-                {selected.length === open.length ? "Clear" : "Select all"}
+                {selected.length === open.length ? t("Clear") : t("Select all")}
               </button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-64 overflow-y-auto">
               {open.map((i) => (
                 <label key={i} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800/40">
                   <input type="checkbox" checked={selected.includes(i)} onChange={() => toggle(i)} className="accent-emerald-500 h-4 w-4" />
-                  {group.itemLabel} {i + 1}: {formatFieldValue(group.fields[0], rowsData[i]?.[group.fields[0].key])}
+                  {group.itemLabel} {i + 1}: {displayValue(group.fields[0], rowsData[i]?.[group.fields[0].key], t)}
                 </label>
               ))}
             </div>
@@ -371,7 +377,7 @@ export function MovementForm({
         );
       })}
       <button type="submit" disabled={busy} className="w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-60">
-        {busy ? "Saving…" : "Save"}
+        {busy ? t("Saving…") : t("Save")}
       </button>
     </form>
   );

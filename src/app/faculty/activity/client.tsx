@@ -103,7 +103,7 @@ export function FacultyActivityClient({
                 value={selectedDate}
                 max={istDateString()}
                 onChange={handleDateChange}
-                className="relative w-full sm:w-auto h-9 pl-9 pr-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500/50 [color-scheme:dark] cursor-pointer hover:border-zinc-700 hover:bg-zinc-800 transition-colors [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                className="relative w-full sm:w-auto h-9 pl-9 pr-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500/50 [color-scheme:light] cursor-pointer hover:border-zinc-700 hover:bg-zinc-800 transition-colors [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
               />
             </div>
           </div>
@@ -161,7 +161,7 @@ export function FacultyActivityClient({
 
         {/* Tabs */}
         <div className="flex gap-2 p-1 bg-zinc-900 border border-zinc-800 rounded-lg w-fit">
-          <button onClick={() => setActiveTab("ALL")} className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === "ALL" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"}`}>All Data</button>
+          <button onClick={() => setActiveTab("ALL")} className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === "ALL" ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"}`}>All Data</button>
           <button onClick={() => setActiveTab("ENTRIES")} className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === "ENTRIES" ? "bg-emerald-500/20 text-emerald-300" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"}`}>Entries</button>
           <button onClick={() => setActiveTab("EXITS")} className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === "EXITS" ? "bg-orange-500/20 text-orange-300" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"}`}>Exits</button>
         </div>

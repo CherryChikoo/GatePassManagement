@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "@/components/providers/language-provider";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
@@ -33,6 +34,7 @@ export function QrScanner({
   onCancel: () => void;
   manualLabel?: string;
 }) {
+  const t = useT();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -176,7 +178,7 @@ export function QrScanner({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black text-white flex flex-col" role="dialog" aria-modal="true" aria-label={title}>
+    <div className="fixed inset-0 z-[100] bg-black text-white flex flex-col" role="dialog" aria-modal="true" aria-label={t(title)}>
       <video ref={videoRef} className="absolute inset-0 h-full w-full object-cover" muted playsInline autoPlay />
 
       {/* Viewfinder: dim everything outside the square */}
@@ -198,8 +200,8 @@ export function QrScanner({
 
       {/* Top bar */}
       <div className="relative z-10 flex items-center justify-between gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-3 bg-gradient-to-b from-black/80 to-transparent">
-        <h2 className="text-base font-semibold">{title}</h2>
-        <button onClick={onCancel} className="rounded-full bg-white/10 p-2 hover:bg-white/20" aria-label="Close scanner">
+        <h2 className="text-base font-semibold">{t(title)}</h2>
+        <button onClick={onCancel} className="rounded-full bg-white/10 p-2 hover:bg-white/20" aria-label={t("Close scanner")}>
           <X className="h-5 w-5" />
         </button>
       </div>
@@ -209,9 +211,9 @@ export function QrScanner({
       {/* Bottom bar */}
       <div className="relative z-10 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 bg-gradient-to-t from-black/85 to-transparent space-y-3 text-center">
         {error ? (
-          <p className="text-sm text-red-300">{error}</p>
+          <p className="text-sm text-red-200">{t(error)}</p>
         ) : (
-          <p className="text-sm text-zinc-200">{starting ? "Starting camera…" : hint}</p>
+          <p className="text-sm text-white/85">{starting ? t("Starting camera…") : t(hint)}</p>
         )}
         <div className="flex items-center justify-center gap-3">
           {torchAvailable && (
@@ -220,11 +222,11 @@ export function QrScanner({
               className={`inline-flex items-center gap-2 h-11 px-4 rounded-full text-sm font-semibold ${torchOn ? "bg-amber-400 text-black" : "bg-white/10 hover:bg-white/20"}`}
               aria-pressed={torchOn}
             >
-              {torchOn ? <FlashlightOff className="h-4 w-4" /> : <Flashlight className="h-4 w-4" />} Torch
+              {torchOn ? <FlashlightOff className="h-4 w-4" /> : <Flashlight className="h-4 w-4" />} {t("Torch")}
             </button>
           )}
           <button onClick={onCancel} className="inline-flex items-center gap-2 h-11 px-4 rounded-full bg-white/10 hover:bg-white/20 text-sm font-semibold">
-            <Keyboard className="h-4 w-4" /> {manualLabel}
+            <Keyboard className="h-4 w-4" /> {t(manualLabel)}
           </button>
         </div>
       </div>

@@ -21,7 +21,7 @@ export function BackButton({ href, label = "Back to Dashboard", className }: Bac
       size="sm"
       onClick={() => router.push(href)}
       className={cn(
-        "text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors gap-2",
+        "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors gap-2",
         className
       )}
     >

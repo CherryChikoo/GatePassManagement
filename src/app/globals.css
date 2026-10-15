@@ -1,34 +1,81 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Montserrat:wght@600;700&family=Poppins:wght@300;400;500;600;700&display=swap");
-
 @import "tailwindcss";
 
-:root {
-  --font-inter: "Inter", system-ui, sans-serif;
-  --font-poppins: "Poppins", system-ui, sans-serif;
-  --font-montserrat: "Montserrat", system-ui, sans-serif;
-}
-
+/*
+ * Gate Pass design system (light, Apple-inspired)
+ *
+ * Palette "Opaline": #F4F4F6 page, #E7E7E7 hairlines, #D2D2D4 stronger lines,
+ * coral #FF634A brand. The app was built on Tailwind’s zinc / orange scales, so
+ * those scales are redefined here: every screen switches to the light theme
+ * from one place. Status text shades are darkened to stay readable on white.
+ */
 @theme {
-  /* Fonts */
-  --font-sans: var(--font-inter);
-  --font-poppins: var(--font-poppins);
-  --font-heading: var(--font-montserrat);
+  --font-sans: var(--font-poppins), var(--font-telugu), ui-sans-serif, system-ui, sans-serif;
+  --font-poppins: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-poppins), var(--font-telugu), ui-sans-serif, system-ui, sans-serif;
 
-  /* Override accent colors to the requested Red Orange (#FF4D00) */
-  --color-indigo-400: #ff7a33;
-  --color-indigo-500: #FF4D00;
-  --color-indigo-600: #e64500;
-  
-  --color-violet-400: #ff7a33;
-  --color-violet-500: #FF4D00;
-  --color-violet-600: #e64500;
-  
-  --color-blue-400: #ff7a33;
-  --color-blue-500: #FF4D00;
-  --color-blue-600: #e64500;
-  
-  --color-purple-600: #cc3d00;
-  --color-cyan-600: #cc3d00;
+  /* Neutrals (light theme; low numbers = text, high numbers = surfaces) */
+  --color-zinc-50: #0f0f11;
+  --color-zinc-100: #18181b;
+  --color-zinc-200: #27272a;
+  --color-zinc-300: #3f3f46;
+  --color-zinc-400: #5a5a62;
+  --color-zinc-500: #6b6b73;
+  --color-zinc-600: #9a9aa2;
+  --color-zinc-700: #d2d2d4;
+  --color-zinc-800: #e7e7e7;
+  --color-zinc-900: #ffffff;
+  --color-zinc-950: #f4f4f6;
+
+  /* Brand coral. 500 = #FF634A for fills and highlights; 400/300 are deeper
+     so coral text is readable on white; 600 carries white button text. */
+  --color-orange-50: #fff3f0;
+  --color-orange-100: #ffe4de;
+  --color-orange-200: #ffc9bd;
+  --color-orange-300: #c2381f;
+  --color-orange-400: #d63f27;
+  --color-orange-500: #ff634a;
+  --color-orange-600: #cf3e25;
+  --color-orange-700: #b23320;
+  --color-orange-800: #8f2a1b;
+  --color-orange-900: #6e2216;
+
+  /* Former accent scales follow the brand */
+  --color-indigo-300: #c2381f;
+  --color-indigo-400: #d63f27;
+  --color-indigo-500: #ff634a;
+  --color-indigo-600: #cf3e25;
+  --color-violet-300: #c2381f;
+  --color-violet-400: #d63f27;
+  --color-violet-500: #ff634a;
+  --color-violet-600: #cf3e25;
+
+  /* Status colours: text shades darkened for white backgrounds */
+  --color-emerald-200: #065f46;
+  --color-emerald-300: #047857;
+  --color-emerald-400: #059669;
+  --color-green-400: #16a34a;
+  --color-red-200: #991b1b;
+  --color-red-300: #b91c1c;
+  --color-red-400: #dc2626;
+  --color-amber-200: #92400e;
+  --color-amber-300: #b45309;
+  --color-amber-400: #b45309;
+  --color-yellow-400: #a16207;
+  --color-blue-200: #1e40af;
+  --color-blue-300: #1d4ed8;
+  --color-blue-400: #2563eb;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-sky-200: #075985;
+  --color-sky-300: #0369a1;
+  --color-sky-400: #0284c7;
+  --color-teal-300: #0f766e;
+  --color-teal-400: #0d9488;
+  --color-cyan-300: #0e7490;
+  --color-cyan-400: #0891b2;
+  --color-purple-300: #7e22ce;
+  --color-purple-400: #9333ea;
+  --color-pink-400: #db2777;
 }
 
 html {
@@ -36,72 +83,67 @@ html {
 }
 
 body {
-  font-family: var(--font-inter), system-ui, sans-serif !important;
-  background: #09090b;
-  color: #fafafa;
+  font-family: var(--font-poppins), var(--font-telugu), ui-sans-serif, system-ui, sans-serif;
+  background: #f4f4f6;
+  color: #18181b;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 h1, h2, h3, h4, h5, h6, .font-heading {
-  font-family: var(--font-montserrat), sans-serif !important;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
 }
 
-button, .btn, .button, [role="button"], .font-poppins, a {
-  font-family: var(--font-poppins), sans-serif !important;
-}
-
-button, .btn, .button, [role="button"] {
-  box-shadow: none !important;
-  text-shadow: none !important;
-  filter: none !important;
-}
-
-button:hover, .btn:hover, .button:hover, [role="button"]:hover {
-  box-shadow: none !important;
-  filter: none !important;
-}
-
-/* Fix for white browser autofill */
+/* Browser autofill on light inputs */
 input:-webkit-autofill,
-input:-webkit-autofill:hover, 
-input:-webkit-autofill:focus, 
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
 input:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 30px #18181b inset !important;
-  -webkit-text-fill-color: #fafafa !important;
+  -webkit-box-shadow: 0 0 0 30px #ffffff inset !important;
+  -webkit-text-fill-color: #18181b !important;
   transition: background-color 5000s ease-in-out 0s;
-  caret-color: #fafafa;
+  caret-color: #18181b;
 }
 
-/* Custom scrollbar */
+/* Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
-
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
-  border-radius: 3px;
+  background: #d2d2d4;
+  border-radius: 8px;
+  border: 2px solid #f4f4f6;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: #b5b5ba;
 }
 
-/* Solid dark background for login */
 .gradient-mesh {
-  background: #09090b;
+  background: #f4f4f6;
 }
 
-/* Solid dark card (Removed glassmorphism) */
+/*
+ * Glass (Apple-style translucent material). Used only on a few fixed
+ * surfaces (top bar, sidebar, mobile nav, dialog backdrop) so scrolling
+ * stays fast; lists and cards use solid white.
+ */
 .glass {
-  background: #18181b; /* zinc-900 */
-  border: 1px solid #27272a; /* zinc-800 */
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  backdrop-filter: saturate(180%) blur(18px);
+  border: 1px solid rgba(231, 231, 231, 0.8);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass { background: rgba(255, 255, 255, 0.96); }
+}
+
+/* Soft card elevation */
+.shadow-card {
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 30px -18px rgba(16, 24, 40, 0.18);
 }
 
 /* Animations */
@@ -121,8 +163,8 @@ input:-webkit-autofill:active {
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.15); }
-  50% { box-shadow: 0 0 40px rgba(99, 102, 241, 0.3); }
+  0%, 100% { box-shadow: 0 0 20px rgba(255, 99, 74, 0.12); }
+  50% { box-shadow: 0 0 40px rgba(255, 99, 74, 0.24); }
 }
 
 @keyframes shimmer {
@@ -193,7 +235,7 @@ input:-webkit-autofill:active {
 
 /* Table row hover */
 .table-row-hover:hover {
-  background: rgba(39, 39, 42, 0.5);
+  background: rgba(244, 244, 246, 0.9);
 }
 
 /* Hide scrollbar for Chrome, Safari and Opera */

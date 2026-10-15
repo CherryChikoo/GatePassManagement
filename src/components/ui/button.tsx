@@ -29,22 +29,23 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const baseStyles =
-      "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl font-medium shadow-none transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:pointer-events-none disabled:opacity-50 cursor-pointer active:scale-[0.98]";
+      "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-medium transition-[background-color,border-color,color,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:pointer-events-none disabled:opacity-50 cursor-pointer active:scale-[0.98]";
 
     const variants: Record<string, string> = {
+      // Brand coral pill (deep coral keeps white text readable)
       default:
-        "bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-none hover:from-indigo-500 hover:to-violet-500 focus-visible:ring-indigo-500",
+        "bg-orange-600 text-white hover:bg-orange-700 focus-visible:ring-orange-500 shadow-[0_6px_16px_-8px_rgba(207,62,37,0.55)]",
       destructive:
-        "bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-none hover:from-red-500 hover:to-rose-500 focus-visible:ring-red-500",
+        "bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500",
       outline:
-        "border border-zinc-700 bg-zinc-900/50 text-zinc-200 hover:bg-zinc-800 hover:border-zinc-600 focus-visible:ring-zinc-500 shadow-none",
+        "border border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-950 hover:border-zinc-700 focus-visible:ring-zinc-600",
       secondary:
-        "bg-zinc-800 text-zinc-200 hover:bg-zinc-700 focus-visible:ring-zinc-500 shadow-none",
+        "bg-zinc-950 text-zinc-200 hover:bg-zinc-800 focus-visible:ring-zinc-600",
       ghost:
-        "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 focus-visible:ring-zinc-500 shadow-none",
-      link: "text-indigo-400 underline-offset-4 hover:underline hover:text-indigo-300 focus-visible:ring-indigo-500 shadow-none",
+        "text-zinc-400 hover:bg-zinc-950 hover:text-zinc-200 focus-visible:ring-zinc-600",
+      link: "text-orange-400 underline-offset-4 hover:underline hover:text-orange-300 focus-visible:ring-orange-500",
       success:
-        "bg-gradient-to-r from-emerald-600 to-green-600 text-white shadow-none hover:from-emerald-500 hover:to-green-500 focus-visible:ring-emerald-500",
+        "bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500",
     };
 
     const sizes: Record<string, string> = {

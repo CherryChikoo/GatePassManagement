@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "@/components/providers/language-provider";
 import { useState } from "react";
 import { Modal, StatCard, StatusBadge } from "@/components/ui/primitives";
 import { MovementDetails } from "@/components/registers/derived-views";
@@ -27,6 +28,7 @@ interface Props {
 }
 
 export function SecurityDashboardClient({ user }: Props) {
+  const t = useT();
   const [page, setPage] = useState(1);
   // Movement opened in the details popup
   const [selectedMovement, setSelectedMovement] = useState<string | null>(null);
@@ -52,16 +54,16 @@ export function SecurityDashboardClient({ user }: Props) {
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
-              Security Dashboard
+              {t("Security Dashboard")}
             </h1>
             <p className="text-sm text-zinc-500 mt-1">
-              Gate monitoring & movement registration
+              {t("Gate monitoring & movement registration")}
             </p>
           </div>
           <Link href="/security/scan">
             <Button size="lg">
               <ScanLine className="h-5 w-5" />
-              Scan QR Code
+              {t("Scan QR Code")}
             </Button>
           </Link>
         </div>
@@ -69,23 +71,23 @@ export function SecurityDashboardClient({ user }: Props) {
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <StatCard
-            title="Visitor Visits"
+            title={t("Visitor Visits")}
             value={stats.outsiderVisitsToday || 0}
             icon={<Users className="h-5 w-5" />}
             className="border-purple-500/20"
           />
           <StatCard
-            title="Student Exits"
+            title={t("Student Exits")}
             value={stats.studentExitsToday || 0}
             icon={<DoorOpen className="h-5 w-5" />}
           />
           <StatCard
-            title="Student Entries"
+            title={t("Student Entries")}
             value={stats.studentEntriesToday || 0}
             icon={<DoorClosed className="h-5 w-5" />}
           />
           <StatCard
-            title="Visitors Inside"
+            title={t("Visitors Inside")}
             value={stats.outsidersInside || 0}
             icon={<MapPin className="h-5 w-5" />}
             className="border-amber-500/20"
@@ -101,8 +103,8 @@ export function SecurityDashboardClient({ user }: Props) {
                   <ScanLine className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div className="min-w-0">
-                  <p className="font-semibold text-zinc-200 text-sm sm:text-base">Scan & Register</p>
-                  <p className="text-xs sm:text-sm text-zinc-500 truncate">Scan QR and register exit</p>
+                  <p className="font-semibold text-zinc-200 text-sm sm:text-base">{t("Scan & Register")}</p>
+                  <p className="text-xs sm:text-sm text-zinc-500 truncate">{t("Scan QR and register exit")}</p>
                 </div>
               </CardContent>
             </Card>
@@ -114,8 +116,8 @@ export function SecurityDashboardClient({ user }: Props) {
                   <Users className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div className="min-w-0">
-                  <p className="font-semibold text-zinc-200 text-sm sm:text-base">Visitor Registration</p>
-                  <p className="text-xs sm:text-sm text-zinc-500 truncate">Register visitors at the gate</p>
+                  <p className="font-semibold text-zinc-200 text-sm sm:text-base">{t("Visitor Registration")}</p>
+                  <p className="text-xs sm:text-sm text-zinc-500 truncate">{t("Register visitors at the gate")}</p>
                 </div>
               </CardContent>
             </Card>
@@ -127,8 +129,8 @@ export function SecurityDashboardClient({ user }: Props) {
                   <BookOpen className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div className="min-w-0">
-                  <p className="font-semibold text-zinc-200 text-sm sm:text-base">Registers</p>
-                  <p className="text-xs sm:text-sm text-zinc-500 truncate">Faculty book, vehicles, stock, labour, keys and more — all 19 books</p>
+                  <p className="font-semibold text-zinc-200 text-sm sm:text-base">{t("Registers")}</p>
+                  <p className="text-xs sm:text-sm text-zinc-500 truncate">{t("Faculty book, vehicles, stock, labour, keys and more — all 19 books")}</p>
                 </div>
               </CardContent>
             </Card>
@@ -139,16 +141,16 @@ export function SecurityDashboardClient({ user }: Props) {
         <Card className="overflow-hidden">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Recent Movements</CardTitle>
+              <CardTitle>{t("Recent Movements")}</CardTitle>
               <span className="text-xs text-zinc-500 font-medium">
-                {totalItems} total recorded
+                {t("{n} total recorded", { n: totalItems })}
               </span>
             </div>
           </CardHeader>
           <CardContent className="p-0 sm:p-0">
             {(!movementsList || movementsList.length === 0) ? (
               <p className="text-center text-sm text-zinc-500 py-12">
-                No movements recorded today.
+                {t("No movements recorded today.")}
               </p>
             ) : (
               <div className="space-y-2 p-4 sm:p-6 pt-0 sm:pt-0">
@@ -175,11 +177,11 @@ export function SecurityDashboardClient({ user }: Props) {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-zinc-200 truncate">
-                          {mov.student?.profile?.name || mov.faculty?.profile?.name || "Unknown"} —{" "}
-                          {mov.student?.studentRoll || mov.faculty?.employeeId || "Faculty"}
+                          {mov.student?.profile?.name || mov.faculty?.profile?.name || t("Unknown person")} —{" "}
+                          {mov.student?.studentRoll || mov.faculty?.employeeId || t("Faculty")}
                         </p>
                         <p className="text-xs text-zinc-500 truncate">
-                          {mov.gate?.name || "Unknown Gate"} •{" "}
+                          {mov.gate?.name || t("Unknown gate")} •{" "}
                           {mov.permission?.destination || mov.permission?.purpose || ""}
                         </p>
                       </div>
@@ -199,9 +201,7 @@ export function SecurityDashboardClient({ user }: Props) {
             {totalItems > 0 && (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-zinc-800/40 px-4 sm:px-6 py-3.5 bg-zinc-950/40">
                 <p className="text-xs sm:text-sm text-zinc-400">
-                  Showing <span className="font-semibold text-zinc-200">{startItem}</span> to{" "}
-                  <span className="font-semibold text-zinc-200">{endItem}</span> of{" "}
-                  <span className="font-semibold text-zinc-200">{totalItems}</span> movements
+                  {t("Showing {from}–{to} of {total} movements", { from: startItem, to: endItem, total: totalItems })}
                 </p>
                 <div className="flex items-center gap-1.5 sm:gap-2">
                   <Button
@@ -212,7 +212,7 @@ export function SecurityDashboardClient({ user }: Props) {
                     disabled={page <= 1}
                   >
                     <ChevronLeft className="h-4 w-4 sm:mr-1" />
-                    <span className="hidden sm:inline">Previous</span>
+                    <span className="hidden sm:inline">{t("Previous")}</span>
                   </Button>
 
                   {totalPages > 1 ? (
@@ -245,7 +245,7 @@ export function SecurityDashboardClient({ user }: Props) {
                         })}
                     </div>
                   ) : (
-                    <span className="text-xs text-zinc-500 px-2">Page 1 of 1</span>
+                    <span className="text-xs text-zinc-500 px-2">{t("Page {page} of {pages}", { page: 1, pages: 1 })}</span>
                   )}
 
                   <Button
@@ -255,7 +255,7 @@ export function SecurityDashboardClient({ user }: Props) {
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                     disabled={page >= totalPages}
                   >
-                    <span className="hidden sm:inline">Next</span>
+                    <span className="hidden sm:inline">{t("Next")}</span>
                     <ChevronRight className="h-4 w-4 sm:ml-1" />
                   </Button>
                 </div>
@@ -265,7 +265,7 @@ export function SecurityDashboardClient({ user }: Props) {
         </Card>
       </div>
 
-      <Modal open={!!selectedMovement} onClose={() => setSelectedMovement(null)} title="Gate Movement Details" className="max-w-xl">
+      <Modal open={!!selectedMovement} onClose={() => setSelectedMovement(null)} title={t("Gate Movement Details")} className="max-w-xl">
         {selectedMovement && <MovementDetails id={selectedMovement} />}
       </Modal>
     </>

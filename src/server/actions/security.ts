@@ -6,6 +6,7 @@ import { verifyScannedQr } from "@/lib/qr/token";
 import { revalidatePath } from "next/cache";
 import { gatePhotoFolder, isSafeStoragePath, uploadExitPhotoAdmin } from "@/lib/storage/storage-admin";
 import { istDateString, istDayRangeFromParam, istStartOfDay } from "@/lib/time/ist";
+import { fillMovementPeople } from "@/lib/people";
 
 let securityDashboardCache: { data: any; expiresAt: number } | null = null;
 let securityLogCache = new Map<string, { data: any; expiresAt: number }>();
@@ -576,6 +577,7 @@ export async function getSecurityDashboard() {
             profile: { select: { name: true } },
           },
         },
+        faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } } },
         gate: { select: { name: true } },
         permission: {
           select: { purpose: true, destination: true },
@@ -595,6 +597,7 @@ export async function getSecurityDashboard() {
   };
 
   securityDashboardCache = { data: result, expiresAt: Date.now() + 15_000 };
+  fillMovementPeople(result);
   return result;
 }
 
@@ -616,6 +619,7 @@ export async function getSecurityLogData(dateStr?: string) {
       select: {
         id: true, type: true, createdAt: true, notes: true, imagePath: true,
         student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
+        faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } } },
         gate: { select: { name: true } },
         permission: { select: { purpose: true, destination: true } },
       },
@@ -626,6 +630,7 @@ export async function getSecurityLogData(dateStr?: string) {
       select: {
         id: true, type: true, createdAt: true, notes: true, imagePath: true,
         student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
+        faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } } },
         gate: { select: { name: true } },
         permission: { select: { purpose: true, destination: true } },
       },
@@ -643,6 +648,7 @@ export async function getSecurityLogData(dateStr?: string) {
     selectedDate,
   };
   
+  fillMovementPeople(result);
   securityLogCache.set(cacheKey, { data: result, expiresAt: Date.now() + 15000 }); // 15s cache
   return result;
 }

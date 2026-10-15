@@ -518,7 +518,7 @@ export function FacultyAdminRequestsClient() {
           <div className="flex items-center gap-3">
             <button
               onClick={toggleSelectAll}
-              className="text-xs text-zinc-300 hover:text-white flex items-center gap-2 transition-colors cursor-pointer select-none font-medium px-2 py-1 rounded-lg hover:bg-zinc-800/60"
+              className="text-xs text-zinc-300 hover:text-zinc-100 flex items-center gap-2 transition-colors cursor-pointer select-none font-medium px-2 py-1 rounded-lg hover:bg-zinc-800/60"
             >
               {selectedIds.size > 0 ? (
                 <CheckSquare className="h-4 w-4 text-orange-500" />

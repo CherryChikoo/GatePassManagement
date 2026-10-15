@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "@/components/providers/language-provider";
 
 import { useCallback, useEffect, useState } from "react";
 import { FilePlus2, History, LogIn, LogOut, Pencil, Trash2 } from "lucide-react";
@@ -17,6 +18,8 @@ import {
 import { actionErrorMessage } from "@/lib/deployment";
 import { AdminEditForm, MovementForm, RegisterForm, type StaffOption } from "./register-form";
 import { formatFieldValue, formatInstant, newClientToken } from "./format";
+import { displayValue } from "./localize";
+import type { Translate } from "@/lib/i18n";
 import { Pager, RegisterToolbar, useRegisterFilters } from "./toolbar";
 
 type Supplement = {
@@ -43,15 +46,15 @@ type Entry = {
   supplements: Supplement[];
 };
 
-function recorderLine(r: { recordedByName: string; recordedByRole: string; recordedByEmployeeId: string | null; recordedAtGate: string | null }) {
-  return [r.recordedByName, r.recordedByEmployeeId, r.recordedAtGate, r.recordedByRole === "ADMIN" ? "Admin" : null].filter(Boolean).join(" • ");
+function recorderLine(r: { recordedByName: string; recordedByRole: string; recordedByEmployeeId: string | null; recordedAtGate: string | null }, t: Translate) {
+  return [r.recordedByName, r.recordedByEmployeeId, r.recordedAtGate, r.recordedByRole === "ADMIN" ? t("Admin") : null].filter(Boolean).join(" • ");
 }
 
 /** "Record In" / "Record Out" / "Mark workers out" — what the guard can still record. */
-function nextActionLabel(def: EntryRegister, current: Record<string, any>): string | null {
+function nextActionLabel(def: EntryRegister, current: Record<string, any>, t: Translate): string | null {
   const p = pendingActions(def, current);
-  if (p.next) return `Record ${p.next.label}`;
-  if (p.groups.length) return `Mark ${p.groups[0].group.label.toLowerCase()} out`;
+  if (p.next) return t("Record {side}", { side: p.next.label });
+  if (p.groups.length) return t("Mark {group} out", { group: p.groups[0].group.label.toLowerCase() });
   return null;
 }
 
@@ -65,6 +68,7 @@ export function EntryRegisterView({
   /** Main Admin: edit and delete saved records */
   canAdminEdit?: boolean;
 }) {
+  const t = useT();
   const filters = useRegisterFilters();
   const [data, setData] = useState<{ entries: Entry[]; total: number; pageSize: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,10 +93,10 @@ export function EntryRegisterView({
       if (res.error) setError(res.error);
       else setData({ entries: res.entries, total: res.total, pageSize: res.pageSize });
     } catch (err) {
-      setError(actionErrorMessage(err, "Could not load the register."));
+      setError(actionErrorMessage(err, t("Could not load the register.")));
     }
     setLoading(false);
-  }, [def.key, filters.dateParam, filters.q, filters.page]);
+  }, [def.key, filters.dateParam, filters.q, filters.page, t]);
 
   useEffect(() => {
     load();
@@ -125,7 +129,7 @@ export function EntryRegisterView({
         await load();
       }
     } catch (err) {
-      setFormError(actionErrorMessage(err, "Could not save. Please try again."));
+      setFormError(actionErrorMessage(err, t("Could not save. Please try again.")));
     }
     setBusy(false);
   }
@@ -142,7 +146,7 @@ export function EntryRegisterView({
               onClick={() => openMode("new", null)}
               className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold"
             >
-              <FilePlus2 className="h-4 w-4" /> New entry
+              <FilePlus2 className="h-4 w-4" /> {t("New entry")}
             </button>
           ) : null
         }
@@ -156,12 +160,12 @@ export function EntryRegisterView({
           <table className="w-full text-sm">
             <thead className="bg-zinc-900 text-left text-xs uppercase tracking-wider text-zinc-500">
               <tr>
-                <th className="px-3 py-2.5 font-medium whitespace-nowrap">Date</th>
-                {def.movement && !def.movement.single && <th className="px-3 py-2.5 font-medium whitespace-nowrap">Started</th>}
+                <th className="px-3 py-2.5 font-medium whitespace-nowrap">{t("Date")}</th>
+                {def.movement && !def.movement.single && <th className="px-3 py-2.5 font-medium whitespace-nowrap">{t("Started")}</th>}
                 {columns.map((c) => (
                   <th key={c.key} className="px-3 py-2.5 font-medium whitespace-nowrap">{c.label}</th>
                 ))}
-                <th className="px-3 py-2.5 font-medium whitespace-nowrap">Recorded by</th>
+                <th className="px-3 py-2.5 font-medium whitespace-nowrap">{t("Recorded by")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/70">
@@ -172,7 +176,7 @@ export function EntryRegisterView({
                   <tr key={e.id} onClick={() => setSelected(e)} className="cursor-pointer hover:bg-zinc-800/40">
                     <td className="px-3 py-2.5 whitespace-nowrap text-zinc-300">
                       {formatFieldValue({ key: "d", label: "", type: "date" }, e.entryDate)}
-                      {open && <span className="block mt-0.5 w-fit text-[10px] rounded bg-amber-500/15 text-amber-300 px-1.5">Open</span>}
+                      {open && <span className="block mt-0.5 w-fit text-[10px] rounded bg-amber-500/15 text-amber-300 px-1.5">{t("Open")}</span>}
                     </td>
                     {def.movement && !def.movement.single && (
                       <td className="px-3 py-2.5 whitespace-nowrap">
@@ -187,7 +191,7 @@ export function EntryRegisterView({
                     )}
                     {columns.map((c, i) => (
                       <td key={c.key} className={`px-3 py-2.5 whitespace-nowrap max-w-[220px] truncate ${i === 0 ? "font-medium text-zinc-100" : "text-zinc-400"}`}>
-                        {formatFieldValue(c, e.current[c.key])}
+                        {displayValue(c, e.current[c.key], t)}
                       </td>
                     ))}
                     <td className="px-3 py-2.5 whitespace-nowrap text-zinc-400">{e.recordedByName}</td>
@@ -198,9 +202,9 @@ export function EntryRegisterView({
           </table>
         </div>
         {data && data.entries.length === 0 && (
-          <p className="px-4 py-10 text-center text-sm text-zinc-500">No records {filters.dateParam === "all" ? "yet" : "for this date"}.</p>
+          <p className="px-4 py-10 text-center text-sm text-zinc-500">{filters.dateParam === "all" ? t("No records yet.") : t("No records for this date.")}</p>
         )}
-        {!data && !error && <p className="px-4 py-10 text-center text-sm text-zinc-500">Loading…</p>}
+        {!data && !error && <p className="px-4 py-10 text-center text-sm text-zinc-500">{t("Loading…")}</p>}
       </div>
 
       {data && <Pager page={filters.page} pageSize={data.pageSize} total={data.total} onPage={filters.setPage} />}
@@ -224,11 +228,11 @@ export function EntryRegisterView({
         onClose={() => !busy && setMode(null)}
         title={
           mode === "new"
-            ? `New entry — ${def.title}`
+            ? `${t("New entry")} — ${def.title}`
             : mode === "edit"
-            ? `Edit record — ${def.title}`
+            ? `${t("Edit record")} — ${def.title}`
             : selected
-            ? nextActionLabel(def, selected.current) ?? def.title
+            ? nextActionLabel(def, selected.current, t) ?? def.title
             : def.title
         }
         className="max-w-2xl"
@@ -240,7 +244,7 @@ export function EntryRegisterView({
             def={def}
             staff={staff}
             busy={busy}
-            onSubmit={(payload) => run(() => createRegisterEntry(def.key, payload, token), "Record saved.")}
+            onSubmit={(payload) => run(() => createRegisterEntry(def.key, payload, token), t("Record saved."))}
           />
         )}
         {mode === "edit" && selected && (
@@ -259,7 +263,7 @@ export function EntryRegisterView({
             def={def}
             current={selected.current}
             busy={busy}
-            onSubmit={(payload) => run(() => completeRegisterEntry(selected.id, payload, token), "Saved.")}
+            onSubmit={(payload) => run(() => completeRegisterEntry(selected.id, payload, token), t("Saved."))}
           />
         )}
       </Modal>
@@ -284,13 +288,14 @@ export function EntryRegisterView({
 }
 
 function ValuesGrid({ def, values }: { def: EntryRegister; values: Record<string, any> }) {
+  const t = useT();
   const m = def.movement;
   return (
     <div className="space-y-4">
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
         {m && !m.single && values.direction && (
           <div className="min-w-0">
-            <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Started with</dt>
+            <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Started with")}</dt>
             <dd className="text-sm text-zinc-200">{values.direction === "IN" ? m.in.label : m.out.label}</dd>
           </div>
         )}
@@ -303,7 +308,7 @@ function ValuesGrid({ def, values }: { def: EntryRegister; values: Record<string
         {def.fields.map((f) => (
           <div key={f.key} className={`min-w-0 ${f.type === "textarea" ? "sm:col-span-2" : ""}`}>
             <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{f.label}</dt>
-            <dd className="text-sm text-zinc-200 break-words">{formatFieldValue(f, values[f.key])}</dd>
+            <dd className="text-sm text-zinc-200 break-words">{displayValue(f, values[f.key], t)}</dd>
           </div>
         ))}
       </dl>
@@ -313,13 +318,13 @@ function ValuesGrid({ def, values }: { def: EntryRegister; values: Record<string
         return (
           <div key={g.key}>
             <p className="text-sm font-semibold text-zinc-200 mb-2">
-              {g.label} ({rows.length}{total !== null ? ` of ${total} listed` : ""})
+              {g.label} ({rows.length}{total !== null ? ` / ${total}` : ""})
             </p>
             {total !== null && rows.length < total && (
-              <p className="text-xs text-amber-300 mb-2">Details were entered for {rows.length} of {total} workers.</p>
+              <p className="text-xs text-amber-300 mb-2">{t("Details were entered for {n} of {total} workers.", { n: rows.length, total })}</p>
             )}
             {rows.length === 0 ? (
-              <p className="text-sm text-zinc-500">None</p>
+              <p className="text-sm text-zinc-500">{t("None")}</p>
             ) : (
               <div className="overflow-x-auto rounded-lg border border-zinc-800">
                 <table className="w-full text-xs">
@@ -336,7 +341,7 @@ function ValuesGrid({ def, values }: { def: EntryRegister; values: Record<string
                       <tr key={i}>
                         <td className="px-2 py-1.5 text-zinc-500">{i + 1}</td>
                         {g.fields.map((f) => (
-                          <td key={f.key} className="px-2 py-1.5 text-zinc-200 whitespace-nowrap">{formatFieldValue(f, r[f.key])}</td>
+                          <td key={f.key} className="px-2 py-1.5 text-zinc-200 whitespace-nowrap">{displayValue(f, r[f.key], t)}</td>
                         ))}
                       </tr>
                     ))}
@@ -364,7 +369,8 @@ function EntryDetails({
   onEdit?: () => void;
   onDelete?: () => void;
 }) {
-  const label = nextActionLabel(def, entry.current);
+  const t = useT();
+  const label = nextActionLabel(def, entry.current, t);
   const p = pendingActions(def, entry.current);
   const Icon = p.next?.direction === "OUT" ? LogOut : LogIn;
   return (
@@ -372,15 +378,15 @@ function EntryDetails({
       <ValuesGrid def={def} values={entry.current} />
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 space-y-2">
-        <p className="text-xs font-semibold text-zinc-400 flex items-center gap-1.5"><History className="h-3.5 w-3.5" /> Record history</p>
+        <p className="text-xs font-semibold text-zinc-400 flex items-center gap-1.5"><History className="h-3.5 w-3.5" /> {t("Record history")}</p>
         <ul className="space-y-1.5 text-xs text-zinc-300">
           <li>
-            <span className="text-zinc-500">{formatInstant(entry.createdAt)}</span> — Recorded by {recorderLine(entry)}
+            <span className="text-zinc-500">{formatInstant(entry.createdAt)}</span> — {t("Recorded by")} {recorderLine(entry, t)}
           </li>
           {entry.supplements.map((s) => (
             <li key={s.id}>
-              <span className="text-zinc-500">{formatInstant(s.createdAt)}</span> — {s.kind === "CORRECTION" ? "Correction" : "Updated"} by {recorderLine(s)}
-              {s.reason && <span className="block text-zinc-400 pl-3">Reason: {s.reason}</span>}
+              <span className="text-zinc-500">{formatInstant(s.createdAt)}</span> — {s.kind === "CORRECTION" ? t("Correction by") : t("Updated by")} {recorderLine(s, t)}
+              {s.reason && <span className="block text-zinc-400 pl-3">{t("Reason")}: {s.reason}</span>}
             </li>
           ))}
         </ul>
@@ -394,12 +400,12 @@ function EntryDetails({
         )}
         {onEdit && (
           <button onClick={onEdit} className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-zinc-700 text-zinc-200 hover:bg-zinc-800 text-sm font-semibold">
-            <Pencil className="h-4 w-4" /> Edit
+            <Pencil className="h-4 w-4" /> {t("Edit")}
           </button>
         )}
         {onDelete && (
           <button onClick={onDelete} className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl border border-red-500/40 text-red-300 hover:bg-red-500/10 text-sm font-semibold">
-            <Trash2 className="h-4 w-4" /> Delete
+            <Trash2 className="h-4 w-4" /> {t("Delete")}
           </button>
         )}
       </div>

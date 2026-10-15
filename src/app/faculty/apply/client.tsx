@@ -454,7 +454,7 @@ export function FacultyApplyClient() {
                     min={today}
                     onChange={(e) => setStartDate(e.target.value)}
                     required
-                    className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500 [color-scheme:dark]"
+                    className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500 [color-scheme:light]"
                   />
                 </div>
                 <div>
@@ -470,7 +470,7 @@ export function FacultyApplyClient() {
                     onChange={(e) => setEndDate(e.target.value)}
                     readOnly={!isMultiDay}
                     required={isMultiDay}
-                    className={`w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500 [color-scheme:dark] ${isMultiDay ? "" : "opacity-60 cursor-not-allowed"}`}
+                    className={`w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500 [color-scheme:light] ${isMultiDay ? "" : "opacity-60 cursor-not-allowed"}`}
                   />
                 </div>
                 <div>
@@ -636,7 +636,7 @@ export function FacultyApplyClient() {
                       setHistoryDate(e.target.value);
                       setCurrentPage(1);
                     }}
-                    className="relative h-9 pl-9 pr-3 w-40 sm:w-44 bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-medium rounded-xl focus:outline-none focus:border-zinc-700 [color-scheme:dark] cursor-pointer hover:border-zinc-700 hover:bg-zinc-800/80 transition-colors [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                    className="relative h-9 pl-9 pr-3 w-40 sm:w-44 bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-medium rounded-xl focus:outline-none focus:border-zinc-700 [color-scheme:light] cursor-pointer hover:border-zinc-700 hover:bg-zinc-800/80 transition-colors [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                   />
                 </div>
 
@@ -744,7 +744,7 @@ export function FacultyApplyClient() {
 
         {/* Pagination Bar (Sticky at bottom, touches sidebar seamlessly with 0px gap) */}
         {passesToDisplay.length > 0 && (
-          <div className="sticky bottom-0 -mx-4 lg:-mx-8 -mb-4 lg:-mb-8 mt-10 border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl z-30 shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.5)]">
+          <div className="sticky bottom-0 -mx-4 lg:-mx-8 -mb-4 lg:-mb-8 mt-10 border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl z-30 shadow-[0_-10px_40px_-10px_rgba(16,24,40,0.12)]">
             <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
               <p className="text-sm text-zinc-400 font-medium">
                 Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{" "}

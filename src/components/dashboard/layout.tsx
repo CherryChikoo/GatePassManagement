@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { logoutAndClear } from "@/stores/app-store";
 import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
+import { LanguageToggle, useT } from "@/components/providers/language-provider";
 import {
   LayoutDashboard,
   FileText,
@@ -29,6 +31,9 @@ import {
   GraduationCap,
   Loader2,
   BookOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Briefcase,
 } from "lucide-react";
 
 export type NavItem = {
@@ -49,6 +54,26 @@ interface DashboardLayoutProps {
   roleTitle?: string;
 }
 
+/** College mark + "Gate Pass" + the role line (labels hide when the sidebar is collapsed). */
+function BrandMark({ compact = false, roleLine }: { compact?: boolean; roleLine: string }) {
+  return (
+    <div className="flex items-center min-w-0">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-zinc-900 border border-zinc-800 shadow-card">
+        <Image src="/brand/logo-mark.webp" alt="Ramachandra College of Engineering" width={28} height={28} priority />
+      </span>
+      <div
+        className={cn(
+          "flex flex-col overflow-hidden whitespace-nowrap min-w-0 ml-3 transition-[opacity,width,margin] duration-300",
+          compact && "lg:w-0 lg:opacity-0 lg:ml-0"
+        )}
+      >
+        <span className="text-[15px] font-semibold text-zinc-100 tracking-tight leading-tight truncate">Gate Pass</span>
+        <span className="text-[11px] text-zinc-500 leading-tight truncate">{roleLine}</span>
+      </div>
+    </div>
+  );
+}
+
 export function DashboardLayout({
   children,
   role,
@@ -58,9 +83,10 @@ export function DashboardLayout({
   defaultCollapsed = false,
   roleTitle,
 }: DashboardLayoutProps) {
+  const t = useT();
   const roleLine =
     roleTitle ||
-    `${role === "FACULTY_ADMIN" ? "HOD" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : role === "SECURITY_SUPERVISOR" ? "SUPERVISOR" : role} Dashboard`;
+    t(`${role === "FACULTY_ADMIN" ? "HOD" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : role === "SECURITY_SUPERVISOR" ? "SUPERVISOR" : role} Dashboard`);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [desktopCollapsed, setDesktopCollapsed] = useState(defaultCollapsed);
   const pathname = usePathname();
@@ -105,30 +131,6 @@ export function DashboardLayout({
     setSidebarOpen(false);
   };
 
-  const roleColors: Record<string, string> = {
-    ADMIN: "from-violet-600 to-purple-600",
-    STUDENT: "from-blue-600 to-cyan-600",
-    FACULTY: "from-orange-500 to-amber-600",
-    FACULTY_ADMIN: "from-indigo-500 to-violet-600",
-    WARDEN: "from-amber-600 to-orange-600",
-    SECURITY: "from-red-600 to-rose-600",
-    DIRECTOR: "from-emerald-600 to-teal-600",
-    DEAN: "from-sky-600 to-blue-600",
-    SECURITY_SUPERVISOR: "from-teal-600 to-emerald-600",
-  };
-
-  const roleGlow: Record<string, string> = {
-    ADMIN: "shadow-violet-500/20",
-    STUDENT: "shadow-blue-500/20",
-    FACULTY: "shadow-orange-500/20",
-    FACULTY_ADMIN: "shadow-indigo-500/20",
-    WARDEN: "shadow-amber-500/20",
-    SECURITY: "shadow-red-500/20",
-    DIRECTOR: "shadow-emerald-500/20",
-    DEAN: "shadow-sky-500/20",
-    SECURITY_SUPERVISOR: "shadow-teal-500/20",
-  };
-
   const isMobileNavRole = role === "STUDENT" || role === "SECURITY";
 
   // Lock body scroll when mobile drawer is open
@@ -148,289 +150,220 @@ export function DashboardLayout({
     setSidebarOpen(false);
   }, [pathname]);
 
+  const ROOT_PATHS = ["/admin", "/faculty", "/faculty-admin", "/director", "/dean", "/supervisor", "/warden", "/student", "/security"];
+  const isActivePath = (href: string) =>
+    ROOT_PATHS.includes(href)
+      ? pathname === href
+      : pathname === href || (pathname.startsWith(href + "/") && href !== "/");
+
+  const initial = userName.charAt(0).toUpperCase();
+  const toggleCollapsed = () =>
+    setDesktopCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("gatepass_sidebar_collapsed", String(next));
+      document.cookie = `gatepass_sidebar_collapsed=${next}; path=/; max-age=31536000`;
+      return next;
+    });
+
   return (
     <div className="flex h-screen bg-zinc-950 overflow-hidden">
-      
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden animate-fade-in"
+          className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[2px] lg:hidden animate-fade-in"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar - Only show if there are navigation items */}
+      {/* Sidebar: floating glass panel (drawer on mobile) */}
       {navItems.length > 0 && (
         <aside
           className={cn(
-            "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-zinc-800/60 bg-zinc-950/95 backdrop-blur-xl transition-all duration-300 lg:static lg:translate-x-0 shadow-2xl lg:shadow-none",
+            "fixed inset-y-0 left-0 z-50 flex flex-col glass transition-[transform,width] duration-300",
+            "lg:static lg:translate-x-0 lg:my-3 lg:ml-3 lg:rounded-[28px] lg:shadow-card",
             sidebarOpen ? "translate-x-0" : "-translate-x-full",
-            desktopCollapsed ? "lg:w-20" : "lg:w-64",
-            "w-72" // Mobile width
+            desktopCollapsed ? "lg:w-[84px]" : "lg:w-64",
+            "w-72 rounded-r-[28px]"
           )}
         >
-        {/* Logo & Role */}
-        <div className="flex items-center justify-between border-b border-zinc-800/50 py-4 px-4 sm:px-5">
-          <div className="flex items-center min-w-0">
-            <div
-              className={cn(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br shadow-lg",
-                roleColors[role] || roleColors.ADMIN,
-                roleGlow[role] || roleGlow.ADMIN
-              )}
-            >
-              <Shield className="h-5 w-5 text-white" />
-            </div>
-            <div
-              className={cn(
-                "flex flex-col overflow-hidden transition-all duration-300 whitespace-nowrap min-w-0 w-full opacity-100 ml-3",
-                desktopCollapsed && "lg:w-0 lg:opacity-0 lg:ml-0"
-              )}
-            >
-              <h1 className="text-sm font-bold text-zinc-100 tracking-tight truncate">
-                GatePass Portal
-              </h1>
-              <p className="text-xs text-zinc-500 font-medium truncate">
-                {roleLine}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
-            aria-label="Close menu"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-          {navItems.map((item) => {
-            const isRootPath =
-              item.href === "/admin" ||
-              item.href === "/faculty" ||
-              item.href === "/faculty-admin" ||
-              item.href === "/director" ||
-              item.href === "/dean" ||
-              item.href === "/supervisor" ||
-              item.href === "/warden" ||
-              item.href === "/student" ||
-              item.href === "/security";
-            const isActive = isRootPath
-              ? pathname === item.href
-              : pathname === item.href || (pathname.startsWith(item.href + "/") && item.href !== "/");
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={handleNavigation}
-                className={cn(
-                  "group flex items-center rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-100 overflow-hidden",
-                  isActive
-                    ? cn(
-                        "bg-gradient-to-r text-white shadow-lg",
-                        roleColors[role] || roleColors.ADMIN,
-                        roleGlow[role] || roleGlow.ADMIN
-                      )
-                    : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200"
-                )}
-              >
-                <span className={cn("flex-shrink-0", isActive ? "text-white" : "text-zinc-500 group-hover:text-zinc-300")}>
-                  {item.icon}
-                </span>
-                <div
-                  className={cn(
-                    "flex flex-1 items-center justify-between overflow-hidden transition-all duration-300 min-w-0 w-full opacity-100 ml-3",
-                    desktopCollapsed && "lg:w-0 lg:opacity-0 lg:ml-0"
-                  )}
-                >
-                  <span className="truncate">{item.label}</span>
-                  {item.badge !== undefined && item.badge > 0 && (
-                    <span
-                      className={cn(
-                        "flex h-5 min-w-5 items-center justify-center rounded-full text-[10px] font-bold px-1.5 shrink-0",
-                        isActive
-                          ? "bg-white/20 text-white"
-                          : "bg-indigo-500/20 text-indigo-400"
-                      )}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
-                </div>
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* User Profile & Sign Out in Drawer */}
-        <div className="border-t border-zinc-800/50 p-4 space-y-2">
-          <div className="flex items-center rounded-xl bg-zinc-900/50 py-2.5 px-3 overflow-hidden">
-            <div
-              className={cn(
-                "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-white text-sm font-bold",
-                roleColors[role] || roleColors.ADMIN
-              )}
-            >
-              {userName.charAt(0).toUpperCase()}
-            </div>
-            <div
-              className={cn(
-                "flex flex-col overflow-hidden transition-all duration-300 whitespace-nowrap min-w-0 w-full opacity-100 ml-3",
-                desktopCollapsed && "lg:w-0 lg:opacity-0 lg:ml-0"
-              )}
-            >
-              <p className="text-sm font-medium text-zinc-200 truncate">
-                {userName}
-              </p>
-              <p className="text-xs text-zinc-500 truncate">{userEmail}</p>
-            </div>
-          </div>
-
-          {/* Direct sign out in drawer on mobile */}
-          <div className="lg:hidden pt-1">
+          <div className="flex items-center justify-between px-4 pt-5 pb-4">
+            <BrandMark compact={desktopCollapsed} roleLine={roleLine} />
             <button
-              type="button"
-              onClick={handleLogout}
-              disabled={signingOut}
-              aria-busy={signingOut}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-red-500/40 hover:bg-red-500/10 px-3 py-2 text-xs font-semibold text-zinc-300 hover:text-red-400 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+              onClick={() => setSidebarOpen(false)}
+              className="lg:hidden rounded-full p-2 text-zinc-400 hover:bg-zinc-950 hover:text-zinc-200 transition-colors"
+              aria-label={t("Close menu")}
             >
-              {signingOut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
-              <span>{signingOut ? "Signing out…" : "Sign Out"}</span>
+              <X className="h-5 w-5" />
             </button>
           </div>
-        </div>
-      </aside>
-      )}
 
-      {/* Main Content */}
-      <main className={cn("flex-1 flex flex-col min-w-0 max-w-full overflow-hidden relative", isMobileNavRole ? "pb-16 lg:pb-0" : "")}>
-        <header className="flex items-center gap-3 sm:gap-4 border-b border-zinc-800/50 bg-zinc-950/80 backdrop-blur-xl px-3 sm:px-6 py-3 shrink-0">
-          {navItems.length > 0 ? (
-            <>
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="rounded-xl p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors lg:hidden"
-                aria-label="Open menu"
-              >
-                <Menu className="h-5 w-5" />
-              </button>
-              <button
-                onClick={() => {
-                  setDesktopCollapsed(prev => {
-                    const next = !prev;
-                    localStorage.setItem("gatepass_sidebar_collapsed", String(next));
-                    document.cookie = `gatepass_sidebar_collapsed=${next}; path=/; max-age=31536000`;
-                    return next;
-                  });
-                }}
-                className="hidden lg:block rounded-xl p-2 text-zinc-400 hover:bg-zinc-800 transition-colors"
-                aria-label="Toggle sidebar width"
-              >
-                <Menu className="h-5 w-5" />
-              </button>
-            </>
-          ) : (
-            <div className="flex items-center gap-3 min-w-0">
-              <div
-                className={cn(
-                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br shadow-lg",
-                  roleColors[role] || roleColors.ADMIN,
-                  roleGlow[role] || roleGlow.ADMIN
-                )}
-              >
-                <Shield className="h-4 w-4 text-white" />
-              </div>
-              <div className="hidden sm:block min-w-0">
-                <h1 className="text-sm font-bold text-zinc-100 tracking-tight leading-tight truncate">
-                  GatePass Portal
-                </h1>
-                <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider truncate">{roleLine}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="flex-1" />
-          <div className="flex items-center gap-2 sm:gap-4">
-            {navItems.length === 0 && (
-              <div className="hidden sm:flex items-center gap-3 pr-4 border-r border-zinc-800/50">
-                <div
+          <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-1" aria-label="Main">
+            {navItems.map((item) => {
+              const isActive = isActivePath(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={handleNavigation}
+                  title={desktopCollapsed ? t(item.label) : undefined}
+                  aria-current={isActive ? "page" : undefined}
                   className={cn(
-                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-white text-xs font-bold",
-                    roleColors[role] || roleColors.ADMIN
+                    "group relative flex items-center rounded-2xl px-3 py-2.5 text-sm transition-colors duration-150 overflow-hidden",
+                    isActive
+                      ? "bg-zinc-900 text-zinc-100 font-medium shadow-card border border-zinc-800/80"
+                      : "text-zinc-400 hover:bg-zinc-900/70 hover:text-zinc-200 border border-transparent",
+                    desktopCollapsed && "lg:justify-center lg:px-0"
                   )}
                 >
-                  {userName.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <p className="text-sm font-medium text-zinc-200 leading-tight truncate">
-                    {userName}
-                  </p>
-                  <p className="text-[11px] text-zinc-500 leading-tight truncate">{userEmail}</p>
-                </div>
-              </div>
-            )}
+                  <span
+                    className={cn(
+                      "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors [&>svg]:h-[18px] [&>svg]:w-[18px]",
+                      isActive ? "bg-orange-500/10 text-orange-400" : "text-zinc-500 group-hover:text-zinc-300"
+                    )}
+                  >
+                    {item.icon}
+                  </span>
+                  <span
+                    className={cn(
+                      "flex flex-1 items-center justify-between min-w-0 ml-3 transition-[opacity,width,margin] duration-300",
+                      desktopCollapsed && "lg:w-0 lg:flex-none lg:opacity-0 lg:ml-0"
+                    )}
+                  >
+                    <span className="truncate">{t(item.label)}</span>
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-600 text-[10px] font-semibold text-white px-1.5 shrink-0">
+                        {item.badge}
+                      </span>
+                    )}
+                  </span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* Collapse toggle (desktop) + sign out */}
+          <div className="px-3 pb-4 pt-2 space-y-1">
+            <button
+              onClick={toggleCollapsed}
+              className={cn(
+                "hidden lg:flex w-full items-center rounded-2xl px-3 py-2.5 text-sm text-zinc-400 hover:bg-zinc-900/70 hover:text-zinc-200 transition-colors",
+                desktopCollapsed && "justify-center px-0"
+              )}
+              aria-label={desktopCollapsed ? t("Expand sidebar") : t("Collapse sidebar")}
+              title={desktopCollapsed ? t("Expand sidebar") : t("Collapse sidebar")}
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+                {desktopCollapsed ? <PanelLeftOpen className="h-[18px] w-[18px]" /> : <PanelLeftClose className="h-[18px] w-[18px]" />}
+              </span>
+              <span className={cn("ml-3 truncate", desktopCollapsed && "hidden")}>{t("Collapse")}</span>
+            </button>
             <button
               type="button"
               onClick={handleLogout}
               disabled={signingOut}
               aria-busy={signingOut}
-              className="flex items-center gap-1.5 sm:gap-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-red-500/40 hover:bg-red-500/10 px-2.5 sm:px-3.5 py-1.5 text-xs font-semibold text-zinc-300 hover:text-red-400 transition-all cursor-pointer shadow-sm disabled:opacity-60 disabled:cursor-wait"
-              title="Sign Out"
+              title={t("Sign out")}
+              className={cn(
+                "flex w-full items-center rounded-2xl px-3 py-2.5 text-sm text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-60 disabled:cursor-wait",
+                desktopCollapsed && "lg:justify-center lg:px-0"
+              )}
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+                {signingOut ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <LogOut className="h-[18px] w-[18px]" />}
+              </span>
+              <span className={cn("ml-3 truncate", desktopCollapsed && "lg:hidden")}>{signingOut ? t("Signing out…") : t("Sign out")}</span>
+            </button>
+          </div>
+        </aside>
+      )}
+
+      {/* Main */}
+      <main className={cn("flex-1 flex flex-col min-w-0 max-w-full overflow-hidden relative", isMobileNavRole ? "pb-24 lg:pb-0" : "")}>
+        {/* Top bar: glass */}
+        <header className="sticky top-0 z-30 mx-3 mt-3 sm:mx-4 lg:mx-6 flex items-center gap-3 rounded-[22px] glass shadow-card px-3 sm:px-4 py-2.5 shrink-0">
+          {navItems.length > 0 ? (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="rounded-full p-2 text-zinc-400 hover:bg-zinc-950 hover:text-zinc-200 transition-colors lg:hidden"
+              aria-label={t("Open menu")}
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+          ) : null}
+          <div className={cn("min-w-0", navItems.length > 0 ? "lg:hidden" : "")}>
+            <BrandMark roleLine={roleLine} />
+          </div>
+
+          <div className="flex-1" />
+
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            {role === "SECURITY" && <LanguageToggle />}
+            <div className="hidden md:flex flex-col items-end min-w-0 leading-tight">
+              <span className="text-sm font-medium text-zinc-100 truncate max-w-[220px]">{userName}</span>
+              <span className="text-[11px] text-zinc-500 truncate max-w-[220px]">{userEmail}</span>
+            </div>
+            <span
+              className="hidden sm:flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-orange-400 text-sm font-semibold border border-orange-500/20"
+              aria-hidden="true"
+            >
+              {initial}
+            </span>
+            {/* Sign out lives in the sidebar on desktop; keep it here for pages without a sidebar and on phones */}
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={signingOut}
+              aria-busy={signingOut}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-300 hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-60 disabled:cursor-wait",
+                navItems.length > 0 && "lg:hidden"
+              )}
+              title={t("Sign out")}
             >
               {signingOut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
-              <span className="hidden sm:inline">{signingOut ? "Signing out…" : "Sign Out"}</span>
+              <span className="hidden sm:inline">{signingOut ? t("Signing out…") : t("Sign out")}</span>
             </button>
           </div>
         </header>
 
-        {/* Page Content */}
-        <div className="flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden p-3 sm:p-6 lg:p-8">
+        {/* Page content */}
+        <div className="flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden px-3 pt-5 pb-6 sm:px-4 lg:px-6 lg:pt-6 lg:pb-8">
           {children}
         </div>
       </main>
 
       {signingOut && <SigningOutOverlay />}
 
-      {/* Mobile Bottom Navigation Bar */}
+      {/* Mobile bottom navigation: floating glass bar */}
       {isMobileNavRole && navItems.length > 0 && (
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around bg-zinc-950/95 backdrop-blur-xl border-t border-zinc-800/60 px-1 h-16 pb-safe">
+        <nav
+          className="lg:hidden fixed bottom-3 left-3 right-3 z-40 flex items-center justify-around rounded-[26px] glass shadow-card px-1 h-16"
+          style={{ marginBottom: "env(safe-area-inset-bottom)" }}
+          aria-label="Main"
+        >
           {navItems.map((item) => {
-            const isRootPath =
-              item.href === "/admin" ||
-              item.href === "/faculty" ||
-              item.href === "/faculty-admin" ||
-              item.href === "/director" ||
-              item.href === "/dean" ||
-              item.href === "/supervisor" ||
-              item.href === "/warden" ||
-              item.href === "/student" ||
-              item.href === "/security";
-            const isActive = isRootPath
-              ? pathname === item.href
-              : pathname === item.href || (pathname.startsWith(item.href + "/") && item.href !== "/");
+            const isActive = isActivePath(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "flex flex-col items-center justify-center w-full h-full gap-0.5 transition-colors relative",
-                  isActive ? "text-orange-500" : "text-zinc-500 hover:text-zinc-300"
+                  "relative flex flex-col items-center justify-center w-full h-full gap-0.5 transition-colors",
+                  isActive ? "text-orange-400" : "text-zinc-500 hover:text-zinc-300"
                 )}
               >
-                {isActive && (
-                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-1 rounded-b-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)]" />
-                )}
-                <span className={cn(isActive ? "scale-110" : "")}>
+                <span
+                  className={cn(
+                    "flex h-8 w-12 items-center justify-center rounded-full transition-colors [&>svg]:h-5 [&>svg]:w-5",
+                    isActive && "bg-orange-500/10"
+                  )}
+                >
                   {item.icon}
                 </span>
-                <span className="text-[10px] font-medium tracking-tight truncate max-w-[64px] text-center">
-                  {item.label}
-                </span>
+                <span className="text-[10px] font-medium tracking-tight truncate max-w-[64px] text-center">{t(item.label)}</span>
                 {item.badge !== undefined && item.badge > 0 && (
-                  <span className="absolute top-1 right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 text-[9px] font-bold text-white px-1">
+                  <span className="absolute top-1 right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-600 text-[9px] font-semibold text-white px-1">
                     {item.badge}
                   </span>
                 )}
@@ -442,6 +375,7 @@ export function DashboardLayout({
     </div>
   );
 }
+
 
 // ──────────────────────────────────────────────────────────────
 // Pre-built nav items per role
@@ -499,6 +433,7 @@ export const securityNavItems: NavItem[] = [
   { label: "Dashboard", href: "/security", icon: <LayoutDashboard className="h-5 w-5" /> },
   { label: "Scan QR", href: "/security/scan", icon: <ScanLine className="h-5 w-5" /> },
   { label: "Visitors", href: "/security/visitors", icon: <Users className="h-5 w-5" /> },
+  { label: "Faculty", href: "/security/faculty", icon: <Briefcase className="h-5 w-5" /> },
   { label: "Gate Logs", href: "/security/log", icon: <History className="h-5 w-5" /> },
   { label: "Registers", href: "/security/registers", icon: <BookOpen className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },

@@ -1,4 +1,5 @@
 "use client";
+import { MovementDetails } from "@/components/registers/derived-views";
 
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
@@ -143,8 +144,13 @@ export function AdminDashboardClient({ user }: Props) {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-zinc-200 truncate">
-                          {mov.student?.profile?.name || "Unknown"} —{" "}
-                          {mov.student?.studentRoll || ""}
+                          {mov.student?.profile?.name || "Unknown person"}
+                          {mov.student?.studentRoll ? ` — ${mov.student.studentRoll}` : ""}
+                          {mov.student?.isFaculty && (
+                            <span className="ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400">
+                              Faculty
+                            </span>
+                          )}
                         </p>
                         <p className="text-xs text-zinc-500 truncate">
                           Gate: {mov.gate?.name || "—"}
@@ -166,75 +172,8 @@ export function AdminDashboardClient({ user }: Props) {
       </div>
       
       {/* Record Details Modal */}
-      <Modal
-        open={!!selectedRecord}
-        onClose={() => setSelectedRecord(null)}
-        title="Movement Details"
-      >
-        {selectedRecord && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-zinc-100">
-                {selectedRecord.student?.profile?.name || selectedRecord.name || "Unknown"}
-              </h3>
-              <StatusBadge status={selectedRecord.type || selectedRecord.status} />
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
-              {/* Student phone */}
-              {selectedRecord.student?.profile?.phone && (
-                <div>
-                  <p className="text-zinc-500">Phone</p>
-                  <p className="font-medium text-zinc-200">{selectedRecord.student.profile.phone}</p>
-                </div>
-              )}
-              {/* Student email */}
-              {selectedRecord.student?.profile?.email && (
-                <div>
-                  <p className="text-zinc-500">Email</p>
-                  <p className="font-medium text-zinc-200">{selectedRecord.student.profile.email}</p>
-                </div>
-              )}
-              {/* Permission purpose */}
-              {selectedRecord.permission?.purpose && (
-                <div className="col-span-2">
-                  <p className="text-zinc-500">Purpose</p>
-                  <p className="font-medium text-zinc-200">{selectedRecord.permission.purpose}</p>
-                </div>
-              )}
-              {selectedRecord.permission?.destination && (
-                <div className="col-span-2">
-                  <p className="text-zinc-500">Destination</p>
-                  <p className="font-medium text-zinc-200">{selectedRecord.permission.destination}</p>
-                </div>
-              )}
-              {selectedRecord.student?.studentRoll && (
-                <div>
-                  <p className="text-zinc-500">Roll Number</p>
-                  <p className="font-medium text-zinc-200">{selectedRecord.student.studentRoll}</p>
-                </div>
-              )}
-              {selectedRecord.gate?.name && (
-                <div>
-                  <p className="text-zinc-500">Gate</p>
-                  <p className="font-medium text-zinc-200">{selectedRecord.gate.name}</p>
-                </div>
-              )}
-              {selectedRecord.securityUser?.profile?.name && (
-                <div>
-                  <p className="text-zinc-500">Processed By</p>
-                  <p className="font-medium text-zinc-200">{selectedRecord.securityUser.profile.name}</p>
-                </div>
-              )}
-              {selectedRecord.createdAt && (
-                <div className="col-span-2">
-                  <p className="text-zinc-500">Timestamp</p>
-                  <p className="font-medium text-zinc-200">{formatDateTime(selectedRecord.createdAt)}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+      <Modal open={!!selectedRecord} onClose={() => setSelectedRecord(null)} title="Movement Details" className="max-w-xl">
+        {selectedRecord && <MovementDetails id={selectedRecord.id} />}
       </Modal>
     </>
   );

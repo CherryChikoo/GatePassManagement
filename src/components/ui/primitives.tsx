@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { T } from "@/components/providers/language-provider";
 
 // ──────────────────────────────────────────────────────────────
 // Badge
@@ -15,18 +16,18 @@ function Badge({
   ...props
 }: BadgeProps) {
   const variants: Record<string, string> = {
-    default: "bg-zinc-800 text-zinc-300 border-zinc-700",
-    success: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-    warning: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-    danger: "bg-red-500/15 text-red-400 border-red-500/30",
-    info: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-    outline: "border-zinc-700 text-zinc-400 bg-transparent",
+    default: "bg-zinc-950 text-zinc-300 border-zinc-800",
+    success: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
+    warning: "bg-amber-500/10 text-amber-300 border-amber-500/25",
+    danger: "bg-red-500/10 text-red-300 border-red-500/20",
+    info: "bg-blue-500/10 text-blue-300 border-blue-500/20",
+    outline: "border-zinc-800 text-zinc-500 bg-zinc-900",
   };
 
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-lg border px-2.5 py-0.5 text-xs font-medium transition-colors",
+        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium tracking-wide transition-colors",
         variants[variant],
         className
       )}
@@ -64,11 +65,11 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         <select
           id={selectId}
           className={cn(
-            "flex h-11 w-full rounded-xl border border-zinc-700/50 bg-zinc-900/50 px-3.5 py-2 text-base sm:text-sm text-zinc-100 transition-all duration-200",
+            "flex h-11 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-3.5 py-2 text-base sm:text-sm text-zinc-100 transition-all duration-200",
             "focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500/50",
-            "hover:border-zinc-600",
+            "hover:border-zinc-700",
             "disabled:cursor-not-allowed disabled:opacity-50",
-            "backdrop-blur-sm",
+
             "[&>option]:bg-zinc-900 [&>option]:text-zinc-100",
             error && "border-red-500/50",
             className
@@ -113,11 +114,11 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
         <textarea
           id={textareaId}
           className={cn(
-            "flex min-h-[80px] w-full rounded-xl border border-zinc-700/50 bg-zinc-900/50 px-3.5 py-2.5 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 transition-all duration-200",
+            "flex min-h-[80px] w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-3.5 py-2.5 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 transition-all duration-200",
             "focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500/50",
-            "hover:border-zinc-600",
+            "hover:border-zinc-700",
             "disabled:cursor-not-allowed disabled:opacity-50",
-            "backdrop-blur-sm resize-none",
+            "resize-none",
             error && "border-red-500/50",
             className
           )}
@@ -153,7 +154,7 @@ export function StatusBadge({ status }: { status: string }) {
   };
   return (
     <Badge variant={variantMap[status] || "default"}>
-      {status}
+      <T>{status}</T>
     </Badge>
   );
 }
@@ -184,39 +185,26 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "relative min-w-0 overflow-hidden rounded-2xl border border-zinc-800/50 bg-zinc-900/60 backdrop-blur-xl p-3.5 sm:p-5 md:p-6 shadow-xl transition-all duration-300 hover:border-zinc-700/50 flex flex-col justify-between",
+        "relative min-w-0 rounded-3xl border border-zinc-800/80 bg-zinc-900 p-4 sm:p-5 md:p-6 shadow-card flex flex-col justify-between gap-4 sm:gap-6",
         className
       )}
     >
-      {/* Subtle gradient glow */}
-      <div className="absolute -top-12 -right-12 h-24 w-24 rounded-full bg-orange-500/5 blur-2xl pointer-events-none" />
-      <div className="relative min-w-0">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs sm:text-sm font-medium text-zinc-400 truncate">{title}</p>
-          <div className="rounded-xl bg-zinc-800/80 p-2 sm:p-2.5 text-zinc-400 shrink-0">
-            {icon}
-          </div>
+      <div className="flex items-start justify-between gap-3 min-w-0">
+        <p className="text-sm sm:text-[15px] text-zinc-300 leading-snug truncate">{title}</p>
+        <div className="-mt-1 -mr-1 flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full border border-zinc-800 bg-zinc-950 text-zinc-300 [&>svg]:h-4 [&>svg]:w-4 sm:[&>svg]:h-[18px] sm:[&>svg]:w-[18px]">
+          {icon}
         </div>
-        <div className="mt-2 sm:mt-3 min-w-0">
-          <p className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-zinc-100 truncate">
-            {value}
+      </div>
+      <div className="min-w-0">
+        <p className="text-3xl sm:text-4xl md:text-[44px] leading-none font-light tracking-tight text-zinc-100 truncate">
+          {value}
+        </p>
+        {trend && (
+          <p className={cn("mt-2 text-xs font-medium truncate", trendUp ? "text-emerald-400" : "text-red-400")}>
+            {trendUp ? "+" : "−"} {trend}
           </p>
-          {trend && (
-            <p
-              className={cn(
-                "mt-1 text-[11px] sm:text-xs font-medium truncate",
-                trendUp ? "text-emerald-400" : "text-red-400"
-              )}
-            >
-              {trendUp ? "↑" : "↓"} {trend}
-            </p>
-          )}
-          {description && (
-            <p className="mt-1 text-[10px] sm:text-xs text-zinc-500 font-medium truncate">
-              {description}
-            </p>
-          )}
-        </div>
+        )}
+        {description && <p className="mt-2 text-xs text-zinc-500 truncate">{description}</p>}
       </div>
     </div>
   );
@@ -293,13 +281,13 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/30 backdrop-blur-[3px]"
         onClick={onClose}
       />
       {/* Content */}
       <div
         className={cn(
-          "relative z-10 w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl flex flex-col max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)]",
+          "relative z-10 w-full max-w-lg rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-[0_24px_60px_-20px_rgba(16,24,40,0.35)] flex flex-col max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)]",
           "animate-in fade-in-0 zoom-in-95 duration-200",
           className
         )}

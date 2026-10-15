@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -67,12 +68,13 @@ function useLoader<T>(fetcher: () => Promise<any>, key: string) {
 }
 
 function Shell({ loading, error, empty, children }: { loading: boolean; error: string | null; empty: boolean; children: React.ReactNode }) {
+  const t = useT();
   return (
     <>
       {error && <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">{error}</div>}
       <div className={`rounded-2xl border border-zinc-800 bg-zinc-900/50 overflow-hidden transition-opacity ${loading ? "opacity-60" : ""}`}>
         <div className="overflow-x-auto">{children}</div>
-        {empty && <p className="px-4 py-10 text-center text-sm text-zinc-500">No records for this selection.</p>}
+        {empty && <p className="px-4 py-10 text-center text-sm text-zinc-500">{t("No records for this selection.")}</p>}
       </div>
     </>
   );
@@ -84,6 +86,7 @@ const td = "px-3 py-2.5 whitespace-nowrap";
 // ─── Form 1 — Faculty Book ────────────────────────────────────
 
 export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
+  const t = useT();
   const f = useRegisterFilters();
   const { data, error, loading, reload } = useLoader<any>(
     () => getFacultyBook({ date: f.dateParam, q: f.q, page: f.page }),
@@ -98,13 +101,13 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
     setMsg(null);
     try {
       const res: any = await markFacultyReturn(id);
-      setMsg(res?.error ?? "Return marked.");
+      setMsg(res?.error ?? t("Return marked."));
       if (!res?.error) {
         setSelected(null);
         reload();
       }
     } catch (err) {
-      setMsg(actionErrorMessage(err, "Could not mark the return."));
+      setMsg(actionErrorMessage(err, t("Could not mark the return.")));
     }
     setBusy(false);
   }
@@ -113,23 +116,17 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
     <div className="space-y-4">
       <RegisterToolbar filters={f} searchPlaceholder="Search name, department, employee ID…" />
       <p className="text-xs text-zinc-500">
-        Requests come from the faculty portal and are approved there. The out-time is marked when security scans the pass;
-        {canMarkIn ? " use “Mark In” when the faculty member returns." : " the in-time when they return."}
+        {t("Requests come from the faculty portal and are approved there. The out-time is marked when security scans the pass;")}
+        {canMarkIn ? t(" use “Mark In” when the faculty member returns.") : t(" the in-time when they return.")}
       </p>
       {msg && <div className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-200">{msg}</div>}
       <Shell loading={loading} error={error} empty={!!data && data.rows.length === 0}>
         <table className="w-full text-sm">
           <thead className="bg-zinc-900 text-left text-xs uppercase tracking-wider text-zinc-500">
             <tr>
-              <th className={th}>Request Date</th>
-              <th className={th}>Faculty Name</th>
-              <th className={th}>Designation</th>
-              <th className={th}>Department</th>
-              <th className={th}>Request Type</th>
-              <th className={th}>Start Date</th>
-              <th className={th}>End Date</th>
-              <th className={th}>Actual Out-Time</th>
-              <th className={th}>Actual In-Time</th>
+              {["Request Date", "Faculty Name", "Designation", "Department", "Request Type", "Start Date", "End Date", "Actual Out-Time", "Actual In-Time"].map((h) => (
+                <th key={h} className={th}>{t(h)}</th>
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800/70">
@@ -139,7 +136,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
                 <td className={`${td} font-medium text-zinc-100`}>{r.facultyName}</td>
                 <td className={td}>{r.designation || "—"}</td>
                 <td className={td}>{r.department || "—"}</td>
-                <td className={td}>{r.requestType}</td>
+                <td className={td}>{t(r.requestType)}</td>
                 <td className={td}>{formatDay(r.startDate)}</td>
                 <td className={td}>{formatDay(r.endDate)}</td>
                 <td className={td}><MoveCell m={r.actualOut} /></td>
@@ -155,7 +152,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
                       disabled={busy}
                       className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
                     >
-                      <LogIn className="h-3.5 w-3.5" /> Mark In
+                      <LogIn className="h-3.5 w-3.5" /> {t("Mark In")}
                     </button>
                   ) : (
                     <span className="text-zinc-600">—</span>
@@ -168,7 +165,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
       </Shell>
       {data && <Pager page={f.page} pageSize={data.pageSize} total={data.total} onPage={f.setPage} />}
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title="Faculty pass" className="max-w-xl">
+      <Modal open={!!selected} onClose={() => setSelected(null)} title={t("Faculty pass")} className="max-w-xl">
         {selected && (
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             {[
@@ -176,7 +173,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
               ["Employee ID", selected.employeeId],
               ["Designation", selected.designation],
               ["Department", selected.department],
-              ["Request Type", selected.requestType],
+              ["Request Type", t(selected.requestType)],
               ["Number of Days", selected.numberOfDays ?? "—"],
               ["Start Date", formatDay(selected.startDate)],
               ["End Date", formatDay(selected.endDate)],
@@ -186,16 +183,16 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
               ["Note", selected.note],
             ].map(([k, v]) => (
               <div key={k as string} className="min-w-0">
-                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{k}</dt>
+                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t(k as string)}</dt>
                 <dd className="text-zinc-200 break-words">{(v as any) || "—"}</dd>
               </div>
             ))}
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Actual Out-Time</dt>
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Actual Out-Time")}</dt>
               <dd className="text-zinc-200"><MoveCell m={selected.actualOut} /></dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Actual In-Time</dt>
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Actual In-Time")}</dt>
               <dd className="text-zinc-200"><MoveCell m={selected.actualIn} /></dd>
             </div>
             <GatePhotos permissionId={selected.id} />
@@ -207,7 +204,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
                   disabled={busy}
                   className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                 >
-                  <LogIn className="h-3.5 w-3.5" /> Mark In now
+                  <LogIn className="h-3.5 w-3.5" /> {t("Mark In now")}
                 </button>
               )}
             </div>
@@ -221,6 +218,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
 // ─── Form 2 — Visitors Book ───────────────────────────────────
 
 export function VisitorsBookView({ canRegister }: { canRegister: boolean }) {
+  const t = useT();
   const f = useRegisterFilters();
   const { data, error, loading } = useLoader<any>(
     () => getVisitorsBook({ date: f.dateParam, q: f.q, page: f.page }),
@@ -238,7 +236,7 @@ export function VisitorsBookView({ canRegister }: { canRegister: boolean }) {
               href="/security/visitors"
               className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold whitespace-nowrap"
             >
-              <UserPlus className="h-4 w-4" /> Register visitor
+              <UserPlus className="h-4 w-4" /> {t("Register visitor")}
             </Link>
           ) : null
         }
@@ -248,7 +246,7 @@ export function VisitorsBookView({ canRegister }: { canRegister: boolean }) {
           <thead className="bg-zinc-900 text-left text-xs uppercase tracking-wider text-zinc-500">
             <tr>
               {["Visitor Name", "Address", "Mobile", "Person to Visit", "Purpose", "Department", "Date", "In-Time", "Out-Time", "Remarks", "Recorded by"].map((h) => (
-                <th key={h} className={th}>{h}</th>
+                <th key={h} className={th}>{t(h)}</th>
               ))}
             </tr>
           </thead>
@@ -263,7 +261,7 @@ export function VisitorsBookView({ canRegister }: { canRegister: boolean }) {
                 <td className={td}>{r.department || "—"}</td>
                 <td className={td}>{formatDay(r.inTime)}</td>
                 <td className={td}>{r.inTime ? formatTime(r.inTime) : "—"}</td>
-                <td className={td}>{r.outTime ? formatInstant(r.outTime) : <span className="text-amber-300">Inside</span>}</td>
+                <td className={td}>{r.outTime ? formatInstant(r.outTime) : <span className="text-amber-300">{t("Inside")}</span>}</td>
                 <td className={`${td} max-w-[200px] truncate`}>{r.remarks || "—"}</td>
                 <td className={td}>{r.recordedByName || "—"}</td>
               </tr>
@@ -273,7 +271,7 @@ export function VisitorsBookView({ canRegister }: { canRegister: boolean }) {
       </Shell>
       {data && <Pager page={f.page} pageSize={data.pageSize} total={data.total} onPage={f.setPage} />}
 
-      <Modal open={!!selectedId} onClose={() => setSelectedId(null)} title="Visitor details" className="max-w-xl">
+      <Modal open={!!selectedId} onClose={() => setSelectedId(null)} title={t("Visitor Details")} className="max-w-xl">
         {selectedId && <VisitorDetails id={selectedId} />}
       </Modal>
     </div>
@@ -281,18 +279,19 @@ export function VisitorsBookView({ canRegister }: { canRegister: boolean }) {
 }
 
 export function VisitorDetails({ id }: { id: string }) {
+  const t = useT();
   const { data, error, loading } = useLoader<any>(() => getVisitorDetails(id), id);
   if (error) return <p className="text-sm text-red-300">{error}</p>;
-  if (loading || !data) return <p className="text-sm text-zinc-500">Loading…</p>;
+  if (loading || !data) return <p className="text-sm text-zinc-500">{t("Loading…")}</p>;
   const v = data.visitor;
-  const category: Record<string, string> = { GUEST: "Guest / Visitor", PARENT: "Parent / Guardian", VENDOR: "Vendor / Delivery", WORKER: "Worker / Staff" };
+  const category: Record<string, string> = { GUEST: t("Guest / Visitor"), PARENT: t("Parent / Guardian"), VENDOR: t("Vendor / Delivery"), WORKER: t("Worker / Staff") };
   return (
     <div className="space-y-4">
       {v.photoUrl ? (
          
         <img src={v.photoUrl} alt={`Photo of ${v.name}`} className="h-40 w-40 rounded-xl object-cover border border-zinc-800" />
       ) : (
-        <p className="text-xs text-zinc-500">No photo was taken for this visitor.</p>
+        <p className="text-xs text-zinc-500">{t("No photo was taken for this visitor.")}</p>
       )}
       <DetailGrid
         items={[
@@ -307,7 +306,7 @@ export function VisitorDetails({ id }: { id: string }) {
           ["Gate", v.gate],
           ["Date", formatDay(v.inTime)],
           ["Actual In-Time", formatInstant(v.inTime)],
-          ["Actual Out-Time", v.outTime ? formatInstant(v.outTime) : "Still inside"],
+          ["Actual Out-Time", v.outTime ? formatInstant(v.outTime) : t("Still inside")],
           ["Remarks", v.remarks],
           ["Registered by", v.recordedByName],
           ["Record created", formatInstant(v.createdAt)],
@@ -319,11 +318,12 @@ export function VisitorDetails({ id }: { id: string }) {
 }
 
 export function DetailGrid({ items }: { items: [string, unknown][] }) {
+  const t = useT();
   return (
     <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
       {items.map(([k, v]) => (
         <div key={k} className="min-w-0">
-          <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{k}</dt>
+          <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t(k)}</dt>
           <dd className="text-zinc-200 break-words">{(v as any) || "—"}</dd>
         </div>
       ))}
@@ -333,18 +333,19 @@ export function DetailGrid({ items }: { items: [string, unknown][] }) {
 
 /** Gate photos for a pass (exit / entry), loaded when the details open. */
 function GatePhotos({ permissionId }: { permissionId: string }) {
+  const t = useT();
   const { data } = useLoader<any>(() => getPassGatePhotos(permissionId), permissionId);
   if (!data?.photos?.length) return null;
   return (
     <div className="sm:col-span-2">
-      <p className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5">Gate photos</p>
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5">{t("Gate photos")}</p>
       <div className="flex flex-wrap gap-3">
         {data.photos.map((p: any) => (
           <figure key={p.at} className="space-y-1">
             { }
             <img src={p.url} alt={`${p.type === "EXIT" ? "Exit" : "Entry"} photo`} className="h-32 w-32 rounded-lg object-cover border border-zinc-800" />
             <figcaption className="text-[11px] text-zinc-400">
-              {p.type === "EXIT" ? "Exit" : "Entry"} • {formatInstant(p.at)}
+              {p.type === "EXIT" ? t("Exit") : t("Entry")} • {formatInstant(p.at)}
             </figcaption>
           </figure>
         ))}
@@ -356,6 +357,7 @@ function GatePhotos({ permissionId }: { permissionId: string }) {
 // ─── Forms 12 & 13 — Hostel outing books ──────────────────────
 
 export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
+  const t = useT();
   const f = useRegisterFilters();
   const { data, error, loading } = useLoader<any>(
     () => getHostelOutingBook({ hostel, date: f.dateParam, q: f.q, page: f.page }),
@@ -367,13 +369,11 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
     <div className="space-y-4">
       <RegisterToolbar filters={f} searchPlaceholder="Search name, roll number, room…" />
       <p className="text-xs text-zinc-500">
-        Outing passes are requested by the student and approved by the warden in the portal. Out and return times are the
-        actual gate scans.
+        {t("Outing passes are requested by the student and approved by the warden in the portal. Out and return times are the actual gate scans.")}
       </p>
       {data?.unassignedHostellers > 0 && (
         <p className="text-xs text-amber-300">
-          {data.unassignedHostellers} hosteller(s) have no Boys / Ladies hostel set in their profile and are not listed here.
-          Set it in Admin → Users.
+          {t("{n} hosteller(s) have no Boys / Ladies hostel set in their profile and are not listed here. Set it in Admin → Users.", { n: data.unassignedHostellers })}
         </p>
       )}
       <Shell loading={loading} error={error} empty={!!data && data.rows.length === 0}>
@@ -381,7 +381,7 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
           <thead className="bg-zinc-900 text-left text-xs uppercase tracking-wider text-zinc-500">
             <tr>
               {["Student Name", "Roll Number", "Room", "Mobile", "Parent / Guardian", "Outing Purpose", "Date", "Out Time", "Return Date & Time", "Remarks"].map((h) => (
-                <th key={h} className={th}>{h}</th>
+                <th key={h} className={th}>{t(h)}</th>
               ))}
             </tr>
           </thead>
@@ -395,8 +395,8 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
                 <td className={td}>{r.guardianName || "—"}</td>
                 <td className={`${td} max-w-[200px] truncate`}>{r.purpose}</td>
                 <td className={td}>{formatDay(r.requestedFrom)}</td>
-                <td className={td}>{r.actualOut ? formatTime(r.actualOut.at) : <span className="text-zinc-600">Not yet out</span>}</td>
-                <td className={td}>{r.actualReturn ? formatInstant(r.actualReturn.at) : r.actualOut ? <span className="text-amber-300">Not returned</span> : "—"}</td>
+                <td className={td}>{r.actualOut ? formatTime(r.actualOut.at) : <span className="text-zinc-600">{t("Not yet out")}</span>}</td>
+                <td className={td}>{r.actualReturn ? formatInstant(r.actualReturn.at) : r.actualOut ? <span className="text-amber-300">{t("Not returned")}</span> : "—"}</td>
                 <td className={`${td} max-w-[200px] truncate`}>{r.remarks || "—"}</td>
               </tr>
             ))}
@@ -405,15 +405,15 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
       </Shell>
       {data && <Pager page={f.page} pageSize={data.pageSize} total={data.total} onPage={f.setPage} />}
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title="Outing pass" className="max-w-xl">
+      <Modal open={!!selected} onClose={() => setSelected(null)} title={t("Outing pass")} className="max-w-xl">
         {selected && (
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             {[
               ["Name", selected.studentName],
               ["Roll Number", selected.roll],
               ["Branch", selected.branch],
-              ["Year & Semester", [selected.year && `Year ${selected.year}`, selected.semester && `Sem ${selected.semester}`].filter(Boolean).join(" • ")],
-              ["Room", [selected.room, selected.hostelBlock && `Block ${selected.hostelBlock}`].filter(Boolean).join(" • ")],
+              ["Year & Semester", [selected.year && `${t("Year")} ${selected.year}`, selected.semester && `${t("Sem")} ${selected.semester}`].filter(Boolean).join(" • ")],
+              ["Room", [selected.room, selected.hostelBlock && `${t("Block")} ${selected.hostelBlock}`].filter(Boolean).join(" • ")],
               ["Mobile", selected.mobile],
               ["Purpose", selected.purpose],
               ["Destination", selected.destination],
@@ -421,7 +421,7 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
               ["Outing Date To", formatDay(selected.requestedTo)],
               ["Planned Out", formatInstant(selected.plannedOut)],
               ["Planned In", formatInstant(selected.plannedIn)],
-              ["Informed to Parent / Guardian", selected.parentInformed === true ? "Yes" : selected.parentInformed === false ? "No" : "—"],
+              ["Informed to Parent / Guardian", selected.parentInformed === true ? t("Yes") : selected.parentInformed === false ? t("No") : "—"],
               ["Video Call Made to", selected.videoCallNumber],
               ["Parent / Guardian", selected.guardianName],
               ["Relation with Student", selected.guardianRelation],
@@ -430,16 +430,16 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
               ["Remarks", selected.remarks],
             ].map(([k, v]) => (
               <div key={k as string} className="min-w-0">
-                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{k}</dt>
+                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t(k as string)}</dt>
                 <dd className="text-zinc-200 break-words">{(v as any) || "—"}</dd>
               </div>
             ))}
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Actual Out</dt>
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Actual Out")}</dt>
               <dd className="text-zinc-200"><MoveCell m={selected.actualOut} /></dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Actual Return</dt>
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Actual Return")}</dt>
               <dd className="text-zinc-200"><MoveCell m={selected.actualReturn} /></dd>
             </div>
             <GatePhotos permissionId={selected.id} />
@@ -454,6 +454,7 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
 // ─── Form 16 — Home outing passbook ───────────────────────────
 
 export function HomeOutingSummaryView() {
+  const t = useT();
   const today = istDateString();
   const [to, setTo] = useState(today);
   const [from, setFrom] = useState(() => istDateString(new Date(Date.now() - 13 * 86_400_000)));
@@ -483,24 +484,24 @@ export function HomeOutingSummaryView() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-400">
         <label className="flex items-center gap-2">
-          From
-          <input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-zinc-200 [color-scheme:dark]" />
+          {t("From")}
+          <input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-zinc-200 [color-scheme:light]" />
         </label>
         <label className="flex items-center gap-2">
-          To
-          <input type="date" value={to} max={today} onChange={(e) => e.target.value && setTo(e.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-zinc-200 [color-scheme:dark]" />
+          {t("To")}
+          <input type="date" value={to} max={today} onChange={(e) => e.target.value && setTo(e.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-zinc-200 [color-scheme:light]" />
         </label>
       </div>
       <p className="text-xs text-zinc-500">
-        Totals are counted from approved passes (by pass date) and actual gate exits (by exit date). The Total row covers the whole selected range.
+        {t("Totals are counted from approved passes (by pass date) and actual gate exits (by exit date). The Total row covers the whole selected range.")}
       </p>
       <Shell loading={loading} error={error} empty={!!data && data.days.length === 0}>
         <table className="w-full text-sm">
           <thead className="bg-zinc-900 text-left text-xs uppercase tracking-wider text-zinc-500">
             <tr>
-              <th className={th}>Date</th>
+              <th className={th}>{t("Date")}</th>
               {cols.map(([, label]) => (
-                <th key={label} className={`${th} text-right`}>{label}</th>
+                <th key={label} className={`${th} text-right`}>{t(label)}</th>
               ))}
             </tr>
           </thead>
@@ -517,7 +518,7 @@ export function HomeOutingSummaryView() {
           {data && (
             <tfoot className="bg-zinc-900/80 font-semibold text-zinc-100">
               <tr>
-                <td className={td}>Total</td>
+                <td className={td}>{t("Total")}</td>
                 {cols.map(([k]) => (
                   <td key={k} className={`${td} text-right tabular-nums`}>{data.totals[k]}</td>
                 ))}
@@ -529,7 +530,7 @@ export function HomeOutingSummaryView() {
 
       {data && <Pager page={page} pageSize={DAYS_PER_PAGE} total={days.length} onPage={setPage} />}
 
-      <Modal open={!!day} onClose={() => setDay(null)} title={day ? `Passes on ${formatDay(`${day}T00:00:00+05:30`)}` : ""} className="max-w-2xl">
+      <Modal open={!!day} onClose={() => setDay(null)} title={day ? t("Passes on {date}", { date: formatDay(`${day}T00:00:00+05:30`) }) : ""} className="max-w-2xl">
         {day && <DayDetails date={day} />}
       </Modal>
     </div>
@@ -538,28 +539,29 @@ export function HomeOutingSummaryView() {
 
 /** The passes behind one day's totals in the home outing passbook. */
 function DayDetails({ date }: { date: string }) {
+  const t = useT();
   const { data, error, loading } = useLoader<any>(() => getHomeOutingDay(date), date);
   if (error) return <p className="text-sm text-red-300">{error}</p>;
-  if (loading || !data) return <p className="text-sm text-zinc-500">Loading…</p>;
+  if (loading || !data) return <p className="text-sm text-zinc-500">{t("Loading…")}</p>;
 
   const section = (title: string, rows: any[], faculty = false) => (
     <div key={title} className="space-y-2">
       <p className="text-sm font-semibold text-zinc-200">
-        {title} <span className="text-zinc-500 font-normal">({rows.length})</span>
+        {t(title)} <span className="text-zinc-500 font-normal">({rows.length})</span>
       </p>
       {rows.length === 0 ? (
-        <p className="text-xs text-zinc-500">None</p>
+        <p className="text-xs text-zinc-500">{t("None")}</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-zinc-800">
           <table className="w-full text-xs">
             <thead className="bg-zinc-900 text-left text-zinc-500">
               <tr>
-                <th className="px-2 py-2">Name</th>
-                <th className="px-2 py-2">{faculty ? "Department" : "Roll / Room"}</th>
-                <th className="px-2 py-2">{faculty ? "Type" : "Purpose"}</th>
-                <th className="px-2 py-2">Dates</th>
-                <th className="px-2 py-2">Exited</th>
-                <th className="px-2 py-2">Status</th>
+                <th className="px-2 py-2">{t("Name")}</th>
+                <th className="px-2 py-2">{faculty ? t("Department") : t("Roll / Room")}</th>
+                <th className="px-2 py-2">{faculty ? t("Type") : t("Purpose")}</th>
+                <th className="px-2 py-2">{t("Dates")}</th>
+                <th className="px-2 py-2">{t("Exited")}</th>
+                <th className="px-2 py-2">{t("Status")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800 text-zinc-200">
@@ -567,7 +569,7 @@ function DayDetails({ date }: { date: string }) {
                 <tr key={r.id}>
                   <td className="px-2 py-1.5 whitespace-nowrap">{r.name}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{faculty ? r.department || "—" : [r.roll, r.room].filter(Boolean).join(" • ")}</td>
-                  <td className="px-2 py-1.5 max-w-[180px] truncate">{faculty ? r.requestType : r.purpose}</td>
+                  <td className="px-2 py-1.5 max-w-[180px] truncate">{faculty ? t(r.requestType) : r.purpose}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">
                     {formatDay(r.from)}{r.to && formatDay(r.to) !== formatDay(r.from) ? ` – ${formatDay(r.to)}` : ""}
                   </td>
@@ -593,9 +595,10 @@ function DayDetails({ date }: { date: string }) {
 
 /** Full details of one gate exit / entry (student or faculty), in the registers layout. */
 export function MovementDetails({ id }: { id: string }) {
+  const t = useT();
   const { data, error, loading } = useLoader<any>(() => getMovementDetails(id), id);
   if (error) return <p className="text-sm text-red-300">{error}</p>;
-  if (loading || !data) return <p className="text-sm text-zinc-500">Loading…</p>;
+  if (loading || !data) return <p className="text-sm text-zinc-500">{t("Loading…")}</p>;
   const m = data.movement;
   const p = m.pass;
   const person = m.person;
@@ -603,7 +606,7 @@ export function MovementDetails({ id }: { id: string }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
         <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${m.type === "EXIT" ? "bg-orange-500/15 text-orange-300" : "bg-emerald-500/15 text-emerald-300"}`}>
-          {m.type === "EXIT" ? "Exit" : "Entry"}
+          {m.type === "EXIT" ? t("Exit") : t("Entry")}
         </span>
         <span className="text-sm text-zinc-300">{formatInstant(m.at)}</span>
       </div>
@@ -611,7 +614,7 @@ export function MovementDetails({ id }: { id: string }) {
          
         <img src={m.photoUrl} alt={`Gate photo of ${person?.name ?? "the person"}`} className="h-40 w-40 rounded-xl object-cover border border-zinc-800" />
       ) : (
-        <p className="text-xs text-zinc-500">No photo for this {person?.kind === "Faculty" ? "faculty pass" : "movement"}.</p>
+        <p className="text-xs text-zinc-500">{person?.kind === "Faculty" ? t("No photo for this faculty pass.") : t("No photo for this movement.")}</p>
       )}
       <DetailGrid
         items={[
@@ -619,7 +622,7 @@ export function MovementDetails({ id }: { id: string }) {
           [person?.kind === "Faculty" ? "Employee ID" : "Roll Number", person?.id],
           ["Department", person?.department],
           [person?.kind === "Faculty" ? "Designation" : "Year / Semester", person?.detail],
-          ["Type", person?.type],
+          ["Type", person?.type ? t(person.type) : null],
           ["Phone", person?.phone],
           ["Gate", m.gate],
           ["Recorded by", m.guard],
@@ -628,10 +631,10 @@ export function MovementDetails({ id }: { id: string }) {
       />
       {p && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Pass</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">{t("Pass")}</p>
           <DetailGrid
             items={[
-              ["Pass", p.hostelPass ? "Hostel pass" : p.requestType ?? (p.type === "EXIT" ? "Exit pass" : "Entry pass")],
+              ["Pass", t(p.hostelPass ? "Hostel pass" : p.requestType ?? (p.type === "EXIT" ? "Exit pass" : "Entry pass"))],
               ["Purpose / Reason", p.purpose],
               ["Destination", p.destination],
               ["Dates", p.dates.from ? `${formatDay(p.dates.from)}${p.dates.to && formatDay(p.dates.to) !== formatDay(p.dates.from) ? ` – ${formatDay(p.dates.to)}` : ""}` : null],

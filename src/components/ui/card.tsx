@@ -12,8 +12,9 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "min-w-0 rounded-2xl border border-zinc-800/50 bg-zinc-900/60 backdrop-blur-xl shadow-xl transition-all duration-300",
-      glow && "hover:border-indigo-500/30",
+      // Solid white (no blur on cards: keeps long lists fast)
+      "min-w-0 rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-card transition-[border-color,box-shadow] duration-200",
+      glow && "hover:border-orange-500/40",
       className
     )}
     {...props}

@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "@/components/providers/language-provider";
 
 import { useState, useRef, useEffect, useCallback } from "react";
 
@@ -32,6 +33,7 @@ interface Props {
 type ScanState = "idle" | "scanning_qr" | "verifying" | "verified" | "capturing_photo" | "registering" | "done" | "error";
 
 export function ScanClient({ user, gates }: Props) {
+  const t = useT();
   const [state, setState] = useState<ScanState>("idle");
   const [verifyResult, setVerifyResult] = useState<any>(null);
   const [selectedGate, setSelectedGate] = useState(gates[0]?.id || "");
@@ -226,7 +228,7 @@ export function ScanClient({ user, gates }: Props) {
         setError(result.error);
         setState("error");
       } else {
-        setSuccess(`${action === "EXIT" ? "Exit" : "Entry"} registered successfully!`);
+        setSuccess(action === "EXIT" ? t("Exit registered successfully!") : t("Entry registered successfully!"));
         setState("done");
       }
     } catch {
@@ -252,9 +254,9 @@ export function ScanClient({ user, gates }: Props) {
     <>
       <div className="max-w-2xl mx-auto space-y-6 pb-20">
         <div>
-          <BackButton href="/security" label="Back to Dashboard" />
+          <BackButton href="/security" label={t("Back to Dashboard")} />
           <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
-            Scan & Register
+            {t("Scan & Register")}
           </h1>
         </div>
 
@@ -272,7 +274,7 @@ export function ScanClient({ user, gates }: Props) {
               </p>
               <Button onClick={resetScan} size="lg">
                 <ScanLine className="h-4 w-4" />
-                Scan Next
+                {t("Scan Next")}
               </Button>
             </CardContent>
           </Card>
@@ -286,12 +288,12 @@ export function ScanClient({ user, gates }: Props) {
                 <AlertTriangle className="h-8 w-8" />
               </div>
               <h2 className="text-xl font-bold text-zinc-100 mb-2">
-                Verification Failed
+                {t("Verification Failed")}
               </h2>
-              <p className="text-sm text-red-400 mb-6">{error}</p>
+              <p className="text-sm text-red-400 mb-6">{error && t(error)}</p>
               <Button onClick={resetScan} variant="outline">
                 <RotateCcw className="h-4 w-4" />
-                Try Again
+                {t("Try Again")}
               </Button>
             </CardContent>
           </Card>
@@ -303,12 +305,12 @@ export function ScanClient({ user, gates }: Props) {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ScanLine className="h-5 w-5 text-red-400" />
-                Start Scanner
+                {t("Start Scanner")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-zinc-500 text-center py-4">
-                Point your camera at a student's QR code to verify their permission, or enter their Roll Number / Pass Code manually.
+                {t("Point your camera at a student's QR code to verify their permission, or enter their Roll Number / Pass Code manually.")}
               </p>
               <Button
                 onClick={startQrScanner}
@@ -316,7 +318,7 @@ export function ScanClient({ user, gates }: Props) {
                 size="lg"
               >
                 <ScanLine className="h-4 w-4" />
-                Open Camera Scanner
+                {t("Open Camera Scanner")}
               </Button>
 
               <div className="relative my-4">
@@ -324,14 +326,14 @@ export function ScanClient({ user, gates }: Props) {
                   <div className="w-full border-t border-zinc-800" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-zinc-900 px-2 text-zinc-500">Or Verify Manually</span>
+                  <span className="bg-zinc-900 px-2 text-zinc-500">{t("Or Verify Manually")}</span>
                 </div>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
-                  placeholder="Enter Roll Number or Token..."
+                  placeholder={t("Enter Roll Number or Token...")}
                   value={manualToken}
                   onChange={(e) => setManualToken(e.target.value)}
                   onKeyDown={(e) => {
@@ -347,7 +349,7 @@ export function ScanClient({ user, gates }: Props) {
                   variant="outline"
                   className="w-full sm:w-auto shrink-0 border-zinc-700 text-zinc-200 hover:bg-zinc-800"
                 >
-                  Verify Pass
+                  {t("Verify Pass")}
                 </Button>
               </div>
             </CardContent>
@@ -364,7 +366,7 @@ export function ScanClient({ user, gates }: Props) {
           <Card>
             <CardContent className="p-8 text-center space-y-3">
               <div className="mx-auto h-10 w-10 rounded-full border-4 border-zinc-700 border-t-emerald-400 animate-spin" />
-              <p className="text-zinc-300 font-medium">Verifying pass…</p>
+              <p className="text-zinc-300 font-medium">{t("Verifying pass…")}</p>
             </CardContent>
           </Card>
         )}
@@ -375,7 +377,7 @@ export function ScanClient({ user, gates }: Props) {
             {/* Mobile overlay backdrop */}
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] sm:hidden" onClick={resetScan} />
             
-            <div className="fixed inset-x-0 bottom-0 z-[100] p-4 bg-zinc-950/95 backdrop-blur-xl border-t border-zinc-800/50 sm:relative sm:inset-auto sm:p-0 sm:bg-transparent sm:border-none sm:backdrop-blur-none animate-slide-up sm:animate-none pb-8 sm:pb-0 space-y-4 max-h-[90vh] overflow-y-auto shadow-[0_-10px_40px_rgba(0,0,0,0.5)] sm:shadow-none rounded-t-3xl sm:rounded-none">
+            <div className="fixed inset-x-0 bottom-0 z-[100] p-4 bg-zinc-950/95 backdrop-blur-xl border-t border-zinc-800/50 sm:relative sm:inset-auto sm:p-0 sm:bg-transparent sm:border-none sm:backdrop-blur-none animate-slide-up sm:animate-none pb-8 sm:pb-0 space-y-4 max-h-[90vh] overflow-y-auto shadow-[0_-10px_40px_rgba(16,24,40,0.12)] sm:shadow-none rounded-t-3xl sm:rounded-none">
               {/* Mobile drag handle */}
               <div className="w-12 h-1.5 bg-zinc-700 rounded-full mx-auto mb-2 sm:hidden" />
               
@@ -392,43 +394,43 @@ export function ScanClient({ user, gates }: Props) {
                         {verifyResult.student.profile.name}
                       </h2>
                       <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 border border-zinc-700">
-                        {verifyResult.student.studentType}
+                        {t(verifyResult.student.studentType)}
                       </span>
                       <span className={`text-[11px] sm:text-xs font-bold px-2 py-0.5 rounded-md border ${
                         verifyResult.allowedAction === "EXIT" 
                           ? "bg-red-500/15 text-red-400 border-red-500/30" 
                           : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
                       }`}>
-                        {verifyResult.allowedAction === "EXIT" ? "EXITING" : "ENTERING"}
+                        {verifyResult.allowedAction === "EXIT" ? t("EXITING") : t("ENTERING")}
                       </span>
                     </div>
                     <p className="text-xs sm:text-sm text-zinc-500 truncate mt-0.5">
-                      {verifyResult.student.studentRoll} • {verifyResult.student.department || ""} {verifyResult.student.year ? `Year ${verifyResult.student.year}` : ""}
+                      {verifyResult.student.studentRoll} • {verifyResult.student.department || ""} {verifyResult.student.year ? `${t("Year")} ${verifyResult.student.year}` : ""}
                     </p>
                     <p className="text-xs text-zinc-400 mt-0.5 flex items-center gap-1 truncate">
                       <Phone className="h-3 w-3 shrink-0" />
-                      {verifyResult.student.profile.phone || "No phone provided"}
+                      {verifyResult.student.profile.phone || t("No phone provided")}
                     </p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="rounded-xl bg-zinc-800/30 px-4 py-3">
-                    <p className="text-xs text-zinc-500">Purpose</p>
+                    <p className="text-xs text-zinc-500">{t("Purpose")}</p>
                     <p className="text-sm font-medium text-zinc-200">
                       {verifyResult.permission.purpose}
                     </p>
                   </div>
                   {verifyResult.permission.requestType ? (
                     <div className="rounded-xl bg-zinc-800/30 px-4 py-3">
-                      <p className="text-xs text-zinc-500">Request Type</p>
+                      <p className="text-xs text-zinc-500">{t("Request Type")}</p>
                       <p className="text-sm font-medium text-zinc-200">
-                        {facultyRequestTypeLabel(verifyResult.permission.requestType)}
+                        {t(facultyRequestTypeLabel(verifyResult.permission.requestType))}
                       </p>
                     </div>
                   ) : (
                     <div className="rounded-xl bg-zinc-800/30 px-4 py-3">
-                      <p className="text-xs text-zinc-500">Destination</p>
+                      <p className="text-xs text-zinc-500">{t("Destination")}</p>
                       <p className="text-sm font-medium text-zinc-200">
                         {verifyResult.permission.destination || "—"}
                       </p>
@@ -436,13 +438,13 @@ export function ScanClient({ user, gates }: Props) {
                   )}
                   {verifyResult.permission.endDate && (
                     <div className="col-span-2 rounded-xl bg-zinc-800/30 px-4 py-3">
-                      <p className="text-xs text-zinc-500">Pass Dates</p>
+                      <p className="text-xs text-zinc-500">{t("Pass Dates")}</p>
                       <PassExtraDetails pass={verifyResult.permission} className="text-sm" />
                     </div>
                   )}
                   {verifyResult.permission.expectedExit && (
                     <div className="rounded-xl bg-zinc-800/30 px-4 py-3">
-                      <p className="text-xs text-zinc-500">Exit Time</p>
+                      <p className="text-xs text-zinc-500">{t("Exit Time")}</p>
                       <p className="text-sm font-medium text-zinc-200">
                         {formatDateTime(verifyResult.permission.expectedExit)}
                       </p>
@@ -450,14 +452,14 @@ export function ScanClient({ user, gates }: Props) {
                   )}
                   {verifyResult.permission.expectedReturn && (
                     <div className="rounded-xl bg-zinc-800/30 px-4 py-3">
-                      <p className="text-xs text-zinc-500">Entry Time</p>
+                      <p className="text-xs text-zinc-500">{t("Entry Time")}</p>
                       <p className="text-sm font-medium text-zinc-200">
                         {formatDateTime(verifyResult.permission.expectedReturn)}
                       </p>
                     </div>
                   )}
                   <div className="col-span-2 rounded-xl bg-zinc-800/30 px-4 py-3">
-                    <p className="text-xs text-zinc-500">Approved On</p>
+                    <p className="text-xs text-zinc-500">{t("Approved On")}</p>
                     <p className="text-sm font-medium text-zinc-200">
                       {verifyResult.permission.approvedAt
                         ? formatDateTime(verifyResult.permission.approvedAt)
@@ -469,7 +471,7 @@ export function ScanClient({ user, gates }: Props) {
             </Card>
 
             <Select
-              label="Select Gate"
+              label={t("Select Gate")}
               value={selectedGate}
               onChange={(e) => setSelectedGate(e.target.value)}
               id="gate-select"
@@ -483,7 +485,7 @@ export function ScanClient({ user, gates }: Props) {
 
             {verifyResult?.manualOverride && (
               <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-                Found by roll number (no QR scanned). Verify the person&apos;s college ID card before allowing movement.
+                {t("Found by roll number (no QR scanned). Verify the person's college ID card before allowing movement.")}
               </div>
             )}
 
@@ -491,7 +493,9 @@ export function ScanClient({ user, gates }: Props) {
             {state === "verified" && verifyResult.photoRequired === false && (
               <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-200 flex items-center gap-2">
                 <Camera className="h-4 w-4 text-indigo-300 shrink-0" />
-                Faculty pass — no photo needed. Check the details above and register the {verifyResult.allowedAction === "EXIT" ? "exit" : "entry"}.
+                {verifyResult.allowedAction === "EXIT"
+                  ? t("Faculty pass — no photo needed. Check the details above and register the exit.")
+                  : t("Faculty pass — no photo needed. Check the details above and register the entry.")}
               </div>
             )}
 
@@ -502,13 +506,13 @@ export function ScanClient({ user, gates }: Props) {
                   <div className="flex items-center gap-2">
                     <Camera className="h-5 w-5 text-zinc-400" />
                     <p className="font-medium text-zinc-200">
-                      {verifyResult.allowedAction === "EXIT" ? "Photo Required for Exit" : "Photo Required for Entry"}
+                      {verifyResult.allowedAction === "EXIT" ? t("Photo Required for Exit") : t("Photo Required for Entry")}
                     </p>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Button onClick={startPhotoCapture} variant="outline" className="w-full">
                       <Camera className="h-4 w-4" />
-                      Take Photo with Camera
+                      {t("Take Photo with Camera")}
                     </Button>
                     <Button
                       onClick={() => fileInputRef.current?.click()}
@@ -516,7 +520,7 @@ export function ScanClient({ user, gates }: Props) {
                       className="w-full border-zinc-700 text-zinc-300 hover:bg-zinc-800"
                     >
                       <Upload className="h-4 w-4" />
-                      Upload Photo / File
+                      {t("Upload Photo / File")}
                     </Button>
                     <input
                       ref={fileInputRef}
@@ -536,7 +540,7 @@ export function ScanClient({ user, gates }: Props) {
                 <CardContent className="p-6 space-y-4">
                   <p className="font-medium text-zinc-200 flex items-center gap-2">
                     <Camera className="h-4 w-4 text-emerald-400" />
-                    Photo Captured
+                    {t("Photo Captured")}
                   </p>
                   <img
                     src={capturedImage}
@@ -545,7 +549,7 @@ export function ScanClient({ user, gates }: Props) {
                   />
                   <Button onClick={retakePhoto} variant="ghost" size="sm">
                     <RotateCcw className="h-4 w-4" />
-                    Retake
+                    {t("Retake")}
                   </Button>
                 </CardContent>
               </Card>
@@ -553,8 +557,8 @@ export function ScanClient({ user, gates }: Props) {
 
             {/* Notes */}
             <Textarea
-              label="Notes (optional)"
-              placeholder="Any additional notes..."
+              label={t("Notes (optional)")}
+              placeholder={t("Any additional notes...")}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               id="movement-notes"
@@ -562,7 +566,7 @@ export function ScanClient({ user, gates }: Props) {
 
             {error && (
               <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-                {error}
+                {t(error)}
               </div>
             )}
 
@@ -578,11 +582,11 @@ export function ScanClient({ user, gates }: Props) {
               disabled={verifyResult.photoRequired !== false && !capturedImage}
             >
               <DoorOpen className="h-5 w-5" />
-              Register {verifyResult.allowedAction}
+              {verifyResult.allowedAction === "EXIT" ? t("Register EXIT") : t("Register ENTRY")}
             </Button>
             
             <Button onClick={resetScan} variant="ghost" className="w-full">
-              Cancel
+              {t("Cancel")}
             </Button>
             </div>
           </>
@@ -593,11 +597,11 @@ export function ScanClient({ user, gates }: Props) {
           <div className="fixed inset-0 z-[100] bg-black flex flex-col sm:relative sm:z-auto sm:bg-transparent">
             {/* Header for mobile */}
             <div className="sm:hidden flex items-center justify-between p-4 bg-zinc-950/80 backdrop-blur-md absolute top-0 left-0 right-0 z-10 border-b border-zinc-800/50">
-              <h3 className="font-bold text-white text-lg flex items-center gap-2">
+              <h3 className="font-bold text-zinc-100 text-lg flex items-center gap-2">
                 <Camera className="h-5 w-5 text-indigo-400" />
-                Capture Photo
+                {t("Capture Photo")}
               </h3>
-              <button onClick={() => { stopCamera(); setState("verified"); }} className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-full text-white transition-colors">
+              <button onClick={() => { stopCamera(); setState("verified"); }} className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-full text-zinc-200 transition-colors">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -605,7 +609,7 @@ export function ScanClient({ user, gates }: Props) {
             <div className="flex-1 flex flex-col justify-center sm:block">
               <Card className="sm:border sm:border-zinc-800 border-none bg-transparent sm:bg-zinc-900 rounded-none sm:rounded-xl h-full sm:h-auto flex flex-col">
                 <CardContent className="p-0 sm:p-6 space-y-0 sm:space-y-4 text-center flex-1 flex flex-col justify-center sm:block relative">
-                  <h3 className="hidden sm:block font-bold text-zinc-200">Capture Student Photo</h3>
+                  <h3 className="hidden sm:block font-bold text-zinc-200">{t("Capture Student Photo")}</h3>
                   <div className="flex-1 sm:flex-none flex items-center bg-black relative w-full overflow-hidden sm:rounded-xl sm:border sm:border-zinc-800 pb-[80px] sm:pb-0">
                     <video
                       ref={videoRef}
@@ -623,10 +627,10 @@ export function ScanClient({ user, gates }: Props) {
                       size="lg"
                     >
                       <Camera className="h-4 w-4" />
-                      Capture Photo
+                      {t("Capture Photo")}
                     </Button>
                     <Button onClick={() => { stopCamera(); setState("verified"); }} variant="outline" className="w-full hidden sm:flex">
-                      Cancel
+                      {t("Cancel")}
                     </Button>
                   </div>
                 </CardContent>
@@ -641,7 +645,7 @@ export function ScanClient({ user, gates }: Props) {
             <CardContent className="p-8 text-center">
               <div className="animate-pulse">
                 <ShieldCheck className="h-12 w-12 text-indigo-400 mx-auto mb-4" />
-                <p className="text-zinc-400">Registering…</p>
+                <p className="text-zinc-400">{t("Registering…")}</p>
               </div>
             </CardContent>
           </Card>

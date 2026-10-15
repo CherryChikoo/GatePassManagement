@@ -1,18 +1,21 @@
 "use client";
+import { useT } from "@/components/providers/language-provider";
 
 import { useState } from "react";
 import { loginAction } from "@/server/actions/auth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Shield, Mail, Lock, ArrowRight } from "lucide-react";
+import Image from "next/image";
+import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
 import { broadcastSessionEvent, hardNavigate } from "@/stores/app-store";
 import { isStaleDeploymentError, reloadForNewDeployment } from "@/lib/deployment";
 
 export function LoginForm() {
+  const t = useT();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -32,110 +35,168 @@ export function LoginForm() {
     } catch (err: any) {
       // Page was opened before a new deployment → reload it and let the user sign in again
       if (isStaleDeploymentError(err)) {
-        setError("A new version of GatePass is available. Reloading…");
+        setError(t("A new version of Gate Pass is available. Reloading…"));
         if (reloadForNewDeployment()) return;
-        setError("A new version of GatePass is available. Please refresh this page and sign in again.");
+        setError(t("A new version of Gate Pass is available. Please refresh this page and sign in again."));
         setLoading(false);
         return;
       }
-      setError("Could not sign in. Check your connection and try again.");
+      setError(t("Could not sign in. Check your connection and try again."));
       setLoading(false);
     }
   }
 
   return (
-    <div className="gradient-mesh min-h-screen flex items-center justify-center p-3 sm:p-4 md:p-6">
-      <div className="relative z-10 w-full max-w-md animate-scale-in">
-        {/* Logo Section */}
-        <div className="text-center mb-6 sm:mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-orange-600 shadow-xl mb-3 sm:mb-4">
-            <Shield className="h-7 w-7 sm:h-8 sm:w-8 text-white" />
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-100">
-            GatePass Portal
-          </h1>
-          <p className="mt-1 sm:mt-2 text-xs sm:text-sm text-zinc-400">
-            Campus Permission & Movement Management
-          </p>
-        </div>
+    <div className="relative min-h-[100dvh] overflow-hidden bg-[#f2f2f3] flex items-center justify-center px-4 py-6 sm:py-10">
+      {/* Soft grey page with a faint grid fading out from the centre */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(24,24,27,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(24,24,27,0.045) 1px, transparent 1px)",
+          backgroundSize: "96px 96px",
+          backgroundPosition: "center center",
+          WebkitMaskImage: "radial-gradient(ellipse 60% 55% at 50% 50%, #000 30%, transparent 100%)",
+          maskImage: "radial-gradient(ellipse 60% 55% at 50% 50%, #000 30%, transparent 100%)",
+        }}
+      />
+      {/* Gentle coral glow behind the card */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{ background: "radial-gradient(38rem 30rem at 50% 50%, rgba(255,99,74,0.09), transparent 70%)" }}
+      />
 
-        {/* Login Card */}
-        <div className="glass rounded-2xl sm:rounded-3xl p-5 sm:p-8 md:p-10 shadow-2xl relative overflow-hidden">
-          <div className="relative z-10">
-          <div className="mb-5 sm:mb-6">
-            <h2 className="text-lg sm:text-xl font-semibold text-zinc-100">
-              Welcome back
-            </h2>
-            <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-              Sign in to access your dashboard
+      <div className="relative w-full max-w-[440px] animate-scale-in">
+        {/* Card: white, with a faint coral glow and grid behind the logo */}
+        <div className="relative overflow-hidden rounded-[28px] sm:rounded-[32px] border border-[#ececee] bg-white px-5 py-7 sm:p-9 shadow-[0_24px_60px_-28px_rgba(16,24,40,0.18),0_1px_2px_rgba(16,24,40,0.04)]">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-64"
+            style={{
+              background: "radial-gradient(ellipse 70% 100% at 50% 0%, rgba(255,99,74,0.13), transparent 75%)",
+            }}
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-64"
+            style={{
+              backgroundImage:
+                "linear-gradient(rgba(255,99,74,0.10) 1px, transparent 1px), linear-gradient(90deg, rgba(255,99,74,0.10) 1px, transparent 1px)",
+              backgroundSize: "44px 44px",
+              backgroundPosition: "center top",
+              WebkitMaskImage: "radial-gradient(ellipse 60% 90% at 50% 0%, #000 20%, transparent 80%)",
+              maskImage: "radial-gradient(ellipse 60% 90% at 50% 0%, #000 20%, transparent 80%)",
+            }}
+          />
+          <div className="relative">
+          {/* Full college logo */}
+          <Image
+            src="/brand/logo-full.webp"
+            alt="Ramachandra College of Engineering (Autonomous)"
+            width={900}
+            height={192}
+            priority
+            sizes="(max-width: 640px) 85vw, 360px"
+            className="mx-auto h-auto w-full max-w-[300px] sm:max-w-[340px]"
+          />
+
+          <div className="mt-6 sm:mt-7 text-center">
+            <h1 className="text-[22px] sm:text-[26px] font-semibold tracking-tight text-zinc-100">{t("Sign in to Gate Pass")}</h1>
+            <p className="mx-auto mt-2 max-w-[300px] text-sm sm:text-[15px] leading-relaxed text-zinc-500">
+              {t("Campus gate passes for students, faculty and staff.")}
             </p>
           </div>
 
           {error && (
-            <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-xs sm:text-sm text-red-400 animate-fade-in">
-              <div className="flex items-center gap-2">
-                <svg
-                  className="h-4 w-4 flex-shrink-0"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span>{error}</span>
-              </div>
+            <div role="alert" className="mt-6 rounded-2xl border border-red-500/20 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-400 animate-fade-in flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <span>{t(error)}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <Input
-              name="email"
-              type="email"
-              label="Email Address"
-              placeholder="you@campus.edu"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              icon={<Mail className="h-4 w-4" />}
-              id="login-email"
-            />
+          <form onSubmit={handleSubmit} className="mt-6 sm:mt-7 flex flex-col gap-3">
+            <label htmlFor="login-email" className="sr-only">{t("Email")}</label>
+            <div className="relative">
+              <Mail className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-zinc-500" aria-hidden="true" />
+              <input
+                id="login-email"
+                name="email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                placeholder={t("Email")}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="h-12 w-full rounded-2xl border border-transparent bg-[#eef0f3] pl-11 pr-4 text-base sm:text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors focus:border-orange-500/50 focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+              />
+            </div>
 
-            <Input
-              name="password"
-              type="password"
-              label="Password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              icon={<Lock className="h-4 w-4" />}
-              id="login-password"
-            />
+            <label htmlFor="login-password" className="sr-only">{t("Password")}</label>
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-zinc-500" aria-hidden="true" />
+              <input
+                id="login-password"
+                name="password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                placeholder={t("Password")}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="h-12 w-full rounded-2xl border border-transparent bg-[#eef0f3] pl-11 pr-12 text-base sm:text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors focus:border-orange-500/50 focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-2.5 text-zinc-500 hover:bg-white hover:text-zinc-200"
+                aria-label={showPassword ? t("Hide password") : t("Show password")}
+              >
+                {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+              </button>
+            </div>
 
-            <Button
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowForgot((v) => !v)}
+                aria-expanded={showForgot}
+                className="py-1 text-sm font-medium text-zinc-200 hover:text-orange-400 transition-colors"
+              >
+                {t("Forgot password?")}
+              </button>
+            </div>
+            {showForgot && (
+              <p className="rounded-2xl bg-white/80 border border-zinc-800 px-3.5 py-2.5 text-xs leading-relaxed text-zinc-400 animate-fade-in">
+                {t("Ask your HOD or the administrator to reset it. Students and faculty can get a new password from their HOD.")}
+              </p>
+            )}
+
+            <button
               type="submit"
-              className="w-full mt-1"
-              size="lg"
-              loading={loading}
+              disabled={loading}
+              aria-busy={loading}
+              className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-medium text-white transition-[transform,filter] active:scale-[0.99] hover:brightness-110 disabled:opacity-70 disabled:cursor-wait shadow-[0_10px_24px_-10px_rgba(16,24,40,0.55),inset_0_1px_0_rgba(255,255,255,0.15)]"
+              style={{ background: "linear-gradient(180deg, #3a3b40 0%, #17181b 100%)" }}
             >
-              {!loading && (
+              {loading ? (
                 <>
-                  Sign In
-                  <ArrowRight className="h-4 w-4" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {t("Signing in…")}
                 </>
+              ) : (
+                t("Sign in")
               )}
-              {loading && "Signing in..."}
-            </Button>
+            </button>
           </form>
+
+          <p className="mt-6 text-center text-xs text-zinc-500">
+            {t("Don't have an account? Contact your administrator.")}
+          </p>
           </div>
         </div>
-
-        <p className="mt-5 sm:mt-6 text-center text-xs text-zinc-500">
-          Contact your administrator if you don&apos;t have an account
-        </p>
       </div>
     </div>
   );

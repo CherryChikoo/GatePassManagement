@@ -802,7 +802,7 @@ function PermissionFormView({
             <span>Gate Pass Expired</span>
           </div>
           <p className="text-xs text-zinc-300 pl-7 pr-6 leading-relaxed">
-            Your previous approved gate pass for <span className="font-semibold text-white">&ldquo;{latestPermission.purpose}&rdquo;</span> expired because it was not scanned at the gate within the valid time window. You must submit a new request.
+            Your previous approved gate pass for <span className="font-semibold text-zinc-100">&ldquo;{latestPermission.purpose}&rdquo;</span> expired because it was not scanned at the gate within the valid time window. You must submit a new request.
           </p>
         </div>
       )}
@@ -1023,7 +1023,7 @@ function HostelOutingFields({
               if (outingTo < e.target.value) setOutingTo(e.target.value);
             }}
             required
-            className={`${inputCls} [color-scheme:dark]`}
+            className={`${inputCls} [color-scheme:light]`}
           />
         </div>
         <div className="space-y-2">
@@ -1039,7 +1039,7 @@ function HostelOutingFields({
             onChange={(e) => setOutingTo(e.target.value)}
             required
             error={fieldErrors.outingDateTo}
-            className={`${inputCls} [color-scheme:dark]`}
+            className={`${inputCls} [color-scheme:light]`}
           />
         </div>
         <div className="space-y-2">

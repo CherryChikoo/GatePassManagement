@@ -36,7 +36,7 @@ export function TimeField({
       step={60}
       value={value}
       onChange={(e) => setValue(e.target.value)}
-      className={`flex h-11 w-full rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 text-sm text-zinc-100 [color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500 ${className}`}
+      className={`flex h-11 w-full rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 text-sm text-zinc-100 [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500 ${className}`}
     />
   );
 }

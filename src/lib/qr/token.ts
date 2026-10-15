@@ -162,5 +162,5 @@ export async function verifyScannedQr(
       ? { valid: true, payload: { permissionId: r.payload.permissionId, tokenId: r.payload.tokenId, live: r.payload.live } }
       : { valid: false, error: r.error };
   }
-  return { valid: false, error: "Not a GatePass QR code" };
+  return { valid: false, error: "Not a Gate Pass QR code" };
 }

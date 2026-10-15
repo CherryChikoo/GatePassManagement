@@ -31,9 +31,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             type={type}
             id={inputId}
             className={cn(
-              "flex h-12 w-full rounded-xl border border-zinc-700/50 bg-zinc-900 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 transition-all duration-200",
+              "flex h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 transition-all duration-200",
               "focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500/50",
-              "hover:border-zinc-600",
+              "hover:border-zinc-700",
               "disabled:cursor-not-allowed disabled:opacity-50",
               icon ? "pl-11 pr-4" : "px-4",
               error && "border-red-500/50 focus:ring-red-500/40 focus:border-red-500/50",

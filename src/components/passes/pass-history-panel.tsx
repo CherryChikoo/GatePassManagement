@@ -65,7 +65,7 @@ export function PassHistoryPanel({ person }: { person: Person }) {
             setDate(e.target.value);
             setPage(1);
           }}
-          className="h-9 rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 text-xs text-zinc-200 [color-scheme:dark]"
+          className="h-9 rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 text-xs text-zinc-200 [color-scheme:light]"
         />
         {date && (
           <button

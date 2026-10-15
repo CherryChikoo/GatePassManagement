@@ -5,6 +5,7 @@ import { getDepartmentVariants } from "@/lib/constants";
 import { autoExpireOutdatedPermissions } from "@/lib/permissions/auto-expire";
 import { resolveStudentApprover, getFacultyApproverOptions } from "@/lib/permissions/approver";
 import { istDateString, istStartOfDay } from "@/lib/time/ist";
+import { fillMovementPeople } from "@/lib/people";
 
 /**
  * Unified preload endpoint — returns ALL data the logged-in user needs
@@ -46,6 +47,8 @@ export async function GET() {
     }
     // __profileId lets each tab detect that the browser's session now belongs to someone else
     const data = (await loader()) as Record<string, unknown>;
+    // Faculty gate movements: show the faculty member, not "Unknown"
+    fillMovementPeople(data);
     return NextResponse.json({ ...data, __profileId: user.profileId }, { headers: NO_STORE });
   } catch (err: any) {
     console.error("[Preload] Error:", err?.message);
@@ -755,6 +758,7 @@ async function preloadSecurity() {
       select: {
         id: true, type: true, createdAt: true, notes: true,
         student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
+        faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } } },
         gate: { select: { name: true } },
         permission: { select: { purpose: true, destination: true } },
       },
@@ -766,6 +770,7 @@ async function preloadSecurity() {
       select: {
         id: true, type: true, createdAt: true, notes: true,
         student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
+        faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } } },
         gate: { select: { name: true } },
         permission: { select: { purpose: true, destination: true } },
       },
@@ -848,6 +853,7 @@ async function preloadAdmin() {
       include: {
         permission: { select: { purpose: true, destination: true } },
         student: { include: { profile: { select: { name: true, email: true, phone: true } } } },
+        faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } } },
         gate: { select: { name: true } },
         securityUser: { include: { profile: { select: { name: true } } } },
       },

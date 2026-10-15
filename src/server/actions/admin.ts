@@ -18,6 +18,7 @@ import { deanTitle } from "@/lib/auth/titles";
 import { getDepartmentVariants } from "@/lib/constants";
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
+import { fillMovementPeople } from "@/lib/people";
 
 // In-memory caches to make frequent admin dashboard, gates, and user navigation blazing fast
 let cachedDashboard: { data: any; expiresAt: number } | null = null;
@@ -502,6 +503,7 @@ export async function getAdminDashboard(dateString?: string) {
             profile: { select: { name: true, email: true, phone: true } },
           },
         },
+        faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } } },
         gate: { select: { name: true } },
         securityUser: {
           include: { profile: { select: { name: true } } },
@@ -527,6 +529,7 @@ export async function getAdminDashboard(dateString?: string) {
     gates,
   };
 
+  fillMovementPeople(dashboardData);
   if (!dateString) {
     cachedDashboard = { data: dashboardData, expiresAt: Date.now() + 10_000 };
   }
@@ -1296,6 +1299,9 @@ export async function getActivityData(dateString?: string) {
             profile: { select: { id: true, name: true, email: true, phone: true } },
           },
         },
+        faculty: {
+          select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } },
+        },
         gate: { select: { name: true, location: true } },
         securityUser: {
           include: { profile: { select: { name: true } } },
@@ -1315,6 +1321,9 @@ export async function getActivityData(dateString?: string) {
             profile: { select: { id: true, name: true, email: true, phone: true } },
           },
         },
+        faculty: {
+          select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } },
+        },
         gate: { select: { name: true, location: true } },
         securityUser: {
           include: { profile: { select: { name: true } } },
@@ -1330,6 +1339,9 @@ export async function getActivityData(dateString?: string) {
       orderBy: { createdAt: "desc" },
       include: {
         student: { include: { profile: { select: { id: true, name: true, email: true, phone: true } } } },
+        faculty: {
+          select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } },
+        },
       }
     }),
     prisma.permission.findMany({
@@ -1338,9 +1350,26 @@ export async function getActivityData(dateString?: string) {
       orderBy: { createdAt: "desc" },
       include: {
         student: { include: { profile: { select: { id: true, name: true, email: true, phone: true } } } },
+        faculty: {
+          select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } },
+        },
       }
     })
   ]);
+
+  // A record belongs to a student or a faculty member. Faculty records are sent in
+  // the same shape (name, ID, email, phone) so the page shows the right person.
+  const personOf = (r: any) =>
+    r.student ??
+    (r.faculty
+      ? {
+          isFaculty: true,
+          studentRoll: r.faculty.employeeId || "Faculty",
+          department: r.faculty.department,
+          designation: r.faculty.designation,
+          profile: r.faculty.profile,
+        }
+      : null);
 
   // Pass *requests* are listed alongside gate scans but flagged and NOT counted as movements.
   const formattedEntryPerms = entryPermissions.map((p: any) => ({
@@ -1348,10 +1377,10 @@ export async function getActivityData(dateString?: string) {
     isRequest: true,
     type: "ENTRY",
     createdAt: p.createdAt,
-    student: p.student,
-    gate: { name: "Pass Requested", location: "-" },
+    student: personOf(p),
+    gate: { name: "Not scanned yet", location: "Pass request" },
     permission: { purpose: p.purpose, destination: p.destination },
-    securityUser: { profile: { name: "System" } }
+    securityUser: null
   }));
 
   const formattedExitPerms = exitPermissions.map((p: any) => ({
@@ -1359,14 +1388,14 @@ export async function getActivityData(dateString?: string) {
     isRequest: true,
     type: "EXIT",
     createdAt: p.createdAt,
-    student: p.student,
-    gate: { name: "Pass Requested", location: "-" },
+    student: personOf(p),
+    gate: { name: "Not scanned yet", location: "Pass request" },
     permission: { purpose: p.purpose, destination: p.destination },
-    securityUser: { profile: { name: "System" } }
+    securityUser: null
   }));
 
-  const mergedEntries = [...recentEntries, ...formattedEntryPerms].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  const mergedExits = [...recentExits, ...formattedExitPerms].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const mergedEntries = [...recentEntries.map((m: any) => ({ ...m, student: personOf(m) })), ...formattedEntryPerms].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const mergedExits = [...recentExits.map((m: any) => ({ ...m, student: personOf(m) })), ...formattedExitPerms].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
   const activityData = {
     stats: {

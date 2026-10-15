@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "@/components/providers/language-provider";
 import { MovementDetails, VisitorDetails } from "@/components/registers/derived-views";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,6 +26,7 @@ export function SecurityLogClient({
   outsiderVisits: any[];
   selectedDate: string;
 }) {
+  const t = useT();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"ENTRIES" | "EXITS" | "OUTSIDERS">("ENTRIES");
   const [page, setPage] = useState(1);
@@ -46,9 +48,7 @@ export function SecurityLogClient({
     return (
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-zinc-800/40 px-4 sm:px-6 py-3.5 bg-zinc-950/40 rounded-b-xl">
         <p className="text-xs sm:text-sm text-zinc-400">
-          Showing <span className="font-semibold text-zinc-200">{startItem}</span> to{" "}
-          <span className="font-semibold text-zinc-200">{endItem}</span> of{" "}
-          <span className="font-semibold text-zinc-200">{totalItems}</span> results
+          {t("Showing {from}–{to} of {total} results", { from: startItem, to: endItem, total: totalItems })}
         </p>
         <div className="flex items-center gap-1.5 sm:gap-2">
           <Button
@@ -59,7 +59,7 @@ export function SecurityLogClient({
             disabled={page <= 1}
           >
             <ChevronLeft className="h-4 w-4 sm:mr-1" />
-            <span className="hidden sm:inline">Previous</span>
+            <span className="hidden sm:inline">{t("Previous")}</span>
           </Button>
 
           {totalPages > 1 ? (
@@ -92,7 +92,7 @@ export function SecurityLogClient({
                 })}
             </div>
           ) : (
-            <span className="text-xs text-zinc-500 px-2">Page 1 of 1</span>
+            <span className="text-xs text-zinc-500 px-2">{t("Page {page} of {pages}", { page: 1, pages: 1 })}</span>
           )}
 
           <Button
@@ -102,7 +102,7 @@ export function SecurityLogClient({
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages || totalPages === 0}
           >
-            <span className="hidden sm:inline">Next</span>
+            <span className="hidden sm:inline">{t("Next")}</span>
             <ChevronRight className="h-4 w-4 sm:ml-1" />
           </Button>
         </div>
@@ -129,7 +129,7 @@ export function SecurityLogClient({
       <div>
         {filtered.length === 0 ? (
           <p className="text-center text-sm text-zinc-500 py-12">
-            No {type.toLowerCase()} records found for this date.
+            {type === "EXIT" ? t("No exits found for this date.") : t("No entries found for this date.")}
           </p>
         ) : (
           <div className="divide-y divide-zinc-800/30">
@@ -141,7 +141,12 @@ export function SecurityLogClient({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-zinc-200 truncate">
-                      {mov.student?.profile?.name} — {mov.student?.studentRoll}
+                      {mov.student?.profile?.name || t("Unknown person")} — {mov.student?.studentRoll}
+                      {mov.student?.isFaculty && (
+                        <span className="ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400">
+                          {t("Faculty")}
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-zinc-500 truncate mt-0.5">
                       {mov.gate?.name} • {mov.permission?.purpose} {mov.permission?.destination ? `→ ${mov.permission.destination}` : ""}
@@ -178,7 +183,7 @@ export function SecurityLogClient({
       <div>
         {filtered.length === 0 ? (
           <p className="text-center text-sm text-zinc-500 py-12">
-            No visitor visits found for this date.
+            {t("No visitor visits found for this date.")}
           </p>
         ) : (
           <div className="divide-y divide-zinc-800/30">
@@ -196,10 +201,10 @@ export function SecurityLogClient({
                       <StatusBadge status={outsider.status} />
                     </div>
                     <p className="text-xs text-zinc-500 truncate mt-0.5">
-                      {outsider.category} • {outsider.purpose} {outsider.visitingStudent ? `(Visiting: ${outsider.visitingStudent})` : ""}
+                      {outsider.category} • {outsider.purpose} {outsider.visitingStudent ? `(${t("Visiting")}: ${outsider.visitingStudent})` : ""}
                     </p>
                     <p className="text-xs text-zinc-500 mt-0.5">
-                      {outsider.phone} {outsider.vehicleNumber ? `• Vehicle: ${outsider.vehicleNumber}` : ""}
+                      {outsider.phone} {outsider.vehicleNumber ? `• ${t("Vehicle")}: ${outsider.vehicleNumber}` : ""}
                     </p>
                   </div>
                 </div>
@@ -228,10 +233,10 @@ export function SecurityLogClient({
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <BackButton href="/security" label="Back to Dashboard" />
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Entries & Exits</h1>
+          <BackButton href="/security" label={t("Back to Dashboard")} />
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-100">{t("Entries & Exits")}</h1>
           <p className="text-sm text-zinc-500 mt-1">
-            {studentEntries.length} entries, {studentExits.length} exits, {outsiderVisits.length} visitor visits
+            {t("{entries} entries, {exits} exits, {visits} visitor visits", { entries: studentEntries.length, exits: studentExits.length, visits: outsiderVisits.length })}
           </p>
         </div>
         
@@ -239,7 +244,7 @@ export function SecurityLogClient({
           <div className="relative flex-1 sm:flex-none">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
             <Input 
-              placeholder="Search by name, roll no..." 
+              placeholder={t("Search by name, roll no...")} 
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="pl-9 w-full sm:w-[250px] bg-zinc-900 border-zinc-800 text-zinc-100 placeholder:text-zinc-500"
@@ -250,7 +255,7 @@ export function SecurityLogClient({
               type="date" 
               value={selectedDate}
               onChange={handleDateChange}
-              className="bg-transparent text-sm text-zinc-200 focus:outline-none [color-scheme:dark] cursor-pointer"
+              className="bg-transparent text-sm text-zinc-200 focus:outline-none [color-scheme:light] cursor-pointer"
             />
           </div>
         </div>
@@ -263,7 +268,7 @@ export function SecurityLogClient({
             activeTab === "ENTRIES" ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
           }`}
         >
-          Student Entries
+          {t("Entries")}
           {activeTab === "ENTRIES" && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
           )}
@@ -274,7 +279,7 @@ export function SecurityLogClient({
             activeTab === "EXITS" ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
           }`}
         >
-          Student Exits
+          {t("Exits")}
           {activeTab === "EXITS" && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-orange-500" />
           )}
@@ -285,7 +290,7 @@ export function SecurityLogClient({
             activeTab === "OUTSIDERS" ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
           }`}
         >
-          Visitor Visits
+          {t("Visitor Visits")}
           {activeTab === "OUTSIDERS" && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-zinc-400" />
           )}
@@ -305,7 +310,7 @@ export function SecurityLogClient({
       <Modal
         open={!!selectedRecord}
         onClose={() => setSelectedRecord(null)}
-        title={selectedRecord && !selectedRecord.entryTime ? "Gate Movement Details" : "Visitor Details"}
+        title={selectedRecord && !selectedRecord.entryTime ? t("Gate Movement Details") : t("Visitor Details")}
         className="max-w-xl"
       >
         {selectedRecord &&

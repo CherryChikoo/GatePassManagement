@@ -273,7 +273,7 @@ export function HodActivityClient({
                 value={selectedDate}
                 max={istDateString()}
                 onChange={handleDateChange}
-                className="relative w-full sm:w-auto h-9 pl-9 pr-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500/50 [color-scheme:dark] cursor-pointer hover:border-zinc-700 hover:bg-zinc-800 transition-colors [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                className="relative w-full sm:w-auto h-9 pl-9 pr-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500/50 [color-scheme:light] cursor-pointer hover:border-zinc-700 hover:bg-zinc-800 transition-colors [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
               />
             </div>
           </div>
@@ -311,7 +311,7 @@ export function HodActivityClient({
             onClick={() => handleTabChange("ALL")}
             className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
               activeTab === "ALL"
-                ? "bg-zinc-800 text-white shadow-none"
+                ? "bg-zinc-900 text-zinc-100 shadow-card shadow-none"
                 : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
             }`}
           >
@@ -326,7 +326,7 @@ export function HodActivityClient({
             onClick={() => handleSubTabChange("ALL")}
             className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
               subTab === "ALL"
-                ? "bg-zinc-800 text-white shadow-none"
+                ? "bg-zinc-900 text-zinc-100 shadow-card shadow-none"
                 : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
             }`}
           >

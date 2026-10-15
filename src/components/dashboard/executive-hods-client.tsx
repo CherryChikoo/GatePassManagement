@@ -362,7 +362,7 @@ export function ExecutiveHodsClient({ role }: ExecutiveHodsClientProps) {
                             variant="outline"
                             size="sm"
                             onClick={() => setSelectedHOD(hod)}
-                            className="h-8 text-xs border-zinc-800 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 hover:text-white"
+                            className="h-8 text-xs border-zinc-800 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100"
                           >
                             <Eye className="h-3.5 w-3.5 mr-1" />
                             View Record

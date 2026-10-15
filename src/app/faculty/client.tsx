@@ -2,18 +2,10 @@
 
 import { StatCard, StatusBadge } from "@/components/ui/primitives";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { logoutAction } from "@/server/actions/auth";
 import { formatDateTime } from "@/lib/utils";
 import { gateMarkText } from "@/lib/pass-dates";
-import {
-  Users,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  MapPin,
-  ClipboardCheck,
-} from "lucide-react";
+import { Users, Clock, CheckCircle2, MapPin, ClipboardCheck, LogIn, LogOut, QrCode } from "lucide-react";
+import { facultyRequestTypeLabel } from "@/lib/registers/definitions";
 import Link from "next/link";
 import { Modal } from "@/components/ui/primitives";
 import { useState } from "react";
@@ -31,6 +23,7 @@ export function FacultyDashboardClient({ user }: Props) {
   
   const isReady = useStoreReady();
   const dashboardData = useAppStore((s) => s.data.dashboard);
+  const myPasses = useAppStore((s) => s.data.myPasses) as any[] | undefined;
 
   if (!isReady || dashboardData === undefined) {
     return <DashboardSkeleton />;
@@ -42,7 +35,7 @@ export function FacultyDashboardClient({ user }: Props) {
     );
   }
 
-  const { faculty, stats, recentActivity, studentMovements } = dashboardData;
+  const { faculty, stats, recentActivity } = dashboardData;
 
   const filteredActivity = recentActivity?.filter((item: any) => {
     if (activeTab === "ALL") return true;
@@ -52,108 +45,155 @@ export function FacultyDashboardClient({ user }: Props) {
     return true;
   }).slice(0, 10) || [];
 
+  // The faculty member's own pass right now (for the feature card)
+  const passes: any[] = myPasses || [];
+  const pendingPass = passes.find((p) => p.status === "PENDING");
+  const approvedPass = passes.find(
+    (p) => p.status === "APPROVED" && p.qr?.active && (!p.qr?.expiresAt || new Date(p.qr.expiresAt) > new Date())
+  );
+  const firstName = (user.name || "").replace(/^(dr|prof|mr|mrs|ms)\.?\s+/i, "").split(" ")[0] || user.name;
+  const hour = Number(new Intl.DateTimeFormat("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date()));
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const todayLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date());
+
   return (
     <>
-      <div className="space-y-8">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
-              Faculty Dashboard
-            </h1>
-            <p className="text-sm text-zinc-500 mt-1">
-              {faculty.department || "Department"}{" "}
-              {faculty.designation ? `• ${faculty.designation}` : ""}
-            </p>
+      <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
+        {/* Greeting */}
+        <div className="min-w-0">
+          <p className="text-sm text-zinc-500">{todayLabel}</p>
+          <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
+            {greeting}, <span className="font-medium">{firstName}</span>
+          </h1>
+          <p className="mt-1.5 text-sm text-zinc-500">
+            {[faculty.department, faculty.designation].filter(Boolean).join(" • ") || "Faculty"}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
+          {/* Left: stats + students */}
+          <div className="xl:col-span-2 space-y-4 lg:space-y-6 min-w-0">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <StatCard title="My Students" value={stats.totalStudents} icon={<Users />} description="Assigned & department" />
+              <StatCard
+                title="Approved Today"
+                value={stats.approvedToday}
+                icon={<CheckCircle2 />}
+                description={`${stats.rejectedToday} rejected today`}
+              />
+              <StatCard title="Exits Today" value={stats.exitsToday} icon={<LogOut />} description="Gate scans" />
+              <StatCard title="Entries Today" value={stats.entriesToday} icon={<LogIn />} description="Gate scans" />
+            </div>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <CardTitle className="font-medium">My students&apos; recent passes</CardTitle>
+                  <div className="inline-flex max-w-full rounded-full bg-zinc-950 p-1 border border-zinc-800 overflow-x-auto scrollbar-none" role="tablist" aria-label="Filter passes">
+                    {(["ALL", "PENDING", "ACCEPTED", "REJECTED"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        role="tab"
+                        aria-selected={activeTab === tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`text-xs font-medium px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap ${
+                          activeTab === tab ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
+                        }`}
+                      >
+                        {tab === "ALL" ? "All" : tab === "ACCEPTED" ? "Approved" : tab.charAt(0) + tab.slice(1).toLowerCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-2">
+                {filteredActivity.length === 0 ? (
+                  <p className="text-center text-sm text-zinc-500 py-10">
+                    No {activeTab === "ALL" ? "recent" : activeTab === "ACCEPTED" ? "approved" : activeTab.toLowerCase()} passes.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-zinc-800/70">
+                    {filteredActivity.map((item: any) => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedActivity(item)}
+                          className="w-full flex items-center gap-3 sm:gap-4 py-3 text-left rounded-2xl px-2 -mx-2 hover:bg-zinc-950 transition-colors"
+                        >
+                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400 font-semibold">
+                            {(item.student?.profile?.name || "S").charAt(0).toUpperCase()}
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-medium text-zinc-100 truncate">
+                              {item.student?.profile?.name || "Student"}
+                              <span className="text-zinc-500 font-normal"> · {item.student?.studentRoll || ""}</span>
+                            </span>
+                            <span className="block text-xs text-zinc-500 truncate">{item.purpose}</span>
+                          </span>
+                          <span className="flex flex-col items-end gap-1 shrink-0">
+                            <StatusBadge status={item.status} />
+                            <span className="text-[11px] text-zinc-500">{formatDateTime(item.createdAt)}</span>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right: my gate pass (feature card) + quick links */}
+          <div className="space-y-4 lg:space-y-6 min-w-0">
+            <div
+              className="relative overflow-hidden rounded-3xl border border-orange-500/20 p-5 sm:p-6 shadow-card"
+              style={{ background: "linear-gradient(160deg, #fff3f0 0%, #ffe1d9 55%, #ffd2c7 100%)" }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="text-lg font-medium text-zinc-100">My gate pass</h2>
+                <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-zinc-300 border border-white">
+                  {pendingPass ? "Pending" : approvedPass ? "Approved" : "No active pass"}
+                </span>
+              </div>
+              <p className="mt-3 text-sm text-zinc-300 leading-relaxed">
+                {pendingPass
+                  ? `Your ${facultyRequestTypeLabel(pendingPass.requestType) || "pass"} request is waiting for approval.`
+                  : approvedPass
+                  ? "Your pass is approved. Open it and show the QR code at the gate."
+                  : "Need to step out? Request a pass. Your HOD or Dean approves it, and the QR is ready for the gate."}
+              </p>
+              <Link
+                href="/faculty/apply"
+                className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-zinc-100 text-sm font-medium text-zinc-900 hover:bg-zinc-200 transition-colors"
+              >
+                {approvedPass ? <QrCode className="h-4 w-4" /> : <ClipboardCheck className="h-4 w-4" />}
+                {approvedPass ? "View my QR pass" : pendingPass ? "View request" : "Apply for a pass"}
+              </Link>
+            </div>
+
+            <Card>
+              <CardContent className="p-5 sm:p-6 space-y-3">
+                <h2 className="text-base font-medium text-zinc-100">Quick links</h2>
+                {[
+                  { href: "/faculty/students", label: "My students", hint: "Profiles and pass history", icon: <Users className="h-4 w-4" /> },
+                  { href: "/faculty/activity", label: "Activity", hint: "Your passes and your students' passes, by date", icon: <Clock className="h-4 w-4" /> },
+                ].map((l) => (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    className="flex items-center gap-3 rounded-2xl border border-zinc-800 px-3 py-3 hover:bg-zinc-950 transition-colors"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-950 text-zinc-400">{l.icon}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-zinc-100">{l.label}</span>
+                      <span className="block text-xs text-zinc-500 truncate">{l.hint}</span>
+                    </span>
+                  </Link>
+                ))}
+              </CardContent>
+            </Card>
           </div>
         </div>
-
-        {/* Stats - 5 cards with Exits and Entries */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-          <StatCard
-            title="Total Students"
-            value={stats.totalStudents}
-            icon={<Users className="h-5 w-5" />}
-          />
-          <StatCard
-            title="Approved Today (My Students)"
-            value={stats.approvedToday}
-            icon={<CheckCircle2 className="h-5 w-5 text-emerald-400" />}
-          />
-          <StatCard
-            title="Rejected Today (My Students)"
-            value={stats.rejectedToday}
-            icon={<XCircle className="h-5 w-5 text-red-400" />}
-          />
-          <StatCard
-            title="Exits Today"
-            value={stats.exitsToday}
-            icon={<MapPin className="h-5 w-5 text-orange-400" />}
-          />
-          <StatCard
-            title="Entries Today"
-            value={stats.entriesToday}
-            icon={<MapPin className="h-5 w-5 text-blue-400" />}
-          />
-        </div>
-
-        {/* Requests */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle>My Students&apos; Recent Passes</CardTitle>
-            <div className="flex items-center gap-2 mt-4 overflow-x-auto pb-1 scrollbar-none">
-               {(["ALL", "PENDING", "ACCEPTED", "REJECTED"] as const).map((tab) => (
-                  <button
-                     key={tab}
-                     onClick={() => setActiveTab(tab)}
-                     className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors whitespace-nowrap ${
-                        activeTab === tab 
-                          ? "bg-zinc-100 text-zinc-900 border-zinc-200"
-                          : "bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:text-zinc-200"
-                     }`}
-                  >
-                     {tab === "ALL" ? "All" : tab.charAt(0) + tab.slice(1).toLowerCase()}
-                  </button>
-               ))}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {filteredActivity.length === 0 ? (
-              <p className="text-center text-sm text-zinc-500 py-8">
-                No {activeTab === "ALL" ? "recent" : activeTab.toLowerCase().replace('_', ' ')} passes found.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {filteredActivity.map((item: any) => (
-                  <div
-                    key={item.id}
-                    onClick={() => setSelectedActivity(item)}
-                    className="flex items-center justify-between rounded-xl bg-zinc-800/30 px-4 py-3 cursor-pointer hover:bg-zinc-800/50 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-zinc-200">
-                        {item.student?.profile?.name || "Student"} —{" "}
-                        {item.student?.studentRoll || ""}
-                      </p>
-                      <p className="text-xs text-zinc-500 mt-0.5">
-                        {item.purpose} •{" "}
-                        {formatDateTime(item.createdAt)}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <StatusBadge status={item.status} />
-                      {item.qr?.usedForExit && (
-                        <span className="text-[10px] text-zinc-400">
-                          {item.qr?.usedForEntry ? "Returned" : "Exited"}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
       </div>
 
       <Modal

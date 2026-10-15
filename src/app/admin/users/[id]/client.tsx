@@ -301,7 +301,7 @@ export function UserDetailClient({
                   setSpecificDate(e.target.value);
                   setPermPage(1);
                 }}
-                className="h-8 px-2 bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs rounded-md [color-scheme:dark]"
+                className="h-8 px-2 bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs rounded-md [color-scheme:light]"
               />
             )}
           </div>

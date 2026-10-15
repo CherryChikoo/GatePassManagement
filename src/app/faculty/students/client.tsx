@@ -703,7 +703,7 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
               type="button"
               variant="outline"
               onClick={() => setShowBatchModal(false)}
-              className="flex-1 bg-transparent border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+              className="flex-1 bg-transparent border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
               disabled={batchLoading}
             >
               Cancel
@@ -720,7 +720,7 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
       </Modal>
 
       {total > pageSize && (
-        <div className="fixed bottom-0 left-0 lg:left-72 right-0 z-50 flex justify-between items-center py-3 px-4 lg:px-8 border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.5)]">
+        <div className="fixed bottom-0 left-0 lg:left-72 right-0 z-50 flex justify-between items-center py-3 px-4 lg:px-8 border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl shadow-[0_-10px_40px_-10px_rgba(16,24,40,0.12)]">
           <p className="text-sm text-zinc-400 font-medium">
             Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, total)} of {total} students
           </p>

@@ -18,7 +18,7 @@ export function isStaleDeploymentError(err: unknown): boolean {
 export function actionErrorMessage(err: unknown, fallback: string): string {
   if (isStaleDeploymentError(err)) {
     reloadForNewDeployment();
-    return "A new version of GatePass is available. Reloading…";
+    return "A new version of Gate Pass is available. Reloading…";
   }
   return fallback;
 }
