@@ -26,12 +26,15 @@ export function QrScanner({
   hint = "Hold the QR code inside the square",
   onResult,
   onCancel,
+  onClose,
   manualLabel = "Enter roll number instead",
 }: {
   title?: string;
   hint?: string;
   onResult: (text: string) => void;
   onCancel: () => void;
+  /** The ✕ button. Defaults to onCancel (the manual-entry button always uses onCancel). */
+  onClose?: () => void;
   manualLabel?: string;
 }) {
   const t = useT();
@@ -201,7 +204,7 @@ export function QrScanner({
       {/* Top bar */}
       <div className="relative z-10 flex items-center justify-between gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-3 bg-gradient-to-b from-black/80 to-transparent">
         <h2 className="text-base font-semibold">{t(title)}</h2>
-        <button onClick={onCancel} className="rounded-full bg-white/10 p-2 hover:bg-white/20" aria-label={t("Close scanner")}>
+        <button onClick={onClose ?? onCancel} className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 hover:bg-white/20" aria-label={t("Close scanner")}>
           <X className="h-5 w-5" />
         </button>
       </div>

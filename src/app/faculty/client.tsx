@@ -51,6 +51,10 @@ export function FacultyDashboardClient({ user }: Props) {
   const approvedPass = passes.find(
     (p) => p.status === "APPROVED" && p.qr?.active && (!p.qr?.expiresAt || new Date(p.qr.expiresAt) > new Date())
   );
+  // Out on an exit pass: the same QR is scanned again at the gate for the return
+  const outPass = passes.find(
+    (p) => p.status === "EXITED" && p.type !== "ENTRY" && !(p.movements ?? []).some((m: any) => m.type === "ENTRY")
+  );
   const firstName = (user.name || "").replace(/^(dr|prof|mr|mrs|ms)\.?\s+/i, "").split(" ")[0] || user.name;
   const hour = Number(new Intl.DateTimeFormat("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date()));
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -63,7 +67,7 @@ export function FacultyDashboardClient({ user }: Props) {
         <div className="min-w-0">
           <p className="text-sm text-zinc-500">{todayLabel}</p>
           <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
-            {greeting}, <span className="font-medium">{firstName}</span>
+            {greeting}, <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{firstName}</span>
           </h1>
           <p className="mt-1.5 text-sm text-zinc-500">
             {[faculty.department, faculty.designation].filter(Boolean).join(" • ") || "Faculty"}
@@ -152,11 +156,13 @@ export function FacultyDashboardClient({ user }: Props) {
               <div className="flex items-start justify-between gap-3">
                 <h2 className="text-lg font-medium text-zinc-100">My gate pass</h2>
                 <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-zinc-300 border border-white">
-                  {pendingPass ? "Pending" : approvedPass ? "Approved" : "No active pass"}
+                  {outPass ? "You're out" : pendingPass ? "Pending" : approvedPass ? "Approved" : "No active pass"}
                 </span>
               </div>
               <p className="mt-3 text-sm text-zinc-300 leading-relaxed">
-                {pendingPass
+                {outPass
+                  ? "You're out on your pass. When you come back, show the same QR at the gate so security records your return."
+                  : pendingPass
                   ? `Your ${facultyRequestTypeLabel(pendingPass.requestType) || "pass"} request is waiting for approval.`
                   : approvedPass
                   ? "Your pass is approved. Open it and show the QR code at the gate."
@@ -166,8 +172,8 @@ export function FacultyDashboardClient({ user }: Props) {
                 href="/faculty/apply"
                 className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-zinc-100 text-sm font-medium text-zinc-900 hover:bg-zinc-200 transition-colors"
               >
-                {approvedPass ? <QrCode className="h-4 w-4" /> : <ClipboardCheck className="h-4 w-4" />}
-                {approvedPass ? "View my QR pass" : pendingPass ? "View request" : "Apply for a pass"}
+                {approvedPass || outPass ? <QrCode className="h-4 w-4" /> : <ClipboardCheck className="h-4 w-4" />}
+                {outPass ? "Show return QR" : approvedPass ? "View my QR pass" : pendingPass ? "View request" : "Apply for a pass"}
               </Link>
             </div>
 

@@ -47,11 +47,26 @@ export async function registerOutsider(data: Record<string, unknown>) {
   // Entry time is always the live time of registration (never typed in)
   const entryTime = new Date();
 
-  // Name and mobile number are mandatory; every other input is optional
+  // Name, mobile number and a photo are mandatory; every other input is optional
   if (!input.name || input.name.trim().length < 2) return { success: false, error: "Visitor name is required" };
   if (!input.phone) return { success: false, error: "Mobile number is required" };
+  if (!input.photoUrl) return { success: false, error: "Take the visitor's photo before registering" };
 
   try {
+    // A double tap or a retried request must not log the same visitor twice:
+    // the same person (name + mobile), still inside, registered in the last
+    // 2 minutes is the same registration.
+    const recent = await prisma.outsider.findFirst({
+      where: {
+        phone: input.phone,
+        name: { equals: input.name.trim(), mode: "insensitive" },
+        status: "INSIDE",
+        entryTime: { gte: new Date(Date.now() - 2 * 60_000) },
+      },
+      select: { id: true },
+    });
+    if (recent) return { success: true, outsiderId: recent.id, duplicate: true };
+
     const outsider = await prisma.outsider.create({
       data: {
         name: input.name || "",

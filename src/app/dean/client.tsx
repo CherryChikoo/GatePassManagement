@@ -42,8 +42,8 @@ export function DeanDashboardClient({ user, title }: Props & { title?: string })
   const requests = useAppStore((s) => s.data.requests);
   const rawAllFaculty = useAppStore((s) => s.data.allFaculty);
   const allFaculty = rawAllFaculty || [];
-  const rawStudents = useAppStore((s) => s.data.students);
-  const allStudents = rawStudents || [];
+  // Students per department (counted on the server; the list itself is paged)
+  const studentDeptCountsData = useAppStore((s) => s.data.studentDeptCounts) as Record<string, number> | undefined;
   const rawStudentPasses = useAppStore((s) => s.data.recentStudentPasses) || dashboardData?.recentStudentPasses || [];
 
   // Group faculty count by department
@@ -53,12 +53,8 @@ export function DeanDashboardClient({ user, title }: Props & { title?: string })
     deptFacultyCounts[d] = (deptFacultyCounts[d] || 0) + 1;
   });
 
-  // Group student count by department
-  const deptStudentCounts: Record<string, number> = {};
-  allStudents.forEach((s: any) => {
-    const d = s.department || "General";
-    deptStudentCounts[d] = (deptStudentCounts[d] || 0) + 1;
-  });
+  // Student count by department
+  const deptStudentCounts: Record<string, number> = studentDeptCountsData ?? {};
 
   if (!isReady || dashboardData === undefined) {
     return <DashboardSkeleton />;
@@ -111,409 +107,310 @@ export function DeanDashboardClient({ user, title }: Props & { title?: string })
     })
     .slice(0, 10);
 
+  const firstName =
+    (user?.name || "").replace(/^(dr|prof|mr|mrs|ms)\.?\s+/i, "").split(" ")[0] || user?.name || title || "Dean";
+  const hour = Number(new Intl.DateTimeFormat("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date()));
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const todayLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date());
+
+  const segBtn = (active: boolean) =>
+    `inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap ${
+      active ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
+    }`;
+
+  const quickLinks = [
+    { href: "/dean/requests", label: "Faculty Passes", hint: "Review and authorize campus faculty gate pass requests", icon: <ClipboardCheck className="h-4 w-4" /> },
+    { href: "/dean/students", label: "All Students", hint: "Campus-wide student registry, cohorts & hostel details", icon: <GraduationCap className="h-4 w-4" /> },
+    { href: "/dean/hods", label: "All HODs", hint: "Heads of department directory and leadership records", icon: <Shield className="h-4 w-4" /> },
+    { href: "/dean/faculty", label: "Faculty Directory", hint: "Campus-wide faculty directory across all academic departments", icon: <Users className="h-4 w-4" /> },
+    { href: "/dean/activity", label: "Activity Logs", hint: "Track faculty pass approvals and recorded gate movements", icon: <History className="h-4 w-4" /> },
+  ];
+
   return (
     <>
-      <div className="space-y-8">
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2.5 flex-wrap">
-              {title ?? "Dean Dashboard"}
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/30">
-                Academic Leadership
-              </span>
-              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">
-                All Departments
-              </span>
+      <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
+        {/* Greeting */}
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm text-zinc-500">{todayLabel}</p>
+            <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
+              {greeting}, <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{firstName}</span>
             </h1>
-            <p className="text-sm text-zinc-400 mt-1">
+            <p className="mt-1.5 text-sm text-zinc-500">
+              <span className="font-medium text-zinc-300">{title ?? "Dean Dashboard"}</span> · Academic Leadership · All Departments
+            </p>
+            <p className="mt-1 text-sm text-zinc-500">
               Faculty oversight, department coordination, and faculty pass authorizations
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Link href="/dean/requests">
-              <Button className="bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white shadow-lg shadow-sky-600/20">
-                <ClipboardCheck className="h-4 w-4 mr-1.5" />
-                Faculty Passes
-                {stats.pendingFacultyPasses > 0 && (
-                  <span className="ml-1.5 px-2 py-0.2 rounded-full bg-white/20 text-xs font-bold">
-                    {stats.pendingFacultyPasses}
-                  </span>
-                )}
-              </Button>
-            </Link>
-          </div>
+          <Link href="/dean/requests" className="shrink-0">
+            <Button className="w-full sm:w-auto">
+              <ClipboardCheck className="h-4 w-4" />
+              Faculty Passes
+              {stats.pendingFacultyPasses > 0 && (
+                <span className="ml-0.5 rounded-full bg-white/20 px-2 py-0.5 text-xs font-semibold">
+                  {stats.pendingFacultyPasses}
+                </span>
+              )}
+            </Button>
+          </Link>
         </div>
 
-        {/* Pending Faculty Passes Alert Banner */}
-        {stats.pendingFacultyPasses > 0 && (
-          <div className="flex items-center justify-between rounded-xl border border-sky-500/30 bg-sky-500/10 p-4 text-sky-300">
-            <div className="flex items-center gap-3">
-              <ShieldAlert className="h-5 w-5 text-sky-400 shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-sky-200">
-                  {stats.pendingFacultyPasses} Faculty Pass Request{stats.pendingFacultyPasses > 1 ? "s" : ""} Pending Approval
-                </p>
-                <p className="text-xs text-sky-300/80">
-                  Faculty members from academic departments are awaiting Dean review.
-                </p>
-              </div>
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
+          {/* Left: stats + recent passes */}
+          <div className="xl:col-span-2 space-y-4 lg:space-y-6 min-w-0">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <StatCard title="Total Faculty" value={stats.totalFaculty} icon={<Briefcase />} description="Active teaching faculty" />
+              <StatCard title="Total HODs" value={stats.totalHODs} icon={<Shield />} description="Department heads" />
+              <StatCard title="Total Students" value={stats.totalStudents} icon={<GraduationCap />} description="Campus enrolled" />
+              <StatCard title="Pending Passes" value={stats.pendingFacultyPasses} icon={<ClipboardCheck />} description="Awaiting Dean review" />
+              <StatCard
+                title="Approved Today"
+                value={stats.approvedToday}
+                icon={<CheckCircle2 />}
+                description="Your faculty passes approved today"
+              />
+              <StatCard
+                title="Rejected Today"
+                value={stats.rejectedToday}
+                icon={<XCircle />}
+                description="Your faculty passes rejected today"
+              />
+              <StatCard title="Faculty Exits" value={stats.exitsToday} icon={<DoorOpen />} description="Exits on passes sent to you" />
+              <StatCard title="Faculty Entries" value={stats.entriesToday} icon={<MapPin />} description="Returns on passes sent to you" />
             </div>
-            <Link href="/dean/requests">
-              <Button size="sm" variant="outline" className="border-sky-500/40 text-sky-300 hover:bg-sky-500/20">
-                Review Now <ArrowRight className="h-3.5 w-3.5 ml-1" />
-              </Button>
-            </Link>
+
+            {/* Recent gate passes */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="min-w-0">
+                  <CardTitle className="font-medium">Recent Gate Passes</CardTitle>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Latest gate passes and permissions requested across campus divisions
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-2">
+                  {/* Category Filter: All / Faculty / Students */}
+                  <div
+                    className="inline-flex max-w-full rounded-full bg-zinc-950 p-1 border border-zinc-800 overflow-x-auto scrollbar-none"
+                    role="tablist"
+                    aria-label="Filter by requester"
+                  >
+                    <button
+                      role="tab"
+                      aria-selected={activityCategory === "ALL"}
+                      onClick={() => setActiveTab("ALL")}
+                      className={segBtn(activityCategory === "ALL")}
+                      onClickCapture={() => setActivityCategory("ALL")}
+                    >
+                      All
+                    </button>
+                    <button
+                      role="tab"
+                      aria-selected={activityCategory === "FACULTY"}
+                      className={segBtn(activityCategory === "FACULTY")}
+                      onClick={() => setActivityCategory("FACULTY")}
+                    >
+                      <Briefcase className="h-3 w-3" /> Faculty
+                    </button>
+                    <button
+                      role="tab"
+                      aria-selected={activityCategory === "STUDENTS"}
+                      className={segBtn(activityCategory === "STUDENTS")}
+                      onClick={() => setActivityCategory("STUDENTS")}
+                    >
+                      <GraduationCap className="h-3 w-3" /> Students
+                    </button>
+                  </div>
+
+                  {/* Status Tabs */}
+                  <div
+                    className="inline-flex max-w-full rounded-full bg-zinc-950 p-1 border border-zinc-800 overflow-x-auto scrollbar-none"
+                    role="tablist"
+                    aria-label="Filter by status"
+                  >
+                    {(["ALL", "PENDING", "APPROVED", "REJECTED"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        role="tab"
+                        aria-selected={activeTab === tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={segBtn(activeTab === tab)}
+                      >
+                        {tab === "ALL" ? "All Status" : tab.charAt(0) + tab.slice(1).toLowerCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-2">
+                {filteredActivity.length === 0 ? (
+                  <p className="py-12 text-center text-sm text-zinc-500">
+                    No pass activity found matching the selected filter.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-zinc-800/70">
+                    {filteredActivity.map((item: any) => {
+                      const isStudent = !!item.student;
+                      const requesterName = isStudent
+                        ? item.student.profile?.name || "Student"
+                        : item.faculty?.profile?.name || "Faculty Member";
+                      const dept = isStudent
+                        ? item.student.department || "Department"
+                        : item.faculty?.department || "Department";
+                      const desig = isStudent
+                        ? "Student"
+                        : item.faculty?.designation || (item.faculty?.profile?.role === "FACULTY_ADMIN" ? "HOD" : "Faculty");
+                      const idTag = isStudent
+                        ? item.student.studentRoll
+                        : item.faculty?.employeeId || "N/A";
+
+                      return (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedActivity(item)}
+                            className="w-full flex items-center gap-3 sm:gap-4 py-3 text-left rounded-2xl px-2 -mx-2 hover:bg-zinc-950 transition-colors"
+                          >
+                            <span
+                              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+                                isStudent ? "bg-zinc-950 text-zinc-400" : "bg-orange-500/10 text-orange-400"
+                              }`}
+                            >
+                              {isStudent ? <GraduationCap className="h-5 w-5" /> : <Briefcase className="h-5 w-5" />}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-sm font-medium text-zinc-100 truncate">
+                                {requesterName}
+                                {idTag && <span className="text-zinc-500 font-normal"> · {idTag}</span>}
+                              </span>
+                              <span className="mt-1 flex items-center gap-1.5 min-w-0">
+                                <span
+                                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                    isStudent ? "bg-zinc-950 text-zinc-400 border border-zinc-800" : "bg-orange-500/10 text-orange-400"
+                                  }`}
+                                >
+                                  {isStudent ? "Student" : "Faculty"}
+                                </span>
+                                <span className="shrink-0 rounded-full border border-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
+                                  {getDepartmentCode(dept)}
+                                </span>
+                                <span className="min-w-0 truncate text-xs text-zinc-500">
+                                  {desig} • Purpose: {item.purpose || "Official"}
+                                  {item.destination && ` • Destination: ${item.destination}`}
+                                </span>
+                              </span>
+                            </span>
+                            <span className="flex flex-col items-end gap-1 shrink-0">
+                              <StatusBadge status={item.status} />
+                              <span className="text-[11px] text-zinc-500">{formatDateTime(item.createdAt)}</span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
           </div>
-        )}
 
-        {/* Primary Metric Stats Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <StatCard
-            title="Total Faculty"
-            value={stats.totalFaculty}
-            icon={<Briefcase className="h-5 w-5 text-sky-400" />}
-            description="Active teaching faculty"
-          />
-          <StatCard
-            title="Total HODs"
-            value={stats.totalHODs}
-            icon={<Shield className="h-5 w-5 text-indigo-400" />}
-            description="Department heads"
-          />
-          <StatCard
-            title="Total Students"
-            value={stats.totalStudents}
-            icon={<GraduationCap className="h-5 w-5 text-blue-400" />}
-            description="Campus enrolled"
-          />
-          <StatCard
-            title="Pending Passes"
-            value={stats.pendingFacultyPasses}
-            icon={<ClipboardCheck className="h-5 w-5 text-amber-400" />}
-            description="Awaiting Dean review"
-          />
-        </div>
-
-        {/* Daily Pass Activity Summary */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <StatCard
-            title="Approved Today"
-            value={stats.approvedToday}
-            icon={<CheckCircle2 className="h-5 w-5 text-emerald-400" />}
-            description="Your faculty passes approved today"
-          />
-          <StatCard
-            title="Rejected Today"
-            value={stats.rejectedToday}
-            icon={<XCircle className="h-5 w-5 text-red-400" />}
-            description="Your faculty passes rejected today"
-          />
-          <StatCard
-            title="Faculty Exits"
-            value={stats.exitsToday}
-            icon={<DoorOpen className="h-5 w-5 text-orange-400" />}
-            description="Exits on passes sent to you"
-          />
-          <StatCard
-            title="Faculty Entries"
-            value={stats.entriesToday}
-            icon={<MapPin className="h-5 w-5 text-cyan-400" />}
-            description="Returns on passes sent to you"
-          />
-        </div>
-
-        {/* Quick Hub Navigation Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          <Link href="/dean/requests" className="group">
-            <Card className="border-zinc-800 bg-zinc-900/60 hover:border-sky-500/40 hover:bg-zinc-900/90 transition-all duration-200 h-full">
-              <CardContent className="p-5 flex items-start gap-4">
-                <div className="p-3 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20 group-hover:scale-105 transition-transform">
-                  <ClipboardCheck className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-zinc-100 group-hover:text-sky-400 transition-colors flex items-center gap-1.5">
-                    Faculty Passes <ArrowRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Review and authorize campus faculty gate pass requests
+          {/* Right: faculty passes (feature card) + quick links */}
+          <div className="space-y-4 lg:space-y-6 min-w-0">
+            <div
+              className="relative overflow-hidden rounded-3xl border border-orange-500/20 p-5 sm:p-6 shadow-card"
+              style={{ background: "linear-gradient(160deg, #fff3f0 0%, #ffe1d9 55%, #ffd2c7 100%)" }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="text-lg font-medium text-zinc-100">Faculty Passes</h2>
+                <span className="shrink-0 rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-zinc-300 border border-white">
+                  {stats.pendingFacultyPasses} pending
+                </span>
+              </div>
+              {stats.pendingFacultyPasses > 0 ? (
+                <>
+                  <p className="mt-3 text-sm font-medium text-zinc-200">
+                    {stats.pendingFacultyPasses} Faculty Pass Request{stats.pendingFacultyPasses > 1 ? "s" : ""} Pending Approval
                   </p>
-                </div>
+                  <p className="mt-1 text-sm text-zinc-300 leading-relaxed">
+                    Faculty members from academic departments are awaiting Dean review.
+                  </p>
+                </>
+              ) : (
+                <p className="mt-3 text-sm text-zinc-300 leading-relaxed">
+                  Review and authorize campus faculty gate pass requests
+                </p>
+              )}
+              <Link
+                href="/dean/requests"
+                className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-zinc-100 text-sm font-medium text-zinc-900 hover:bg-zinc-200 transition-colors"
+              >
+                {stats.pendingFacultyPasses > 0 ? "Review Now" : "Faculty Passes"}
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+
+            <Card>
+              <CardContent className="p-5 sm:p-6 space-y-3">
+                <h2 className="text-base font-medium text-zinc-100">Quick links</h2>
+                {quickLinks.map((l) => (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    className="flex items-center gap-3 rounded-2xl border border-zinc-800 px-3 py-3 hover:bg-zinc-950 transition-colors"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-950 text-zinc-400">{l.icon}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-zinc-100">{l.label}</span>
+                      <span className="block text-xs text-zinc-500 truncate">{l.hint}</span>
+                    </span>
+                  </Link>
+                ))}
               </CardContent>
             </Card>
-          </Link>
-
-          <Link href="/dean/students" className="group">
-            <Card className="border-zinc-800 bg-zinc-900/60 hover:border-purple-500/40 hover:bg-zinc-900/90 transition-all duration-200 h-full">
-              <CardContent className="p-5 flex items-start gap-4">
-                <div className="p-3 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 group-hover:scale-105 transition-transform">
-                  <GraduationCap className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-zinc-100 group-hover:text-purple-400 transition-colors flex items-center gap-1.5">
-                    All Students <ArrowRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Campus-wide student registry, cohorts & hostel details
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href="/dean/hods" className="group">
-            <Card className="border-zinc-800 bg-zinc-900/60 hover:border-amber-500/40 hover:bg-zinc-900/90 transition-all duration-200 h-full">
-              <CardContent className="p-5 flex items-start gap-4">
-                <div className="p-3 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 group-hover:scale-105 transition-transform">
-                  <Shield className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-zinc-100 group-hover:text-amber-400 transition-colors flex items-center gap-1.5">
-                    All HODs <ArrowRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Heads of department directory and leadership records
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href="/dean/faculty" className="group">
-            <Card className="border-zinc-800 bg-zinc-900/60 hover:border-emerald-500/40 hover:bg-zinc-900/90 transition-all duration-200 h-full">
-              <CardContent className="p-5 flex items-start gap-4">
-                <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 group-hover:scale-105 transition-transform">
-                  <Users className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-zinc-100 group-hover:text-emerald-400 transition-colors flex items-center gap-1.5">
-                    Faculty Directory <ArrowRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Campus-wide faculty directory across all academic departments
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href="/dean/activity" className="group">
-            <Card className="border-zinc-800 bg-zinc-900/60 hover:border-blue-500/40 hover:bg-zinc-900/90 transition-all duration-200 h-full">
-              <CardContent className="p-5 flex items-start gap-4">
-                <div className="p-3 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 group-hover:scale-105 transition-transform">
-                  <History className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-zinc-100 group-hover:text-blue-400 transition-colors flex items-center gap-1.5">
-                    Activity Logs <ArrowRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Track faculty pass approvals and recorded gate movements
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
+          </div>
         </div>
 
         {/* Academic Departments Breakdown */}
-        <Card className="border-zinc-800 bg-zinc-900/40">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold text-zinc-100 flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-sky-400" />
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="font-medium flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-orange-400" />
               Academic Departments Breakdown
             </CardTitle>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-zinc-500">
               Departmental staffing and student enrollment overview across academic divisions
             </p>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <CardContent className="pt-2">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
               {DEPARTMENTS.map((dept) => {
                 const facCount = deptFacultyCounts[dept.name] || deptFacultyCounts[dept.code] || 0;
                 const stuCount = deptStudentCounts[dept.name] || deptStudentCounts[dept.code] || 0;
 
                 return (
-                  <div
-                    key={dept.code}
-                    className="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-xs px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                          {dept.code}
-                        </span>
-                        <span className="text-xs font-semibold text-zinc-200">{dept.name}</span>
-                      </div>
-                      <p className="text-[11px] text-zinc-500 mt-1">
-                        Academic Department
-                      </p>
-                    </div>
-                    <div className="text-right flex items-center gap-3">
+                  <div key={dept.code} className="min-w-0 rounded-2xl border border-zinc-800 p-3.5 sm:p-4">
+                    <span className="inline-flex rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-semibold text-orange-400">
+                      {dept.code}
+                    </span>
+                    <p className="mt-2 text-xs font-medium text-zinc-200 truncate" title={dept.name}>
+                      {dept.name}
+                    </p>
+                    <p className="text-[11px] text-zinc-500">Academic Department</p>
+                    <div className="mt-3 flex items-end gap-4">
                       <div>
-                        <span className="text-base font-extrabold text-zinc-100">{facCount}</span>
-                        <span className="block text-[10px] text-zinc-400 font-medium">Faculty</span>
+                        <span className="block text-xl font-light leading-none text-zinc-100">{facCount}</span>
+                        <span className="mt-1 block text-[10px] text-zinc-500">Faculty</span>
                       </div>
-                      <div className="pl-2.5 border-l border-zinc-800">
-                        <span className="text-base font-extrabold text-purple-400">{stuCount}</span>
-                        <span className="block text-[10px] text-zinc-400 font-medium">Students</span>
+                      <div className="border-l border-zinc-800 pl-4">
+                        <span className="block text-xl font-light leading-none text-zinc-100">{stuCount}</span>
+                        <span className="mt-1 block text-[10px] text-zinc-500">Students</span>
                       </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Recent Campus Activity Section */}
-        <Card className="border-zinc-800 bg-zinc-900/40">
-          <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between pb-3 gap-3">
-            <div>
-              <CardTitle className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
-                <History className="h-5 w-5 text-sky-400" />
-                Recent Gate Passes
-              </CardTitle>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Latest gate passes and permissions requested across campus divisions
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Category Filter: All / Faculty / Students */}
-              <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
-                <button
-                  onClick={() => setActiveTab("ALL")}
-                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
-                    activityCategory === "ALL"
-                      ? "bg-zinc-900 text-zinc-100 shadow-card shadow-sm"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                  onClickCapture={() => setActivityCategory("ALL")}
-                >
-                  All
-                </button>
-                <button
-                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all flex items-center gap-1 ${
-                    activityCategory === "FACULTY"
-                      ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/40"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                  onClick={() => setActivityCategory("FACULTY")}
-                >
-                  <Briefcase className="h-3 w-3" /> Faculty
-                </button>
-                <button
-                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all flex items-center gap-1 ${
-                    activityCategory === "STUDENTS"
-                      ? "bg-blue-500/20 text-blue-300 border border-blue-500/40"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                  onClick={() => setActivityCategory("STUDENTS")}
-                >
-                  <GraduationCap className="h-3 w-3" /> Students
-                </button>
-              </div>
-
-              {/* Status Tabs */}
-              <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
-                {(["ALL", "PENDING", "APPROVED", "REJECTED"] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
-                      activeTab === tab
-                        ? "bg-sky-600 text-white shadow-sm"
-                        : "text-zinc-400 hover:text-zinc-200"
-                    }`}
-                  >
-                    {tab === "ALL" ? "All Status" : tab.charAt(0) + tab.slice(1).toLowerCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {filteredActivity.length === 0 ? (
-              <div className="py-12 text-center text-zinc-500 text-sm">
-                No pass activity found matching the selected filter.
-              </div>
-            ) : (
-              <div className="divide-y divide-zinc-800/60">
-                {filteredActivity.map((item: any) => {
-                  const isStudent = !!item.student;
-                  const requesterName = isStudent
-                    ? item.student.profile?.name || "Student"
-                    : item.faculty?.profile?.name || "Faculty Member";
-                  const dept = isStudent
-                    ? item.student.department || "Department"
-                    : item.faculty?.department || "Department";
-                  const desig = isStudent
-                    ? "Student"
-                    : item.faculty?.designation || (item.faculty?.profile?.role === "FACULTY_ADMIN" ? "HOD" : "Faculty");
-                  const idTag = isStudent
-                    ? item.student.studentRoll
-                    : item.faculty?.employeeId || "N/A";
-
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => setSelectedActivity(item)}
-                      className="p-4 flex items-center justify-between gap-4 hover:bg-zinc-800/30 transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        <div
-                          className={`h-10 w-10 rounded-xl border flex items-center justify-center shrink-0 ${
-                            isStudent
-                              ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
-                              : "bg-sky-500/10 text-sky-400 border-sky-500/20"
-                          }`}
-                        >
-                          {isStudent ? (
-                            <GraduationCap className="h-5 w-5" />
-                          ) : (
-                            <Briefcase className="h-5 w-5" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-sm font-semibold text-zinc-100 truncate">{requesterName}</p>
-                            {idTag && (
-                              <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-zinc-800 text-zinc-300">
-                                {idTag}
-                              </span>
-                            )}
-                            <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${
-                                isStudent
-                                  ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
-                                  : "bg-indigo-500/15 text-indigo-400 border-indigo-500/30"
-                              }`}
-                            >
-                              {isStudent ? "Student" : "Faculty"}
-                            </span>
-                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                              {getDepartmentCode(dept)}
-                            </span>
-                          </div>
-                          <p className="text-xs text-zinc-400 mt-0.5 truncate">
-                            {desig} • <span className="text-zinc-300">Purpose: {item.purpose || "Official"}</span>
-                            {item.destination && ` • Destination: ${item.destination}`}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 shrink-0">
-                        <StatusBadge status={item.status} />
-                        <span className="text-xs text-zinc-500 hidden sm:inline">
-                          {formatDateTime(item.createdAt)}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>
@@ -526,53 +423,53 @@ export function DeanDashboardClient({ user, title }: Props & { title?: string })
           title="Gate Pass Request Details"
         >
           <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-400 uppercase tracking-wider font-semibold">
+            <div className="rounded-2xl bg-zinc-950 p-4 space-y-1.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
                   {selectedActivity.student ? "Student Applicant" : "Faculty Member"}
                 </span>
                 <StatusBadge status={selectedActivity.status} />
               </div>
-              <p className="text-base font-bold text-zinc-100">
+              <p className="text-base font-medium text-zinc-100 break-words">
                 {selectedActivity.student?.profile?.name ||
                   selectedActivity.faculty?.profile?.name ||
                   "Requester"}
               </p>
-              <p className="text-xs text-zinc-400">
+              <p className="text-xs text-zinc-500">
                 {selectedActivity.student
                   ? `Roll: ${selectedActivity.student.studentRoll} • Department of ${selectedActivity.student.department || "General"}`
                   : `${selectedActivity.faculty?.designation || "Faculty"} • Department of ${selectedActivity.faculty?.department || "General"}`}
               </p>
               {(selectedActivity.student?.profile?.phone || selectedActivity.faculty?.profile?.phone) && (
-                <p className="text-xs text-zinc-400">
+                <p className="text-xs text-zinc-500">
                   Phone: {selectedActivity.student?.profile?.phone || selectedActivity.faculty?.profile?.phone}
                 </p>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-                <span className="text-zinc-500 block">Purpose</span>
-                <span className="text-zinc-200 font-medium">{selectedActivity.purpose || "N/A"}</span>
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-zinc-800 p-3">
+                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Purpose</dt>
+                <dd className="mt-0.5 text-sm text-zinc-200 break-words">{selectedActivity.purpose || "N/A"}</dd>
               </div>
-              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-                <span className="text-zinc-500 block">Destination</span>
-                <span className="text-zinc-200 font-medium">{selectedActivity.destination || "N/A"}</span>
+              <div className="rounded-2xl border border-zinc-800 p-3">
+                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Destination</dt>
+                <dd className="mt-0.5 text-sm text-zinc-200 break-words">{selectedActivity.destination || "N/A"}</dd>
               </div>
-              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-                <span className="text-zinc-500 block">Requested At</span>
-                <span className="text-zinc-200 font-medium">{formatDateTime(selectedActivity.createdAt)}</span>
+              <div className="rounded-2xl border border-zinc-800 p-3">
+                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Requested At</dt>
+                <dd className="mt-0.5 text-sm text-zinc-200 break-words">{formatDateTime(selectedActivity.createdAt)}</dd>
               </div>
-              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-                <span className="text-zinc-500 block">Approver Role</span>
-                <span className="text-zinc-200 font-medium">{selectedActivity.approverType || "DEAN"}</span>
+              <div className="rounded-2xl border border-zinc-800 p-3">
+                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Approver Role</dt>
+                <dd className="mt-0.5 text-sm text-zinc-200 break-words">{selectedActivity.approverType || "DEAN"}</dd>
               </div>
-            </div>
+            </dl>
 
             {selectedActivity.status === "PENDING" && !selectedActivity.student && (
               <div className="pt-2">
-                <Link href="/dean/requests">
-                  <Button className="w-full bg-sky-600 hover:bg-sky-700 text-white">
+                <Link href="/dean/requests" className="block">
+                  <Button className="w-full">
                     Go to Pass Review to Approve / Reject
                   </Button>
                 </Link>

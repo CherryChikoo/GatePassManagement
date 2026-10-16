@@ -51,7 +51,7 @@ export async function verifyHostelPass(input: string) {
     scannedTokenId = result.payload.tokenId || null;
   } else if (ROLL_RE.test(value)) {
     const p = await prisma.permission.findFirst({
-      where: { passKind: "HOSTEL", status: "APPROVED", student: { studentRoll: { equals: value, mode: "insensitive" } } },
+      where: { passKind: "HOSTEL", status: "APPROVED", student: { studentRoll: value.toUpperCase() } },
       orderBy: { createdAt: "desc" },
       select: { id: true },
     });

@@ -2,6 +2,8 @@
 
 import { Role } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import type { Prisma } from "@prisma/client";
+import { checkRateLimit } from "@/lib/auth/rate-limiter";
 import { requireRole, getAuthUser, invalidateProfileCache } from "@/lib/auth/helpers";
 import {
   createUserSchema,
@@ -30,10 +32,8 @@ let cachedActivity: { data: any; expiresAt: number } | null = null;
 const userDetailsCache = new Map<string, { data: any; expiresAt: number }>();
 const usersListCache = new Map<string, { data: any; expiresAt: number }>();
 
-export async function invalidateAdminCaches() {
-  // Exported from a "use server" module, so it is callable from the browser:
-  // require a signed-in user (it only clears caches, but avoid anonymous abuse).
-  if (!(await getAuthUser())) return;
+/** Clears this instance's admin caches. Internal: called after the server's own writes. */
+function clearAdminCaches() {
   cachedDashboard = null;
   cachedFaculty = null;
   cachedWardens = null;
@@ -43,6 +43,16 @@ export async function invalidateAdminCaches() {
   userDetailsCache.clear();
   usersListCache.clear();
   invalidateProfileCache();
+}
+
+const CACHE_CLEARING_ROLES: string[] = ["ADMIN", "SECURITY", "FACULTY_ADMIN", "WARDEN", "DEAN", "DIRECTOR", "SECURITY_SUPERVISOR"];
+
+export async function invalidateAdminCaches() {
+  // Exported from a "use server" module, so it is callable from the browser:
+  // only staff may trigger it (students and faculty cannot force cache-wide reloads).
+  const caller = await getAuthUser();
+  if (!caller || !CACHE_CLEARING_ROLES.includes(caller.role)) return;
+  clearAdminCaches();
 }
 
 
@@ -170,9 +180,10 @@ export async function createUser(formData: FormData) {
             studentType: (data.studentType as any) || "DAY_SCHOLAR",
             hostelType: data.studentType === "HOSTELLER" ? data.hostelType || null : null,
             facultyId: facultyId || null,
-            wardenId: wardenId || null,
-            roomNumber: data.roomNumber || null,
-            hostelBlock: data.hostelBlock || null,
+            // Hostel details only for hostellers
+            wardenId: data.studentType === "HOSTELLER" ? wardenId || null : null,
+            roomNumber: data.studentType === "HOSTELLER" ? data.roomNumber || null : null,
+            hostelBlock: data.studentType === "HOSTELLER" ? data.hostelBlock || null : null,
           },
         });
         break;
@@ -242,7 +253,7 @@ export async function createUser(formData: FormData) {
     }
     });
 
-    invalidateAdminCaches();
+    clearAdminCaches();
     revalidatePath("/admin/users");
     return { success: true };
   } catch (error: any) {
@@ -286,7 +297,7 @@ export async function toggleUserActive(profileId: string) {
   });
 
   invalidateProfileCache(profile.userId);
-  invalidateAdminCaches();
+  clearAdminCaches();
   revalidatePath("/admin/users");
   return { success: true };
 }
@@ -350,7 +361,7 @@ export async function deleteUser(profileId: string) {
 
   const { error: authError } = await getAdminSupabase().auth.admin.deleteUser(profile.userId);
   invalidateProfileCache(profile.userId);
-  invalidateAdminCaches();
+  clearAdminCaches();
   revalidatePath("/admin/users");
 
   if (authError && !/not.*found/i.test(authError.message)) {
@@ -650,6 +661,10 @@ const ADMIN_ONLY_STUDENT_FIELDS = ["email", "studentRoll", "department", "studen
 export async function updateStudentDetails(studentId: string, data: Record<string, unknown>) {
   const user = await requireRole("ADMIN", "FACULTY", "FACULTY_ADMIN", "WARDEN");
   const isAdmin = user.role === "ADMIN";
+  // Admin, HOD and Warden may change a student's email, roll number, department,
+  // type and assignments (only for students they can access — checked below).
+  // Faculty members edit contact and cohort details only.
+  const canEditRecord = isAdmin || user.role === "FACULTY_ADMIN" || user.role === "WARDEN";
 
   const scope = await getStaffScope(user);
   if (!(await canAccessStudent(scope, studentId))) {
@@ -662,11 +677,11 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
   });
   if (!student) return { error: "Student not found" };
 
-  const parsed = (isAdmin ? adminStudentUpdateSchema : staffStudentUpdateSchema).safeParse(data ?? {});
+  const parsed = (canEditRecord ? adminStudentUpdateSchema : staffStudentUpdateSchema).safeParse(data ?? {});
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const input = parsed.data as Record<string, any>;
 
-  if (!isAdmin) {
+  if (!canEditRecord) {
     const current: Record<string, unknown> = {
       email: student.profile.email,
       studentRoll: student.studentRoll,
@@ -680,7 +695,7 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
       (k) => data?.[k] !== undefined && (data[k] || null) !== (current[k] || null)
     );
     if (attempted.length > 0) {
-      return { error: "Only an administrator can change email, roll number, department, student type or assignments." };
+      return { error: "Only an administrator, HOD or warden can change email, roll number, department, student type or assignments." };
     }
   }
 
@@ -698,14 +713,23 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
     }
   }
 
-  if (input.facultyId && !(await prisma.faculty.findUnique({ where: { id: input.facultyId }, select: { id: true } }))) {
-    return { error: "Selected faculty does not exist" };
+  if (input.facultyId) {
+    const mentor = await prisma.faculty.findUnique({ where: { id: input.facultyId }, select: { id: true, department: true } });
+    if (!mentor) return { error: "Selected faculty does not exist" };
+    // An HOD assigns mentors from their own department
+    if (
+      scope.kind === "FACULTY_ADMIN" &&
+      input.facultyId !== student.facultyId &&
+      !getDepartmentVariants(mentor.department).some((d) => scope.deptVariants.includes(d))
+    ) {
+      return { error: "You can assign faculty from your own department only." };
+    }
   }
   if (input.wardenId && !(await prisma.warden.findUnique({ where: { id: input.wardenId }, select: { id: true } }))) {
     return { error: "Selected warden does not exist" };
   }
 
-  const emailChanged = isAdmin && input.email && input.email !== student.profile.email;
+  const emailChanged = canEditRecord && input.email && input.email !== student.profile.email;
   const nameChanged = !!input.name && input.name !== student.profile.name;
   const phoneChanged = input.phone !== undefined && (input.phone || null) !== student.profile.phone;
   // Keep the Supabase login identical to the portal account (email, name, phone)
@@ -748,6 +772,10 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
           ...(input.wardenId !== undefined ? { wardenId: input.wardenId || null } : {}),
           ...(input.roomNumber !== undefined ? { roomNumber: input.roomNumber || null } : {}),
           ...(input.hostelBlock !== undefined ? { hostelBlock: input.hostelBlock || null } : {}),
+          // A day scholar has no hostel: warden, hostel, block and room are always cleared
+          ...((input.studentType || student.studentType) === "DAY_SCHOLAR"
+            ? { wardenId: null, hostelType: null, hostelBlock: null, roomNumber: null }
+            : {}),
         },
       }),
     ]);
@@ -766,7 +794,7 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
     return { error: "Failed to update student" };
   }
 
-  invalidateAdminCaches();
+  clearAdminCaches();
   revalidatePath("/admin/users");
   revalidatePath("/faculty/students");
   revalidatePath("/faculty-admin/students");
@@ -826,58 +854,75 @@ export async function updateUserDetails(profileId: string, rawData: Record<strin
     if (authError) return { error: "Failed to update the login account: " + authError.message };
   }
 
+  // Profile and role record change together (one transaction): never half-saved
+  const writes: Prisma.PrismaPromise<unknown>[] = [];
   if (data.name !== undefined || data.phone !== undefined || emailChanged) {
-    try {
-      await prisma.profile.update({
+    writes.push(
+      prisma.profile.update({
         where: { id: profileId },
         data: {
           ...(data.name ? { name: data.name } : {}),
           ...(emailChanged ? { email: data.email } : {}),
           ...(data.phone !== undefined ? { phone: data.phone || null } : {}),
         },
-      });
-    } catch (err: any) {
-      // Put the login back so the two never disagree
+      })
+    );
+  }
+  if (["FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN"].includes(profile.role) && profile.faculty) {
+    writes.push(
+      prisma.faculty.update({
+        where: { id: profile.faculty.id },
+        data: {
+          ...(data.department !== undefined ? { department: data.department || null } : {}),
+          ...(data.designation !== undefined ? { designation: data.designation || null } : {}),
+          ...(data.employeeId !== undefined ? { employeeId: data.employeeId || null } : {}),
+        },
+      })
+    );
+  } else if (profile.role === "WARDEN" && profile.warden) {
+    writes.push(
+      prisma.warden.update({
+        where: { id: profile.warden.id },
+        data: {
+          ...(data.hostelBlock !== undefined ? { hostelBlock: data.hostelBlock || null } : {}),
+          ...(data.employeeId !== undefined ? { employeeId: data.employeeId || null } : {}),
+        },
+      })
+    );
+  } else if (profile.role === "SECURITY" && profile.securityStaff) {
+    writes.push(
+      prisma.securityStaff.update({
+        where: { id: profile.securityStaff.id },
+        data: {
+          ...(data.gateId !== undefined ? { gateId: data.gateId || null } : {}),
+          ...(data.employeeId !== undefined ? { employeeId: data.employeeId || null } : {}),
+          ...(typeof data.isHeadSecurity === "boolean" ? { isHead: data.isHeadSecurity } : {}),
+        },
+      })
+    );
+  }
+
+  try {
+    if (writes.length) await prisma.$transaction(writes);
+  } catch (err: any) {
+    // Put the login back so the two never disagree
+    if (emailChanged || nameChanged || phoneChanged) {
       await getAdminSupabase()
         .auth.admin.updateUserById(profile.userId, {
           ...(emailChanged ? { email: profile.email } : {}),
           user_metadata: { name: profile.name, full_name: profile.name, display_name: profile.name, phone: profile.phone },
         })
         .catch(() => {});
-      if (err?.code === "P2002") return { error: "Email is already in use." };
-      return { error: "Failed to update user" };
     }
+    if (err?.code === "P2002") {
+      const target = String(err?.meta?.target ?? "");
+      return { error: target.includes("employee") ? "That Employee ID is already used by another account." : "Email is already in use." };
+    }
+    console.error("[updateUserDetails] failed:", err?.message);
+    return { error: "Failed to update user" };
   }
 
-  if (["FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN"].includes(profile.role) && profile.faculty) {
-    await prisma.faculty.update({
-      where: { id: profile.faculty.id },
-      data: {
-        ...(data.department !== undefined ? { department: data.department || null } : {}),
-        ...(data.designation !== undefined ? { designation: data.designation || null } : {}),
-        ...(data.employeeId !== undefined ? { employeeId: data.employeeId || null } : {}),
-      },
-    });
-  } else if (profile.role === "WARDEN" && profile.warden) {
-    await prisma.warden.update({
-      where: { id: profile.warden.id },
-      data: {
-        ...(data.hostelBlock !== undefined ? { hostelBlock: data.hostelBlock || null } : {}),
-        ...(data.employeeId !== undefined ? { employeeId: data.employeeId || null } : {}),
-      },
-    });
-  } else if (profile.role === "SECURITY" && profile.securityStaff) {
-    await prisma.securityStaff.update({
-      where: { id: profile.securityStaff.id },
-      data: {
-        ...(data.gateId !== undefined ? { gateId: data.gateId || null } : {}),
-        ...(data.employeeId !== undefined ? { employeeId: data.employeeId || null } : {}),
-        ...(typeof data.isHeadSecurity === "boolean" ? { isHead: data.isHeadSecurity } : {}),
-      },
-    });
-  }
-
-  invalidateAdminCaches();
+  clearAdminCaches();
   revalidatePath("/admin/users");
   return { success: true };
 }
@@ -983,130 +1028,127 @@ export async function getUserFullHistory(profileId: string): Promise<any> {
   const user = await requireRole("ADMIN", "FACULTY", "FACULTY_ADMIN", "WARDEN");
   if (typeof profileId !== "string" || !profileId) return null;
 
-  // Accept a Student id as well (legacy links), then authorize on the profile.
-  const viaStudent = await prisma.student.findUnique({ where: { id: profileId }, select: { profileId: true } });
-  if (viaStudent) profileId = viaStudent.profileId;
-
-  const scope = await getStaffScope(user);
-  if (!(await canViewProfile(scope, profileId))) return null;
+  // Accept a Student id as well (legacy links): resolve it to the profile (and its role) in one query.
+  const target = await prisma.profile.findFirst({
+    where: { OR: [{ id: profileId }, { student: { id: profileId } }] },
+    select: { id: true, role: true },
+  });
+  if (!target) return null;
+  profileId = target.id;
+  const pid = profileId;
 
   const HISTORY_LIMIT = 500;
+  const nameOnly = { include: { profile: { select: { name: true } } } } as const;
+  const contact = { select: { id: true, name: true, email: true, phone: true } } as const;
+  const gateAndGuard = {
+    gate: { select: { name: true, location: true } },
+    securityUser: nameOnly,
+  } as const;
+  const assignedPerson = { include: { profile: { select: { id: true, name: true, email: true, phone: true, active: true } } } } as const;
+  const approvalsOf = (who: "faculty" | "warden") =>
+    prisma.permissionApproval.findMany({
+      where: { [who]: { profileId: pid } },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: { permission: { include: { student: { include: { profile: { select: { name: true, email: true } } } } } } },
+    });
 
-  const profile = await prisma.profile.findUnique({
-    where: { id: profileId },
-    include: {
-      student: {
-        include: {
-          faculty: {
-            include: { profile: { select: { id: true, name: true, email: true, phone: true } } },
+  // Each history list is its own query so they load in parallel (instead of
+  // one long chain of ~25 round trips). Only the lists this kind of account
+  // has are loaded.
+  const branches = {
+    student: () =>
+      Promise.all([
+        prisma.permission.findMany({
+          where: { student: { profileId: pid } },
+          orderBy: { createdAt: "desc" },
+          take: HISTORY_LIMIT,
+          include: {
+            approval: { include: { faculty: nameOnly, warden: nameOnly } },
+            movements: { orderBy: { createdAt: "asc" }, include: gateAndGuard },
           },
-          warden: {
-            include: { profile: { select: { id: true, name: true, email: true, phone: true } } },
+        }),
+        prisma.movement.findMany({
+          where: { student: { profileId: pid } },
+          orderBy: { createdAt: "desc" },
+          take: HISTORY_LIMIT,
+          include: { ...gateAndGuard, permission: { select: { purpose: true, destination: true, status: true } } },
+        }),
+      ]).then(([permissions, movements]) => ({ permissions, movements })),
+    faculty: () =>
+      Promise.all([
+        prisma.student.findMany({ where: { faculty: { profileId: pid } }, ...assignedPerson }),
+        prisma.permission.findMany({
+          where: { faculty: { profileId: pid } },
+          orderBy: { createdAt: "desc" },
+          take: HISTORY_LIMIT,
+          include: {
+            approval: { include: { faculty: nameOnly } },
+            movements: { orderBy: { createdAt: "asc" }, include: gateAndGuard },
           },
-          permissions: {
-            orderBy: { createdAt: "desc" },
-            take: HISTORY_LIMIT,
-            include: {
-              approval: {
-                include: {
-                  faculty: { include: { profile: { select: { name: true } } } },
-                  warden: { include: { profile: { select: { name: true } } } },
-                },
-              },
-              movements: {
-                orderBy: { createdAt: "asc" },
-                include: {
-                  gate: { select: { name: true, location: true } },
-                  securityUser: { include: { profile: { select: { name: true } } } },
-                },
-              },
-            },
+        }),
+        approvalsOf("faculty"),
+      ]).then(([assignedStudents, permissions, permissionApprovals]) => ({ assignedStudents, permissions, permissionApprovals })),
+    warden: () =>
+      Promise.all([prisma.student.findMany({ where: { warden: { profileId: pid } }, ...assignedPerson }), approvalsOf("warden")]).then(
+        ([assignedHostellers, permissionApprovals]) => ({ assignedHostellers, permissionApprovals })
+      ),
+    securityStaff: () =>
+      prisma.movement
+        .findMany({
+          where: { securityUser: { profileId: pid } },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+          include: {
+            gate: true,
+            student: { include: { profile: { select: { name: true, email: true } } } },
+            permission: { select: { purpose: true, destination: true } },
           },
-          movements: {
-            orderBy: { createdAt: "desc" },
-            take: HISTORY_LIMIT,
-            include: {
-              gate: { select: { name: true, location: true } },
-              securityUser: { include: { profile: { select: { name: true } } } },
-              permission: { select: { purpose: true, destination: true, status: true } },
-            },
-          },
-        },
+        })
+        .then((movements) => ({ movements })),
+  };
+  type Branch = keyof typeof branches;
+  const expected: Branch[] =
+    target.role === "STUDENT"
+      ? ["student"]
+      : target.role === "WARDEN"
+      ? ["warden"]
+      : target.role === "SECURITY"
+      ? ["securityStaff"]
+      : ["FACULTY", "FACULTY_ADMIN", "DEAN", "DIRECTOR"].includes(target.role)
+      ? ["faculty"]
+      : [];
+  const started = new Map<Branch, Promise<Record<string, unknown>>>(expected.map((b) => [b, branches[b]()]));
+
+  // The permission check runs alongside the loading; nothing is returned unless it passes.
+  const [allowed, base] = await Promise.all([
+    getStaffScope(user).then((scope) => canViewProfile(scope, pid)),
+    prisma.profile.findUnique({
+      where: { id: pid },
+      include: {
+        student: { include: { faculty: { include: { profile: contact } }, warden: { include: { profile: contact } } } },
+        faculty: true,
+        warden: true,
+        securityStaff: { include: { gate: true } },
       },
-      faculty: {
-        include: {
-          assignedStudents: {
-            include: {
-              profile: { select: { id: true, name: true, email: true, phone: true, active: true } },
-            },
-          },
-          permissions: {
-            orderBy: { createdAt: "desc" },
-            take: HISTORY_LIMIT,
-            include: {
-              approval: {
-                include: {
-                  faculty: { include: { profile: { select: { name: true } } } },
-                },
-              },
-              movements: {
-                orderBy: { createdAt: "asc" },
-                include: {
-                  gate: { select: { name: true, location: true } },
-                  securityUser: { include: { profile: { select: { name: true } } } },
-                },
-              },
-            },
-          },
-          permissionApprovals: {
-            orderBy: { createdAt: "desc" },
-            take: 50,
-            include: {
-              permission: {
-                include: {
-                  student: { include: { profile: { select: { name: true, email: true } } } },
-                },
-              },
-            },
-          },
-        },
-      },
-      warden: {
-        include: {
-          assignedHostellers: {
-            include: {
-              profile: { select: { id: true, name: true, email: true, phone: true, active: true } },
-            },
-          },
-          permissionApprovals: {
-            orderBy: { createdAt: "desc" },
-            take: 50,
-            include: {
-              permission: {
-                include: {
-                  student: { include: { profile: { select: { name: true, email: true } } } },
-                },
-              },
-            },
-          },
-        },
-      },
-      securityStaff: {
-        include: {
-          gate: true,
-          movements: {
-            orderBy: { createdAt: "desc" },
-            take: 50,
-            include: {
-              gate: true,
-              student: { include: { profile: { select: { name: true, email: true } } } },
-              permission: { select: { purpose: true, destination: true } },
-            },
-          },
-        },
-      },
-    },
-  });
+    }),
+  ]);
+  if (!allowed || !base) return null;
+
+  // Same shape as before: the lists hang off their role records. (An account
+  // holding an unexpected extra record still gets that record's lists.)
+  const attach = async (b: Branch) => {
+    const rec = (base as any)[b];
+    if (!rec) return null;
+    return { ...rec, ...(await (started.get(b) ?? branches[b]())) };
+  };
+  const [student, faculty, warden, securityStaff] = await Promise.all([
+    attach("student"),
+    attach("faculty"),
+    attach("warden"),
+    attach("securityStaff"),
+  ]);
+  const profile: any = { ...base, student, faculty, warden, securityStaff };
 
   if (!profile) return null;
 
@@ -1208,7 +1250,7 @@ export async function assignFacultyToStudent(studentId: string, facultyId: strin
     data: { facultyId: facultyId || null },
   });
 
-  invalidateAdminCaches();
+  clearAdminCaches();
   revalidatePath("/admin/users");
   return { success: true };
 }
@@ -1224,7 +1266,7 @@ export async function assignWardenToStudent(studentId: string, wardenId: string)
     data: { wardenId: wardenId || null },
   });
 
-  invalidateAdminCaches();
+  clearAdminCaches();
   revalidatePath("/admin/users");
   return { success: true };
 }
@@ -1240,7 +1282,7 @@ export async function assignGateToSecurity(securityId: string, gateId: string) {
     data: { gateId: gateId || null },
   });
 
-  invalidateAdminCaches();
+  clearAdminCaches();
   revalidatePath("/admin/users");
   return { success: true };
 }
@@ -1438,7 +1480,7 @@ export async function fixAccountSync() {
   await requireRole("ADMIN");
   try {
     const result = await reconcilePortalWithLogins();
-    invalidateAdminCaches();
+    clearAdminCaches();
     revalidatePath("/admin/users");
     return { success: true, ...result };
   } catch (err: any) {
@@ -1508,9 +1550,13 @@ export async function getWardenStudents() {
  * - HOD: students and faculty of their own department only.
  */
 export async function resetUserPassword(profileId: string, newPassword: string) {
-  const user = await requireRole("ADMIN", "FACULTY_ADMIN");
+  const user = await requireRole("ADMIN", "FACULTY_ADMIN", "WARDEN");
   if (typeof profileId !== "string" || !profileId) return { error: "User not found" };
   if (typeof newPassword !== "string" || newPassword.length < 8) return { error: "Password must be at least 8 characters" };
+  // Generous for real use, but stops a misused staff session from mass-changing passwords
+  if (!checkRateLimit(`password-reset:${user.id}`, { maxAttempts: 30, windowMs: 15 * 60_000 }).allowed) {
+    return { error: "Too many password changes in a short time. Please wait a few minutes." };
+  }
   if (newPassword.length > 72) return { error: "Password must be at most 72 characters" };
 
   const target = await prisma.profile.findUnique({ where: { id: profileId }, select: { userId: true, role: true, name: true } });
@@ -1519,6 +1565,11 @@ export async function resetUserPassword(profileId: string, newPassword: string) 
 
   if (user.role === "ADMIN") {
     if (target.role === "ADMIN") return { error: "Admin passwords cannot be reset here" };
+  } else if (user.role === "WARDEN") {
+    // Warden: only their own hostel students
+    if (target.role !== "STUDENT") return { error: "You can change passwords only for your hostel students" };
+    const scope = await getStaffScope(user);
+    if (!(await canViewProfile(scope, profileId))) return { error: "This student is not assigned to you" };
   } else {
     // HOD: only their department's students and faculty
     if (target.role !== "STUDENT" && target.role !== "FACULTY") {
@@ -1528,7 +1579,18 @@ export async function resetUserPassword(profileId: string, newPassword: string) 
     if (!(await canViewProfile(scope, profileId))) return { error: "This person is not in your department" };
   }
 
-  const { error } = await getAdminSupabase().auth.admin.updateUserById(target.userId, { password: newPassword });
+  // Recorded on the login itself (same request, no extra table): the student is
+  // told who changed it the next time they sign in.
+  const changedByRole = user.role === "ADMIN" ? "Administrator" : user.role === "WARDEN" ? "Warden" : "HOD";
+  const { error } = await getAdminSupabase().auth.admin.updateUserById(target.userId, {
+    password: newPassword,
+    app_metadata: {
+      password_changed_by: user.name,
+      password_changed_by_role: changedByRole,
+      password_changed_at: new Date().toISOString(),
+      password_notice_pending: true,
+    },
+  });
   if (error) {
     console.error("[resetUserPassword] failed:", error.message);
     return { error: "Could not change the password. Please try again." };

@@ -17,8 +17,15 @@ export async function GET(request: NextRequest) {
 
   try {
     const result = await autoExpireOutdatedPermissions(true);
-    logger.info("[EXPIRE-REQUESTS] Finished expiration job", result);
-    return NextResponse.json({ success: true, timestamp: new Date().toISOString(), result });
+    // The job reports its own failures in `result` (it doesn't throw): pass them on,
+    // so a failed run shows up as a failed cron in Vercel instead of a green tick.
+    const ok = (result as { success?: boolean } | undefined)?.success !== false;
+    if (ok) logger.info("[EXPIRE-REQUESTS] Finished expiration job", result);
+    else logger.error("[EXPIRE-REQUESTS] Expiration job failed", undefined, result as any);
+    return NextResponse.json(
+      { success: ok, timestamp: new Date().toISOString(), result },
+      { status: ok ? 200 : 500 }
+    );
   } catch (error: any) {
     logger.error("[EXPIRE-REQUESTS] Fatal error", error);
     return NextResponse.json(

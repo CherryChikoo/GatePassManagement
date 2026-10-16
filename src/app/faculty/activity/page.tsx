@@ -30,7 +30,7 @@ export default async function FacultyActivityPage({
   });
 
   if (!faculty) {
-    return <div>Faculty not found</div>;
+    return <p className="mx-auto max-w-5xl py-12 text-center text-sm text-zinc-500">Faculty not found</p>;
   }
 
   const dateCondition = {

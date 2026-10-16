@@ -7,13 +7,15 @@ import { revalidatePath } from "next/cache";
 import { gatePhotoFolder, isSafeStoragePath, uploadExitPhotoAdmin } from "@/lib/storage/storage-admin";
 import { istDateString, istDayRangeFromParam, istStartOfDay } from "@/lib/time/ist";
 import { fillMovementPeople } from "@/lib/people";
+import { canScanReturn } from "@/lib/passes/return-scan";
 
 let securityDashboardCache: { data: any; expiresAt: number } | null = null;
 let securityLogCache = new Map<string, { data: any; expiresAt: number }>();
 
 export async function invalidateSecurityCache() {
-  // Exported from a "use server" module (browser-callable): require a signed-in user.
-  if (!(await getAuthUser())) return;
+  // Exported from a "use server" module (browser-callable): gate staff only.
+  const caller = await getAuthUser();
+  if (!caller || (caller.role !== "SECURITY" && caller.role !== "ADMIN")) return;
   securityDashboardCache = null;
   securityLogCache.clear();
 }
@@ -67,7 +69,7 @@ export async function verifyQrScan(token: string) {
     // Manual fallback typed by the guard (e.g. phone not available).
     const studentPerm = await prisma.permission.findFirst({
       where: {
-        student: { studentRoll: { equals: input, mode: "insensitive" } },
+        student: { studentRoll: input.toUpperCase() },
         status: "APPROVED",
         qr: { active: true },
         // Hostel passes are scanned by the warden, not at the gate
@@ -79,6 +81,24 @@ export async function verifyQrScan(token: string) {
     if (studentPerm) {
       permissionId = studentPerm.id;
       manualOverride = true;
+    } else {
+      // A hosteller coming back from an outing: their exit pass, used to go out
+      const returning = await prisma.permission.findFirst({
+        where: {
+          student: { studentRoll: input.toUpperCase(), studentType: "HOSTELLER" },
+          status: "EXITED",
+          type: { not: "ENTRY" },
+          OR: [{ passKind: null }, { passKind: { not: "HOSTEL" } }],
+          qr: { usedForExit: true, usedForEntry: false },
+          movements: { none: { type: "ENTRY" } },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      if (returning) {
+        permissionId = returning.id;
+        manualOverride = true;
+      }
     }
   }
 
@@ -123,6 +143,8 @@ export async function verifyQrScan(token: string) {
           expiresAt: true,
         },
       },
+      // A recorded return (faculty: scanned again, or "Mark In")
+      movements: { where: { type: "ENTRY" }, select: { id: true }, take: 1 },
     },
   });
 
@@ -171,6 +193,9 @@ export async function verifyQrScan(token: string) {
     // Default or EXIT type
     if (permission.status === "APPROVED" && !permission.qr.usedForExit && permission.qr.active) {
       allowedAction = "EXIT";
+    } else if (canScanReturn({ ...permission, studentType: permission.student?.studentType }, permission.movements.length > 0)) {
+      // Faculty / hosteller coming back: the same pass QR, scanned a second time
+      allowedAction = "ENTRY";
     }
   }
 
@@ -353,6 +378,9 @@ export async function registerExit(
   try {
     // Interactive transaction: reads + checks + writes are all atomic
     await prisma.$transaction(async (tx) => {
+      // One gate write per pass at a time: a second scan (another guard, a
+      // double tap, a retry) waits here and then sees the pass already used.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"gate-scan:" + permissionId}))`;
       // Read permission state INSIDE the transaction
       const permission = await tx.permission.findUnique({
         where: { id: permissionId },
@@ -397,11 +425,12 @@ export async function registerExit(
           notes: notes || null,
         },
       });
-      // Mark permission as EXITED (they are currently outside)
-      await tx.permission.update({
-        where: { id: permissionId },
+      // Mark permission as EXITED (they are currently outside) — only from APPROVED
+      const moved = await tx.permission.updateMany({
+        where: { id: permissionId, status: "APPROVED" },
         data: { status: "EXITED" },
       });
+      if (moved.count !== 1) throw new Error("Exit already registered for this permission");
       // Deactivate QR immediately upon exit: this pass is finished and cannot be used again
       await tx.qrCredential.update({
         where: { id: permission.qr!.id },
@@ -420,6 +449,7 @@ export async function registerExit(
 
     });
   } catch (err: any) {
+    if (err?.code === "P2002") return { error: "Exit already registered for this permission" };
     return { error: err.message || "Failed to register exit" };
   }
 
@@ -464,28 +494,38 @@ export async function registerEntry(
   try {
     // Interactive transaction: reads + checks + writes are all atomic
     await prisma.$transaction(async (tx) => {
+      // One gate write per pass at a time (see registerExit)
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"gate-scan:" + permissionId}))`;
       const permission = await tx.permission.findUnique({
         where: { id: permissionId },
         include: {
           qr: true,
-          student: { select: { id: true, status: true } },
+          student: { select: { id: true, status: true, studentType: true } },
         },
       });
 
       if (!permission) throw new Error("Permission not found");
       if (permission.type !== "ENTRY") {
-        throw new Error("Cannot register entry with an EXIT pass. A separate Entry Request is required to enter campus.");
+        // Faculty / hosteller exit pass scanned again = their return on the same pass.
+        // Same lock as "Mark In", so the two can never both record a return.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"faculty-return:" + permissionId}))`;
+        const entries = await tx.movement.count({ where: { permissionId, type: "ENTRY" } });
+        if (!canScanReturn({ ...permission, studentType: permission.student?.studentType }, entries > 0)) {
+          throw new Error("Cannot register entry with an EXIT pass. A separate Entry Request is required to enter campus.");
+        }
+        // (No pass-window check: a late return is still a return)
+      } else {
+        if (permission.status !== "APPROVED") {
+          throw new Error(`Cannot register entry — permission status is ${permission.status}`);
+        }
+        if (!permission.qr || !permission.qr.active) {
+          throw new Error("QR credential is not active or has expired");
+        }
+        if (permission.qr.usedForEntry) {
+          throw new Error("Entry already registered for this permission");
+        }
+        assertPassWindow(permission.exitDate, permission.qr.expiresAt);
       }
-      if (permission.status !== "APPROVED") {
-        throw new Error(`Cannot register entry — permission status is ${permission.status}`);
-      }
-      if (!permission.qr || !permission.qr.active) {
-        throw new Error("QR credential is not active or has expired");
-      }
-      if (permission.qr.usedForEntry) {
-        throw new Error("Entry already registered for this permission");
-      }
-      assertPassWindow(permission.exitDate, permission.qr.expiresAt);
 
       const gate = await tx.gate.findUnique({ where: { id: gateId } });
       if (!gate || !gate.active) {
@@ -505,10 +545,12 @@ export async function registerEntry(
           notes: notes || null,
         },
       });
-      await tx.permission.update({
-        where: { id: permissionId },
+      // Complete the pass only from the state that was checked above
+      const done = await tx.permission.updateMany({
+        where: { id: permissionId, status: permission.type === "ENTRY" ? "APPROVED" : "EXITED" },
         data: { status: "COMPLETED" },
       });
+      if (done.count !== 1) throw new Error("Entry already registered for this permission");
       await tx.qrCredential.update({
         where: { id: permission.qr!.id },
         data: { usedForEntry: true, active: false },
@@ -522,6 +564,7 @@ export async function registerEntry(
 
     });
   } catch (err: any) {
+    if (err?.code === "P2002") return { error: "Entry already registered for this permission" };
     return { error: err.message || "Failed to register entry" };
   }
 
@@ -554,7 +597,7 @@ export async function getSecurityDashboard() {
     recentMovements,
     gates,
   ] = await Promise.all([
-    prisma.outsider.count({ where: { createdAt: { gte: today } } }),
+    prisma.outsider.count({ where: { entryTime: { gte: today } } }),
     prisma.movement.count({
       where: { type: "EXIT", createdAt: { gte: today } },
     }),
@@ -649,6 +692,8 @@ export async function getSecurityLogData(dateStr?: string) {
   };
   
   fillMovementPeople(result);
-  securityLogCache.set(cacheKey, { data: result, expiresAt: Date.now() + 15000 }); // 15s cache
+  // 15 s cache; at most 30 dates kept (the key is a caller-supplied date)
+  if (securityLogCache.size >= 30) securityLogCache.clear();
+  securityLogCache.set(cacheKey, { data: result, expiresAt: Date.now() + 15000 });
   return result;
 }

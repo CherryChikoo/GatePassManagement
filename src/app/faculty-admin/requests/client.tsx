@@ -5,13 +5,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea, EmptyState, Modal, StatusBadge, Select } from "@/components/ui/primitives";
 import { Input } from "@/components/ui/input";
+import { PagerBar } from "@/components/ui/pager-bar";
 import { handleApproval, batchApproval } from "@/server/actions/approvals";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import {
   CheckCircle2,
   XCircle,
   ClipboardCheck,
-  User,
   MapPin,
   Clock,
   Search,
@@ -19,7 +19,6 @@ import {
   Briefcase,
   CheckSquare,
   Square,
-  AlertTriangle,
 } from "lucide-react";
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
@@ -130,7 +129,6 @@ export function FacultyAdminRequestsClient() {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
-  const totalPages = Math.ceil(filteredRequests.length / PAGE_SIZE);
   const paginatedRequests = filteredRequests.slice(
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE
@@ -356,110 +354,141 @@ export function FacultyAdminRequestsClient() {
   }
 
   return (
-    <div className="space-y-6 pb-24 relative">
+    <div className="relative mx-auto max-w-7xl space-y-6 pb-28">
       <TopLoadingBar active={processing.size > 0 || batchProcessing} />
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2">
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 flex items-center gap-3 flex-wrap">
             Gate Pass Requests
             {pendingCount > 0 && (
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-400">
                 {pendingCount} Pending
               </span>
             )}
           </h1>
-          <p className="text-sm text-zinc-500 mt-1">
+          <p className="mt-1 text-sm text-zinc-500">
             Today&apos;s pass requests for department faculty and students. Past requests are in the Activity tab.
           </p>
         </div>
 
-        {/* Batch actions bar if items are selected */}
+        {/* Batch actions (header) when items are selected */}
         {selectedIds.size > 0 && activeTab === "PENDING" && (
-          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700/80 p-1.5 rounded-xl shadow-none animate-fade-in">
-            <span className="text-xs font-semibold px-2 text-zinc-300">
+          <div className="hidden sm:flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 p-1.5 pl-4 shadow-card animate-fade-in shrink-0">
+            <span className="text-xs font-medium text-zinc-300 whitespace-nowrap">
               {selectedIds.size} selected
             </span>
             <Button
               size="sm"
+              variant="success"
               disabled={batchProcessing}
               onClick={() => onBatchAction("APPROVE")}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-8 shadow-none"
             >
-              <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Approve Selected ({selectedIds.size})
+              <CheckCircle2 className="h-3.5 w-3.5" /> Approve Selected ({selectedIds.size})
             </Button>
             <Button
               size="sm"
-              variant="destructive"
+              variant="outline"
               disabled={batchProcessing}
               onClick={() => setBatchRejectModal(true)}
-              className="bg-zinc-800 text-red-400 hover:bg-red-950 hover:text-red-300 border-zinc-700 text-xs h-8 shadow-none"
+              className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/40"
             >
-              <XCircle className="h-3.5 w-3.5 mr-1" /> Reject Selected ({selectedIds.size})
+              <XCircle className="h-3.5 w-3.5" /> Reject Selected ({selectedIds.size})
             </Button>
           </div>
         )}
       </div>
 
-      {/* Target Type Filters & Search */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        {/* Target filters */}
-        <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
-          <button
-            onClick={() => {
-              setTargetType("ALL");
-              setCurrentPage(1);
-            }}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-              targetType === "ALL"
-                ? "bg-zinc-100 text-zinc-900 border-zinc-200"
-                : "bg-zinc-900/60 text-zinc-400 border-zinc-800 hover:text-zinc-200"
-            }`}
+      {/* Target type filters & search */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 min-w-0">
+          {/* Target filter */}
+          <div
+            className="inline-flex max-w-full self-start rounded-full bg-zinc-950 p-1 border border-zinc-800 overflow-x-auto scrollbar-none"
+            role="tablist"
+            aria-label="Filter by applicant type"
           >
-            All Requests
-          </button>
-          <button
-            onClick={() => {
-              setTargetType("FACULTY");
-              setCurrentPage(1);
-            }}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 ${
-              targetType === "FACULTY"
-                ? "bg-indigo-600 text-white border-indigo-500"
-                : "bg-zinc-900/60 text-zinc-400 border-zinc-800 hover:text-zinc-200"
-            }`}
+            {(
+              [
+                { id: "ALL", label: "All Requests", icon: null, count: 0 },
+                { id: "FACULTY", label: "Faculty Passes", icon: <Briefcase className="h-3.5 w-3.5" />, count: facultyPendingCount },
+                { id: "STUDENTS", label: "Student Passes", icon: <GraduationCap className="h-3.5 w-3.5" />, count: studentPendingCount },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={targetType === t.id}
+                onClick={() => {
+                  setTargetType(t.id);
+                  setCurrentPage(1);
+                }}
+                className={`inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap ${
+                  targetType === t.id ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
+                }`}
+              >
+                {t.icon}
+                {t.label}
+                {t.count > 0 && (
+                  <span className="ml-0.5 rounded-full bg-orange-500/10 px-1.5 text-[10px] font-semibold text-orange-400">
+                    {t.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Status tabs with live counters */}
+          <div
+            className="flex sm:inline-flex max-w-full rounded-full bg-zinc-950 p-1 border border-zinc-800 overflow-x-auto scrollbar-none"
+            role="tablist"
+            aria-label="Filter by status"
           >
-            <Briefcase className="h-3.5 w-3.5" />
-            Faculty Passes
-            {facultyPendingCount > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-indigo-500/30 text-[10px]">
-                {facultyPendingCount}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => {
-              setTargetType("STUDENTS");
-              setCurrentPage(1);
-            }}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 ${
-              targetType === "STUDENTS"
-                ? "bg-blue-600 text-white border-blue-500"
-                : "bg-zinc-900/60 text-zinc-400 border-zinc-800 hover:text-zinc-200"
-            }`}
-          >
-            <GraduationCap className="h-3.5 w-3.5" />
-            Student Passes
-            {studentPendingCount > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-blue-500/30 text-[10px]">
-                {studentPendingCount}
-              </span>
-            )}
-          </button>
+            {(
+              [
+                { id: "PENDING", label: "Pending", count: pendingCount },
+                { id: "ACCEPTED", label: "Accepted", count: acceptedCount },
+                { id: "REJECTED", label: "Rejected", count: rejectedCount },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setCurrentPage(1);
+                  setSelectedIds(new Set());
+                }}
+                className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 text-xs font-medium px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap ${
+                  activeTab === tab.id ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span
+                  className={`rounded-full px-1.5 text-[10px] font-semibold transition-colors ${
+                    activeTab === tab.id
+                      ? tab.id === "ACCEPTED"
+                        ? "bg-emerald-500/10 text-emerald-400"
+                        : tab.id === "REJECTED"
+                        ? "bg-red-500/10 text-red-400"
+                        : "bg-amber-500/10 text-amber-400"
+                      : "bg-zinc-900 text-zinc-500"
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Search */}
-        <div className="relative w-full sm:w-72 shrink-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+        <div className="relative w-full lg:w-72 shrink-0">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 z-10" />
           <Input
             value={searchQuery}
             onChange={(e) => {
@@ -467,58 +496,19 @@ export function FacultyAdminRequestsClient() {
               setCurrentPage(1);
             }}
             placeholder="Search by name, roll, emp ID..."
-            className="pl-9 h-9 bg-zinc-900 border-zinc-800 text-xs"
+            className="h-10 rounded-full border-zinc-800 bg-zinc-900 pl-10 pr-4 text-sm placeholder:text-zinc-500 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
           />
         </div>
       </div>
 
-      {/* Status Tabs with Live Counters */}
-      <div className="flex bg-zinc-900/60 p-1.5 rounded-xl w-full max-w-md border border-zinc-800">
-        {(
-          [
-            { id: "PENDING", label: "Pending", count: pendingCount },
-            { id: "ACCEPTED", label: "Accepted", count: acceptedCount },
-            { id: "REJECTED", label: "Rejected", count: rejectedCount },
-          ] as const
-        ).map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => {
-              setActiveTab(tab.id);
-              setCurrentPage(1);
-              setSelectedIds(new Set());
-            }}
-            className={`flex-1 text-xs sm:text-sm font-medium py-2 rounded-lg transition-all duration-200 flex items-center justify-center gap-1.5 ${
-              activeTab === tab.id
-                ? "bg-zinc-800 text-zinc-100 shadow-md font-semibold"
-                : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40"
-            }`}
-          >
-            <span>{tab.label}</span>
-            <span
-              className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full transition-colors ${
-                activeTab === tab.id
-                  ? tab.id === "ACCEPTED"
-                    ? "bg-emerald-500/20 text-emerald-400"
-                    : tab.id === "REJECTED"
-                    ? "bg-red-500/20 text-red-400"
-                    : "bg-amber-500/20 text-amber-400"
-                  : "bg-zinc-800 text-zinc-500"
-              }`}
-            >
-              {tab.count}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* Batch Selection Action Bar on Pending Tab */}
+      {/* Batch selection bar (pending tab) */}
       {activeTab === "PENDING" && paginatedRequests.length > 0 && (
-        <div className="flex items-center justify-between flex-wrap gap-3 px-1 py-1.5 bg-zinc-900/40 rounded-xl border border-zinc-800/60">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between flex-wrap gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-2 py-1.5 shadow-card">
+          <div className="flex items-center gap-3 min-w-0">
             <button
+              type="button"
               onClick={toggleSelectAll}
-              className="text-xs text-zinc-300 hover:text-zinc-100 flex items-center gap-2 transition-colors cursor-pointer select-none font-medium px-2 py-1 rounded-lg hover:bg-zinc-800/60"
+              className="flex min-h-10 items-center gap-2 rounded-full px-3 text-xs font-medium text-zinc-300 hover:bg-zinc-950 hover:text-zinc-100 transition-colors cursor-pointer select-none"
             >
               {selectedIds.size > 0 ? (
                 <CheckSquare className="h-4 w-4 text-orange-500" />
@@ -542,19 +532,19 @@ export function FacultyAdminRequestsClient() {
             <div className="flex items-center gap-2 pr-1 animate-fade-in">
               <Button
                 size="sm"
+                variant="success"
                 disabled={batchProcessing}
                 onClick={() => onBatchAction("APPROVE")}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-7 px-3 font-semibold shadow-none flex items-center gap-1.5"
               >
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Approve {selectedIds.size}
               </Button>
               <Button
                 size="sm"
-                variant="destructive"
+                variant="outline"
                 disabled={batchProcessing}
                 onClick={() => setBatchRejectModal(true)}
-                className="bg-zinc-800 hover:bg-red-950/80 text-red-400 hover:text-red-300 border border-red-900/40 text-xs h-7 px-3 font-semibold shadow-none flex items-center gap-1.5"
+                className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/40"
               >
                 <XCircle className="h-3.5 w-3.5" />
                 Reject {selectedIds.size}
@@ -563,7 +553,6 @@ export function FacultyAdminRequestsClient() {
                 size="sm"
                 variant="ghost"
                 onClick={() => setSelectedIds(new Set())}
-                className="text-zinc-400 hover:text-zinc-200 text-xs h-7 px-2"
               >
                 Clear
               </Button>
@@ -572,19 +561,21 @@ export function FacultyAdminRequestsClient() {
         </div>
       )}
 
-      {/* Requests List */}
+      {/* Requests list */}
       {paginatedRequests.length === 0 ? (
-        <EmptyState
-          icon={<ClipboardCheck className="h-10 w-10" />}
-          title={`No ${activeTab.toLowerCase()} requests`}
-          description={
-            activeTab === "PENDING"
-              ? "All caught up! No pass requests waiting for your approval."
-              : `No pass requests found in ${activeTab.toLowerCase()} state.`
-          }
-        />
+        <Card>
+          <EmptyState
+            icon={<ClipboardCheck className="h-6 w-6" />}
+            title={`No ${activeTab.toLowerCase()} requests`}
+            description={
+              activeTab === "PENDING"
+                ? "All caught up! No pass requests waiting for your approval."
+                : `No pass requests found in ${activeTab.toLowerCase()} state.`
+            }
+          />
+        </Card>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid gap-3 sm:gap-4">
           {paginatedRequests.map((req: any) => {
             const isProcessing = processing.has(req.id);
             const isFacultyPass = !!req.facultyId;
@@ -600,21 +591,21 @@ export function FacultyAdminRequestsClient() {
             return (
               <Card
                 key={req.id}
-                className={`overflow-hidden transition-all duration-200 border rounded-2xl ${
+                className={
                   isSelected
-                    ? "border-orange-500/60 bg-orange-500/5"
-                    : isFacultyPass
-                    ? "border-indigo-500/30 bg-zinc-900/70 hover:border-indigo-500/50"
-                    : "border-zinc-800 hover:border-zinc-700 bg-zinc-900/50"
-                }`}
+                    ? "border-orange-500/50 ring-2 ring-orange-500/15"
+                    : "hover:border-zinc-700"
+                }
               >
-                <CardContent className="p-0">
-                  <div className="p-5 flex flex-col md:flex-row gap-5 items-start md:items-center justify-between">
-                    <div className="flex items-start gap-4 flex-1 min-w-0">
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex flex-col md:flex-row gap-4 md:gap-5 items-stretch md:items-center justify-between">
+                    <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
                       {activeTab === "PENDING" && (
                         <button
+                          type="button"
                           onClick={() => toggleSelect(req.id)}
-                          className="mt-2 text-zinc-500 hover:text-zinc-300 transition-colors shrink-0"
+                          aria-label={isSelected ? `Deselect ${applicantName}` : `Select ${applicantName}`}
+                          className="-ml-2 -mr-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-950 hover:text-zinc-300 transition-colors"
                         >
                           {isSelected ? (
                             <CheckSquare className="h-5 w-5 text-orange-500" />
@@ -624,13 +615,7 @@ export function FacultyAdminRequestsClient() {
                         </button>
                       )}
 
-                      <div
-                        className={`h-12 w-12 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
-                          isFacultyPass
-                            ? "bg-indigo-500/15 text-indigo-400 border border-indigo-500/30"
-                            : "bg-blue-500/15 text-blue-400 border border-blue-500/30"
-                        }`}
-                      >
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
                         {isFacultyPass ? (
                           <Briefcase className="h-5 w-5" />
                         ) : (
@@ -639,46 +624,17 @@ export function FacultyAdminRequestsClient() {
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <h3 className="font-semibold text-zinc-100 text-base">{applicantName}</h3>
-                          
-                          {/* Division Badge */}
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-md border uppercase tracking-wider ${
-                              isFacultyPass
-                                ? "bg-indigo-500/15 text-indigo-300 border-indigo-500/30"
-                                : "bg-blue-500/15 text-blue-300 border-blue-500/30"
-                            }`}
-                          >
-                            {isFacultyPass ? "Faculty Division" : "Student Division"}
-                          </span>
-
-                          {isFacultyPass && req.faculty?.employeeId && (
-                            <span className="text-[11px] font-mono bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded border border-zinc-700/50">
-                              {req.faculty.employeeId}
-                            </span>
-                          )}
-                          {!isFacultyPass && req.student?.studentRoll && (
-                            <span className="text-[11px] font-mono bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded border border-zinc-700/50">
-                              {req.student.studentRoll}
-                            </span>
-                          )}
-
-                          {applicantDept && (
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-zinc-800/80 text-zinc-300 border border-zinc-700/50">
-                              Dept: {applicantDept}
-                            </span>
-                          )}
-
+                        <div className="flex items-center gap-x-2 gap-y-1.5 flex-wrap">
+                          <h3 className="text-base font-medium text-zinc-100 break-words">{applicantName}</h3>
                           <StatusBadge status={req.status} />
 
-                          {/* Highlight Recently Accepted Pass */}
+                          {/* Highlight recently accepted pass */}
                           {activeTab === "ACCEPTED" && req.approvedAt && (
                             (() => {
                               const isRecent = (Date.now() - new Date(req.approvedAt).getTime()) < 24 * 60 * 60 * 1000;
                               return isRecent ? (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 animate-pulse">
-                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                                   Recently Accepted
                                 </span>
                               ) : null;
@@ -686,26 +642,45 @@ export function FacultyAdminRequestsClient() {
                           )}
                         </div>
 
-                        {/* Visual Division separator */}
-                        <div className="my-2.5 border-t border-zinc-800/60" />
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {/* Division badge */}
+                          <span className="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                            {isFacultyPass ? "Faculty Division" : "Student Division"}
+                          </span>
+                          {isFacultyPass && req.faculty?.employeeId && (
+                            <span className="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
+                              {req.faculty.employeeId}
+                            </span>
+                          )}
+                          {!isFacultyPass && req.student?.studentRoll && (
+                            <span className="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
+                              {req.student.studentRoll}
+                            </span>
+                          )}
+                          {applicantDept && (
+                            <span className="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
+                              Dept: {applicantDept}
+                            </span>
+                          )}
+                        </div>
 
-                        <p className="text-xs text-zinc-300 mb-2">
+                        <p className="mt-3 text-sm text-zinc-300 break-words">
                           <span className="font-medium text-zinc-200">{req.purpose}</span>
                           {req.remarks && (
-                            <span className="text-zinc-400 italic"> — {req.remarks}</span>
+                            <span className="text-zinc-500 italic"> — {req.remarks}</span>
                           )}
                         </p>
 
-                        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-zinc-400">
+                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-zinc-500">
                           <PassExtraDetails pass={req} className="w-full" />
                           {req.destination && (
-                            <div className="flex items-center gap-1.5">
-                              <MapPin className="h-3.5 w-3.5 text-zinc-500" />
-                              <span>{req.destination}</span>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <MapPin className="h-3.5 w-3.5 shrink-0" />
+                              <span className="break-words">{req.destination}</span>
                             </div>
                           )}
                           <div className="flex items-center gap-1.5">
-                            <Clock className="h-3.5 w-3.5 text-zinc-500" />
+                            <Clock className="h-3.5 w-3.5 shrink-0" />
                             <span>
                               {formatDate(req.exitDate)}{" "}
                               {req.expectedExit &&
@@ -713,7 +688,7 @@ export function FacultyAdminRequestsClient() {
                             </span>
                           </div>
                           {req.expectedReturn && (
-                            <div className="flex items-center gap-1.5 text-zinc-400">
+                            <div className="flex items-center gap-1.5">
                               <span>
                                 Return: {formatDateTime(req.expectedReturn).split(", ")[1] || ""}
                               </span>
@@ -722,17 +697,17 @@ export function FacultyAdminRequestsClient() {
 
                           {/* Accepted timestamp */}
                           {activeTab === "ACCEPTED" && (req.approvedAt || req.updatedAt) && (
-                            <div className="flex items-center gap-1.5 text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                            <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 font-medium text-emerald-400">
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                               <span>Accepted: {formatDateTime(req.approvedAt || req.updatedAt)}</span>
                             </div>
                           )}
 
                           {/* Rejected timestamp & reason */}
                           {activeTab === "REJECTED" && (
-                            <div className="flex items-center gap-1.5 text-red-400 font-medium bg-red-500/10 px-2 py-0.5 rounded-md border border-red-500/20">
-                              <XCircle className="h-3.5 w-3.5 text-red-400" />
-                              <span>Rejected: {req.rejectionReason || "Denied"} {req.rejectedAt ? `• ${formatDateTime(req.rejectedAt)}` : ""}</span>
+                            <div className="flex items-start gap-1.5 rounded-2xl bg-red-500/10 px-2.5 py-1 font-medium text-red-400">
+                              <XCircle className="h-3.5 w-3.5 mt-px shrink-0" />
+                              <span className="break-words">Rejected: {req.rejectionReason || "Denied"} {req.rejectedAt ? `• ${formatDateTime(req.rejectedAt)}` : ""}</span>
                             </div>
                           )}
                         </div>
@@ -740,30 +715,35 @@ export function FacultyAdminRequestsClient() {
                     </div>
 
                     {activeTab === "PENDING" && req.approvalMode === "BOTH" && req.hodApprovedAt && (
-                      <div className="w-full md:w-40 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-zinc-800 text-xs text-emerald-300">
-                        ✓ You approved — waiting for the Dean
+                      <div className="w-full md:w-44 shrink-0 flex items-start gap-1.5 rounded-2xl bg-emerald-500/10 px-3 py-2.5 text-xs font-medium text-emerald-400">
+                        <CheckCircle2 className="h-3.5 w-3.5 mt-px shrink-0" />
+                        <span>You approved — waiting for the Dean</span>
                       </div>
                     )}
 
                     {activeTab === "PENDING" && !(req.approvalMode === "BOTH" && req.hodApprovedAt) && (
-                      <div className="flex md:flex-col gap-2 w-full md:w-32 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-zinc-800">
+                      <div className="flex flex-wrap md:flex-col gap-2 w-full md:w-36 shrink-0 pt-3 md:pt-0 border-t md:border-t-0 border-zinc-800">
                         {req.approvalMode === "BOTH" && (
-                          <span className="text-[10px] font-semibold text-amber-300 text-center">Needs HOD + Dean</span>
+                          <span className="w-full rounded-full bg-amber-500/10 px-2 py-1 text-center text-[11px] font-medium text-amber-400">
+                            Needs HOD + Dean
+                          </span>
                         )}
                         <Button
                           variant="success"
                           onClick={() => setApproveModal({ id: req.id, name: applicantName })}
                           disabled={isProcessing}
-                          className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium shadow-none"
+                          className="flex-1 md:flex-none"
                         >
+                          <CheckCircle2 className="h-4 w-4" />
                           Approve
                         </Button>
                         <Button
-                          variant="secondary"
+                          variant="outline"
                           onClick={() => setRejectModal({ id: req.id, name: applicantName })}
                           disabled={isProcessing}
-                          className="flex-1 bg-zinc-800 text-red-400 hover:bg-red-950 hover:text-red-300 border border-zinc-700 shadow-none"
+                          className="flex-1 md:flex-none border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/40"
                         >
+                          <XCircle className="h-4 w-4" />
                           Reject
                         </Button>
                       </div>
@@ -776,34 +756,14 @@ export function FacultyAdminRequestsClient() {
         </div>
       )}
 
-      {/* Pagination Controls */}
-      {totalPages > 1 && (
-        <div className="flex justify-between items-center pt-4 border-t border-zinc-800/50">
-          <p className="text-xs text-zinc-400">
-            Page {currentPage} of {totalPages} ({filteredRequests.length} total)
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="border-zinc-800"
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="border-zinc-800"
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+      {/* Pagination (docks at the bottom of the screen) */}
+      <PagerBar
+        page={currentPage}
+        pageSize={PAGE_SIZE}
+        total={filteredRequests.length}
+        onPageChange={setCurrentPage}
+        itemLabel="requests"
+      />
 
       {/* Approve Modal */}
       <Modal
@@ -811,13 +771,13 @@ export function FacultyAdminRequestsClient() {
         onClose={() => setApproveModal(null)}
         title="Approve Gate Pass"
       >
-        <div className="space-y-4">
-          <p className="text-sm text-zinc-300">
+        <div className="space-y-5">
+          <p className="text-sm text-zinc-300 leading-relaxed">
             Are you sure you want to approve the gate pass for{" "}
-            <span className="font-semibold text-zinc-100">{approveModal?.name}</span>?
+            <span className="font-medium text-zinc-100">{approveModal?.name}</span>?
           </p>
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-zinc-400">QR Code Validity</label>
+            <label className="block text-[11px] font-medium uppercase tracking-wider text-zinc-500">QR Code Validity</label>
             <Select
               value={String(expiryMinutes)}
               onChange={(e) => setExpiryMinutes(Number(e.target.value))}
@@ -830,15 +790,16 @@ export function FacultyAdminRequestsClient() {
               <option value="720">12 hours (full day)</option>
             </Select>
           </div>
-          <div className="flex justify-end gap-3 pt-4 border-t border-zinc-800">
-            <Button variant="outline" onClick={() => setApproveModal(null)}>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3 pt-4 border-t border-zinc-800">
+            <Button variant="outline" onClick={() => setApproveModal(null)} className="w-full sm:w-auto">
               Cancel
             </Button>
             <Button
+              variant="success"
               onClick={() =>
                 approveModal && onAction(approveModal.id, "APPROVE", undefined, expiryMinutes)
               }
-              className="bg-emerald-600 hover:bg-emerald-500 text-white"
+              className="w-full sm:w-auto"
             >
               Confirm Approval
             </Button>
@@ -848,10 +809,10 @@ export function FacultyAdminRequestsClient() {
 
       {/* Reject Modal */}
       <Modal open={!!rejectModal} onClose={() => setRejectModal(null)} title="Reject Request">
-        <div className="space-y-4">
-          <p className="text-sm text-zinc-300">
+        <div className="space-y-5">
+          <p className="text-sm text-zinc-300 leading-relaxed">
             Provide a reason for rejecting the pass for{" "}
-            <span className="font-semibold text-zinc-100">{rejectModal?.name}</span>.
+            <span className="font-medium text-zinc-100">{rejectModal?.name}</span>.
           </p>
           <Textarea
             value={rejectReason}
@@ -860,14 +821,15 @@ export function FacultyAdminRequestsClient() {
             rows={3}
             required
           />
-          <div className="flex justify-end gap-3 pt-4 border-t border-zinc-800">
-            <Button variant="outline" onClick={() => setRejectModal(null)}>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3 pt-4 border-t border-zinc-800">
+            <Button variant="outline" onClick={() => setRejectModal(null)} className="w-full sm:w-auto">
               Cancel
             </Button>
             <Button
+              variant="destructive"
               disabled={!rejectReason.trim()}
               onClick={() => rejectModal && onAction(rejectModal.id, "REJECT", rejectReason)}
-              className="bg-red-600 hover:bg-red-500 text-white"
+              className="w-full sm:w-auto"
             >
               Confirm Rejection
             </Button>
@@ -881,8 +843,8 @@ export function FacultyAdminRequestsClient() {
         onClose={() => setBatchRejectModal(false)}
         title="Batch Reject Requests"
       >
-        <div className="space-y-4">
-          <p className="text-sm text-zinc-300">
+        <div className="space-y-5">
+          <p className="text-sm text-zinc-300 leading-relaxed">
             Reject {selectedIds.size} selected pass request(s)? Please provide a reason:
           </p>
           <Textarea
@@ -892,14 +854,15 @@ export function FacultyAdminRequestsClient() {
             rows={3}
             required
           />
-          <div className="flex justify-end gap-3 pt-4 border-t border-zinc-800">
-            <Button variant="outline" onClick={() => setBatchRejectModal(false)}>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3 pt-4 border-t border-zinc-800">
+            <Button variant="outline" onClick={() => setBatchRejectModal(false)} className="w-full sm:w-auto">
               Cancel
             </Button>
             <Button
+              variant="destructive"
               disabled={!rejectReason.trim()}
               onClick={() => onBatchAction("REJECT", rejectReason)}
-              className="bg-red-600 hover:bg-red-500 text-white"
+              className="w-full sm:w-auto"
             >
               Reject All Selected
             </Button>
@@ -907,36 +870,39 @@ export function FacultyAdminRequestsClient() {
         </div>
       </Modal>
 
-      {/* Floating Bottom Batch Action Pill Bar */}
+      {/* Floating bottom batch action bar */}
       {selectedIds.size > 0 && activeTab === "PENDING" && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-zinc-900/95 backdrop-blur-md border border-zinc-700/80 px-4 py-2.5 rounded-full shadow-2xl transition-all duration-300">
-          <div className="flex items-center gap-2 pr-2 border-r border-zinc-700/60">
-            <span className="h-2 w-2 rounded-full bg-orange-500 animate-pulse" />
-            <span className="text-xs font-semibold text-zinc-200">
-              {selectedIds.size} selected
+        <div className="fixed bottom-[5.25rem] sm:bottom-24 left-1/2 -translate-x-1/2 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-2 sm:gap-3 rounded-full border border-zinc-800 bg-zinc-900 py-1.5 pl-4 pr-1.5 shadow-[0_12px_32px_-12px_rgba(16,24,40,0.35)]">
+          <div className="flex items-center gap-2 pr-2 sm:pr-3 border-r border-zinc-800 shrink-0">
+            <span className="h-2 w-2 rounded-full bg-orange-500" />
+            <span className="text-xs font-medium text-zinc-200 whitespace-nowrap">
+              {selectedIds.size}<span className="hidden sm:inline"> selected</span>
             </span>
           </div>
           <Button
             size="sm"
+            variant="success"
             disabled={batchProcessing}
             onClick={() => onBatchAction("APPROVE")}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-8 px-3.5 rounded-full font-medium shadow-none flex items-center gap-1.5"
+            className="h-10 px-3 sm:px-3.5"
           >
-            <CheckCircle2 className="h-3.5 w-3.5" />
+            <CheckCircle2 className="hidden sm:block h-3.5 w-3.5" />
             Approve ({selectedIds.size})
           </Button>
           <Button
             size="sm"
+            variant="outline"
             disabled={batchProcessing}
             onClick={() => setBatchRejectModal(true)}
-            className="bg-zinc-800 hover:bg-red-950/80 text-red-400 hover:text-red-300 border border-zinc-700 text-xs h-8 px-3.5 rounded-full font-medium shadow-none flex items-center gap-1.5"
+            className="h-10 px-3 sm:px-3.5 border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/40"
           >
-            <XCircle className="h-3.5 w-3.5" />
+            <XCircle className="hidden sm:block h-3.5 w-3.5" />
             Reject ({selectedIds.size})
           </Button>
           <button
+            type="button"
             onClick={() => setSelectedIds(new Set())}
-            className="text-xs text-zinc-400 hover:text-zinc-200 px-2 transition-colors cursor-pointer"
+            className="h-10 shrink-0 rounded-full px-2.5 text-xs font-medium text-zinc-500 hover:bg-zinc-950 hover:text-zinc-200 transition-colors cursor-pointer"
           >
             Clear
           </button>

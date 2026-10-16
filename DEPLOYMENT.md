@@ -111,7 +111,9 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGc...your-service-role-key
 # Database Configuration (Critical for 5k+ users)
 # ============================================================
 # Transaction mode with pgBouncer (port 6543)
-DATABASE_URL=postgresql://postgres.xxx:password@aws-0-region.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=100
+DATABASE_URL=postgresql://postgres.xxx:password@aws-0-region.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=8&pool_timeout=20&connect_timeout=10
+# Keep connection_limit modest (8): it applies PER serverless instance, and all
+# instances share the Supabase pooler. Large values (e.g. 100) exhaust the pooler.
 
 # Session mode for migrations (port 5432)
 DIRECT_DATABASE_URL=postgresql://postgres.xxx:password@aws-0-region.pooler.supabase.com:5432/postgres

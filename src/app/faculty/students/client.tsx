@@ -7,14 +7,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Select, Badge, EmptyState } from "@/components/ui/primitives";
+import { dt, PersonCell, RowActions, IconAction } from "@/components/ui/data-table";
+import { PagerBar } from "@/components/ui/pager-bar";
 import { logoutAction } from "@/server/actions/auth";
 import { updateStudentDetails } from "@/server/actions/admin";
 import { batchCreatePermissions } from "@/server/actions/permissions";
-import Link from "next/link";
+// Student/faculty pages load their data on hover/touch (intent), not on click
+import { IntentLink as Link } from "@/components/ui/intent-link";
+import { ResetPasswordButton } from "@/components/users/reset-password-button";
 import {
   Users,
   Search,
-  Pencil,
+  PencilLine,
   AlertTriangle,
   CheckCircle2,
   Phone,
@@ -46,6 +50,9 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
 
   const [search, setSearch] = useState("");
   const [editingStudent, setEditingStudent] = useState<any>(null);
+  // Hostel fields only apply to hostellers: locked and cleared for day scholars
+  const [editType, setEditType] = useState<string>("DAY_SCHOLAR");
+  const isHostellerEdit = editType === "HOSTELLER";
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchLoading, setBatchLoading] = useState(false);
@@ -131,6 +138,7 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
 
   function handleOpenEdit(student: any) {
     setEditingStudent(student);
+    setEditType(student?.studentType || "DAY_SCHOLAR");
     setEditError(null);
   }
 
@@ -174,276 +182,325 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
     }
   }
 
+  const initials = (name: string) =>
+    name.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase();
+
+  // Expanded details panel (same content for the phone list and the table)
+  const renderDetails = (s: any) => (
+    <div className="space-y-4">
+      {/* Top Info Bar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-zinc-800/70">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex h-10 w-10 shrink-0 rounded-full bg-zinc-900 border border-zinc-800 items-center justify-center text-zinc-500">
+            <GraduationCap className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="font-medium text-zinc-100 text-base break-words">{s.profile.name}</h4>
+              {s.studentRoll && (
+                <span className="px-2.5 py-0.5 rounded-full bg-orange-500/10 font-mono text-xs font-medium text-orange-400">
+                  {s.studentRoll}
+                </span>
+              )}
+              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium ${
+                s.studentType === "HOSTELLER"
+                  ? "bg-amber-500/10 text-amber-400"
+                  : "bg-blue-500/10 text-blue-400"
+              }`}>
+                {s.studentType === "HOSTELLER" ? "Hosteller" : "Day Scholar"}
+              </span>
+            </div>
+            <p className="text-xs text-zinc-500 mt-1 break-all">
+              {s.profile.email} {s.profile.phone ? `• ${s.profile.phone}` : ""}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+          <Link
+            href={`${detailBasePath}/${s.profile.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex h-10 sm:h-9 items-center justify-center gap-1.5 px-4 rounded-full border border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-950 hover:border-zinc-700 text-xs font-medium transition-colors"
+          >
+            <History className="h-3.5 w-3.5 text-zinc-500" />
+            All Details & Past Activity
+          </Link>
+          <Button
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOpenEdit(s);
+            }}
+            className="h-10 sm:h-9"
+          >
+            <PencilLine className="h-3.5 w-3.5" />
+            Edit Student Details
+          </Button>
+          {/* HODs can change their department students' passwords (faculty can't) */}
+          {user.role === "FACULTY_ADMIN" && <ResetPasswordButton profileId={s.profile.id} name={s.profile.name} />}
+        </div>
+      </div>
+
+      {/* 4 Detail Grid Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        {/* Card 1: Roll & Academic Cohort */}
+        <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5 min-w-0">
+          <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+            <GraduationCap className="h-3.5 w-3.5" />
+            Academic Cohort
+          </span>
+          <p className="text-sm font-medium text-zinc-200 break-words">
+            {s.department || "General Department"}
+          </p>
+          <p className="text-xs text-zinc-500">
+            {s.year ? `Year ${s.year}` : "Year N/A"}
+            {s.section ? ` • Section ${s.section}` : ""}
+          </p>
+        </div>
+
+        {/* Card 2: Residency & Accommodation */}
+        <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5 min-w-0">
+          <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+            <Building2 className="h-3.5 w-3.5" />
+            Residency & Hostel
+          </span>
+          <p className="text-sm font-medium text-zinc-200">
+            {s.studentType === "HOSTELLER" ? "Hosteller" : "Day Scholar"}
+          </p>
+          <p className="text-xs text-zinc-500">
+            {s.studentType === "HOSTELLER" ? (
+              <>
+                {s.hostelBlock ? `Block: ${s.hostelBlock}` : "Block not assigned"}
+                {s.roomNumber ? ` • Room: ${s.roomNumber}` : ""}
+              </>
+            ) : (
+              "Lives Off-Campus"
+            )}
+          </p>
+        </div>
+
+        {/* Card 3: Mentors & Supervision */}
+        <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5 min-w-0">
+          <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+            <Users className="h-3.5 w-3.5" />
+            Faculty & Warden
+          </span>
+          <div className="text-xs space-y-1">
+            <p className="text-zinc-300 break-words">
+              <span className="text-zinc-500">Faculty: </span>
+              <span className="font-medium text-zinc-200">
+                {s.faculty?.profile?.name || "Unassigned"}
+              </span>
+            </p>
+            {s.studentType === "HOSTELLER" && (
+              <p className="text-zinc-300 break-words">
+                <span className="text-zinc-500">Warden: </span>
+                {s.warden?.profile?.name ? (
+                  <span className="font-medium text-zinc-200">{s.warden.profile.name}</span>
+                ) : (
+                  <span className="text-zinc-500 italic">Unassigned</span>
+                )}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Card 4: Movement & Account Status */}
+        <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1.5 min-w-0">
+          <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+            <Shield className="h-3.5 w-3.5" />
+            Campus & Account
+          </span>
+          <div className="flex items-center gap-2 pt-0.5">
+            <Badge variant={s.profile.active ? "success" : "danger"}>
+              {s.profile.active ? "Active" : "Disabled"}
+            </Badge>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const fieldLabel = "block text-sm font-medium text-zinc-300";
+
   return (
     <>
-      <div className="space-y-6">
+      <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span>My Students</span>
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-orange-500/10 text-orange-400 tracking-normal">
                 {students.length} Total
               </span>
             </h1>
-            <p className="text-sm text-zinc-400 mt-1">
+            <p className="mt-1 text-sm text-zinc-500">
               View and edit student information, department details, and academic cohorts.
             </p>
           </div>
 
           {/* Search bar */}
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+          <div className="relative w-full sm:w-72 shrink-0">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none z-10" />
             <Input
               value={search}
               onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
               placeholder="Search by name, roll no..."
-              className="pl-9 bg-zinc-900/60 border-zinc-800 text-sm"
+              aria-label="Search students"
+              className="h-10 rounded-full pl-10 pr-4 text-base sm:text-sm focus:ring-4 focus:ring-orange-500/10"
             />
           </div>
         </div>
 
         {/* Success alert */}
         {success && (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 flex items-center gap-3 text-emerald-400 text-sm animate-scale-in">
+          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 flex items-center gap-3 text-emerald-300 text-sm animate-scale-in">
             <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
             <span>{success}</span>
           </div>
         )}
 
-        {/* Students Table */}
-        <Card className="border-zinc-800 bg-zinc-900/60 shadow-xl overflow-hidden">
+        {/* Students list */}
+        <Card className="overflow-hidden">
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[600px] text-sm">
+            {/* Phones: stacked rows */}
+            <ul className={`sm:hidden ${dt.mobileList}`}>
+              {paginatedStudents.map((s: any) => {
+                const isExpanded = expandedStudentId === s.id;
+                const toggle = () => setExpandedStudentId(isExpanded ? null : s.id);
+                return (
+                  <li key={s.id} className={isExpanded ? "bg-zinc-950/70" : ""}>
+                    <button
+                      type="button"
+                      onClick={toggle}
+                      aria-expanded={isExpanded}
+                      className="w-full flex items-center gap-3 px-4 pt-3.5 pb-1 text-left"
+                    >
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400 text-sm font-semibold">
+                        {initials(s.profile.name)}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-medium text-zinc-100 truncate">{s.profile.name}</span>
+                        <span className="block text-xs text-zinc-500 truncate tabular-nums">
+                          {s.studentRoll}
+                          {s.profile.phone ? ` · ${s.profile.phone}` : ""}
+                        </span>
+                        <span className="block text-xs text-zinc-500 truncate">{s.profile.email}</span>
+                      </span>
+                    </button>
+                    <div className="flex items-center justify-between gap-2 pl-[72px] pr-3 pb-2.5">
+                      <Badge variant={s.profile.active ? "success" : "danger"}>
+                        {s.profile.active ? "Active" : "Disabled"}
+                      </Badge>
+                      <RowActions>
+                        <IconAction
+                          label="History"
+                          icon={<History />}
+                          href={`${detailBasePath}/${s.profile.id}`}
+                        />
+                        <IconAction
+                          label="Edit Details"
+                          icon={<PencilLine />}
+                          tone="coral"
+                          onClick={() => handleOpenEdit(s)}
+                        />
+                        <IconAction
+                          label={isExpanded ? "Collapse details" : "View full details"}
+                          icon={<ChevronDown className={`transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />}
+                          active={isExpanded}
+                          onClick={toggle}
+                        />
+                      </RowActions>
+                    </div>
+                    {isExpanded && (
+                      <div className="mx-3 mb-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 animate-fade-in">
+                        {renderDetails(s)}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+
+            {/* Tablet and up: table */}
+            <div className={`hidden sm:block ${dt.wrap}`}>
+              <table className={dt.table}>
                 <thead>
-                  <tr className="border-b border-zinc-800/80 bg-zinc-950/40">
-                    <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Student</th>
-                    <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Email</th>
-                    <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Status</th>
-                    <th className="px-5 py-3.5 text-right font-semibold text-zinc-400">Actions</th>
+                  <tr>
+                    <th className={dt.th}>Student</th>
+                    <th className={dt.th}>Email</th>
+                    <th className={dt.th}>Status</th>
+                    <th className={dt.thRight}>Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-800/40">
+                <tbody>
                   {paginatedStudents.map((s: any) => {
                     const isExpanded = expandedStudentId === s.id;
+                    const toggle = () => setExpandedStudentId(isExpanded ? null : s.id);
 
                     return (
                       <React.Fragment key={s.id}>
-                        <tr 
-                          onClick={() => setExpandedStudentId(isExpanded ? null : s.id)}
-                          className={`table-row-hover transition-colors cursor-pointer select-none ${
-                            isExpanded ? "bg-zinc-850/60" : ""
-                          }`}
+                        <tr
+                          onClick={toggle}
+                          className={`${dt.trClickable} select-none ${isExpanded ? "[&>td]:bg-zinc-950/70" : ""}`}
                           title="Click row to view full details"
                         >
                           {/* Column 1: Student Name & Roll */}
-                          <td className="px-5 py-3.5">
-                            <div className="flex items-center gap-3">
-                              <div className="h-9 w-9 rounded-full bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-semibold text-xs shrink-0">
-                                {s.profile.name.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase()}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <p className="font-semibold text-zinc-100 hover:text-emerald-400 transition-colors">{s.profile.name}</p>
-                                  {s.studentRoll && (
-                                    <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/60">
-                                      {s.studentRoll}
-                                    </span>
-                                  )}
-                                </div>
-                                {s.profile.phone && (
-                                  <p className="text-xs text-zinc-500 mt-0.5 flex items-center gap-1">
-                                    <Phone className="h-3 w-3 text-zinc-500" />
+                          <td className={dt.td}>
+                            <PersonCell
+                              name={s.profile.name}
+                              chip={s.studentRoll ? <span className={dt.chip}>{s.studentRoll}</span> : undefined}
+                              sub={
+                                s.profile.phone ? (
+                                  <span className="inline-flex items-center gap-1 tabular-nums">
+                                    <Phone className="h-3 w-3" />
                                     {s.profile.phone}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
+                                  </span>
+                                ) : undefined
+                              }
+                            />
                           </td>
 
                           {/* Column 2: Email */}
-                          <td className="px-5 py-3.5">
-                            <p className="text-xs text-zinc-300 font-mono">{s.profile.email}</p>
-                          </td>
+                          <td className={`${dt.tdMuted} break-all`}>{s.profile.email}</td>
 
                           {/* Column 3: Status */}
-                          <td className="px-5 py-3.5">
-                            <div className="flex items-center gap-2">
-                              <Badge variant={s.profile.active ? "success" : "danger"}>
-                                {s.profile.active ? "Active" : "Disabled"}
-                              </Badge>
-
-                            </div>
+                          <td className={dt.td}>
+                            <Badge variant={s.profile.active ? "success" : "danger"}>
+                              {s.profile.active ? "Active" : "Disabled"}
+                            </Badge>
                           </td>
 
                           {/* Column 4: Actions */}
-                          <td className="px-5 py-3.5 text-right">
-                            <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                              <Link
+                          <td className={dt.tdActions}>
+                            <RowActions>
+                              <IconAction
+                                label="History"
+                                icon={<History />}
                                 href={`${detailBasePath}/${s.profile.id}`}
-                                className="inline-flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 px-2.5 h-8 text-xs font-medium rounded-md transition-colors"
-                                title="View full student details, permissions & activity"
-                              >
-                                <History className="h-3.5 w-3.5 mr-1 text-emerald-400" />
-                                History
-                              </Link>
-                              <Button
-                                variant="ghost"
-                                size="sm"
+                              />
+                              <IconAction
+                                label="Edit Details"
+                                icon={<PencilLine />}
+                                tone="coral"
                                 onClick={() => handleOpenEdit(s)}
-                                className="text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 px-3 h-8 text-xs font-medium"
-                              >
-                                <Pencil className="h-3.5 w-3.5 mr-1" />
-                                Edit Details
-                              </Button>
-                              <button
-                                type="button"
-                                onClick={() => setExpandedStudentId(isExpanded ? null : s.id)}
-                                className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors ml-1"
-                                title={isExpanded ? "Collapse details" : "Click to view full details"}
-                              >
-                                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${
-                                  isExpanded ? "rotate-180 text-orange-400" : ""
-                                }`} />
-                              </button>
-                            </div>
+                              />
+                              <IconAction
+                                label={isExpanded ? "Collapse details" : "View full details"}
+                                icon={<ChevronDown className={`transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />}
+                                active={isExpanded}
+                                onClick={toggle}
+                              />
+                            </RowActions>
                           </td>
                         </tr>
 
                         {/* Expanded Details Row */}
                         {isExpanded && (
-                          <tr className="bg-zinc-950/80 border-b border-zinc-800/80 animate-fade-in">
-                            <td colSpan={4} className="p-5 bg-gradient-to-b from-zinc-900/70 to-zinc-950/95 border-l-2 border-l-emerald-500">
-                              <div className="space-y-4">
-                                {/* Top Info Bar */}
-                                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-zinc-800/60">
-                                  <div className="flex items-center gap-3">
-                                    <div className="h-10 w-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold">
-                                      <GraduationCap className="h-5 w-5" />
-                                    </div>
-                                    <div>
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <h4 className="font-bold text-zinc-100 text-base">{s.profile.name}</h4>
-                                        {s.studentRoll && (
-                                          <span className="px-2 py-0.5 rounded bg-orange-500/15 border border-orange-500/30 font-mono text-xs font-bold text-orange-400">
-                                            {s.studentRoll}
-                                          </span>
-                                        )}
-                                        <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                                          s.studentType === "HOSTELLER"
-                                            ? "bg-purple-500/15 text-purple-300 border border-purple-500/30"
-                                            : "bg-blue-500/15 text-blue-300 border border-blue-500/30"
-                                        }`}>
-                                          {s.studentType === "HOSTELLER" ? "Hosteller" : "Day Scholar"}
-                                        </span>
-
-                                      </div>
-                                      <p className="text-xs text-zinc-400 mt-0.5">
-                                        {s.profile.email} {s.profile.phone ? `• ${s.profile.phone}` : ""}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <Link
-                                      href={`${detailBasePath}/${s.profile.id}`}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="inline-flex items-center gap-1.5 px-3 h-8 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 text-xs font-semibold shadow-sm transition-all"
-                                    >
-                                      <History className="h-3.5 w-3.5 text-emerald-400" />
-                                      All Details & Past Activity
-                                    </Link>
-                                    <Button
-                                      size="sm"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleOpenEdit(s);
-                                      }}
-                                      className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-8 shadow-lg shadow-emerald-600/20"
-                                    >
-                                      <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                                      Edit Student Details
-                                    </Button>
-                                  </div>
-                                </div>
-
-                                {/* 4 Detail Grid Cards */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                                  {/* Card 1: Roll & Academic Cohort */}
-                                  <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-1.5">
-                                    <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                                      <GraduationCap className="h-3.5 w-3.5 text-emerald-400" />
-                                      Academic Cohort
-                                    </span>
-                                    <p className="text-sm font-semibold text-zinc-200">
-                                      {s.department || "General Department"}
-                                    </p>
-                                    <p className="text-xs text-zinc-400">
-                                      {s.year ? `Year ${s.year}` : "Year N/A"}
-                                      {s.section ? ` • Section ${s.section}` : ""}
-                                    </p>
-                                  </div>
-
-                                  {/* Card 2: Residency & Accommodation */}
-                                  <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-1.5">
-                                    <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                                      <Building2 className="h-3.5 w-3.5 text-purple-400" />
-                                      Residency & Hostel
-                                    </span>
-                                    <p className="text-sm font-semibold text-zinc-200">
-                                      {s.studentType === "HOSTELLER" ? "Hosteller" : "Day Scholar"}
-                                    </p>
-                                    <p className="text-xs text-zinc-400">
-                                      {s.studentType === "HOSTELLER" ? (
-                                        <>
-                                          {s.hostelBlock ? `Block: ${s.hostelBlock}` : "Block not assigned"}
-                                          {s.roomNumber ? ` • Room: ${s.roomNumber}` : ""}
-                                        </>
-                                      ) : (
-                                        "Lives Off-Campus"
-                                      )}
-                                    </p>
-                                  </div>
-
-                                  {/* Card 3: Mentors & Supervision */}
-                                  <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-1.5">
-                                    <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                                      <Users className="h-3.5 w-3.5 text-blue-400" />
-                                      Faculty & Warden
-                                    </span>
-                                    <div className="text-xs space-y-1">
-                                      <p className="text-zinc-300">
-                                        <span className="text-zinc-500">Faculty: </span>
-                                        <span className="font-medium text-emerald-300">
-                                          {s.faculty?.profile?.name || "Unassigned"}
-                                        </span>
-                                      </p>
-                                      {s.studentType === "HOSTELLER" && (
-                                        <p className="text-zinc-300">
-                                          <span className="text-zinc-500">Warden: </span>
-                                          {s.warden?.profile?.name ? (
-                                            <span className="font-medium text-amber-300">{s.warden.profile.name}</span>
-                                          ) : (
-                                            <span className="text-zinc-500 italic">Unassigned</span>
-                                          )}
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Card 4: Movement & Account Status */}
-                                  <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-1.5">
-                                    <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                                      <Shield className="h-3.5 w-3.5 text-orange-400" />
-                                      Campus & Account
-                                    </span>
-                                    <div className="flex items-center gap-2 pt-0.5">
-                                      <Badge variant={s.profile.active ? "success" : "danger"}>
-                                        {s.profile.active ? "Active" : "Disabled"}
-                                      </Badge>
-                                    </div>
-                                  </div>
-                                </div>
+                          <tr className="animate-fade-in">
+                            <td colSpan={4} className="px-2 pb-3">
+                              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 sm:p-5">
+                                {renderDetails(s)}
                               </div>
                             </td>
                           </tr>
@@ -455,45 +512,24 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
               </table>
             </div>
 
-            {total > pageSize && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-zinc-800/60 px-4 sm:px-6 py-4 bg-zinc-950/30">
-                <p className="text-xs sm:text-sm text-zinc-400">
-                  Showing <span className="font-medium text-zinc-200">{(currentPage - 1) * pageSize + 1}</span> to <span className="font-medium text-zinc-200">{Math.min(currentPage * pageSize, total)}</span> of <span className="font-medium text-zinc-200">{total}</span> students
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 px-3 border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 text-xs"
-                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                    disabled={currentPage === 1}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 px-3 border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 text-xs"
-                    onClick={() => setCurrentPage(Math.min(Math.ceil(total / pageSize), currentPage + 1))}
-                    disabled={currentPage >= Math.ceil(total / pageSize)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
-
             {filteredStudents.length === 0 && (
-              <div className="py-12 text-center">
-                <EmptyState
-                  icon={<Users className="h-8 w-8 text-zinc-500" />}
-                  title="No students found"
-                  description={search ? "Try adjusting your search filter." : "You do not currently have any assigned students."}
-                />
-              </div>
+              <EmptyState
+                icon={<Users className="h-6 w-6 text-zinc-500" />}
+                title="No students found"
+                description={search ? "Try adjusting your search filter." : "You do not currently have any assigned students."}
+              />
             )}
           </CardContent>
         </Card>
+
+        {/* Pagination (docked at the bottom of the screen) */}
+        <PagerBar
+          page={currentPage}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={setCurrentPage}
+          itemLabel="students"
+        />
       </div>
 
       {/* Edit Student Modal */}
@@ -504,9 +540,9 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
         className="max-w-xl"
       >
         {editingStudent && (
-          <form onSubmit={handleSaveEdit} className="space-y-4">
+          <form onSubmit={handleSaveEdit} className="space-y-5">
             {editError && (
-              <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-red-400 text-xs flex items-center gap-2">
+              <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300 text-sm flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 flex-shrink-0" />
                 <span>{editError}</span>
               </div>
@@ -514,72 +550,68 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">Full Name</label>
+                <label className={fieldLabel}>Full Name</label>
                 <Input
                   name="name"
                   defaultValue={editingStudent.profile.name}
                   required
-                  className="bg-zinc-900 border-zinc-800"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">Phone Number</label>
+                <label className={fieldLabel}>Phone Number</label>
                 <Input
                   name="phone"
                   defaultValue={editingStudent.profile.phone || ""}
                   placeholder="+91-9876543210"
-                  className="bg-zinc-900 border-zinc-800"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">Roll Number</label>
+                <label className={fieldLabel}>Roll Number</label>
                 <Input
                   name="studentRoll"
                   defaultValue={editingStudent.studentRoll}
                   required
-                  className="bg-zinc-900 border-zinc-800 font-mono"
+                  className="font-mono"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">Department</label>
+                <label className={fieldLabel}>Department</label>
                 <Input
                   name="department"
                   defaultValue={editingStudent.department || ""}
                   placeholder="e.g. Computer Science"
-                  className="bg-zinc-900 border-zinc-800"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">Year</label>
+                <label className={fieldLabel}>Year</label>
                 <Input
                   name="year"
                   type="number"
                   min={1}
                   max={5}
                   defaultValue={editingStudent.year ?? ""}
-                  className="bg-zinc-900 border-zinc-800"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">Section</label>
+                <label className={fieldLabel}>Section</label>
                 <Input
                   name="section"
                   defaultValue={editingStudent.section ?? ""}
-                  className="bg-zinc-900 border-zinc-800"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">Student Type</label>
+                <label className={fieldLabel}>Student Type</label>
                 <Select
                   name="studentType"
-                  defaultValue={editingStudent.studentType || "DAY_SCHOLAR"}
-                  className="bg-zinc-900 border-zinc-800"
+                  value={editType}
+                  onChange={(e) => setEditType(e.target.value)}
+                  className="h-12"
                 >
                   <option value="DAY_SCHOLAR">Day Scholar</option>
                   <option value="HOSTELLER">Hosteller</option>
@@ -587,11 +619,13 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">Assigned Warden (Hostellers)</label>
+                <label className={fieldLabel}>Assigned Warden (Hostellers)</label>
                 <Select
+                  key={`warden-${editType}`}
                   name="wardenId"
-                  defaultValue={editingStudent.wardenId || ""}
-                  className="bg-zinc-900 border-zinc-800"
+                  defaultValue={isHostellerEdit ? editingStudent.wardenId || "" : ""}
+                  disabled={!isHostellerEdit}
+                  className="h-12 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="">-- None --</option>
                   {wardens.map((w: any) => (
@@ -603,39 +637,44 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">Hostel Block</label>
+                <label className={fieldLabel}>Hostel Block</label>
                 <Input
+                  key={`block-${editType}`}
                   name="hostelBlock"
-                  defaultValue={editingStudent.hostelBlock || ""}
-                  placeholder="e.g. Block A"
-                  className="bg-zinc-900 border-zinc-800"
+                  defaultValue={isHostellerEdit ? editingStudent.hostelBlock || "" : ""}
+                  disabled={!isHostellerEdit}
+                  placeholder={isHostellerEdit ? "e.g. Block A" : "Hostellers only"}
+                  className="disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">Room Number</label>
+                <label className={fieldLabel}>Room Number</label>
                 <Input
+                  key={`room-${editType}`}
                   name="roomNumber"
-                  defaultValue={editingStudent.roomNumber || ""}
-                  placeholder="e.g. 204"
-                  className="bg-zinc-900 border-zinc-800"
+                  defaultValue={isHostellerEdit ? editingStudent.roomNumber || "" : ""}
+                  disabled={!isHostellerEdit}
+                  placeholder={isHostellerEdit ? "e.g. 204" : "Hostellers only"}
+                  className="disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-zinc-800">
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5 pt-4 border-t border-zinc-800">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setEditingStudent(null)}
                 disabled={editLoading}
+                className="h-12 w-full sm:h-11 sm:w-auto"
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
                 loading={editLoading}
-                className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-medium"
+                className="h-12 w-full sm:h-11 sm:w-auto"
               >
                 Save Changes
               </Button>
@@ -643,7 +682,6 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
           </form>
         )}
       </Modal>
-      {/* Pagination Controls */}
       {/* Batch Grant Modal */}
       <Modal
         open={showBatchModal}
@@ -653,64 +691,64 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
       >
         <form onSubmit={handleBatchGrant} className="space-y-4">
           {batchError && (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-red-400 text-xs flex items-center gap-2">
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300 text-sm flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 flex-shrink-0" />
               <span>{batchError}</span>
             </div>
           )}
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-zinc-400">Pass Type</label>
-            <Select name="type" required className="bg-zinc-900 border-zinc-800">
+            <label className={fieldLabel}>Pass Type</label>
+            <Select name="type" required className="h-12">
               <option value="EXIT">Exit Pass</option>
               <option value="ENTRY">Entry Pass</option>
             </Select>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-zinc-400">Purpose</label>
-            <Input name="purpose" required placeholder="E.g., Medical visit, Family event" className="bg-zinc-900 border-zinc-800" />
+            <label className={fieldLabel}>Purpose</label>
+            <Input name="purpose" required placeholder="E.g., Medical visit, Family event" />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-zinc-400">Destination</label>
-            <Input name="destination" placeholder="Optional" className="bg-zinc-900 border-zinc-800" />
+            <label className={fieldLabel}>Destination</label>
+            <Input name="destination" placeholder="Optional" />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-400">Expected Exit</label>
-              <Input name="expectedExit" type="datetime-local" className="bg-zinc-900 border-zinc-800" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5 min-w-0">
+              <label className={fieldLabel}>Expected Exit</label>
+              <Input name="expectedExit" type="datetime-local" className="[color-scheme:light]" />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-400">Expected Return</label>
-              <Input name="expectedReturn" type="datetime-local" className="bg-zinc-900 border-zinc-800" />
+            <div className="space-y-1.5 min-w-0">
+              <label className={fieldLabel}>Expected Return</label>
+              <Input name="expectedReturn" type="datetime-local" className="[color-scheme:light]" />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-zinc-400">Contact Number</label>
-            <Input name="contactNumber" required placeholder="10-digit number" className="bg-zinc-900 border-zinc-800" />
+            <label className={fieldLabel}>Contact Number</label>
+            <Input name="contactNumber" required placeholder="10-digit number" />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-zinc-400">Remarks</label>
-            <Input name="remarks" placeholder="Optional notes" className="bg-zinc-900 border-zinc-800" />
+            <label className={fieldLabel}>Remarks</label>
+            <Input name="remarks" placeholder="Optional notes" />
           </div>
 
-          <div className="pt-2 flex gap-3">
+          <div className="pt-2 flex flex-col-reverse sm:flex-row gap-2.5">
             <Button
               type="button"
               variant="outline"
               onClick={() => setShowBatchModal(false)}
-              className="flex-1 bg-transparent border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+              className="h-12 sm:h-11 sm:flex-1"
               disabled={batchLoading}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              className="flex-1 bg-amber-500 hover:bg-amber-600 text-black border-none"
+              className="h-12 sm:h-11 sm:flex-1"
               disabled={batchLoading}
             >
               {batchLoading ? "Granting..." : "Grant Pass"}
@@ -718,44 +756,6 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
           </div>
         </form>
       </Modal>
-
-      {total > pageSize && (
-        <div className="fixed bottom-0 left-0 lg:left-72 right-0 z-50 flex justify-between items-center py-3 px-4 lg:px-8 border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl shadow-[0_-10px_40px_-10px_rgba(16,24,40,0.12)]">
-          <p className="text-sm text-zinc-400 font-medium">
-            Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, total)} of {total} students
-          </p>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-500">
-              Page {currentPage} of {Math.ceil(total / pageSize)}
-            </span>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage(prev => prev - 1)}
-                className="h-8 px-3"
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage * pageSize >= total}
-                onClick={() => setCurrentPage(prev => prev + 1)}
-                className="h-8 px-3"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add bottom padding to account for fixed pagination */}
-      {total > pageSize && <div className="h-20"></div>}
-
-    
     </>
   );
 }

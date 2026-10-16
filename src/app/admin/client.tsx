@@ -6,9 +6,9 @@ import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { StatCard, StatusBadge, Modal } from "@/components/ui/primitives";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { logoutAction } from "@/server/actions/auth";
 import { formatDateTime } from "@/lib/utils";
 import {
   Users,
@@ -18,9 +18,10 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
-  MapPin,
   DoorOpen,
   DoorClosed,
+  ClipboardList,
+  History,
 } from "lucide-react";
 
 interface Props {
@@ -38,139 +39,169 @@ export function AdminDashboardClient({ user }: Props) {
 
   const { stats, recentMovements } = dashboardData || { stats: {}, recentMovements: [] };
 
+  const firstName = (user.name || "").replace(/^(dr|prof|mr|mrs|ms)\.?\s+/i, "").split(" ")[0] || user.name || "Admin";
+  const hour = Number(new Intl.DateTimeFormat("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date()));
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const todayLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date());
+
   return (
     <>
-      <div className="space-y-8">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
-            Admin Dashboard
+      <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
+        {/* Greeting */}
+        <div className="min-w-0">
+          <p className="text-sm text-zinc-500">{todayLabel}</p>
+          <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
+            {greeting}, <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{firstName}</span>
           </h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            System-wide overview and management
-          </p>
+          <p className="mt-1.5 text-sm text-zinc-500">System-wide overview and management</p>
         </div>
 
-        {/* Top-level stats */}
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-zinc-100 font-heading border-b border-zinc-800/50 pb-2">User Demographics</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        {/* User demographics */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-orange-400">User Demographics</h2>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <StatCard title="Total Students" value={stats.totalStudents} icon={<GraduationCap />} />
+            <StatCard title="Faculty" value={stats.totalFaculty} icon={<BookOpen />} />
+            <StatCard title="Wardens" value={stats.totalWardens} icon={<Users />} />
+            <StatCard title="Security Staff" value={stats.totalSecurity} icon={<Shield />} />
+          </div>
+        </section>
+
+        {/* Daily operations */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-orange-400">Daily Operations</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
+            <StatCard title="Visitor Visits" value={stats.outsidersCount} icon={<Users />} />
+            <StatCard title="Approved Today" value={stats.approvedToday} icon={<CheckCircle2 />} />
+            <StatCard title="Rejected Today" value={stats.rejectedToday} icon={<XCircle />} />
+            <StatCard title="Entry Today" value={stats.entryToday} icon={<DoorClosed />} />
             <StatCard
-              title="Total Students"
-              value={stats.totalStudents}
-              icon={<GraduationCap className="h-5 w-5" />}
-            />
-            <StatCard
-              title="Faculty"
-              value={stats.totalFaculty}
-              icon={<BookOpen className="h-5 w-5" />}
-            />
-            <StatCard
-              title="Wardens"
-              value={stats.totalWardens}
-              icon={<Users className="h-5 w-5" />}
-            />
-            <StatCard
-              title="Security Staff"
-              value={stats.totalSecurity}
-              icon={<Shield className="h-5 w-5" />}
+              title="Exit Today"
+              value={stats.exitToday}
+              icon={<DoorOpen />}
+              className="col-span-2 sm:col-span-1"
             />
           </div>
-        </div>
+        </section>
 
-        {/* Permission stats */}
-        <div className="space-y-4 mt-8">
-          <h2 className="text-lg font-semibold text-zinc-100 font-heading border-b border-zinc-800/50 pb-2">Daily Operations</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-          <StatCard
-            title="Visitor Visits"
-            value={stats.outsidersCount}
-            icon={<Users className="h-5 w-5 text-indigo-500" />}
-          />
-          <StatCard
-            title="Approved Today"
-            value={stats.approvedToday}
-            icon={<CheckCircle2 className="h-5 w-5 text-blue-500" />}
-          />
-          <StatCard
-            title="Rejected Today"
-            value={stats.rejectedToday}
-            icon={<XCircle className="h-5 w-5 text-red-500" />}
-          />
-          <StatCard
-            title="Entry Today"
-            value={stats.entryToday}
-            icon={<DoorClosed className="h-5 w-5 text-emerald-500" />}
-          />
-          <StatCard
-            title="Exit Today"
-            value={stats.exitToday}
-            icon={<DoorOpen className="h-5 w-5 text-orange-500" />}
-          />
-        </div>
-        </div>
-
-
-        {/* Recent Movements */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Live Movement Feed</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {recentMovements.length === 0 ? (
-              <p className="text-center text-sm text-zinc-500 py-8">
-                No movements recorded today.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {recentMovements.map((mov: any) => (
-                  <div
-                    key={mov.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 rounded-xl bg-zinc-800/30 p-3 sm:px-4 sm:py-3 table-row-hover transition-colors cursor-pointer"
-                    onClick={() => setSelectedRecord(mov)}
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div
-                        className={`rounded-lg p-1.5 shrink-0 ${
-                          mov.type === "EXIT"
-                            ? "bg-orange-500/15 text-orange-400"
-                            : "bg-blue-500/15 text-blue-400"
-                        }`}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
+          {/* Live movement feed */}
+          <Card className="xl:col-span-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="font-medium">Live Movement Feed</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-2">
+              {recentMovements.length === 0 ? (
+                <div className="flex flex-col items-center py-12 text-center">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 text-zinc-500">
+                    <Clock className="h-5 w-5" />
+                  </span>
+                  <p className="mt-3 text-sm text-zinc-500">No movements recorded today.</p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-zinc-800/70">
+                  {recentMovements.map((mov: any) => (
+                    <li key={mov.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRecord(mov)}
+                        className="w-full flex items-center gap-3 sm:gap-4 py-3 text-left rounded-2xl px-2 -mx-2 hover:bg-zinc-950 transition-colors cursor-pointer"
                       >
-                        {mov.type === "EXIT" ? (
-                          <DoorOpen className="h-4 w-4" />
-                        ) : (
-                          <DoorClosed className="h-4 w-4" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-zinc-200 truncate">
-                          {mov.student?.profile?.name || "Unknown person"}
-                          {mov.student?.studentRoll ? ` — ${mov.student.studentRoll}` : ""}
-                          {mov.student?.isFaculty && (
-                            <span className="ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400">
-                              Faculty
+                        <span
+                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+                            mov.type === "EXIT"
+                              ? "bg-orange-500/10 text-orange-400"
+                              : "bg-blue-500/10 text-blue-400"
+                          }`}
+                        >
+                          {mov.type === "EXIT" ? <DoorOpen className="h-4 w-4" /> : <DoorClosed className="h-4 w-4" />}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium text-zinc-100 truncate">
+                              {mov.student?.profile?.name || "Unknown person"}
+                              {mov.student?.studentRoll ? (
+                                <span className="text-zinc-500 font-normal"> · {mov.student.studentRoll}</span>
+                              ) : null}
                             </span>
-                          )}
-                        </p>
-                        <p className="text-xs text-zinc-500 truncate">
-                          Gate: {mov.gate?.name || "—"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800/60">
-                      <span className="text-xs text-zinc-500">
-                        {formatDateTime(mov.createdAt)}
-                      </span>
-                      <StatusBadge status={mov.type} />
-                    </div>
-                  </div>
-                ))}
+                            {mov.student?.isFaculty && (
+                              <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400">
+                                Faculty
+                              </span>
+                            )}
+                          </span>
+                          <span className="block text-xs text-zinc-500 truncate">Gate: {mov.gate?.name || "—"}</span>
+                        </span>
+                        <span className="flex flex-col items-end gap-1 shrink-0">
+                          <StatusBadge status={mov.type} />
+                          <span className="text-[11px] text-zinc-500">{formatDateTime(mov.createdAt)}</span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Right: feature card + quick links */}
+          <div className="space-y-4 lg:space-y-6 min-w-0">
+            <div
+              className="relative overflow-hidden rounded-3xl border border-orange-500/20 p-5 sm:p-6 shadow-card"
+              style={{ background: "linear-gradient(160deg, #fff3f0 0%, #ffe1d9 55%, #ffd2c7 100%)" }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="text-lg font-medium text-zinc-100">At the gates today</h2>
+                <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-zinc-300 border border-white">
+                  {Number(stats.entryToday || 0) + Number(stats.exitToday || 0)} scans
+                </span>
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-white/70 border border-white px-4 py-3">
+                  <p className="text-xs text-zinc-400">Entries</p>
+                  <p className="mt-1 text-3xl font-light tracking-tight text-zinc-100">{stats.entryToday ?? 0}</p>
+                </div>
+                <div className="rounded-2xl bg-white/70 border border-white px-4 py-3">
+                  <p className="text-xs text-zinc-400">Exits</p>
+                  <p className="mt-1 text-3xl font-light tracking-tight text-zinc-100">{stats.exitToday ?? 0}</p>
+                </div>
+              </div>
+              <Link
+                href="/admin/activity"
+                className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-zinc-100 text-sm font-medium text-zinc-900 hover:bg-zinc-200 transition-colors"
+              >
+                <History className="h-4 w-4" />
+                Open activity log
+              </Link>
+            </div>
+
+            <Card>
+              <CardContent className="p-5 sm:p-6 space-y-3">
+                <h2 className="text-base font-medium text-zinc-100">Quick links</h2>
+                {[
+                  { href: "/admin/users", label: "Users", hint: "Create and manage user accounts", icon: <Users className="h-4 w-4" /> },
+                  { href: "/admin/activity", label: "Activity", hint: "Entries, exits and visitors by date", icon: <History className="h-4 w-4" /> },
+                  { href: "/admin/gates", label: "Gates", hint: "Add, edit and switch gates on or off", icon: <DoorOpen className="h-4 w-4" /> },
+                  { href: "/admin/registers", label: "Registers", hint: "Gate registers and records", icon: <ClipboardList className="h-4 w-4" /> },
+                ].map((l) => (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    className="flex items-center gap-3 rounded-2xl border border-zinc-800 px-3 py-3 hover:bg-zinc-950 transition-colors"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-950 text-zinc-400">{l.icon}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-zinc-100">{l.label}</span>
+                      <span className="block text-xs text-zinc-500 truncate">{l.hint}</span>
+                    </span>
+                  </Link>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
-      
+
       {/* Record Details Modal */}
       <Modal open={!!selectedRecord} onClose={() => setSelectedRecord(null)} title="Movement Details" className="max-w-xl">
         {selectedRecord && <MovementDetails id={selectedRecord.id} />}

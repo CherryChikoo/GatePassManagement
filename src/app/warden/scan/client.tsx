@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { QrScanner } from "@/components/scan/qr-scanner";
 import { CheckCircle2, Home, Loader2, ScanLine, Search, XCircle } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
+import { Button } from "@/components/ui/button";
 import { actionErrorMessage } from "@/lib/deployment";
 import { formatDateTime, formatTime } from "@/lib/utils";
 import { confirmHostelArrival, getHostelPassesToday, verifyHostelPass } from "@/server/actions/warden-scan";
@@ -15,7 +16,7 @@ type Verified = {
 type Row = { id: string; name: string; roll: string; room: string | null; purpose: string; approvedBy: string; approvedAt: string | null; arrivedAt: string | null };
 
 /** Warden: scan a hostel student's QR (HOD-approved hostel pass) when they reach the hostel. */
-export function WardenScanClient() {
+export function WardenScanClient({ autoStart = false }: { autoStart?: boolean }) {
   const [scanning, setScanning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +59,14 @@ export function WardenScanClient() {
     setScanning(true);
   }
 
+  // Opened from a "Scan" button: start the camera right away, then drop ?scan=1
+  // from the address so a refresh doesn't reopen it.
+  useEffect(() => {
+    if (!autoStart) return;
+    setScanning(true);
+    window.history.replaceState(null, "", window.location.pathname);
+  }, [autoStart]);
+
   async function confirm() {
     if (!verified) return;
     setBusy(true);
@@ -78,29 +87,32 @@ export function WardenScanClient() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div>
-        <BackButton href="/warden" label="Back to Dashboard" />
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2">
-          <Home className="h-6 w-6 text-amber-400" /> Scan Hostel Pass
-        </h1>
-        <p className="text-sm text-zinc-400 mt-1">
+    <div className="max-w-3xl mx-auto space-y-6 lg:space-y-8">
+      <div className="min-w-0">
+        <BackButton href="/warden" label="Back to Dashboard" className="-ml-3 mb-2" />
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
+            <Home className="h-5 w-5" />
+          </span>
+          <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">Scan Hostel Pass</h1>
+        </div>
+        <p className="mt-2 text-sm text-zinc-500 leading-relaxed">
           Hostel students going from college to the hostel get their pass approved by their HOD. Scan their QR when they arrive.
         </p>
       </div>
 
       {notice && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300 flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4" /> {notice}
+        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 shrink-0" /> {notice}
         </div>
       )}
       {error && (
-        <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300 flex items-center gap-2">
+        <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300 flex items-center gap-2">
           <XCircle className="h-4 w-4 shrink-0" /> {error}
         </div>
       )}
 
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6 space-y-4">
+      <div className="rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-card p-5 sm:p-6 space-y-5">
         {scanning && (
           <QrScanner
             title="Scan hostel pass"
@@ -111,42 +123,50 @@ export function WardenScanClient() {
             onCancel={() => setScanning(false)}
           />
         )}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           {(
-            <button onClick={startCamera} disabled={busy} className="inline-flex items-center gap-2 h-11 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-sm font-semibold text-white disabled:opacity-60">
+            <Button onClick={startCamera} disabled={busy} className="h-12 w-full sm:w-auto px-6">
               <ScanLine className="h-4 w-4" /> Scan QR code
-            </button>
+            </Button>
           )}
+          <div className="flex items-center gap-3 sm:hidden" aria-hidden="true">
+            <span className="h-px flex-1 bg-zinc-800" />
+            <span className="text-[11px] uppercase tracking-wider text-zinc-500">or</span>
+            <span className="h-px flex-1 bg-zinc-800" />
+          </div>
           <form
             onSubmit={(e) => {
               e.preventDefault();
               if (roll.trim()) verify(roll.trim());
             }}
-            className="flex flex-1 min-w-[220px] gap-2"
+            className="flex flex-1 min-w-0 gap-2"
           >
-            <input
-              value={roll}
-              onChange={(e) => setRoll(e.target.value)}
-              aria-label="Roll number"
-              placeholder="Or enter roll number"
-              maxLength={30}
-              className="h-11 flex-1 min-w-0 rounded-xl border border-zinc-700/50 bg-zinc-900 px-3.5 text-sm text-zinc-100 placeholder:text-zinc-500"
-            />
-            <button type="submit" disabled={busy || !roll.trim()} className="inline-flex items-center gap-1.5 h-11 px-4 rounded-xl border border-zinc-700 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 disabled:opacity-50">
-              <Search className="h-4 w-4" /> Check
-            </button>
+            <div className="relative flex-1 min-w-0">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+              <input
+                value={roll}
+                onChange={(e) => setRoll(e.target.value)}
+                aria-label="Roll number"
+                placeholder="Or enter roll number"
+                maxLength={30}
+                className="h-12 w-full rounded-full border border-zinc-800 bg-zinc-900 pl-10 pr-4 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
+              />
+            </div>
+            <Button type="submit" variant="outline" disabled={busy || !roll.trim()} className="h-12 shrink-0">
+              Check
+            </Button>
           </form>
         </div>
         {busy && !verified && (
-          <p className="text-sm text-zinc-400 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Checking…</p>
+          <p className="text-sm text-zinc-500 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Checking…</p>
         )}
 
         {verified && (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-4">
-            <p className="text-sm font-semibold text-emerald-300 flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4" /> Valid hostel pass — approved by {verified.pass.approvedBy}
+          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 sm:p-5 space-y-4">
+            <p className="text-sm font-medium text-emerald-400 flex items-start gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" /> Valid hostel pass — approved by {verified.pass.approvedBy}
             </p>
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 ["Student", verified.student.name],
                 ["Roll Number", verified.student.roll],
@@ -161,43 +181,57 @@ export function WardenScanClient() {
               ].map(([k, v]) => (
                 <div key={k as string} className="min-w-0">
                   <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{k}</dt>
-                  <dd className="text-zinc-200 break-words">{(v as any) || "—"}</dd>
+                  <dd className="mt-0.5 text-sm text-zinc-200 break-words">{(v as any) || "—"}</dd>
                 </div>
               ))}
             </dl>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={confirm} disabled={busy} className="inline-flex items-center gap-2 h-11 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold text-white disabled:opacity-60">
+            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+              <Button variant="success" onClick={confirm} disabled={busy} className="h-12 w-full sm:w-auto px-6">
                 <CheckCircle2 className="h-4 w-4" /> {busy ? "Saving…" : "Mark reached hostel"}
-              </button>
-              <button onClick={() => setVerified(null)} disabled={busy} className="h-11 px-4 rounded-xl border border-zinc-700 text-sm text-zinc-300 hover:bg-zinc-800">
+              </Button>
+              <Button variant="outline" onClick={() => setVerified(null)} disabled={busy} className="h-12 w-full sm:w-auto">
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6">
         {(
           [
             ["On the way (approved)", lists.expected, "Approved"],
             ["Reached hostel today", lists.arrived, "Arrived"],
           ] as const
         ).map(([title, rows, kind]) => (
-          <div key={title} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-2">
-            <p className="text-sm font-semibold text-zinc-200">
-              {title} <span className="text-zinc-500 font-normal">({rows.length})</span>
-            </p>
+          <div key={title} className="min-w-0 rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-card p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-base font-medium text-zinc-100">{title}</h2>
+              <span className="rounded-full bg-zinc-950 border border-zinc-800 px-2.5 py-0.5 text-xs font-medium text-zinc-400">
+                {rows.length}
+              </span>
+            </div>
             {rows.length === 0 ? (
-              <p className="text-xs text-zinc-500">None</p>
+              <p className="py-8 text-center text-sm text-zinc-500">None</p>
             ) : (
-              <ul className="divide-y divide-zinc-800/70">
+              <ul className="mt-2 divide-y divide-zinc-800/70">
                 {rows.map((r) => (
-                  <li key={r.id} className="py-2 text-sm">
-                    <p className="text-zinc-100 font-medium">{r.name} <span className="text-zinc-500 font-normal">• {r.roll}{r.room ? ` • Room ${r.room}` : ""}</span></p>
-                    <p className="text-xs text-zinc-400 truncate">
-                      {r.purpose} • {kind === "Arrived" && r.arrivedAt ? `Arrived ${formatTime(r.arrivedAt)}` : `Approved by ${r.approvedBy}`}
-                    </p>
+                  <li key={r.id} className="flex items-center gap-3 py-3">
+                    <span
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl font-semibold text-sm ${
+                        kind === "Arrived" ? "bg-emerald-500/10 text-emerald-400" : "bg-orange-500/10 text-orange-400"
+                      }`}
+                    >
+                      {(r.name || "S").charAt(0).toUpperCase()}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-zinc-100 truncate">
+                        {r.name} <span className="text-zinc-500 font-normal">· {r.roll}{r.room ? ` · Room ${r.room}` : ""}</span>
+                      </p>
+                      <p className="text-xs text-zinc-500 truncate">
+                        {r.purpose} · {kind === "Arrived" && r.arrivedAt ? `Arrived ${formatTime(r.arrivedAt)}` : `Approved by ${r.approvedBy}`}
+                      </p>
+                    </div>
                   </li>
                 ))}
               </ul>

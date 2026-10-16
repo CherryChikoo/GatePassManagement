@@ -2,10 +2,11 @@
 import { useT } from "@/components/providers/language-provider";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, StatusBadge, Textarea } from "@/components/ui/primitives";
+import { Select, Textarea } from "@/components/ui/primitives";
 import { verifyQrScan, registerExit, registerEntry, prepareGatePhoto } from "@/server/actions/security";
 import { QrScanner } from "@/components/scan/qr-scanner";
 import { formatDateTime } from "@/lib/utils";
@@ -16,24 +17,31 @@ import {
   AlertTriangle,
   DoorOpen,
   RotateCcw,
-  ShieldCheck,
   X,
   Phone,
   Upload,
+  Loader2,
+  LogIn,
+  LogOut,
+  Search,
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
+import { GoBackButton } from "@/components/ui/go-back-button";
 import { PassExtraDetails } from "@/components/passes/pass-extra";
 import { facultyRequestTypeLabel } from "@/lib/registers/definitions";
 
 interface Props {
   user: { name: string; email: string; role: string };
   gates: { id: string; name: string; location: string | null }[];
+  /** Opened with ?scan=1 (from a "Scan" button): start the camera scanner right away */
+  autoStart?: boolean;
 }
 
 type ScanState = "idle" | "scanning_qr" | "verifying" | "verified" | "capturing_photo" | "registering" | "done" | "error";
 
-export function ScanClient({ user, gates }: Props) {
+export function ScanClient({ user, gates, autoStart = false }: Props) {
   const t = useT();
+  const router = useRouter();
   const [state, setState] = useState<ScanState>("idle");
   const [verifyResult, setVerifyResult] = useState<any>(null);
   const [selectedGate, setSelectedGate] = useState(gates[0]?.id || "");
@@ -107,12 +115,20 @@ export function ScanClient({ user, gates }: Props) {
   }, [stopCamera]);
 
   // Start QR scanning (the scanner component owns the camera)
-  const startQrScanner = () => {
+  const startQrScanner = useCallback(() => {
     stopCamera();
     setError(null);
     setVerifyResult(null);
     setState("scanning_qr");
-  };
+  }, [stopCamera]);
+
+  // Opened from a "Scan" button (?scan=1): open the camera scanner right away,
+  // then drop ?scan=1 from the address so a refresh doesn't reopen it.
+  useEffect(() => {
+    if (!autoStart) return;
+    startQrScanner();
+    window.history.replaceState(null, "", window.location.pathname);
+  }, [autoStart, startQrScanner]);
 
   // Verify QR code once detected
   async function handleVerify(token: string) {
@@ -250,30 +266,46 @@ export function ScanClient({ user, gates }: Props) {
     setSuccess(null);
   }
 
+  // After a successful registration: straight back to the camera for the next person
+  function scanNext() {
+    resetScan();
+    startQrScanner();
+  }
+
+  const isExit = verifyResult?.allowedAction === "EXIT";
+  const needsPhoto = verifyResult?.photoRequired !== false;
+
   return (
     <>
-      <div className="max-w-2xl mx-auto space-y-6 pb-20">
-        <div>
-          <BackButton href="/security" label={t("Back to Dashboard")} />
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
-            {t("Scan & Register")}
-          </h1>
+      <div className="max-w-2xl mx-auto space-y-5 sm:space-y-6 pb-24 sm:pb-8">
+        <div className="min-w-0">
+          <GoBackButton className="mb-3" />
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
+              <ScanLine className="h-5 w-5" />
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
+              {t("Scan & Register")}
+            </h1>
+          </div>
         </div>
 
         {/* SUCCESS STATE */}
         {state === "done" && (
           <Card className="border-emerald-500/30 animate-scale-in">
-            <CardContent className="p-8 text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/15 text-emerald-400 mb-4">
-                <CheckCircle2 className="h-8 w-8" />
+            <CardContent className="p-6 sm:p-8 text-center">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
+                <CheckCircle2 className="h-9 w-9" />
               </div>
-              <h2 className="text-xl font-bold text-zinc-100 mb-2">{success}</h2>
-              <p className="text-sm text-zinc-500 mb-6">
-                {verifyResult?.student?.profile?.name} —{" "}
-                {verifyResult?.student?.studentRoll}
+              <h2 className="text-xl font-medium text-zinc-100">{success}</h2>
+              <p className="mt-1.5 text-base text-zinc-300 break-words">
+                <span className="font-medium text-zinc-100">{verifyResult?.student?.profile?.name}</span>
+                {verifyResult?.student?.studentRoll && (
+                  <span className="text-zinc-500"> · {verifyResult?.student?.studentRoll}</span>
+                )}
               </p>
-              <Button onClick={resetScan} size="lg">
-                <ScanLine className="h-4 w-4" />
+              <Button onClick={scanNext} size="lg" className="mt-6 h-14 w-full text-base">
+                <ScanLine className="h-5 w-5" />
                 {t("Scan Next")}
               </Button>
             </CardContent>
@@ -283,16 +315,14 @@ export function ScanClient({ user, gates }: Props) {
         {/* ERROR STATE */}
         {state === "error" && (
           <Card className="border-red-500/30 animate-scale-in">
-            <CardContent className="p-8 text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-red-500/15 text-red-400 mb-4">
+            <CardContent className="p-6 sm:p-8 text-center">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 text-red-400">
                 <AlertTriangle className="h-8 w-8" />
               </div>
-              <h2 className="text-xl font-bold text-zinc-100 mb-2">
-                {t("Verification Failed")}
-              </h2>
-              <p className="text-sm text-red-400 mb-6">{error && t(error)}</p>
-              <Button onClick={resetScan} variant="outline">
-                <RotateCcw className="h-4 w-4" />
+              <h2 className="text-xl font-medium text-zinc-100">{t("Verification Failed")}</h2>
+              <p role="alert" className="mt-2 text-base text-red-400 break-words">{error && t(error)}</p>
+              <Button onClick={resetScan} size="lg" className="mt-6 h-14 w-full text-base">
+                <RotateCcw className="h-5 w-5" />
                 {t("Try Again")}
               </Button>
             </CardContent>
@@ -302,52 +332,46 @@ export function ScanClient({ user, gates }: Props) {
         {/* IDLE */}
         {state === "idle" && (
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ScanLine className="h-5 w-5 text-red-400" />
-                {t("Start Scanner")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-zinc-500 text-center py-4">
+            <CardContent className="p-5 sm:p-6 space-y-5">
+              <p className="text-sm text-zinc-500 leading-relaxed">
                 {t("Point your camera at a student's QR code to verify their permission, or enter their Roll Number / Pass Code manually.")}
               </p>
-              <Button
-                onClick={startQrScanner}
-                className="w-full bg-red-600 hover:bg-red-500 text-white"
-                size="lg"
-              >
-                <ScanLine className="h-4 w-4" />
+              <Button onClick={startQrScanner} size="lg" className="h-16 w-full text-base">
+                <ScanLine className="h-5 w-5" />
                 {t("Open Camera Scanner")}
               </Button>
 
-              <div className="relative my-4">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-zinc-800" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-zinc-900 px-2 text-zinc-500">{t("Or Verify Manually")}</span>
-                </div>
+              <div className="flex items-center gap-3" aria-hidden="true">
+                <span className="h-px flex-1 bg-zinc-800" />
+                <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{t("Or Verify Manually")}</span>
+                <span className="h-px flex-1 bg-zinc-800" />
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="text"
-                  placeholder={t("Enter Roll Number or Token...")}
-                  value={manualToken}
-                  onChange={(e) => setManualToken(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && manualToken.trim()) {
-                      handleVerify(manualToken.trim());
-                    }
-                  }}
-                  className="w-full sm:flex-1 min-w-0 bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-red-500"
-                />
+              <div className="flex gap-2">
+                <div className="relative flex-1 min-w-0">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                  <input
+                    type="text"
+                    placeholder={t("Enter Roll Number or Token...")}
+                    aria-label={t("Enter Roll Number or Token...")}
+                    value={manualToken}
+                    onChange={(e) => setManualToken(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && manualToken.trim()) {
+                        handleVerify(manualToken.trim());
+                      }
+                    }}
+                    autoComplete="off"
+                    spellCheck={false}
+                    enterKeyHint="go"
+                    className="h-12 w-full rounded-full border border-zinc-800 bg-zinc-900 pl-11 pr-4 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
+                  />
+                </div>
                 <Button
                   onClick={() => manualToken.trim() && handleVerify(manualToken.trim())}
                   disabled={!manualToken.trim()}
                   variant="outline"
-                  className="w-full sm:w-auto shrink-0 border-zinc-700 text-zinc-200 hover:bg-zinc-800"
+                  className="h-12 shrink-0 px-5"
                 >
                   {t("Verify Pass")}
                 </Button>
@@ -358,141 +382,128 @@ export function ScanClient({ user, gates }: Props) {
 
         {/* SCANNING QR */}
         {state === "scanning_qr" && (
-          <QrScanner title="Scan gate pass" onResult={handleVerify} onCancel={resetScan} />
+          <QrScanner
+            title="Scan gate pass"
+            onResult={handleVerify}
+            // "Enter roll number instead": stay here for manual entry
+            onCancel={resetScan}
+            // ✕: back to the registers home
+            onClose={() => {
+              resetScan();
+              router.push("/security");
+            }}
+          />
         )}
 
         {/* VERIFYING */}
         {state === "verifying" && (
           <Card>
             <CardContent className="p-8 text-center space-y-3">
-              <div className="mx-auto h-10 w-10 rounded-full border-4 border-zinc-700 border-t-emerald-400 animate-spin" />
-              <p className="text-zinc-300 font-medium">{t("Verifying pass…")}</p>
+              <Loader2 className="mx-auto h-10 w-10 animate-spin text-orange-400" />
+              <p className="text-base font-medium text-zinc-200">{t("Verifying pass…")}</p>
             </CardContent>
           </Card>
         )}
 
-        {/* VERIFIED — Show student info + actions */}
+        {/* VERIFIED — person + pass at a glance, then photo, then register */}
         {state === "verified" && verifyResult && (
-          <>
-            {/* Mobile overlay backdrop */}
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] sm:hidden" onClick={resetScan} />
-            
-            <div className="fixed inset-x-0 bottom-0 z-[100] p-4 bg-zinc-950/95 backdrop-blur-xl border-t border-zinc-800/50 sm:relative sm:inset-auto sm:p-0 sm:bg-transparent sm:border-none sm:backdrop-blur-none animate-slide-up sm:animate-none pb-8 sm:pb-0 space-y-4 max-h-[90vh] overflow-y-auto shadow-[0_-10px_40px_rgba(16,24,40,0.12)] sm:shadow-none rounded-t-3xl sm:rounded-none">
-              {/* Mobile drag handle */}
-              <div className="w-12 h-1.5 bg-zinc-700 rounded-full mx-auto mb-2 sm:hidden" />
-              
-              {/* Student Info Card */}
-            <Card className="border-indigo-500/30">
-              <CardContent className="p-4 sm:p-6">
-                <div className="flex items-start sm:items-center gap-3 sm:gap-4 mb-4">
-                  <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white text-lg sm:text-xl font-bold shrink-0">
-                    {verifyResult.student.profile.name.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                      <h2 className="text-base sm:text-lg font-bold text-zinc-100 truncate">
-                        {verifyResult.student.profile.name}
-                      </h2>
-                      <span className="text-[11px] sm:text-xs px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 border border-zinc-700">
-                        {t(verifyResult.student.studentType)}
-                      </span>
-                      <span className={`text-[11px] sm:text-xs font-bold px-2 py-0.5 rounded-md border ${
-                        verifyResult.allowedAction === "EXIT" 
-                          ? "bg-red-500/15 text-red-400 border-red-500/30" 
-                          : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                      }`}>
-                        {verifyResult.allowedAction === "EXIT" ? t("EXITING") : t("ENTERING")}
-                      </span>
-                    </div>
-                    <p className="text-xs sm:text-sm text-zinc-500 truncate mt-0.5">
-                      {verifyResult.student.studentRoll} • {verifyResult.student.department || ""} {verifyResult.student.year ? `${t("Year")} ${verifyResult.student.year}` : ""}
-                    </p>
-                    <p className="text-xs text-zinc-400 mt-0.5 flex items-center gap-1 truncate">
-                      <Phone className="h-3 w-3 shrink-0" />
-                      {verifyResult.student.profile.phone || t("No phone provided")}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-xl bg-zinc-800/30 px-4 py-3">
-                    <p className="text-xs text-zinc-500">{t("Purpose")}</p>
-                    <p className="text-sm font-medium text-zinc-200">
-                      {verifyResult.permission.purpose}
-                    </p>
-                  </div>
-                  {verifyResult.permission.requestType ? (
-                    <div className="rounded-xl bg-zinc-800/30 px-4 py-3">
-                      <p className="text-xs text-zinc-500">{t("Request Type")}</p>
-                      <p className="text-sm font-medium text-zinc-200">
-                        {t(facultyRequestTypeLabel(verifyResult.permission.requestType))}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="rounded-xl bg-zinc-800/30 px-4 py-3">
-                      <p className="text-xs text-zinc-500">{t("Destination")}</p>
-                      <p className="text-sm font-medium text-zinc-200">
-                        {verifyResult.permission.destination || "—"}
-                      </p>
-                    </div>
-                  )}
-                  {verifyResult.permission.endDate && (
-                    <div className="col-span-2 rounded-xl bg-zinc-800/30 px-4 py-3">
-                      <p className="text-xs text-zinc-500">{t("Pass Dates")}</p>
-                      <PassExtraDetails pass={verifyResult.permission} className="text-sm" />
-                    </div>
-                  )}
-                  {verifyResult.permission.expectedExit && (
-                    <div className="rounded-xl bg-zinc-800/30 px-4 py-3">
-                      <p className="text-xs text-zinc-500">{t("Exit Time")}</p>
-                      <p className="text-sm font-medium text-zinc-200">
-                        {formatDateTime(verifyResult.permission.expectedExit)}
-                      </p>
-                    </div>
-                  )}
-                  {verifyResult.permission.expectedReturn && (
-                    <div className="rounded-xl bg-zinc-800/30 px-4 py-3">
-                      <p className="text-xs text-zinc-500">{t("Entry Time")}</p>
-                      <p className="text-sm font-medium text-zinc-200">
-                        {formatDateTime(verifyResult.permission.expectedReturn)}
-                      </p>
-                    </div>
-                  )}
-                  <div className="col-span-2 rounded-xl bg-zinc-800/30 px-4 py-3">
-                    <p className="text-xs text-zinc-500">{t("Approved On")}</p>
-                    <p className="text-sm font-medium text-zinc-200">
-                      {verifyResult.permission.approvedAt
-                        ? formatDateTime(verifyResult.permission.approvedAt)
-                        : "—"}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Select
-              label={t("Select Gate")}
-              value={selectedGate}
-              onChange={(e) => setSelectedGate(e.target.value)}
-              id="gate-select"
-            >
-              {gates.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name} {g.location ? `(${g.location})` : ""}
-                </option>
-              ))}
-            </Select>
-
+          <div className="space-y-4 animate-scale-in">
             {verifyResult?.manualOverride && (
-              <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+              <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-300">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 {t("Found by roll number (no QR scanned). Verify the person's college ID card before allowing movement.")}
               </div>
             )}
 
+            {/* Person + pass card */}
+            <Card className="overflow-hidden">
+              {/* Direction banner */}
+              <div
+                className={`flex items-center justify-between gap-3 px-5 py-3 ${
+                  isExit ? "bg-sky-500/10 text-sky-400" : "bg-emerald-500/10 text-emerald-400"
+                }`}
+              >
+                <span className="flex items-center gap-2 text-base font-semibold tracking-wide">
+                  {isExit ? <LogOut className="h-5 w-5" /> : <LogIn className="h-5 w-5" />}
+                  {isExit ? t("EXITING") : t("ENTERING")}
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+                    !needsPhoto
+                      ? "bg-zinc-900 text-zinc-400 border border-zinc-800"
+                      : capturedImage
+                      ? "bg-emerald-600 text-white"
+                      : "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                  }`}
+                >
+                  <Camera className="h-3.5 w-3.5" />
+                  {!needsPhoto ? t("No photo needed") : capturedImage ? t("Photo Captured") : t("Photo required")}
+                </span>
+              </div>
+
+              <CardContent className="p-5 sm:p-6 space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-xl font-semibold text-orange-400">
+                    {verifyResult.student.profile.name.charAt(0)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-xl font-medium leading-tight text-zinc-100 break-words">
+                      {verifyResult.student.profile.name}
+                    </h2>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-0.5 font-mono text-sm font-medium text-zinc-100">
+                        {verifyResult.student.studentRoll}
+                      </span>
+                      <span className="inline-flex items-center rounded-full border border-zinc-800 bg-zinc-950 px-2.5 py-0.5 text-xs font-medium text-zinc-300">
+                        {t(verifyResult.student.studentType)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1 text-sm text-zinc-400">
+                  {(verifyResult.student.department || verifyResult.student.year) && (
+                    <p className="truncate">
+                      {verifyResult.student.department || ""} {verifyResult.student.year ? `${t("Year")} ${verifyResult.student.year}` : ""}
+                    </p>
+                  )}
+                  <p className="flex items-center gap-1.5 truncate">
+                    <Phone className="h-3.5 w-3.5 shrink-0" />
+                    {verifyResult.student.profile.phone || t("No phone provided")}
+                  </p>
+                </div>
+
+                <dl className="grid grid-cols-2 gap-2.5">
+                  <Detail label={t("Purpose")}>{verifyResult.permission.purpose}</Detail>
+                  {verifyResult.permission.requestType ? (
+                    <Detail label={t("Request Type")}>
+                      {t(facultyRequestTypeLabel(verifyResult.permission.requestType))}
+                    </Detail>
+                  ) : (
+                    <Detail label={t("Destination")}>{verifyResult.permission.destination || "—"}</Detail>
+                  )}
+                  {verifyResult.permission.endDate && (
+                    <Detail label={t("Pass Dates")} wide>
+                      <PassExtraDetails pass={verifyResult.permission} className="text-sm" />
+                    </Detail>
+                  )}
+                  {verifyResult.permission.expectedExit && (
+                    <Detail label={t("Exit Time")}>{formatDateTime(verifyResult.permission.expectedExit)}</Detail>
+                  )}
+                  {verifyResult.permission.expectedReturn && (
+                    <Detail label={t("Entry Time")}>{formatDateTime(verifyResult.permission.expectedReturn)}</Detail>
+                  )}
+                  <Detail label={t("Approved On")} wide>
+                    {verifyResult.permission.approvedAt ? formatDateTime(verifyResult.permission.approvedAt) : "—"}
+                  </Detail>
+                </dl>
+              </CardContent>
+            </Card>
+
             {/* Faculty passes: verify details and mark — no photo */}
             {state === "verified" && verifyResult.photoRequired === false && (
-              <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-200 flex items-center gap-2">
-                <Camera className="h-4 w-4 text-indigo-300 shrink-0" />
+              <div className="flex items-start gap-2.5 rounded-2xl border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-300">
+                <Camera className="h-4 w-4 shrink-0 mt-0.5" />
                 {verifyResult.allowedAction === "EXIT"
                   ? t("Faculty pass — no photo needed. Check the details above and register the exit.")
                   : t("Faculty pass — no photo needed. Check the details above and register the entry.")}
@@ -501,35 +512,31 @@ export function ScanClient({ user, gates }: Props) {
 
             {/* Camera / Photo Section (students only) */}
             {state === "verified" && verifyResult.photoRequired !== false && !capturedImage && (
-              <Card>
-                <CardContent className="p-6 space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Camera className="h-5 w-5 text-zinc-400" />
-                    <p className="font-medium text-zinc-200">
-                      {verifyResult.allowedAction === "EXIT" ? t("Photo Required for Exit") : t("Photo Required for Entry")}
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Button onClick={startPhotoCapture} variant="outline" className="w-full">
-                      <Camera className="h-4 w-4" />
-                      {t("Take Photo with Camera")}
-                    </Button>
-                    <Button
-                      onClick={() => fileInputRef.current?.click()}
-                      variant="outline"
-                      className="w-full border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-                    >
-                      <Upload className="h-4 w-4" />
-                      {t("Upload Photo / File")}
-                    </Button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                  </div>
+              <Card className="border-amber-500/30">
+                <CardContent className="p-5 sm:p-6 space-y-3">
+                  <p className="flex items-center gap-2 text-base font-medium text-zinc-100">
+                    <Camera className="h-5 w-5 text-orange-400" />
+                    {verifyResult.allowedAction === "EXIT" ? t("Photo Required for Exit") : t("Photo Required for Entry")}
+                  </p>
+                  <Button onClick={startPhotoCapture} size="lg" className="h-14 w-full text-base">
+                    <Camera className="h-5 w-5" />
+                    {t("Take Photo with Camera")}
+                  </Button>
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    variant="outline"
+                    className="h-12 w-full"
+                  >
+                    <Upload className="h-4 w-4" />
+                    {t("Upload Photo / File")}
+                  </Button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
                 </CardContent>
               </Card>
             )}
@@ -537,35 +544,59 @@ export function ScanClient({ user, gates }: Props) {
             {/* Captured Image Preview */}
             {capturedImage && (
               <Card>
-                <CardContent className="p-6 space-y-4">
-                  <p className="font-medium text-zinc-200 flex items-center gap-2">
-                    <Camera className="h-4 w-4 text-emerald-400" />
-                    {t("Photo Captured")}
-                  </p>
-                  <img
-                    src={capturedImage}
-                    alt="Captured"
-                    className="w-full rounded-xl border border-zinc-800"
-                  />
-                  <Button onClick={retakePhoto} variant="ghost" size="sm">
-                    <RotateCcw className="h-4 w-4" />
-                    {t("Retake")}
-                  </Button>
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex items-center gap-4">
+                    <img
+                      src={capturedImage}
+                      alt="Captured"
+                      className="h-28 w-28 shrink-0 rounded-2xl border border-zinc-800 object-cover"
+                    />
+                    <div className="min-w-0 flex-1 space-y-3">
+                      <p className="flex items-center gap-2 text-base font-medium text-zinc-100">
+                        <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+                        {t("Photo Captured")}
+                      </p>
+                      <Button onClick={retakePhoto} variant="outline" className="h-11">
+                        <RotateCcw className="h-4 w-4" />
+                        {t("Retake")}
+                      </Button>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             )}
 
-            {/* Notes */}
-            <Textarea
-              label={t("Notes (optional)")}
-              placeholder={t("Any additional notes...")}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              id="movement-notes"
-            />
+            {/* Gate + notes */}
+            <Card>
+              <CardContent className="p-5 sm:p-6 space-y-4">
+                <Select
+                  label={t("Select Gate")}
+                  value={selectedGate}
+                  onChange={(e) => setSelectedGate(e.target.value)}
+                  id="gate-select"
+                  className="h-12"
+                >
+                  {gates.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name} {g.location ? `(${g.location})` : ""}
+                    </option>
+                  ))}
+                </Select>
+                <Textarea
+                  label={t("Notes (optional)")}
+                  placeholder={t("Any additional notes...")}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  id="movement-notes"
+                  rows={2}
+                  className="min-h-[64px]"
+                />
+              </CardContent>
+            </Card>
 
             {error && (
-              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+              <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-400">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 {t(error)}
               </div>
             )}
@@ -574,67 +605,76 @@ export function ScanClient({ user, gates }: Props) {
             <Button
               onClick={handleRegister}
               size="lg"
-              className={`w-full ${
-                verifyResult.allowedAction === "EXIT" 
-                  ? "bg-red-600 hover:bg-red-500 text-white" 
-                  : "bg-emerald-600 hover:bg-emerald-500 text-white"
-              }`}
+              variant={isExit ? "default" : "success"}
+              className="h-14 w-full text-base"
               disabled={verifyResult.photoRequired !== false && !capturedImage}
             >
               <DoorOpen className="h-5 w-5" />
               {verifyResult.allowedAction === "EXIT" ? t("Register EXIT") : t("Register ENTRY")}
             </Button>
-            
-            <Button onClick={resetScan} variant="ghost" className="w-full">
+
+            <Button onClick={resetScan} variant="ghost" className="h-12 w-full">
               {t("Cancel")}
             </Button>
-            </div>
-          </>
+          </div>
         )}
 
-        {/* CAPTURING PHOTO */}
+        {/* CAPTURING PHOTO — full-screen camera */}
         {state === "capturing_photo" && (
-          <div className="fixed inset-0 z-[100] bg-black flex flex-col sm:relative sm:z-auto sm:bg-transparent">
-            {/* Header for mobile */}
-            <div className="sm:hidden flex items-center justify-between p-4 bg-zinc-950/80 backdrop-blur-md absolute top-0 left-0 right-0 z-10 border-b border-zinc-800/50">
-              <h3 className="font-bold text-zinc-100 text-lg flex items-center gap-2">
-                <Camera className="h-5 w-5 text-indigo-400" />
-                {t("Capture Photo")}
+          <div
+            className="fixed inset-0 z-[100] flex flex-col bg-black text-white"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("Capture Student Photo")}
+          >
+            <div
+              className="flex items-center justify-between gap-3 px-4 pb-3"
+              style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+            >
+              <h3 className="flex min-w-0 items-center gap-2 text-base font-medium truncate">
+                <Camera className="h-5 w-5 shrink-0" />
+                {t("Capture Student Photo")}
               </h3>
-              <button onClick={() => { stopCamera(); setState("verified"); }} className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-full text-zinc-200 transition-colors">
+              <button
+                type="button"
+                onClick={() => { stopCamera(); setState("verified"); }}
+                aria-label={t("Cancel")}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            
-            <div className="flex-1 flex flex-col justify-center sm:block">
-              <Card className="sm:border sm:border-zinc-800 border-none bg-transparent sm:bg-zinc-900 rounded-none sm:rounded-xl h-full sm:h-auto flex flex-col">
-                <CardContent className="p-0 sm:p-6 space-y-0 sm:space-y-4 text-center flex-1 flex flex-col justify-center sm:block relative">
-                  <h3 className="hidden sm:block font-bold text-zinc-200">{t("Capture Student Photo")}</h3>
-                  <div className="flex-1 sm:flex-none flex items-center bg-black relative w-full overflow-hidden sm:rounded-xl sm:border sm:border-zinc-800 pb-[80px] sm:pb-0">
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="w-full h-full object-cover sm:h-auto"
-                      style={{ minHeight: "100%", maxHeight: "100vh" }}
-                    />
-                  </div>
-                  <div className="p-4 sm:p-0 space-y-3 bg-zinc-950 sm:bg-transparent absolute bottom-0 left-0 right-0 sm:relative border-t border-zinc-800 sm:border-none">
-                    <Button
-                      onClick={capturePhoto}
-                      className="w-full"
-                      size="lg"
-                    >
-                      <Camera className="h-4 w-4" />
-                      {t("Capture Photo")}
-                    </Button>
-                    <Button onClick={() => { stopCamera(); setState("verified"); }} variant="outline" className="w-full hidden sm:flex">
-                      {t("Cancel")}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+
+            <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="h-full w-full object-cover sm:object-contain"
+              />
+            </div>
+
+            <div
+              className="mx-auto w-full max-w-md space-y-3 px-4 pt-4"
+              style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+            >
+              {error && (
+                <p role="alert" className="rounded-2xl bg-red-600 px-4 py-2.5 text-center text-sm font-medium text-white">
+                  {t(error)}
+                </p>
+              )}
+              <Button onClick={capturePhoto} size="lg" className="h-16 w-full text-base">
+                <Camera className="h-5 w-5" />
+                {t("Capture Photo")}
+              </Button>
+              <button
+                type="button"
+                onClick={() => { stopCamera(); setState("verified"); }}
+                className="h-11 w-full rounded-full text-sm font-medium text-white/80 transition-colors hover:bg-white/10"
+              >
+                {t("Cancel")}
+              </button>
             </div>
           </div>
         )}
@@ -642,15 +682,23 @@ export function ScanClient({ user, gates }: Props) {
         {/* REGISTERING */}
         {state === "registering" && (
           <Card>
-            <CardContent className="p-8 text-center">
-              <div className="animate-pulse">
-                <ShieldCheck className="h-12 w-12 text-indigo-400 mx-auto mb-4" />
-                <p className="text-zinc-400">{t("Registering…")}</p>
-              </div>
+            <CardContent className="p-8 text-center space-y-3">
+              <Loader2 className="mx-auto h-10 w-10 animate-spin text-orange-400" />
+              <p className="text-base font-medium text-zinc-200">{t("Registering…")}</p>
             </CardContent>
           </Card>
         )}
       </div>
     </>
+  );
+}
+
+/** One pass detail tile in the verified card */
+function Detail({ label, wide = false, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
+  return (
+    <div className={`min-w-0 rounded-2xl bg-zinc-950 px-3.5 py-2.5 ${wide ? "col-span-2" : ""}`}>
+      <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{label}</dt>
+      <dd className="mt-0.5 text-sm font-medium text-zinc-100 break-words">{children}</dd>
+    </div>
   );
 }

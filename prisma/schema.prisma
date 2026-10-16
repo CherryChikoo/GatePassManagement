@@ -170,9 +170,11 @@ model Permission {
   @@index([approverId, status])
   @@index([approverType, status])
   @@index([status, exitDate])
-  @@index([status])
   @@index([exitDate])
+  @@index([endDate])
   @@index([createdAt(sort: Desc)])
+  // "Approved / rejected today" counts use the partial indexes idx_permissions_approved_at /
+  // idx_permissions_rejected_at (prisma/migrations/add_performance_indexes.sql); db push keeps them.
   @@map("permissions")
 }
 
@@ -205,7 +207,6 @@ model QrCredential {
   createdAt    DateTime   @default(now()) @map("created_at")
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
-  @@index([token])
   @@index([expiresAt])
   @@map("qr_credentials")
 }
@@ -243,7 +244,8 @@ model Movement {
   @@index([facultyId, createdAt(sort: Desc)])
   @@index([securityUserId, createdAt(sort: Desc)])
   @@index([gateId, createdAt(sort: Desc)])
-  @@index([permissionId])
+  // One EXIT and one ENTRY per pass at most: a double scan can never record twice
+  @@unique([permissionId, type])
   @@index([type, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
   @@map("movements")

@@ -202,7 +202,9 @@ export async function getFacultyPassHistory(profileIdOrFacultyId: string) {
     const hod = await prisma.faculty.findUnique({ where: { profileId: user.profileId }, select: { department: true } });
     const variants = getDepartmentVariants(hod?.department);
     if (variants.length === 0) return { error: "Faculty member record not found" };
-    departmentFilter = { department: { in: variants } };
+    // …and only teaching faculty (not the Dean, Director or another HOD who
+    // happens to share the department)
+    departmentFilter = { department: { in: variants }, profile: { role: "FACULTY" } };
   }
 
   const faculty = await prisma.faculty.findFirst({

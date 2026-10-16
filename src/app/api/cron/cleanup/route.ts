@@ -4,12 +4,12 @@ import { deleteOldPhotos } from "@/lib/storage/storage-admin";
 import { isAuthorizedCronRequest } from "@/lib/auth/cron";
 import { logger } from "@/lib/logger";
 import { RETENTION } from "@/lib/constants";
-import { getSyncReport, reconcilePortalWithLogins } from "@/lib/accounts/sync";
+import { getSyncReport } from "@/lib/accounts/sync";
 
 /**
  * Automated cleanup cron job.
- * Removes expired QR credentials and old gate photos, and re-checks account
- * sync. Pass, movement and register records are permanent and never deleted.
+ * Removes expired QR credentials and old visitor photos, and reports (never
+ * fixes) account sync. Pass, movement and register records are permanent.
  *
  * Auth: `Authorization: Bearer <CRON_SECRET>` (Vercel Cron) or `x-cron-secret`.
  */
@@ -49,24 +49,31 @@ export async function GET(request: NextRequest) {
     if (photoResult.error) results.errors.push(`Photo cleanup: ${photoResult.error}`);
     results.deletedPhotos = photoResult.deleted;
 
-    // 5. Portal ⇄ Supabase Auth safety net (database triggers handle it live)
+    // 5. Portal ⇄ Supabase Auth check — REPORT ONLY. Database triggers keep the two
+    // in sync live; anything left over is fixed by an admin in Admin → Users
+    // ("Fix portal accounts"), never deleted automatically at night.
+    // Counts only: no names or email addresses in the logs.
     let accountSync: Record<string, unknown> = {};
     try {
-      const fixed = await reconcilePortalWithLogins();
-      const after = await getSyncReport();
+      const report = await getSyncReport();
       accountSync = {
-        ...fixed,
-        loginsWithoutPortalAccount: after.loginWithoutPortal.map((l) => l.email),
-        inSync: after.inSync,
+        inSync: report.inSync,
+        portalWithoutLogin: report.portalWithoutLogin.length,
+        loginWithoutPortal: report.loginWithoutPortal.length,
+        emailMismatch: report.emailMismatch.length,
       };
-      if (!after.inSync) logger.warn("[CLEANUP] Accounts still out of sync — review in Admin → Users", accountSync);
+      if (!report.inSync) logger.warn("[CLEANUP] Accounts out of sync — review in Admin → Users", accountSync);
     } catch (err: any) {
       results.errors.push(`Account sync: ${err.message}`);
       logger.error("[CLEANUP] Account sync failed", err);
     }
 
     logger.info("[CLEANUP] Cleanup job completed", { ...results, accountSync });
-    return NextResponse.json({ success: results.errors.length === 0, timestamp: new Date().toISOString(), results });
+    const ok = results.errors.length === 0;
+    return NextResponse.json(
+      { success: ok, timestamp: new Date().toISOString(), results },
+      { status: ok ? 200 : 500 }
+    );
   } catch (error: any) {
     logger.error("[CLEANUP] Fatal error", error);
     return NextResponse.json(

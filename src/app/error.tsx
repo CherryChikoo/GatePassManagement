@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { AlertTriangle, RotateCcw } from "lucide-react";
 
 export default function RouteError({
   error,
@@ -15,24 +16,27 @@ export default function RouteError({
 
   return (
     <div role="alert" className="min-h-[60vh] flex items-center justify-center p-4">
-      <div className="max-w-md w-full p-8 bg-zinc-900 rounded-2xl border border-zinc-800 text-center space-y-4">
-        <h2 className="text-xl font-bold text-red-400">Something went wrong</h2>
-        <p className="text-sm text-zinc-400">
+      <div className="max-w-md w-full rounded-3xl border border-zinc-800/80 bg-zinc-900 p-6 sm:p-8 text-center shadow-card">
+        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-500/10 text-red-400">
+          <AlertTriangle className="h-6 w-6" />
+        </span>
+        <h2 className="mt-4 text-xl font-medium tracking-tight text-zinc-100">Something went wrong</h2>
+        <p className="mt-2 text-sm leading-relaxed text-zinc-500">
           An unexpected error occurred while loading this page. You can try again, or reload if the problem persists.
         </p>
-        {error.digest && <p className="text-[11px] text-zinc-600">Reference: {error.digest}</p>}
-        <div className="flex gap-2 justify-center">
+        {error.digest && <p className="mt-3 text-[11px] text-zinc-600">Reference: {error.digest}</p>}
+        <div className="mt-6 flex flex-col sm:flex-row gap-2 justify-center">
           <button
             type="button"
             onClick={() => reset()}
-            className="px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-lg text-sm font-semibold text-white"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-orange-600 px-5 text-sm font-medium text-white hover:bg-orange-700 transition-colors"
           >
-            Try again
+            <RotateCcw className="h-4 w-4" /> Try again
           </button>
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-semibold text-zinc-100"
+            className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 px-5 text-sm font-medium text-zinc-200 hover:bg-zinc-950 transition-colors"
           >
             Reload
           </button>

@@ -3,8 +3,12 @@ import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { LogIn, UserPlus } from "lucide-react";
+import { ChevronRight, FileText, LogIn, UserPlus } from "lucide-react";
 import { Modal, StatusBadge } from "@/components/ui/primitives";
+import { Card } from "@/components/ui/card";
+import { dt, PersonCell } from "@/components/ui/data-table";
+import { PagerBar } from "@/components/ui/pager-bar";
+import { cn } from "@/lib/utils";
 import { actionErrorMessage } from "@/lib/deployment";
 import { istDateString } from "@/lib/time/ist";
 import {
@@ -20,14 +24,14 @@ import {
 } from "@/server/actions/registers";
 import { formatDay, formatInstant } from "./format";
 import { formatTime } from "@/lib/utils";
-import { Pager, RegisterToolbar, useRegisterFilters } from "./toolbar";
+import { RegisterToolbar, useRegisterFilters } from "./toolbar";
 
 type Move = { at: string; gate: string | null; guard: string | null; guardEmployeeId: string | null } | null;
 
 function MoveCell({ m }: { m: Move }) {
   if (!m) return <span className="text-zinc-600">—</span>;
   return (
-    <span className="whitespace-nowrap">
+    <span className="whitespace-nowrap tabular-nums">
       {formatInstant(m.at)}
       <span className="block text-[11px] text-zinc-500">
         {[m.gate, m.guard].filter(Boolean).join(" • ")}
@@ -67,21 +71,42 @@ function useLoader<T>(fetcher: () => Promise<any>, key: string) {
   return { data, error, loading, reload: () => setNonce((n) => n + 1) };
 }
 
+/** Card around a register list: stacked rows on phones + a table from `sm` (children render both). */
 function Shell({ loading, error, empty, children }: { loading: boolean; error: string | null; empty: boolean; children: React.ReactNode }) {
   const t = useT();
   return (
     <>
-      {error && <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">{error}</div>}
-      <div className={`rounded-2xl border border-zinc-800 bg-zinc-900/50 overflow-hidden transition-opacity ${loading ? "opacity-60" : ""}`}>
-        <div className="overflow-x-auto">{children}</div>
-        {empty && <p className="px-4 py-10 text-center text-sm text-zinc-500">{t("No records for this selection.")}</p>}
-      </div>
+      {error && <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>}
+      <Card className={cn("overflow-hidden transition-opacity", loading && "opacity-60")}>
+        {children}
+        {empty && (
+          <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 text-zinc-500">
+              <FileText className="h-5 w-5" />
+            </span>
+            <p className="text-sm text-zinc-500">{t("No records for this selection.")}</p>
+          </div>
+        )}
+      </Card>
     </>
   );
 }
 
-const th = "px-3 py-2.5 font-medium whitespace-nowrap";
-const td = "px-3 py-2.5 whitespace-nowrap";
+/** Phone row: the tappable part of a stacked row (opens the details). */
+const mobileRowBtn =
+  "flex w-full min-h-[72px] items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-zinc-950/70 active:bg-zinc-950";
+/** Avatar tile with the first letter of the name. */
+function Initial({ name }: { name?: string | null }) {
+  return (
+    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-base font-semibold text-orange-400">
+      {(name || "?").replace(/^(dr|prof|mr|mrs|ms)\.?\s+/i, "").charAt(0).toUpperCase() || "?"}
+    </span>
+  );
+}
+const chipCls = "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap";
+const markInBtnCls =
+  "inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 font-semibold text-white transition-[background-color,transform] hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-50";
+const dtLabel = "text-[11px] font-medium uppercase tracking-wider text-zinc-500";
 
 // ─── Form 1 — Faculty Book ────────────────────────────────────
 
@@ -115,59 +140,110 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
   return (
     <div className="space-y-4">
       <RegisterToolbar filters={f} searchPlaceholder="Search name, department, employee ID…" />
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs leading-relaxed text-zinc-500">
         {t("Requests come from the faculty portal and are approved there. The out-time is marked when security scans the pass;")}
         {canMarkIn ? t(" use “Mark In” when the faculty member returns.") : t(" the in-time when they return.")}
       </p>
-      {msg && <div className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-200">{msg}</div>}
+      {msg && <div role="status" className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm font-medium text-zinc-200 shadow-card">{msg}</div>}
       <Shell loading={loading} error={error} empty={!!data && data.rows.length === 0}>
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-900 text-left text-xs uppercase tracking-wider text-zinc-500">
-            <tr>
-              {["Request Date", "Faculty Name", "Designation", "Department", "Request Type", "Start Date", "End Date", "Actual Out-Time", "Actual In-Time"].map((h) => (
-                <th key={h} className={th}>{t(h)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-800/70">
-            {data?.rows.map((r: any) => (
-              <tr key={r.id} onClick={() => setSelected(r)} className="cursor-pointer hover:bg-zinc-800/40 text-zinc-300">
-                <td className={td}>{formatDay(r.requestDate)}</td>
-                <td className={`${td} font-medium text-zinc-100`}>{r.facultyName}</td>
-                <td className={td}>{r.designation || "—"}</td>
-                <td className={td}>{r.department || "—"}</td>
-                <td className={td}>{t(r.requestType)}</td>
-                <td className={td}>{formatDay(r.startDate)}</td>
-                <td className={td}>{formatDay(r.endDate)}</td>
-                <td className={td}><MoveCell m={r.actualOut} /></td>
-                <td className={td}>
-                  {r.actualIn ? (
-                    <MoveCell m={r.actualIn} />
-                  ) : canMarkIn && r.canMarkIn ? (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        markIn(r.id);
-                      }}
-                      disabled={busy}
-                      className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                    >
-                      <LogIn className="h-3.5 w-3.5" /> {t("Mark In")}
+        {/* Phones */}
+        {data?.rows.length > 0 && (
+          <ul className={cn(dt.mobileList, "sm:hidden")}>
+            {data.rows.map((r: any) => (
+              <li key={r.id}>
+                <button type="button" onClick={() => setSelected(r)} className={mobileRowBtn}>
+                  <Initial name={r.facultyName} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="truncate text-base font-medium text-zinc-100">{r.facultyName}</span>
+                      <span className={cn(chipCls, "bg-orange-500/10 text-orange-400")}>{t(r.requestType)}</span>
+                    </span>
+                    <span className="mt-0.5 block truncate text-sm text-zinc-400">
+                      {[r.designation, r.department].filter(Boolean).join(" · ") || "—"}
+                    </span>
+                    <span className="mt-1 block text-xs text-zinc-500 tabular-nums">
+                      {formatDay(r.startDate)}
+                      {formatDay(r.endDate) !== formatDay(r.startDate) ? ` – ${formatDay(r.endDate)}` : ""}
+                    </span>
+                    <span className="mt-2 grid grid-cols-2 gap-2">
+                      <span className="rounded-xl bg-zinc-950 px-3 py-2">
+                        <span className={cn(dtLabel, "block")}>{t("Out")}</span>
+                        <span className="block text-sm font-medium text-zinc-200 tabular-nums">{r.actualOut ? formatTime(r.actualOut.at) : "—"}</span>
+                      </span>
+                      <span className="rounded-xl bg-zinc-950 px-3 py-2">
+                        <span className={cn(dtLabel, "block")}>{t("In")}</span>
+                        <span className="block text-sm font-medium text-zinc-200 tabular-nums">{r.actualIn ? formatTime(r.actualIn.at) : "—"}</span>
+                      </span>
+                    </span>
+                  </span>
+                  <ChevronRight className="mt-3 h-5 w-5 shrink-0 text-zinc-600" aria-hidden="true" />
+                </button>
+                {!r.actualIn && canMarkIn && r.canMarkIn && (
+                  <div className="px-4 pb-3.5 -mt-1">
+                    <button onClick={() => markIn(r.id)} disabled={busy} className={cn(markInBtnCls, "h-12 w-full text-base")}>
+                      <LogIn className="h-5 w-5" /> {t("Mark In")}
                     </button>
-                  ) : (
-                    <span className="text-zinc-600">—</span>
-                  )}
-                </td>
-              </tr>
+                  </div>
+                )}
+              </li>
             ))}
-          </tbody>
-        </table>
+          </ul>
+        )}
+
+        {/* Larger screens */}
+        {data?.rows.length > 0 && (
+          <div className={cn(dt.wrap, "hidden sm:block")}>
+            <table className={dt.table}>
+              <thead>
+                <tr>
+                  {["Request Date", "Faculty Name", "Designation", "Department", "Request Type", "Start Date", "End Date", "Actual Out-Time", "Actual In-Time"].map((h) => (
+                    <th key={h} className={dt.th}>{t(h)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map((r: any) => (
+                  <tr key={r.id} onClick={() => setSelected(r)} className={dt.trClickable}>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums")}>{formatDay(r.requestDate)}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap")}><PersonCell name={r.facultyName || "—"} /></td>
+                    <td className={cn(dt.td, "whitespace-nowrap")}>{r.designation || "—"}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap")}>{r.department || "—"}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap")}>
+                      <span className={cn(chipCls, "bg-orange-500/10 text-orange-400")}>{t(r.requestType)}</span>
+                    </td>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums")}>{formatDay(r.startDate)}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums")}>{formatDay(r.endDate)}</td>
+                    <td className={dt.td}><MoveCell m={r.actualOut} /></td>
+                    <td className={dt.td}>
+                      {r.actualIn ? (
+                        <MoveCell m={r.actualIn} />
+                      ) : canMarkIn && r.canMarkIn ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            markIn(r.id);
+                          }}
+                          disabled={busy}
+                          className={cn(markInBtnCls, "h-10 px-4 text-sm whitespace-nowrap")}
+                        >
+                          <LogIn className="h-4 w-4" /> {t("Mark In")}
+                        </button>
+                      ) : (
+                        <span className="text-zinc-600">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Shell>
-      {data && <Pager page={f.page} pageSize={data.pageSize} total={data.total} onPage={f.setPage} />}
+      {data && <PagerBar page={f.page} pageSize={data.pageSize} total={data.total} onPageChange={f.setPage} itemLabel={t("records")} />}
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title={t("Faculty pass")} className="max-w-xl">
         {selected && (
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
             {[
               ["Faculty Name", selected.facultyName],
               ["Employee ID", selected.employeeId],
@@ -183,28 +259,24 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
               ["Note", selected.note],
             ].map(([k, v]) => (
               <div key={k as string} className="min-w-0">
-                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t(k as string)}</dt>
-                <dd className="text-zinc-200 break-words">{(v as any) || "—"}</dd>
+                <dt className={dtLabel}>{t(k as string)}</dt>
+                <dd className="mt-0.5 text-zinc-200 break-words">{(v as any) || "—"}</dd>
               </div>
             ))}
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Actual Out-Time")}</dt>
-              <dd className="text-zinc-200"><MoveCell m={selected.actualOut} /></dd>
+              <dt className={dtLabel}>{t("Actual Out-Time")}</dt>
+              <dd className="mt-0.5 text-zinc-200"><MoveCell m={selected.actualOut} /></dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Actual In-Time")}</dt>
-              <dd className="text-zinc-200"><MoveCell m={selected.actualIn} /></dd>
+              <dt className={dtLabel}>{t("Actual In-Time")}</dt>
+              <dd className="mt-0.5 text-zinc-200"><MoveCell m={selected.actualIn} /></dd>
             </div>
             <GatePhotos permissionId={selected.id} />
-            <div className="sm:col-span-2 flex items-center gap-2">
+            <div className="sm:col-span-2 flex flex-col sm:flex-row sm:items-center gap-3 border-t border-zinc-800 pt-4">
               <StatusBadge status={selected.status} />
               {canMarkIn && selected.canMarkIn && (
-                <button
-                  onClick={() => markIn(selected.id)}
-                  disabled={busy}
-                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                >
-                  <LogIn className="h-3.5 w-3.5" /> {t("Mark In now")}
+                <button onClick={() => markIn(selected.id)} disabled={busy} className={cn(markInBtnCls, "h-14 sm:h-11 w-full sm:w-auto px-6 text-base sm:text-sm sm:ml-auto")}>
+                  <LogIn className="h-5 w-5 sm:h-4 sm:w-4" /> {t("Mark In now")}
                 </button>
               )}
             </div>
@@ -225,6 +297,7 @@ export function VisitorsBookView({ canRegister }: { canRegister: boolean }) {
     `${f.dateParam}|${f.q}|${f.page}`
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const insideChip = <span className={cn(chipCls, "bg-amber-500/10 text-amber-400")}>{t("Inside")}</span>;
   return (
     <div className="space-y-4">
       <RegisterToolbar
@@ -234,42 +307,85 @@ export function VisitorsBookView({ canRegister }: { canRegister: boolean }) {
           canRegister ? (
             <Link
               href="/security/visitors"
-              className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold whitespace-nowrap"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 h-14 sm:h-10 px-6 rounded-full bg-orange-600 hover:bg-orange-700 active:scale-[0.98] text-white text-base sm:text-sm font-semibold whitespace-nowrap shadow-[0_6px_16px_-8px_rgba(207,62,37,0.55)] transition-[background-color,transform]"
             >
-              <UserPlus className="h-4 w-4" /> {t("Register visitor")}
+              <UserPlus className="h-5 w-5 sm:h-4 sm:w-4" /> {t("Register visitor")}
             </Link>
           ) : null
         }
       />
       <Shell loading={loading} error={error} empty={!!data && data.rows.length === 0}>
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-900 text-left text-xs uppercase tracking-wider text-zinc-500">
-            <tr>
-              {["Visitor Name", "Address", "Mobile", "Person to Visit", "Purpose", "Department", "Date", "In-Time", "Out-Time", "Remarks", "Recorded by"].map((h) => (
-                <th key={h} className={th}>{t(h)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-800/70 text-zinc-300">
-            {data?.rows.map((r: any) => (
-              <tr key={r.id} onClick={() => setSelectedId(r.id)} className="cursor-pointer hover:bg-zinc-800/40">
-                <td className={`${td} font-medium text-zinc-100`}>{r.name}</td>
-                <td className={`${td} max-w-[200px] truncate`}>{r.address || "—"}</td>
-                <td className={td}>{r.phone}</td>
-                <td className={td}>{r.personToVisit || "—"}</td>
-                <td className={`${td} max-w-[200px] truncate`}>{r.purpose}</td>
-                <td className={td}>{r.department || "—"}</td>
-                <td className={td}>{formatDay(r.inTime)}</td>
-                <td className={td}>{r.inTime ? formatTime(r.inTime) : "—"}</td>
-                <td className={td}>{r.outTime ? formatInstant(r.outTime) : <span className="text-amber-300">{t("Inside")}</span>}</td>
-                <td className={`${td} max-w-[200px] truncate`}>{r.remarks || "—"}</td>
-                <td className={td}>{r.recordedByName || "—"}</td>
-              </tr>
+        {/* Phones */}
+        {data?.rows.length > 0 && (
+          <ul className={cn(dt.mobileList, "sm:hidden")}>
+            {data.rows.map((r: any) => (
+              <li key={r.id}>
+                <button type="button" onClick={() => setSelectedId(r.id)} className={mobileRowBtn}>
+                  <Initial name={r.name} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="truncate text-base font-medium text-zinc-100">{r.name}</span>
+                      {!r.outTime && insideChip}
+                    </span>
+                    <span className="mt-0.5 block truncate text-sm text-zinc-400">
+                      {[r.personToVisit, r.purpose].filter(Boolean).join(" · ") || "—"}
+                    </span>
+                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-zinc-500 tabular-nums">
+                      <span>{r.phone}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>
+                        {t("In")} {r.inTime ? formatTime(r.inTime) : "—"}
+                      </span>
+                      {r.outTime && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span>
+                            {t("Out")} {formatTime(r.outTime)}
+                          </span>
+                        </>
+                      )}
+                    </span>
+                  </span>
+                  <ChevronRight className="mt-3 h-5 w-5 shrink-0 text-zinc-600" aria-hidden="true" />
+                </button>
+              </li>
             ))}
-          </tbody>
-        </table>
+          </ul>
+        )}
+
+        {/* Larger screens */}
+        {data?.rows.length > 0 && (
+          <div className={cn(dt.wrap, "hidden sm:block")}>
+            <table className={dt.table}>
+              <thead>
+                <tr>
+                  {["Visitor Name", "Address", "Mobile", "Person to Visit", "Purpose", "Department", "Date", "In-Time", "Out-Time", "Remarks", "Recorded by"].map((h) => (
+                    <th key={h} className={dt.th}>{t(h)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map((r: any) => (
+                  <tr key={r.id} onClick={() => setSelectedId(r.id)} className={dt.trClickable}>
+                    <td className={cn(dt.td, "whitespace-nowrap")}><PersonCell name={r.name || "—"} /></td>
+                    <td className={cn(dt.td, "whitespace-nowrap max-w-[200px] truncate")}>{r.address || "—"}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums")}>{r.phone}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap")}>{r.personToVisit || "—"}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap max-w-[200px] truncate")}>{r.purpose}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap")}>{r.department || "—"}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums")}>{formatDay(r.inTime)}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums")}>{r.inTime ? formatTime(r.inTime) : "—"}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums")}>{r.outTime ? formatInstant(r.outTime) : insideChip}</td>
+                    <td className={cn(dt.tdMuted, "whitespace-nowrap max-w-[200px] truncate")}>{r.remarks || "—"}</td>
+                    <td className={cn(dt.tdMuted, "whitespace-nowrap")}>{r.recordedByName || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Shell>
-      {data && <Pager page={f.page} pageSize={data.pageSize} total={data.total} onPage={f.setPage} />}
+      {data && <PagerBar page={f.page} pageSize={data.pageSize} total={data.total} onPageChange={f.setPage} itemLabel={t("records")} />}
 
       <Modal open={!!selectedId} onClose={() => setSelectedId(null)} title={t("Visitor Details")} className="max-w-xl">
         {selectedId && <VisitorDetails id={selectedId} />}
@@ -281,18 +397,22 @@ export function VisitorsBookView({ canRegister }: { canRegister: boolean }) {
 export function VisitorDetails({ id }: { id: string }) {
   const t = useT();
   const { data, error, loading } = useLoader<any>(() => getVisitorDetails(id), id);
-  if (error) return <p className="text-sm text-red-300">{error}</p>;
-  if (loading || !data) return <p className="text-sm text-zinc-500">{t("Loading…")}</p>;
+  if (error) return <p role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</p>;
+  if (loading || !data) return <p className="py-8 text-center text-sm text-zinc-500">{t("Loading…")}</p>;
   const v = data.visitor;
   const category: Record<string, string> = { GUEST: t("Guest / Visitor"), PARENT: t("Parent / Guardian"), VENDOR: t("Vendor / Delivery"), WORKER: t("Worker / Staff") };
   return (
-    <div className="space-y-4">
-      {v.photoUrl ? (
-         
-        <img src={v.photoUrl} alt={`Photo of ${v.name}`} className="h-40 w-40 rounded-xl object-cover border border-zinc-800" />
-      ) : (
-        <p className="text-xs text-zinc-500">{t("No photo was taken for this visitor.")}</p>
-      )}
+    <div className="space-y-5">
+      <div className="flex items-start gap-4">
+        {v.photoUrl ? (
+          <img src={v.photoUrl} alt={`Photo of ${v.name}`} className="h-32 w-32 sm:h-40 sm:w-40 shrink-0 rounded-2xl object-cover border border-zinc-800" />
+        ) : (
+          <p className="rounded-2xl bg-zinc-950 px-4 py-3 text-xs text-zinc-500">{t("No photo was taken for this visitor.")}</p>
+        )}
+        <div className="ml-auto shrink-0">
+          <StatusBadge status={v.status} />
+        </div>
+      </div>
       <DetailGrid
         items={[
           ["Visitor Name", v.name],
@@ -312,7 +432,6 @@ export function VisitorDetails({ id }: { id: string }) {
           ["Record created", formatInstant(v.createdAt)],
         ]}
       />
-      <StatusBadge status={v.status} />
     </div>
   );
 }
@@ -320,11 +439,11 @@ export function VisitorDetails({ id }: { id: string }) {
 export function DetailGrid({ items }: { items: [string, unknown][] }) {
   const t = useT();
   return (
-    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
       {items.map(([k, v]) => (
         <div key={k} className="min-w-0">
-          <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t(k)}</dt>
-          <dd className="text-zinc-200 break-words">{(v as any) || "—"}</dd>
+          <dt className={dtLabel}>{t(k)}</dt>
+          <dd className="mt-0.5 text-zinc-200 break-words">{(v as any) || "—"}</dd>
         </div>
       ))}
     </dl>
@@ -338,13 +457,12 @@ function GatePhotos({ permissionId }: { permissionId: string }) {
   if (!data?.photos?.length) return null;
   return (
     <div className="sm:col-span-2">
-      <p className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5">{t("Gate photos")}</p>
+      <p className={cn(dtLabel, "mb-2")}>{t("Gate photos")}</p>
       <div className="flex flex-wrap gap-3">
         {data.photos.map((p: any) => (
-          <figure key={p.at} className="space-y-1">
-            { }
-            <img src={p.url} alt={`${p.type === "EXIT" ? "Exit" : "Entry"} photo`} className="h-32 w-32 rounded-lg object-cover border border-zinc-800" />
-            <figcaption className="text-[11px] text-zinc-400">
+          <figure key={p.at} className="space-y-1.5">
+            <img src={p.url} alt={`${p.type === "EXIT" ? "Exit" : "Entry"} photo`} className="h-32 w-32 rounded-2xl object-cover border border-zinc-800" />
+            <figcaption className="text-[11px] text-zinc-500 tabular-nums">
               {p.type === "EXIT" ? t("Exit") : t("Entry")} • {formatInstant(p.at)}
             </figcaption>
           </figure>
@@ -368,46 +486,103 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
   return (
     <div className="space-y-4">
       <RegisterToolbar filters={f} searchPlaceholder="Search name, roll number, room…" />
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs leading-relaxed text-zinc-500">
         {t("Outing passes are requested by the student and approved by the warden in the portal. Out and return times are the actual gate scans.")}
       </p>
       {data?.unassignedHostellers > 0 && (
-        <p className="text-xs text-amber-300">
+        <p className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-400">
           {t("{n} hosteller(s) have no Boys / Ladies hostel set in their profile and are not listed here. Set it in Admin → Users.", { n: data.unassignedHostellers })}
         </p>
       )}
       <Shell loading={loading} error={error} empty={!!data && data.rows.length === 0}>
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-900 text-left text-xs uppercase tracking-wider text-zinc-500">
-            <tr>
-              {["Student Name", "Roll Number", "Room", "Mobile", "Parent / Guardian", "Outing Purpose", "Date", "Out Time", "Return Date & Time", "Remarks"].map((h) => (
-                <th key={h} className={th}>{t(h)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-800/70 text-zinc-300">
-            {data?.rows.map((r: any) => (
-              <tr key={r.id} onClick={() => setSelected(r)} className="cursor-pointer hover:bg-zinc-800/40">
-                <td className={`${td} font-medium text-zinc-100`}>{r.studentName}</td>
-                <td className={td}>{r.roll}</td>
-                <td className={td}>{r.room || "—"}</td>
-                <td className={td}>{r.mobile || "—"}</td>
-                <td className={td}>{r.guardianName || "—"}</td>
-                <td className={`${td} max-w-[200px] truncate`}>{r.purpose}</td>
-                <td className={td}>{formatDay(r.requestedFrom)}</td>
-                <td className={td}>{r.actualOut ? formatTime(r.actualOut.at) : <span className="text-zinc-600">{t("Not yet out")}</span>}</td>
-                <td className={td}>{r.actualReturn ? formatInstant(r.actualReturn.at) : r.actualOut ? <span className="text-amber-300">{t("Not returned")}</span> : "—"}</td>
-                <td className={`${td} max-w-[200px] truncate`}>{r.remarks || "—"}</td>
-              </tr>
+        {/* Phones */}
+        {data?.rows.length > 0 && (
+          <ul className={cn(dt.mobileList, "sm:hidden")}>
+            {data.rows.map((r: any) => (
+              <li key={r.id}>
+                <button type="button" onClick={() => setSelected(r)} className={mobileRowBtn}>
+                  <Initial name={r.studentName} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="truncate text-base font-medium text-zinc-100">{r.studentName}</span>
+                      <span className={dt.chip}>{r.roll}</span>
+                    </span>
+                    <span className="mt-0.5 block truncate text-sm text-zinc-400">
+                      {[r.room, r.purpose].filter(Boolean).join(" · ") || "—"}
+                    </span>
+                    <span className="mt-1 block text-xs text-zinc-500 tabular-nums">{formatDay(r.requestedFrom)}</span>
+                    <span className="mt-2 grid grid-cols-2 gap-2">
+                      <span className="rounded-xl bg-zinc-950 px-3 py-2">
+                        <span className={cn(dtLabel, "block")}>{t("Out")}</span>
+                        <span className="block text-sm font-medium tabular-nums">
+                          {r.actualOut ? <span className="text-zinc-200">{formatTime(r.actualOut.at)}</span> : <span className="text-zinc-600">{t("Not yet out")}</span>}
+                        </span>
+                      </span>
+                      <span className="rounded-xl bg-zinc-950 px-3 py-2">
+                        <span className={cn(dtLabel, "block")}>{t("In")}</span>
+                        <span className="block text-sm font-medium tabular-nums">
+                          {r.actualReturn ? (
+                            <span className="text-zinc-200">{formatTime(r.actualReturn.at)}</span>
+                          ) : r.actualOut ? (
+                            <span className="text-amber-400">{t("Not returned")}</span>
+                          ) : (
+                            <span className="text-zinc-600">—</span>
+                          )}
+                        </span>
+                      </span>
+                    </span>
+                  </span>
+                  <ChevronRight className="mt-3 h-5 w-5 shrink-0 text-zinc-600" aria-hidden="true" />
+                </button>
+              </li>
             ))}
-          </tbody>
-        </table>
+          </ul>
+        )}
+
+        {/* Larger screens */}
+        {data?.rows.length > 0 && (
+          <div className={cn(dt.wrap, "hidden sm:block")}>
+            <table className={dt.table}>
+              <thead>
+                <tr>
+                  {["Student Name", "Roll Number", "Room", "Mobile", "Parent / Guardian", "Outing Purpose", "Date", "Out Time", "Return Date & Time", "Remarks"].map((h) => (
+                    <th key={h} className={dt.th}>{t(h)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map((r: any) => (
+                  <tr key={r.id} onClick={() => setSelected(r)} className={dt.trClickable}>
+                    <td className={cn(dt.td, "whitespace-nowrap")}><PersonCell name={r.studentName || "—"} /></td>
+                    <td className={cn(dt.td, "whitespace-nowrap")}><span className={dt.chip}>{r.roll}</span></td>
+                    <td className={cn(dt.td, "whitespace-nowrap")}>{r.room || "—"}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums")}>{r.mobile || "—"}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap")}>{r.guardianName || "—"}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap max-w-[200px] truncate")}>{r.purpose}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums")}>{formatDay(r.requestedFrom)}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums")}>{r.actualOut ? formatTime(r.actualOut.at) : <span className="text-zinc-600">{t("Not yet out")}</span>}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums")}>
+                      {r.actualReturn ? (
+                        formatInstant(r.actualReturn.at)
+                      ) : r.actualOut ? (
+                        <span className={cn(chipCls, "bg-amber-500/10 text-amber-400")}>{t("Not returned")}</span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className={cn(dt.tdMuted, "whitespace-nowrap max-w-[200px] truncate")}>{r.remarks || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Shell>
-      {data && <Pager page={f.page} pageSize={data.pageSize} total={data.total} onPage={f.setPage} />}
+      {data && <PagerBar page={f.page} pageSize={data.pageSize} total={data.total} onPageChange={f.setPage} itemLabel={t("records")} />}
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title={t("Outing pass")} className="max-w-xl">
         {selected && (
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
             {[
               ["Name", selected.studentName],
               ["Roll Number", selected.roll],
@@ -430,20 +605,20 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
               ["Remarks", selected.remarks],
             ].map(([k, v]) => (
               <div key={k as string} className="min-w-0">
-                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t(k as string)}</dt>
-                <dd className="text-zinc-200 break-words">{(v as any) || "—"}</dd>
+                <dt className={dtLabel}>{t(k as string)}</dt>
+                <dd className="mt-0.5 text-zinc-200 break-words">{(v as any) || "—"}</dd>
               </div>
             ))}
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Actual Out")}</dt>
-              <dd className="text-zinc-200"><MoveCell m={selected.actualOut} /></dd>
+              <dt className={dtLabel}>{t("Actual Out")}</dt>
+              <dd className="mt-0.5 text-zinc-200"><MoveCell m={selected.actualOut} /></dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Actual Return")}</dt>
-              <dd className="text-zinc-200"><MoveCell m={selected.actualReturn} /></dd>
+              <dt className={dtLabel}>{t("Actual Return")}</dt>
+              <dd className="mt-0.5 text-zinc-200"><MoveCell m={selected.actualReturn} /></dd>
             </div>
             <GatePhotos permissionId={selected.id} />
-            <div className="sm:col-span-2"><StatusBadge status={selected.status} /></div>
+            <div className="sm:col-span-2 border-t border-zinc-800 pt-4"><StatusBadge status={selected.status} /></div>
           </dl>
         )}
       </Modal>
@@ -480,55 +655,98 @@ export function HomeOutingSummaryView() {
     ["facultyOut", "Faculty out"],
   ] as const;
 
+  const dateInputCls =
+    "h-12 sm:h-10 w-full sm:w-auto rounded-full border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 [color-scheme:light] outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10";
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-400">
-        <label className="flex items-center gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
+        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500 sm:flex-row sm:items-center sm:gap-2 sm:text-sm min-w-0">
           {t("From")}
-          <input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-zinc-200 [color-scheme:light]" />
+          <input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} className={dateInputCls} />
         </label>
-        <label className="flex items-center gap-2">
+        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500 sm:flex-row sm:items-center sm:gap-2 sm:text-sm min-w-0">
           {t("To")}
-          <input type="date" value={to} max={today} onChange={(e) => e.target.value && setTo(e.target.value)} className="h-10 rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-zinc-200 [color-scheme:light]" />
+          <input type="date" value={to} max={today} onChange={(e) => e.target.value && setTo(e.target.value)} className={dateInputCls} />
         </label>
       </div>
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs leading-relaxed text-zinc-500">
         {t("Totals are counted from approved passes (by pass date) and actual gate exits (by exit date). The Total row covers the whole selected range.")}
       </p>
       <Shell loading={loading} error={error} empty={!!data && data.days.length === 0}>
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-900 text-left text-xs uppercase tracking-wider text-zinc-500">
-            <tr>
-              <th className={th}>{t("Date")}</th>
-              {cols.map(([, label]) => (
-                <th key={label} className={`${th} text-right`}>{t(label)}</th>
+        {/* Phones */}
+        {data && data.days.length > 0 && (
+          <div className="sm:hidden">
+            <ul className={dt.mobileList}>
+              {pageDays.map((d: any) => (
+                <li key={d.date}>
+                  <button type="button" onClick={() => setDay(d.date)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-zinc-950/70 active:bg-zinc-950">
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-base font-medium text-zinc-100 tabular-nums">{formatDay(`${d.date}T00:00:00+05:30`)}</span>
+                      <span className="mt-2 grid grid-cols-3 gap-x-3 gap-y-2">
+                        {cols.map(([k, label]) => (
+                          <span key={k} className="min-w-0">
+                            <span className="block truncate text-[11px] text-zinc-500">{t(label)}</span>
+                            <span className={cn("block text-base font-medium tabular-nums", d[k] ? "text-zinc-100" : "text-zinc-600")}>{d[k]}</span>
+                          </span>
+                        ))}
+                      </span>
+                    </span>
+                    <ChevronRight className="h-5 w-5 shrink-0 text-zinc-600" aria-hidden="true" />
+                  </button>
+                </li>
               ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-800/70 text-zinc-300">
-            {pageDays.map((d: any) => (
-              <tr key={d.date} onClick={() => setDay(d.date)} className="cursor-pointer hover:bg-zinc-800/40">
-                <td className={td}>{formatDay(`${d.date}T00:00:00+05:30`)}</td>
-                {cols.map(([k]) => (
-                  <td key={k} className={`${td} text-right tabular-nums ${d[k] ? "text-zinc-100" : "text-zinc-600"}`}>{d[k]}</td>
+            </ul>
+            <div className="m-2 rounded-2xl bg-zinc-950 px-4 py-3.5">
+              <p className="text-sm font-semibold text-zinc-100">{t("Total")}</p>
+              <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-2">
+                {cols.map(([k, label]) => (
+                  <div key={k} className="min-w-0">
+                    <p className="truncate text-[11px] text-zinc-500">{t(label)}</p>
+                    <p className="text-base font-semibold text-zinc-100 tabular-nums">{data.totals[k]}</p>
+                  </div>
                 ))}
-              </tr>
-            ))}
-          </tbody>
-          {data && (
-            <tfoot className="bg-zinc-900/80 font-semibold text-zinc-100">
-              <tr>
-                <td className={td}>{t("Total")}</td>
-                {cols.map(([k]) => (
-                  <td key={k} className={`${td} text-right tabular-nums`}>{data.totals[k]}</td>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Larger screens */}
+        {data && data.days.length > 0 && (
+          <div className={cn(dt.wrap, "hidden sm:block")}>
+            <table className={dt.table}>
+              <thead>
+                <tr>
+                  <th className={dt.th}>{t("Date")}</th>
+                  {cols.map(([, label]) => (
+                    <th key={label} className={dt.thRight}>{t(label)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pageDays.map((d: any) => (
+                  <tr key={d.date} onClick={() => setDay(d.date)} className={dt.trClickable}>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums font-medium text-zinc-100")}>{formatDay(`${d.date}T00:00:00+05:30`)}</td>
+                    {cols.map(([k]) => (
+                      <td key={k} className={cn(dt.td, "text-right tabular-nums", d[k] ? "text-zinc-100" : "text-zinc-600")}>{d[k]}</td>
+                    ))}
+                  </tr>
                 ))}
-              </tr>
-            </tfoot>
-          )}
-        </table>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td className="bg-zinc-950 px-4 py-3.5 font-semibold text-zinc-100 first:rounded-l-2xl last:rounded-r-2xl">{t("Total")}</td>
+                  {cols.map(([k]) => (
+                    <td key={k} className="bg-zinc-950 px-4 py-3.5 text-right font-semibold text-zinc-100 tabular-nums first:rounded-l-2xl last:rounded-r-2xl">{data.totals[k]}</td>
+                  ))}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
       </Shell>
 
-      {data && <Pager page={page} pageSize={DAYS_PER_PAGE} total={days.length} onPage={setPage} />}
+      {data && <PagerBar page={page} pageSize={DAYS_PER_PAGE} total={days.length} onPageChange={setPage} itemLabel={t("days")} />}
 
       <Modal open={!!day} onClose={() => setDay(null)} title={day ? t("Passes on {date}", { date: formatDay(`${day}T00:00:00+05:30`) }) : ""} className="max-w-2xl">
         {day && <DayDetails date={day} />}
@@ -541,45 +759,67 @@ export function HomeOutingSummaryView() {
 function DayDetails({ date }: { date: string }) {
   const t = useT();
   const { data, error, loading } = useLoader<any>(() => getHomeOutingDay(date), date);
-  if (error) return <p className="text-sm text-red-300">{error}</p>;
-  if (loading || !data) return <p className="text-sm text-zinc-500">{t("Loading…")}</p>;
+  if (error) return <p role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</p>;
+  if (loading || !data) return <p className="py-8 text-center text-sm text-zinc-500">{t("Loading…")}</p>;
+
+  const dates = (r: any) => `${formatDay(r.from)}${r.to && formatDay(r.to) !== formatDay(r.from) ? ` – ${formatDay(r.to)}` : ""}`;
 
   const section = (title: string, rows: any[], faculty = false) => (
     <div key={title} className="space-y-2">
-      <p className="text-sm font-semibold text-zinc-200">
-        {t(title)} <span className="text-zinc-500 font-normal">({rows.length})</span>
+      <p className="text-sm font-medium text-zinc-100">
+        {t(title)} <span className="text-zinc-500 font-normal tabular-nums">({rows.length})</span>
       </p>
       {rows.length === 0 ? (
-        <p className="text-xs text-zinc-500">{t("None")}</p>
+        <p className="rounded-2xl bg-zinc-950 px-4 py-3 text-xs text-zinc-500">{t("None")}</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-zinc-800">
-          <table className="w-full text-xs">
-            <thead className="bg-zinc-900 text-left text-zinc-500">
-              <tr>
-                <th className="px-2 py-2">{t("Name")}</th>
-                <th className="px-2 py-2">{faculty ? t("Department") : t("Roll / Room")}</th>
-                <th className="px-2 py-2">{faculty ? t("Type") : t("Purpose")}</th>
-                <th className="px-2 py-2">{t("Dates")}</th>
-                <th className="px-2 py-2">{t("Exited")}</th>
-                <th className="px-2 py-2">{t("Status")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800 text-zinc-200">
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{r.name}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{faculty ? r.department || "—" : [r.roll, r.room].filter(Boolean).join(" • ")}</td>
-                  <td className="px-2 py-1.5 max-w-[180px] truncate">{faculty ? t(r.requestType) : r.purpose}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">
-                    {formatDay(r.from)}{r.to && formatDay(r.to) !== formatDay(r.from) ? ` – ${formatDay(r.to)}` : ""}
-                  </td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{r.exitedAt ? formatInstant(r.exitedAt) : "—"}</td>
-                  <td className="px-2 py-1.5"><StatusBadge status={r.status} /></td>
+        <>
+          {/* Phones */}
+          <ul className="sm:hidden divide-y divide-zinc-800/70 rounded-2xl border border-zinc-800">
+            {rows.map((r) => (
+              <li key={r.id} className="px-4 py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="min-w-0 truncate text-sm font-medium text-zinc-100">{r.name}</p>
+                  <StatusBadge status={r.status} />
+                </div>
+                <p className="mt-0.5 truncate text-xs text-zinc-400">
+                  {faculty ? r.department || "—" : [r.roll, r.room].filter(Boolean).join(" • ")}
+                  {" · "}
+                  {faculty ? t(r.requestType) : r.purpose}
+                </p>
+                <p className="mt-1 text-xs text-zinc-500 tabular-nums">
+                  {dates(r)} · {t("Exited")}: {r.exitedAt ? formatInstant(r.exitedAt) : "—"}
+                </p>
+              </li>
+            ))}
+          </ul>
+          {/* Larger screens */}
+          <div className="hidden sm:block overflow-x-auto rounded-2xl border border-zinc-800">
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-950 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                <tr>
+                  <th className="px-3 py-2.5">{t("Name")}</th>
+                  <th className="px-3 py-2.5">{faculty ? t("Department") : t("Roll / Room")}</th>
+                  <th className="px-3 py-2.5">{faculty ? t("Type") : t("Purpose")}</th>
+                  <th className="px-3 py-2.5">{t("Dates")}</th>
+                  <th className="px-3 py-2.5">{t("Exited")}</th>
+                  <th className="px-3 py-2.5">{t("Status")}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/70 text-zinc-300">
+                {rows.map((r) => (
+                  <tr key={r.id}>
+                    <td className="px-3 py-2.5 whitespace-nowrap font-medium text-zinc-100">{r.name}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">{faculty ? r.department || "—" : [r.roll, r.room].filter(Boolean).join(" • ")}</td>
+                    <td className="px-3 py-2.5 max-w-[180px] truncate">{faculty ? t(r.requestType) : r.purpose}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">{dates(r)}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">{r.exitedAt ? formatInstant(r.exitedAt) : "—"}</td>
+                    <td className="px-3 py-2.5"><StatusBadge status={r.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
@@ -597,24 +837,23 @@ function DayDetails({ date }: { date: string }) {
 export function MovementDetails({ id }: { id: string }) {
   const t = useT();
   const { data, error, loading } = useLoader<any>(() => getMovementDetails(id), id);
-  if (error) return <p className="text-sm text-red-300">{error}</p>;
-  if (loading || !data) return <p className="text-sm text-zinc-500">{t("Loading…")}</p>;
+  if (error) return <p role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</p>;
+  if (loading || !data) return <p className="py-8 text-center text-sm text-zinc-500">{t("Loading…")}</p>;
   const m = data.movement;
   const p = m.pass;
   const person = m.person;
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${m.type === "EXIT" ? "bg-orange-500/15 text-orange-300" : "bg-emerald-500/15 text-emerald-300"}`}>
+        <span className={cn(chipCls, "px-3 py-1 text-xs uppercase tracking-wide", m.type === "EXIT" ? "bg-sky-500/10 text-sky-400" : "bg-emerald-500/10 text-emerald-400")}>
           {m.type === "EXIT" ? t("Exit") : t("Entry")}
         </span>
-        <span className="text-sm text-zinc-300">{formatInstant(m.at)}</span>
+        <span className="text-sm font-medium text-zinc-200 tabular-nums">{formatInstant(m.at)}</span>
       </div>
       {m.photoUrl ? (
-         
-        <img src={m.photoUrl} alt={`Gate photo of ${person?.name ?? "the person"}`} className="h-40 w-40 rounded-xl object-cover border border-zinc-800" />
+        <img src={m.photoUrl} alt={`Gate photo of ${person?.name ?? "the person"}`} className="h-32 w-32 sm:h-40 sm:w-40 rounded-2xl object-cover border border-zinc-800" />
       ) : (
-        <p className="text-xs text-zinc-500">{person?.kind === "Faculty" ? t("No photo for this faculty pass.") : t("No photo for this movement.")}</p>
+        <p className="rounded-2xl bg-zinc-950 px-4 py-3 text-xs text-zinc-500">{person?.kind === "Faculty" ? t("No photo for this faculty pass.") : t("No photo for this movement.")}</p>
       )}
       <DetailGrid
         items={[
@@ -630,8 +869,8 @@ export function MovementDetails({ id }: { id: string }) {
         ]}
       />
       {p && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">{t("Pass")}</p>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-3">
+          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">{t("Pass")}</p>
           <DetailGrid
             items={[
               ["Pass", t(p.hostelPass ? "Hostel pass" : p.requestType ?? (p.type === "EXIT" ? "Exit pass" : "Entry pass"))],

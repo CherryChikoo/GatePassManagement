@@ -25,6 +25,7 @@ import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
 import { PassExtraDetails } from "@/components/passes/pass-extra";
+import { PagerBar } from "@/components/ui/pager-bar";
 
 export function DeanRequestsClient() {
   const isReady = useStoreReady();
@@ -117,7 +118,6 @@ export function DeanRequestsClient() {
     .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   // Pagination
-  const totalPages = Math.ceil(filteredRequests.length / PAGE_SIZE) || 1;
   const paginatedRequests = filteredRequests.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   // Tab counts
@@ -356,35 +356,44 @@ export function DeanRequestsClient() {
     });
   };
 
+  const tabs = [
+    { id: "PENDING" as const, label: "Pending", count: pendingCount },
+    { id: "ACCEPTED" as const, label: "Approved", count: acceptedCount },
+    { id: "REJECTED" as const, label: "Rejected", count: rejectedCount },
+  ];
+
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2.5">
-            <span>Faculty Gate Pass Authorizations</span>
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/30">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
+              Faculty Gate Pass Authorizations
+            </h1>
+            <span className="rounded-full bg-orange-500/10 px-2.5 py-1 text-xs font-medium text-orange-400">
               Dean Review
             </span>
-          </h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          </div>
+          <p className="mt-1 text-sm text-zinc-500">
             Today&apos;s faculty gate pass requests. Past requests are in the Activity tab.
           </p>
         </div>
 
         {/* Batch Operations Toolbar */}
         {selectedIds.size > 0 && activeTab === "PENDING" && (
-          <div className="flex items-center gap-2 bg-zinc-900 border border-sky-500/30 p-1.5 rounded-xl animate-fade-in">
-            <span className="text-xs font-semibold text-sky-300 px-2">
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl sm:rounded-full border border-orange-500/20 bg-orange-500/10 p-1.5 sm:pl-4 animate-fade-in">
+            <span className="w-full sm:w-auto px-2 sm:px-0 text-xs font-medium text-orange-400">
               {selectedIds.size} Selected (Max 5)
             </span>
             <Button
               size="sm"
+              variant="success"
               onClick={handleBatchApprove}
               loading={batchProcessing}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs font-semibold"
+              className="flex-1 sm:flex-none h-10 sm:h-9"
             >
-              <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+              <CheckCircle2 className="h-4 w-4" />
               Approve All
             </Button>
             <Button
@@ -392,9 +401,9 @@ export function DeanRequestsClient() {
               variant="outline"
               onClick={() => setBatchRejectModal(true)}
               disabled={batchProcessing}
-              className="border-red-500/40 text-red-400 hover:bg-red-500/10 h-8 text-xs font-semibold"
+              className="flex-1 sm:flex-none h-10 sm:h-9 border-red-500/30 text-red-400 hover:bg-red-500/10"
             >
-              <XCircle className="h-3.5 w-3.5 mr-1" />
+              <XCircle className="h-4 w-4" />
               Reject All
             </Button>
           </div>
@@ -402,63 +411,41 @@ export function DeanRequestsClient() {
       </div>
 
       {/* Tabs & Controls */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         {/* Status Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
-          <button
-            onClick={() => {
-              setActiveTab("PENDING");
-              setCurrentPage(1);
-            }}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-              activeTab === "PENDING"
-                ? "bg-sky-600 text-white shadow-md shadow-sky-600/20"
-                : "bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800"
-            }`}
-          >
-            Pending
-            <span className="px-1.5 py-0.2 rounded-full bg-black/20 text-[10px] font-bold">
-              {pendingCount}
-            </span>
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab("ACCEPTED");
-              setCurrentPage(1);
-            }}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-              activeTab === "ACCEPTED"
-                ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
-                : "bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800"
-            }`}
-          >
-            Approved
-            <span className="px-1.5 py-0.2 rounded-full bg-black/20 text-[10px] font-bold">
-              {acceptedCount}
-            </span>
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab("REJECTED");
-              setCurrentPage(1);
-            }}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-              activeTab === "REJECTED"
-                ? "bg-red-600 text-white shadow-md shadow-red-600/20"
-                : "bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800"
-            }`}
-          >
-            Rejected
-            <span className="px-1.5 py-0.2 rounded-full bg-black/20 text-[10px] font-bold">
-              {rejectedCount}
-            </span>
-          </button>
+        <div
+          className="inline-flex w-fit max-w-full rounded-full bg-zinc-950 p-1 border border-zinc-800 overflow-x-auto scrollbar-none"
+          role="tablist"
+          aria-label="Filter by status"
+        >
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={activeTab === t.id}
+              onClick={() => {
+                setActiveTab(t.id);
+                setCurrentPage(1);
+              }}
+              className={`inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap ${
+                activeTab === t.id ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
+              }`}
+            >
+              {t.label}
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                  activeTab === t.id ? "bg-orange-500/10 text-orange-400" : "bg-zinc-900 text-zinc-500"
+                }`}
+              >
+                {t.count}
+              </span>
+            </button>
+          ))}
         </div>
 
         {/* Search & Department Filters */}
-        <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
-          <div className="relative min-w-[200px] sm:min-w-[240px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 min-w-0">
+          <div className="w-full sm:w-72">
             <Input
               value={searchQuery}
               onChange={(e) => {
@@ -466,7 +453,9 @@ export function DeanRequestsClient() {
                 setCurrentPage(1);
               }}
               placeholder="Search faculty name, ID, purpose..."
-              className="pl-9 h-9 text-xs bg-zinc-900/80 border-zinc-800 focus:border-sky-500/50"
+              aria-label="Search faculty requests"
+              icon={<Search className="h-4 w-4" />}
+              className="h-10 rounded-full text-sm focus:ring-4 focus:ring-orange-500/10"
             />
           </div>
 
@@ -477,7 +466,8 @@ export function DeanRequestsClient() {
                 setSelectedDept(e.target.value);
                 setCurrentPage(1);
               }}
-              className="h-9 px-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500"
+              aria-label="Filter by department"
+              className="h-10 w-full sm:w-auto sm:max-w-[16rem] rounded-full border border-zinc-800 bg-zinc-900 px-4 text-sm text-zinc-200 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
             >
               <option value="ALL">All Departments</option>
               {departments.map((dept) => (
@@ -492,15 +482,17 @@ export function DeanRequestsClient() {
 
       {/* Requests List */}
       {paginatedRequests.length === 0 ? (
-        <EmptyState
-          title={`No ${activeTab.toLowerCase()} requests`}
-          description={
-            searchQuery || selectedDept !== "ALL"
-              ? "No faculty requests match your filter criteria."
-              : `There are currently no ${activeTab.toLowerCase()} faculty gate pass requests.`
-          }
-          icon={<ClipboardCheck className="h-10 w-10 text-zinc-600" />}
-        />
+        <Card>
+          <EmptyState
+            title={`No ${activeTab.toLowerCase()} requests`}
+            description={
+              searchQuery || selectedDept !== "ALL"
+                ? "No faculty requests match your filter criteria."
+                : `There are currently no ${activeTab.toLowerCase()} faculty gate pass requests.`
+            }
+            icon={<ClipboardCheck className="h-6 w-6" />}
+          />
+        </Card>
       ) : (
         <div className="space-y-3">
           {paginatedRequests.map((item: any) => {
@@ -514,28 +506,28 @@ export function DeanRequestsClient() {
             return (
               <Card
                 key={item.id}
-                className={`border-zinc-800/80 bg-zinc-900/60 hover:border-zinc-700 transition-all ${
-                  isSelected ? "border-sky-500/50 bg-sky-950/10" : ""
-                }`}
+                className={isSelected ? "border-orange-500/40 ring-1 ring-orange-500/20" : ""}
               >
                 <CardContent className="p-4 sm:p-5">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                     {/* Left: Checkbox + Profile */}
-                    <div className="flex items-start gap-3.5 min-w-0">
+                    <div className="flex items-start gap-3 sm:gap-4 min-w-0">
                       {activeTab === "PENDING" && (
                         <button
                           onClick={() => toggleSelect(item.id)}
-                          className="mt-1 text-zinc-500 hover:text-sky-400 transition-colors shrink-0"
+                          aria-label={isSelected ? `Deselect ${facultyName}` : `Select ${facultyName}`}
+                          aria-pressed={isSelected}
+                          className="-ml-2 -my-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-950 hover:text-orange-400 transition-colors"
                         >
                           {isSelected ? (
-                            <CheckSquare className="h-5 w-5 text-sky-400" />
+                            <CheckSquare className="h-5 w-5 text-orange-400" />
                           ) : (
                             <Square className="h-5 w-5" />
                           )}
                         </button>
                       )}
 
-                      <div className="h-11 w-11 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 shrink-0 font-bold text-sm">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-sm font-semibold text-orange-400">
                         {facultyName
                           .split(" ")
                           .map((n: string) => n[0])
@@ -544,53 +536,53 @@ export function DeanRequestsClient() {
                           .toUpperCase()}
                       </div>
 
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-bold text-zinc-100 text-sm">{facultyName}</h3>
-                          <span className="font-mono text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-medium">
-                            {empId}
-                          </span>
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-x-2 gap-y-1 flex-wrap">
+                          <h3 className="text-sm font-medium text-zinc-100 break-words">{facultyName}</h3>
+                          <span className="font-mono text-xs text-zinc-500">{empId}</span>
+                        </div>
+                        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                          <span className="rounded-full border border-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-400">
                             {getDepartmentCode(dept)}
                           </span>
                           {item.faculty?.profile?.role === "FACULTY_ADMIN" ||
                           item.faculty?.designation?.toLowerCase().includes("head") ||
                           item.faculty?.designation?.toLowerCase().includes("hod") ? (
-                            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1 shadow-sm">
-                              <Shield className="h-3 w-3 text-amber-400" />
+                            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-medium text-orange-400">
+                              <Shield className="h-3 w-3" />
                               HOD
                             </span>
                           ) : (
-                            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 flex items-center gap-1 shadow-sm">
-                              <Briefcase className="h-3 w-3 text-indigo-400" />
+                            <span className="inline-flex items-center gap-1 rounded-full bg-zinc-950 border border-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-400">
+                              <Briefcase className="h-3 w-3" />
                               Faculty
                             </span>
                           )}
                           <StatusBadge status={item.status} />
                         </div>
-                        <p className="text-xs text-zinc-400 mt-1">
+                        <p className="mt-1.5 text-xs text-zinc-500">
                           {desig} • Department of {dept}
                         </p>
 
                         {/* Request Meta */}
-                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                          <div className="flex items-center gap-1.5 text-zinc-300">
-                            <span className="text-zinc-500 font-medium">Purpose:</span>
-                            <span className="font-medium text-zinc-200">{item.purpose || "Official Duty"}</span>
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-2xl bg-zinc-950 p-3 text-xs">
+                          <div className="flex items-start gap-1.5 min-w-0">
+                            <span className="shrink-0 text-zinc-500">Purpose:</span>
+                            <span className="font-medium text-zinc-200 break-words">{item.purpose || "Official Duty"}</span>
                           </div>
                           <PassExtraDetails pass={item} className="w-full" />
                           {item.destination && (
-                            <div className="flex items-center gap-1.5 text-zinc-300">
-                              <span className="text-zinc-500 font-medium">Destination:</span>
-                              <span className="font-medium text-zinc-200">{item.destination}</span>
+                            <div className="flex items-start gap-1.5 min-w-0">
+                              <span className="shrink-0 text-zinc-500">Destination:</span>
+                              <span className="font-medium text-zinc-200 break-words">{item.destination}</span>
                             </div>
                           )}
-                          <div className="flex items-center gap-1.5 text-zinc-400">
-                            <Clock className="h-3.5 w-3.5 text-zinc-500" />
+                          <div className="flex items-start gap-1.5 text-zinc-500 min-w-0">
+                            <Clock className="h-3.5 w-3.5 shrink-0 mt-px" />
                             <span>Requested: {formatDateTime(item.createdAt)}{scheduledNote(item)}</span>
                           </div>
                           {item.rejectionReason && (
-                            <div className="text-red-400 font-medium">
+                            <div className="font-medium text-red-400 break-words sm:col-span-2">
                               Reason: {item.rejectionReason}
                             </div>
                           )}
@@ -600,22 +592,25 @@ export function DeanRequestsClient() {
 
                     {/* Right: Actions */}
                     {item.status === "PENDING" && item.approvalMode === "BOTH" && item.deanApprovedAt && (
-                      <div className="shrink-0 sm:self-center text-xs text-emerald-300">
+                      <div className="shrink-0 sm:self-center rounded-full bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400 w-fit">
                         ✓ You approved — waiting for the HOD
                       </div>
                     )}
                     {item.status === "PENDING" && !(item.approvalMode === "BOTH" && item.deanApprovedAt) && (
-                      <div className="flex items-center gap-2 shrink-0 sm:self-center">
+                      <div className="flex flex-wrap items-center gap-2 shrink-0 sm:self-center sm:justify-end">
                         {item.approvalMode === "BOTH" && (
-                          <span className="text-[10px] font-semibold text-amber-300">Needs HOD + Dean</span>
+                          <span className="w-full sm:w-auto rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-400 text-center">
+                            Needs HOD + Dean
+                          </span>
                         )}
                         <Button
                           size="sm"
+                          variant="success"
                           onClick={() => setApproveModal({ id: item.id, name: facultyName })}
                           loading={isItemProcessing}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-8 text-xs px-3"
+                          className="flex-1 sm:flex-none h-10 sm:h-9"
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                          <CheckCircle2 className="h-4 w-4" />
                           Approve
                         </Button>
                         <Button
@@ -623,9 +618,9 @@ export function DeanRequestsClient() {
                           variant="outline"
                           onClick={() => setRejectModal({ id: item.id, name: facultyName })}
                           disabled={isItemProcessing}
-                          className="border-red-500/40 text-red-400 hover:bg-red-500/10 font-semibold h-8 text-xs px-3"
+                          className="flex-1 sm:flex-none h-10 sm:h-9 border-red-500/30 text-red-400 hover:bg-red-500/10"
                         >
-                          <XCircle className="h-3.5 w-3.5 mr-1" />
+                          <XCircle className="h-4 w-4" />
                           Reject
                         </Button>
                       </div>
@@ -638,38 +633,14 @@ export function DeanRequestsClient() {
         </div>
       )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between border-t border-zinc-800 pt-4 text-xs text-zinc-400">
-          <span>
-            Showing {(currentPage - 1) * PAGE_SIZE + 1} to{" "}
-            {Math.min(currentPage * PAGE_SIZE, filteredRequests.length)} of {filteredRequests.length} requests
-          </span>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={currentPage <= 1}
-              onClick={() => setCurrentPage((p) => p - 1)}
-              className="h-8 text-xs"
-            >
-              Previous
-            </Button>
-            <span>
-              Page {currentPage} of {totalPages}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={currentPage >= totalPages}
-              onClick={() => setCurrentPage((p) => p + 1)}
-              className="h-8 text-xs"
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+      {/* Pagination (docked at the bottom of the screen) */}
+      <PagerBar
+        page={currentPage}
+        pageSize={PAGE_SIZE}
+        total={filteredRequests.length}
+        onPageChange={setCurrentPage}
+        itemLabel="requests"
+      />
 
       {/* Approve Modal with Validity Window */}
       {approveModal && (
@@ -679,19 +650,20 @@ export function DeanRequestsClient() {
           title="Authorize Faculty Gate Pass"
         >
           <div className="space-y-4">
-            <p className="text-sm text-zinc-300">
-              You are authorizing the gate pass for <span className="font-bold text-zinc-100">{approveModal.name}</span>.
+            <p className="text-sm text-zinc-300 leading-relaxed">
+              You are authorizing the gate pass for <span className="font-medium text-zinc-100">{approveModal.name}</span>.
               A secure QR code credential will be issued.
             </p>
 
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-zinc-400 block">
+            <div className="space-y-1.5">
+              <label htmlFor="dean-pass-validity" className="block text-xs font-medium uppercase tracking-wider text-zinc-500">
                 Pass Validity Window (from approval)
               </label>
               <select
+                id="dean-pass-validity"
                 value={expiryMinutes}
                 onChange={(e) => setExpiryMinutes(Number(e.target.value))}
-                className="w-full h-10 px-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500"
+                className="h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
               >
                 <option value={30}>30 Minutes</option>
                 <option value={60}>1 Hour (Standard)</option>
@@ -702,13 +674,14 @@ export function DeanRequestsClient() {
               </select>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setApproveModal(null)}>
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" className="h-11 sm:h-9 w-full sm:w-auto" onClick={() => setApproveModal(null)}>
                 Cancel
               </Button>
               <Button
                 size="sm"
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                variant="success"
+                className="h-11 sm:h-9 w-full sm:w-auto"
                 onClick={() => handleSingleApprove(approveModal.id, expiryMinutes)}
               >
                 Confirm Approval & Issue QR
@@ -729,9 +702,9 @@ export function DeanRequestsClient() {
           title="Deny Faculty Gate Pass"
         >
           <div className="space-y-4">
-            <p className="text-sm text-zinc-300">
+            <p className="text-sm text-zinc-300 leading-relaxed">
               Provide a reason for rejecting the gate pass for{" "}
-              <span className="font-bold text-zinc-100">{rejectModal.name}</span>.
+              <span className="font-medium text-zinc-100">{rejectModal.name}</span>.
             </p>
 
             <Textarea
@@ -739,16 +712,16 @@ export function DeanRequestsClient() {
               onChange={(e) => setRejectReason(e.target.value)}
               placeholder="e.g. Schedule conflict with academic committee meeting..."
               rows={3}
-              className="text-xs"
             />
 
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setRejectModal(null)}>
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" className="h-11 sm:h-9 w-full sm:w-auto" onClick={() => setRejectModal(null)}>
                 Cancel
               </Button>
               <Button
                 size="sm"
-                className="bg-red-600 hover:bg-red-700 text-white font-semibold"
+                variant="destructive"
+                className="h-11 sm:h-9 w-full sm:w-auto"
                 disabled={!rejectReason.trim()}
                 onClick={() => handleSingleReject(rejectModal.id, rejectReason)}
               >
@@ -770,7 +743,7 @@ export function DeanRequestsClient() {
           title={`Deny ${selectedIds.size} Selected Passes`}
         >
           <div className="space-y-4">
-            <p className="text-sm text-zinc-300">
+            <p className="text-sm text-zinc-300 leading-relaxed">
               Provide a reason for denying the selected {selectedIds.size} faculty gate pass requests.
             </p>
 
@@ -779,16 +752,16 @@ export function DeanRequestsClient() {
               onChange={(e) => setRejectReason(e.target.value)}
               placeholder="e.g. University-wide faculty convocation today..."
               rows={3}
-              className="text-xs"
             />
 
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setBatchRejectModal(false)}>
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" className="h-11 sm:h-9 w-full sm:w-auto" onClick={() => setBatchRejectModal(false)}>
                 Cancel
               </Button>
               <Button
                 size="sm"
-                className="bg-red-600 hover:bg-red-700 text-white font-semibold"
+                variant="destructive"
+                className="h-11 sm:h-9 w-full sm:w-auto"
                 disabled={!rejectReason.trim()}
                 onClick={handleBatchReject}
               >

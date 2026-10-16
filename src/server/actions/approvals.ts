@@ -198,13 +198,15 @@ export async function handleApproval(
         if (myStep === "HOD" && current.hodApprovedAt) throw new Error(ALREADY_APPROVED_BY_YOU);
         if (myStep === "DEAN" && current.deanApprovedAt) throw new Error(ALREADY_APPROVED_BY_YOU);
 
-        await tx.permission.update({
-          where: { id: permissionId },
+        // Only while still PENDING: a cancel / reject / expiry at the same moment wins
+        const stamped = await tx.permission.updateMany({
+          where: { id: permissionId, status: "PENDING" },
           data:
             myStep === "HOD"
               ? { hodApprovedAt: now, hodApproverId: user.profileId }
               : { deanApprovedAt: now, deanApproverId: user.profileId },
         });
+        if (stamped.count !== 1) throw new Error(ALREADY_PROCESSED);
 
         const otherApproved = myStep === "HOD" ? !!current.deanApprovedAt : !!current.hodApprovedAt;
         if (!otherApproved) {

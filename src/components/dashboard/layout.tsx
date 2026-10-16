@@ -8,32 +8,34 @@ import { cn } from "@/lib/utils";
 import { logoutAndClear } from "@/stores/app-store";
 import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
 import { LanguageToggle, useT } from "@/components/providers/language-provider";
+import { Tooltip } from "@/components/ui/tooltip";
+import { PAGE_FOOTER_SLOT_ID } from "@/components/ui/pager-bar";
+import { PasswordChangedNotice } from "@/components/users/password-changed-notice";
 import {
   LayoutDashboard,
   FileText,
-  Users,
-  Shield,
-  QrCode,
-  Camera,
   LogOut,
   Menu,
   X,
-  ChevronRight,
-  Building2,
   ClipboardCheck,
   History,
-  UserCog,
   DoorOpen,
   ScanLine,
-  Bell,
-  Eye,
-  Landmark,
   GraduationCap,
   Loader2,
   BookOpen,
   PanelLeftClose,
   PanelLeftOpen,
   Briefcase,
+  Activity as ActivityIcon,
+  BedDouble,
+  ContactRound,
+  Inbox,
+  Network,
+  ScrollText,
+  Settings as SettingsIcon,
+  Ticket,
+  UsersRound,
 } from "lucide-react";
 
 export type NavItem = {
@@ -68,7 +70,7 @@ function BrandMark({ compact = false, roleLine }: { compact?: boolean; roleLine:
         )}
       >
         <span className="text-[15px] font-semibold text-zinc-100 tracking-tight leading-tight truncate">Gate Pass</span>
-        <span className="text-[11px] text-zinc-500 leading-tight truncate">{roleLine}</span>
+        <span className="text-[11px] font-medium text-orange-400 leading-tight truncate">{roleLine}</span>
       </div>
     </div>
   );
@@ -132,6 +134,11 @@ export function DashboardLayout({
   };
 
   const isMobileNavRole = role === "STUDENT" || role === "SECURITY";
+  // Security works from the bottom bar only (no sidebar / ☰ menu); Settings is the gear in the top bar
+  const hasSidebar = navItems.length > 0 && role !== "SECURITY";
+  // Security's phone bar: 4 sections + the centre Scan button (Settings stays in the ☰ menu)
+  const bottomNavItems =
+    role === "SECURITY" ? navItems.filter((i) => i.href !== "/security/scan" && i.href !== "/settings") : navItems;
 
   // Lock body scroll when mobile drawer is open
   useEffect(() => {
@@ -176,7 +183,7 @@ export function DashboardLayout({
       )}
 
       {/* Sidebar: floating glass panel (drawer on mobile) */}
-      {navItems.length > 0 && (
+      {hasSidebar && (
         <aside
           className={cn(
             "fixed inset-y-0 left-0 z-50 flex flex-col glass transition-[transform,width] duration-300",
@@ -201,11 +208,11 @@ export function DashboardLayout({
             {navItems.map((item) => {
               const isActive = isActivePath(item.href);
               return (
+                <Tooltip key={item.href} label={t(item.label)} side="right" disabled={!desktopCollapsed} className="block">
                 <Link
-                  key={item.href}
                   href={item.href}
                   onClick={handleNavigation}
-                  title={desktopCollapsed ? t(item.label) : undefined}
+                  aria-label={desktopCollapsed ? t(item.label) : undefined}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(
                     "group relative flex items-center rounded-2xl px-3 py-2.5 text-sm transition-colors duration-150 overflow-hidden",
@@ -237,12 +244,14 @@ export function DashboardLayout({
                     )}
                   </span>
                 </Link>
+                </Tooltip>
               );
             })}
           </nav>
 
           {/* Collapse toggle (desktop) + sign out */}
           <div className="px-3 pb-4 pt-2 space-y-1">
+            <Tooltip label={desktopCollapsed ? t("Expand sidebar") : t("Collapse sidebar")} side="right" disabled={!desktopCollapsed} className="hidden lg:block">
             <button
               onClick={toggleCollapsed}
               className={cn(
@@ -250,19 +259,19 @@ export function DashboardLayout({
                 desktopCollapsed && "justify-center px-0"
               )}
               aria-label={desktopCollapsed ? t("Expand sidebar") : t("Collapse sidebar")}
-              title={desktopCollapsed ? t("Expand sidebar") : t("Collapse sidebar")}
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center">
                 {desktopCollapsed ? <PanelLeftOpen className="h-[18px] w-[18px]" /> : <PanelLeftClose className="h-[18px] w-[18px]" />}
               </span>
               <span className={cn("ml-3 truncate", desktopCollapsed && "hidden")}>{t("Collapse")}</span>
             </button>
+            </Tooltip>
+            <Tooltip label={t("Sign out")} side="right" disabled={!desktopCollapsed} className="block">
             <button
               type="button"
               onClick={handleLogout}
               disabled={signingOut}
               aria-busy={signingOut}
-              title={t("Sign out")}
               className={cn(
                 "flex w-full items-center rounded-2xl px-3 py-2.5 text-sm text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-60 disabled:cursor-wait",
                 desktopCollapsed && "lg:justify-center lg:px-0"
@@ -273,15 +282,16 @@ export function DashboardLayout({
               </span>
               <span className={cn("ml-3 truncate", desktopCollapsed && "lg:hidden")}>{signingOut ? t("Signing out…") : t("Sign out")}</span>
             </button>
+            </Tooltip>
           </div>
         </aside>
       )}
 
       {/* Main */}
-      <main className={cn("flex-1 flex flex-col min-w-0 max-w-full overflow-hidden relative", isMobileNavRole ? "pb-24 lg:pb-0" : "")}>
+      <main className={cn("flex-1 flex flex-col min-w-0 max-w-full overflow-hidden relative", role === "SECURITY" ? "pb-28" : isMobileNavRole ? "pb-24 lg:pb-0" : "")}>
         {/* Top bar: glass */}
         <header className="sticky top-0 z-30 mx-3 mt-3 sm:mx-4 lg:mx-6 flex items-center gap-3 rounded-[22px] glass shadow-card px-3 sm:px-4 py-2.5 shrink-0">
-          {navItems.length > 0 ? (
+          {hasSidebar ? (
             <button
               onClick={() => setSidebarOpen(true)}
               className="rounded-full p-2 text-zinc-400 hover:bg-zinc-950 hover:text-zinc-200 transition-colors lg:hidden"
@@ -290,7 +300,7 @@ export function DashboardLayout({
               <Menu className="h-5 w-5" />
             </button>
           ) : null}
-          <div className={cn("min-w-0", navItems.length > 0 ? "lg:hidden" : "")}>
+          <div className={cn("min-w-0", hasSidebar ? "lg:hidden" : "")}>
             <BrandMark roleLine={roleLine} />
           </div>
 
@@ -298,7 +308,24 @@ export function DashboardLayout({
 
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {role === "SECURITY" && <LanguageToggle />}
-            <div className="hidden md:flex flex-col items-end min-w-0 leading-tight">
+            {role === "SECURITY" && (
+              <Tooltip label={t("Settings")} side="bottom">
+                <Link
+                  href="/settings"
+                  aria-label={t("Settings")}
+                  aria-current={pathname === "/settings" ? "page" : undefined}
+                  className={cn(
+                    "flex h-10 w-10 items-center justify-center rounded-full border transition-colors",
+                    pathname === "/settings"
+                      ? "border-orange-500/20 bg-orange-500/10 text-orange-400"
+                      : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-950 hover:text-zinc-200"
+                  )}
+                >
+                  <SettingsIcon className="h-[18px] w-[18px]" />
+                </Link>
+              </Tooltip>
+            )}
+            <div className="hidden lg:flex flex-col items-end min-w-0 leading-tight">
               <span className="text-sm font-medium text-zinc-100 truncate max-w-[220px]">{userName}</span>
               <span className="text-[11px] text-zinc-500 truncate max-w-[220px]">{userEmail}</span>
             </div>
@@ -315,21 +342,25 @@ export function DashboardLayout({
               disabled={signingOut}
               aria-busy={signingOut}
               className={cn(
-                "flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-300 hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-60 disabled:cursor-wait",
-                navItems.length > 0 && "lg:hidden"
+                "flex h-10 w-10 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-xs font-medium text-zinc-300 hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-60 disabled:cursor-wait",
+                hasSidebar && "lg:hidden"
               )}
               title={t("Sign out")}
             >
               {signingOut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
-              <span className="hidden sm:inline">{signingOut ? t("Signing out…") : t("Sign out")}</span>
+              <span className="sr-only">{signingOut ? t("Signing out…") : t("Sign out")}</span>
             </button>
           </div>
         </header>
 
         {/* Page content */}
         <div className="flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden px-3 pt-5 pb-6 sm:px-4 lg:px-6 lg:pt-6 lg:pb-8">
+          <PasswordChangedNotice />
           {children}
         </div>
+
+        {/* Pagination bars (PagerBar) dock here: always at the bottom of the screen */}
+        <div id={PAGE_FOOTER_SLOT_ID} className="shrink-0 px-3 sm:px-4 lg:px-6 pb-3 empty:hidden" />
       </main>
 
       {signingOut && <SigningOutOverlay />}
@@ -337,13 +368,17 @@ export function DashboardLayout({
       {/* Mobile bottom navigation: floating glass bar */}
       {isMobileNavRole && navItems.length > 0 && (
         <nav
-          className="lg:hidden fixed bottom-3 left-3 right-3 z-40 flex items-center justify-around rounded-[26px] glass shadow-card px-1 h-16"
+          className={cn(
+            "fixed bottom-3 z-40 flex items-center justify-around rounded-[26px] glass shadow-card px-1 h-16",
+            // Security has no sidebar: the bar is their navigation on every screen size
+            role === "SECURITY" ? "left-3 right-3 lg:left-1/2 lg:right-auto lg:w-[520px] lg:-translate-x-1/2" : "lg:hidden left-3 right-3"
+          )}
           style={{ marginBottom: "env(safe-area-inset-bottom)" }}
           aria-label="Main"
         >
-          {navItems.map((item) => {
+          {bottomNavItems.map((item, index) => {
             const isActive = isActivePath(item.href);
-            return (
+            const link = (
               <Link
                 key={item.href}
                 href={item.href}
@@ -369,6 +404,23 @@ export function DashboardLayout({
                 )}
               </Link>
             );
+            // Security: the QR scanner is always one tap away, in the middle of the bar
+            if (role !== "SECURITY" || index !== 1) return link;
+            return (
+              <React.Fragment key={item.href}>
+                {link}
+                <Link
+                  href="/security/scan?scan=1"
+                  aria-label={t("Scan QR")}
+                  className="relative -mt-8 flex w-full flex-col items-center gap-1"
+                >
+                  <span className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-600 text-white ring-4 ring-zinc-950 shadow-[0_14px_28px_-10px_rgba(207,62,37,0.75)] active:scale-95 transition-transform">
+                    <ScanLine className="h-7 w-7" />
+                  </span>
+                  <span className="text-[10px] font-semibold text-orange-400">{t("Scan")}</span>
+                </Link>
+              </React.Fragment>
+            );
           })}
         </nav>
       )}
@@ -383,11 +435,11 @@ export function DashboardLayout({
 
 export const adminNavItems: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: <LayoutDashboard className="h-5 w-5" /> },
-  { label: "User Management", href: "/admin/users", icon: <Users className="h-5 w-5" /> },
+  { label: "User Management", href: "/admin/users", icon: <UsersRound className="h-5 w-5" /> },
   { label: "Gate Management", href: "/admin/gates", icon: <DoorOpen className="h-5 w-5" /> },
-  { label: "Activity Logs", href: "/admin/activity", icon: <History className="h-5 w-5" /> },
+  { label: "Activity Logs", href: "/admin/activity", icon: <ActivityIcon className="h-5 w-5" /> },
   { label: "Registers", href: "/admin/registers", icon: <BookOpen className="h-5 w-5" /> },
-  { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
+  { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
   // The following pages are not yet implemented in the initial build:
   // { label: "All Permissions", href: "/admin/permissions", icon: <ClipboardCheck className="h-5 w-5" /> },
   // { label: "Movement Log", href: "/admin/movements", icon: <History className="h-5 w-5" /> },
@@ -396,75 +448,75 @@ export const adminNavItems: NavItem[] = [
 
 export const studentNavItems: NavItem[] = [
   { label: "Dashboard", href: "/student", icon: <LayoutDashboard className="h-5 w-5" /> },
-  { label: "Apply Pass", href: "/student/request", icon: <ClipboardCheck className="h-5 w-5" /> },
+  { label: "Apply Pass", href: "/student/request", icon: <Ticket className="h-5 w-5" /> },
   { label: "History", href: "/student/history", icon: <History className="h-5 w-5" /> },
-  { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
+  { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
 ];
 
 export const facultyNavItems: NavItem[] = [
   { label: "Dashboard", href: "/faculty", icon: <LayoutDashboard className="h-5 w-5" /> },
-  { label: "My Passes", href: "/faculty/apply", icon: <ClipboardCheck className="h-5 w-5" /> },
-  { label: "My Students", href: "/faculty/students", icon: <Users className="h-5 w-5" /> },
-  { label: "Activity", href: "/faculty/activity", icon: <History className="h-5 w-5" /> },
-  { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
+  { label: "My Passes", href: "/faculty/apply", icon: <Ticket className="h-5 w-5" /> },
+  { label: "My Students", href: "/faculty/students", icon: <GraduationCap className="h-5 w-5" /> },
+  { label: "Activity", href: "/faculty/activity", icon: <ActivityIcon className="h-5 w-5" /> },
+  { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
 ];
 
 export const facultyAdminNavItems: NavItem[] = [
   { label: "Dashboard", href: "/faculty-admin", icon: <LayoutDashboard className="h-5 w-5" /> },
-  { label: "Requests", href: "/faculty-admin/requests", icon: <ClipboardCheck className="h-5 w-5" /> },
-  { label: "Students", href: "/faculty-admin/students", icon: <Users className="h-5 w-5" /> },
-  { label: "Faculty", href: "/faculty-admin/faculty", icon: <Users className="h-5 w-5" /> },
-  { label: "Activity", href: "/faculty-admin/activity", icon: <History className="h-5 w-5" /> },
-  { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
+  { label: "Requests", href: "/faculty-admin/requests", icon: <Inbox className="h-5 w-5" /> },
+  { label: "Students", href: "/faculty-admin/students", icon: <GraduationCap className="h-5 w-5" /> },
+  { label: "Faculty", href: "/faculty-admin/faculty", icon: <Briefcase className="h-5 w-5" /> },
+  { label: "Activity", href: "/faculty-admin/activity", icon: <ActivityIcon className="h-5 w-5" /> },
+  { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
 ];
 
 export const wardenNavItems: NavItem[] = [
   { label: "Dashboard", href: "/warden", icon: <LayoutDashboard className="h-5 w-5" /> },
-  { label: "Hostel Students", href: "/warden/students", icon: <Users className="h-5 w-5" /> },
-  { label: "Requests", href: "/warden/requests", icon: <ClipboardCheck className="h-5 w-5" /> },
+  { label: "Hostel Students", href: "/warden/students", icon: <BedDouble className="h-5 w-5" /> },
+  { label: "Requests", href: "/warden/requests", icon: <Inbox className="h-5 w-5" /> },
   { label: "Scan Hostel Pass", href: "/warden/scan", icon: <ScanLine className="h-5 w-5" /> },
-  { label: "Activity", href: "/warden/activity", icon: <History className="h-5 w-5" /> },
-  { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
+  { label: "Activity", href: "/warden/activity", icon: <ActivityIcon className="h-5 w-5" /> },
+  { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
   // Unimplemented:
   // { label: "Approval History", href: "/warden/history", icon: <History className="h-5 w-5" /> },
 ];
 
 export const securityNavItems: NavItem[] = [
-  { label: "Dashboard", href: "/security", icon: <LayoutDashboard className="h-5 w-5" /> },
+  // Home is the registers list; on phones "Scan QR" is the raised centre button
+  { label: "Registers", href: "/security", icon: <BookOpen className="h-5 w-5" /> },
   { label: "Scan QR", href: "/security/scan", icon: <ScanLine className="h-5 w-5" /> },
-  { label: "Visitors", href: "/security/visitors", icon: <Users className="h-5 w-5" /> },
+  { label: "Visitors", href: "/security/visitors", icon: <ContactRound className="h-5 w-5" /> },
   { label: "Faculty", href: "/security/faculty", icon: <Briefcase className="h-5 w-5" /> },
-  { label: "Gate Logs", href: "/security/log", icon: <History className="h-5 w-5" /> },
-  { label: "Registers", href: "/security/registers", icon: <BookOpen className="h-5 w-5" /> },
-  { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
+  { label: "Gate Logs", href: "/security/log", icon: <ScrollText className="h-5 w-5" /> },
+  { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
 ];
 
 export const directorNavItems: NavItem[] = [
   { label: "Dashboard", href: "/director", icon: <LayoutDashboard className="h-5 w-5" /> },
   { label: "All Students", href: "/director/students", icon: <GraduationCap className="h-5 w-5" /> },
-  { label: "All HODs", href: "/director/hods", icon: <Users className="h-5 w-5" /> },
-  { label: "All Faculty", href: "/director/faculty", icon: <Users className="h-5 w-5" /> },
-  { label: "Activity", href: "/director/activity", icon: <History className="h-5 w-5" /> },
-  { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
+  { label: "All HODs", href: "/director/hods", icon: <Network className="h-5 w-5" /> },
+  { label: "All Faculty", href: "/director/faculty", icon: <Briefcase className="h-5 w-5" /> },
+  { label: "Activity", href: "/director/activity", icon: <ActivityIcon className="h-5 w-5" /> },
+  { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
 ];
 
 export const deanNavItems: NavItem[] = [
   { label: "Dashboard", href: "/dean", icon: <LayoutDashboard className="h-5 w-5" /> },
-  { label: "Faculty Passes", href: "/dean/requests", icon: <ClipboardCheck className="h-5 w-5" /> },
+  { label: "Faculty Passes", href: "/dean/requests", icon: <Inbox className="h-5 w-5" /> },
   { label: "All Students", href: "/dean/students", icon: <GraduationCap className="h-5 w-5" /> },
-  { label: "All HODs", href: "/dean/hods", icon: <Users className="h-5 w-5" /> },
-  { label: "All Faculty", href: "/dean/faculty", icon: <Users className="h-5 w-5" /> },
-  { label: "Activity", href: "/dean/activity", icon: <History className="h-5 w-5" /> },
-  { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
+  { label: "All HODs", href: "/dean/hods", icon: <Network className="h-5 w-5" /> },
+  { label: "All Faculty", href: "/dean/faculty", icon: <Briefcase className="h-5 w-5" /> },
+  { label: "Activity", href: "/dean/activity", icon: <ActivityIcon className="h-5 w-5" /> },
+  { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
 ];
 
 // Security Supervisor: view-only oversight (no approve / reject anywhere)
 export const supervisorNavItems: NavItem[] = [
   { label: "Dashboard", href: "/supervisor", icon: <LayoutDashboard className="h-5 w-5" /> },
-  { label: "Requests", href: "/supervisor/requests", icon: <ClipboardCheck className="h-5 w-5" /> },
+  { label: "Requests", href: "/supervisor/requests", icon: <Inbox className="h-5 w-5" /> },
   { label: "Students", href: "/supervisor/students", icon: <GraduationCap className="h-5 w-5" /> },
-  { label: "Faculty", href: "/supervisor/faculty", icon: <Users className="h-5 w-5" /> },
-  { label: "Activity", href: "/supervisor/activity", icon: <History className="h-5 w-5" /> },
+  { label: "Faculty", href: "/supervisor/faculty", icon: <Briefcase className="h-5 w-5" /> },
+  { label: "Activity", href: "/supervisor/activity", icon: <ActivityIcon className="h-5 w-5" /> },
   { label: "Registers", href: "/supervisor/registers", icon: <BookOpen className="h-5 w-5" /> },
-  { label: "Settings", href: "/settings", icon: <UserCog className="h-5 w-5" /> },
+  { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
 ];

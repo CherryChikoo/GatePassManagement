@@ -47,61 +47,69 @@ export function RequestCard({ r, compact = false }: { r: any; compact?: boolean 
   const decidedBy = r.approval?.faculty?.profile?.name || r.approval?.warden?.profile?.name;
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-2.5">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-5 space-y-3">
+      <div className="flex items-start gap-3">
         <span
-          className={`inline-flex h-7 w-7 items-center justify-center rounded-lg ${
-            isFaculty ? "bg-indigo-500/15 text-indigo-300" : "bg-orange-500/15 text-orange-300"
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
+            isFaculty ? "bg-orange-500/10 text-orange-400" : "bg-zinc-950 text-zinc-400"
           }`}
           aria-hidden="true"
         >
           {isFaculty ? <Briefcase className="h-4 w-4" /> : <GraduationCap className="h-4 w-4" />}
         </span>
-        <span className="text-sm font-semibold text-zinc-100">{name}</span>
-        {idLabel && (
-          <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300">{idLabel}</span>
-        )}
-        <span className="text-[11px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{roleLabel}</span>
-        {person?.department && (
-          <span className="text-[11px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{person.department}</span>
-        )}
-        <span
-          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-            r.type === "ENTRY" ? "bg-emerald-500/20 text-emerald-400" : "bg-orange-500/20 text-orange-400"
-          }`}
-        >
-          {r.type}
-        </span>
-        <StatusBadge status={r.status} />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-zinc-100 break-words">
+            {name}
+            {idLabel && <span className="font-mono text-xs font-normal text-zinc-500"> · {idLabel}</span>}
+          </p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <span className="rounded-full border border-zinc-800 px-2 py-0.5 text-[11px] text-zinc-400">{roleLabel}</span>
+            {person?.department && (
+              <span className="rounded-full border border-zinc-800 px-2 py-0.5 text-[11px] text-zinc-400 max-w-full truncate">
+                {person.department}
+              </span>
+            )}
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                r.type === "ENTRY" ? "bg-emerald-500/10 text-emerald-400" : "bg-sky-500/10 text-sky-400"
+              }`}
+            >
+              {r.type}
+            </span>
+          </div>
+        </div>
+        <div className="shrink-0">
+          <StatusBadge status={r.status} />
+        </div>
       </div>
 
       <p className="text-sm text-zinc-200 break-words">{r.purpose}</p>
 
       <PassExtraDetails pass={r} />
 
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-400">
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-zinc-500">
         {r.destination && (
-          <span className="flex items-center gap-1">
-            <MapPin className="h-3 w-3" aria-hidden="true" />
+          <span className="flex items-center gap-1.5 min-w-0 break-words">
+            <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             {r.destination}
           </span>
         )}
-        <span className="flex items-center gap-1">
-          <Clock className="h-3 w-3" aria-hidden="true" />
+        <span className="flex items-center gap-1.5">
+          <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           Requested {formatDateTime(r.createdAt)}{scheduledNote(r)}
         </span>
         {r.expectedExit && <span>Expected {formatDateTime(r.expectedExit)}</span>}
-        <span className="flex items-center gap-1">
-          <ShieldCheck className="h-3 w-3" aria-hidden="true" />
+        <span className="flex items-center gap-1.5">
+          <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           Approver: {approverText(r)}
         </span>
       </div>
 
       {!compact && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 border-t border-zinc-800/70 pt-3 text-xs empty:hidden">
           {(r.contactNumber || person?.profile?.phone) && (
-            <span className="flex items-center gap-1 text-zinc-400">
-              <Phone className="h-3 w-3" aria-hidden="true" />
+            <span className="flex items-center gap-1.5 text-zinc-500">
+              <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               {r.contactNumber || person?.profile?.phone}
             </span>
           )}
@@ -112,7 +120,7 @@ export function RequestCard({ r, compact = false }: { r: any; compact?: boolean 
             </span>
           )}
           {r.rejectedAt && (
-            <span className="text-red-400">
+            <span className="text-red-400 break-words">
               Rejected {formatDateTime(r.rejectedAt)}
               {decidedBy ? ` by ${decidedBy}` : ""}
               {r.rejectionReason ? ` — ${r.rejectionReason}` : ""}
@@ -124,7 +132,7 @@ export function RequestCard({ r, compact = false }: { r: any; compact?: boolean 
               {m.gate?.name ? ` • ${m.gate.name}` : ""}
             </span>
           ))}
-          {r.remarks && <span className="text-zinc-500">Remarks: {r.remarks}</span>}
+          {r.remarks && <span className="text-zinc-500 break-words">Remarks: {r.remarks}</span>}
         </div>
       )}
     </div>

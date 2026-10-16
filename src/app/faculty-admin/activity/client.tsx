@@ -3,7 +3,7 @@ import { istDateString } from "@/lib/time/ist";
 import { scheduledNote } from "@/lib/pass-dates";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { PagerBar } from "@/components/ui/pager-bar";
 import { StatusBadge, Modal } from "@/components/ui/primitives";
 import { formatDateTime, formatDate } from "@/lib/utils";
 import { getDepartmentCode, getDepartmentFullName } from "@/lib/constants";
@@ -14,13 +14,11 @@ import {
   Clock,
   LogIn,
   LogOut,
-  User,
   GraduationCap,
   Briefcase,
   AlertCircle,
   MapPin,
   Phone,
-  FileText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -192,7 +190,6 @@ export function HodActivityClient({
   visibleItems.sort((a, b) => b.sortKey - a.sortKey);
 
   const displayTotal = visibleItems.length;
-  const totalPages = Math.max(1, Math.ceil(displayTotal / pageSize));
   const paginatedItems = visibleItems.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
@@ -217,33 +214,60 @@ export function HodActivityClient({
     setCurrentPage(1);
   };
 
+  const segTrack =
+    "inline-flex max-w-full rounded-full bg-zinc-950 p-1 border border-zinc-800 overflow-x-auto scrollbar-none";
+  const segItem = (active: boolean) =>
+    `inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap ${
+      active ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
+    }`;
+  const countChip = "text-[10px] font-semibold text-zinc-500";
+  const idChip =
+    "rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 font-mono text-[11px] text-zinc-500";
+  const kindChip =
+    "rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-500 shrink-0";
+  const pendingChip =
+    "inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400";
+  const rowBase =
+    "w-full flex items-start gap-3 sm:gap-4 px-4 sm:px-6 py-4 text-left hover:bg-zinc-950/70 transition-colors cursor-pointer";
+
+  const passTypeChip = (type: string) =>
+    type === "ENTRY" ? (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
+        <DoorClosed className="h-3 w-3" /> Entry Pass
+      </span>
+    ) : (
+      <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-400">
+        <DoorOpen className="h-3 w-3" /> Exit Pass
+      </span>
+    );
+
   return (
     <>
-      <div className="space-y-6">
+      <div className="mx-auto max-w-7xl space-y-6">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+          <div className="min-w-0">
             <BackButton href="/faculty-admin" label="Back to Dashboard" />
-            <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 flex items-center gap-3 flex-wrap">
               Department Activity Log
               {department && (
-                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
+                <span className="rounded-full bg-orange-500/10 px-2.5 py-0.5 text-xs font-medium text-orange-400">
                   {getDepartmentCode(department)}
                 </span>
               )}
             </h1>
-            <p className="text-sm text-zinc-500 mt-1">
+            <p className="mt-1 text-sm text-zinc-500">
               {displayTotal} records found
               {department ? ` · Department of ${getDepartmentFullName(department)}` : ""}
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
             {/* Search */}
-            <div className="relative w-full sm:w-64 group">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <div className="relative w-full sm:flex-1 lg:w-64 lg:flex-none group">
+              <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none">
                 <svg
-                  className="h-4 w-4 text-zinc-400 group-focus-within:text-orange-500 transition-colors"
+                  className="h-4 w-4 text-zinc-500 group-focus-within:text-orange-500 transition-colors"
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
                   fill="none"
@@ -261,135 +285,83 @@ export function HodActivityClient({
                 placeholder="Search name, roll, purpose..."
                 value={search}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                className="w-full h-9 pl-9 pr-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-colors"
+                className="w-full h-10 rounded-full border border-zinc-800 bg-zinc-900 pl-10 pr-4 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 transition-colors"
               />
             </div>
 
-            {/* Date Picker */}
+            {/* Date picker */}
             <div className="relative flex items-center group w-full sm:w-auto">
-              <Calendar className="absolute left-3 h-4 w-4 text-zinc-400 group-hover:text-zinc-200 transition-colors pointer-events-none z-10" />
+              <Calendar className="absolute left-3.5 h-4 w-4 text-zinc-500 group-hover:text-zinc-300 transition-colors pointer-events-none z-10" />
               <input
                 type="date"
                 value={selectedDate}
                 max={istDateString()}
                 onChange={handleDateChange}
-                className="relative w-full sm:w-auto h-9 pl-9 pr-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500/50 [color-scheme:light] cursor-pointer hover:border-zinc-700 hover:bg-zinc-800 transition-colors [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                className="relative w-full sm:w-auto h-10 rounded-full border border-zinc-800 bg-zinc-900 pl-10 pr-4 text-sm font-medium text-zinc-200 outline-none focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 [color-scheme:light] cursor-pointer hover:border-zinc-700 transition-colors [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
               />
             </div>
           </div>
         </div>
 
-        {/* Primary Tabs: Students / Faculty / All */}
-        <div className="flex gap-2 p-1 bg-zinc-900 border border-zinc-800 rounded-lg w-fit">
-          <button
-            onClick={() => handleTabChange("STUDENTS")}
-            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
-              activeTab === "STUDENTS"
-                ? "bg-blue-500/20 text-blue-300 shadow-none"
-                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
-            }`}
-          >
-            <GraduationCap className="h-3.5 w-3.5" />
-            Students
-            <span className="text-[10px] opacity-70">({studentCounts.all})</span>
-          </button>
+        {/* Filters */}
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
+          {/* Primary tabs: Students / Faculty / All */}
+          <div className={`${segTrack} self-start`} role="tablist" aria-label="Applicant type">
+            <button type="button" role="tab" aria-selected={activeTab === "STUDENTS"} onClick={() => handleTabChange("STUDENTS")} className={segItem(activeTab === "STUDENTS")}>
+              <GraduationCap className="h-3.5 w-3.5" />
+              Students
+              <span className={countChip}>({studentCounts.all})</span>
+            </button>
+            <button type="button" role="tab" aria-selected={activeTab === "FACULTY"} onClick={() => handleTabChange("FACULTY")} className={segItem(activeTab === "FACULTY")}>
+              <Briefcase className="h-3.5 w-3.5" />
+              Faculty
+              <span className={countChip}>({facultyCounts.all})</span>
+            </button>
+            <button type="button" role="tab" aria-selected={activeTab === "ALL"} onClick={() => handleTabChange("ALL")} className={segItem(activeTab === "ALL")}>
+              All
+              <span className={countChip}>({combinedCounts.all})</span>
+            </button>
+          </div>
 
-          <button
-            onClick={() => handleTabChange("FACULTY")}
-            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
-              activeTab === "FACULTY"
-                ? "bg-indigo-500/20 text-indigo-300 shadow-none"
-                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
-            }`}
-          >
-            <Briefcase className="h-3.5 w-3.5" />
-            Faculty
-            <span className="text-[10px] opacity-70">({facultyCounts.all})</span>
-          </button>
-
-          <button
-            onClick={() => handleTabChange("ALL")}
-            className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
-              activeTab === "ALL"
-                ? "bg-zinc-900 text-zinc-100 shadow-card shadow-none"
-                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
-            }`}
-          >
-            All
-            <span className="text-[10px] opacity-70">({combinedCounts.all})</span>
-          </button>
+          {/* Sub-tabs: All Data / Pending / Entries / Exits */}
+          <div className={`${segTrack} self-start`} role="tablist" aria-label="Activity type">
+            <button type="button" role="tab" aria-selected={subTab === "ALL"} onClick={() => handleSubTabChange("ALL")} className={segItem(subTab === "ALL")}>
+              All Data
+              <span className={countChip}>({activeSubCounts.all})</span>
+            </button>
+            <button type="button" role="tab" aria-selected={subTab === "PENDING"} onClick={() => handleSubTabChange("PENDING")} className={segItem(subTab === "PENDING")}>
+              <AlertCircle className={`h-3.5 w-3.5 ${activeSubCounts.pending > 0 ? "text-amber-400" : ""}`} />
+              Pending
+              <span
+                className={`rounded-full px-1.5 text-[10px] font-semibold ${
+                  activeSubCounts.pending > 0 ? "bg-amber-500/10 text-amber-400" : "text-zinc-500"
+                }`}
+              >
+                {activeSubCounts.pending}
+              </span>
+            </button>
+            <button type="button" role="tab" aria-selected={subTab === "ENTRIES"} onClick={() => handleSubTabChange("ENTRIES")} className={segItem(subTab === "ENTRIES")}>
+              <DoorClosed className="h-3.5 w-3.5" />
+              Entries
+              <span className={countChip}>({activeSubCounts.entries})</span>
+            </button>
+            <button type="button" role="tab" aria-selected={subTab === "EXITS"} onClick={() => handleSubTabChange("EXITS")} className={segItem(subTab === "EXITS")}>
+              <DoorOpen className="h-3.5 w-3.5" />
+              Exits
+              <span className={countChip}>({activeSubCounts.exits})</span>
+            </button>
+          </div>
         </div>
 
-        {/* Sub-tabs: All Data / Pending / Entries / Exits */}
-        <div className="flex flex-wrap gap-2 p-1 bg-zinc-900/60 border border-zinc-800/80 rounded-lg w-fit">
-          <button
-            onClick={() => handleSubTabChange("ALL")}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
-              subTab === "ALL"
-                ? "bg-zinc-900 text-zinc-100 shadow-card shadow-none"
-                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
-            }`}
-          >
-            All Data
-            <span className="text-[10px] opacity-70">({activeSubCounts.all})</span>
-          </button>
-
-          <button
-            onClick={() => handleSubTabChange("PENDING")}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
-              subTab === "PENDING"
-                ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-none"
-                : activeSubCounts.pending > 0
-                ? "text-amber-400/90 hover:text-amber-300 hover:bg-amber-500/10"
-                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
-            }`}
-          >
-            <AlertCircle className="h-3.5 w-3.5" />
-            Pending
-            <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                activeSubCounts.pending > 0
-                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                  : "opacity-70"
-              }`}
-            >
-              {activeSubCounts.pending}
-            </span>
-          </button>
-
-          <button
-            onClick={() => handleSubTabChange("ENTRIES")}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
-              subTab === "ENTRIES"
-                ? "bg-emerald-500/20 text-emerald-300 shadow-none"
-                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
-            }`}
-          >
-            <DoorClosed className="h-3.5 w-3.5" />
-            Entries
-            <span className="text-[10px] opacity-70">({activeSubCounts.entries})</span>
-          </button>
-
-          <button
-            onClick={() => handleSubTabChange("EXITS")}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
-              subTab === "EXITS"
-                ? "bg-orange-500/20 text-orange-300 shadow-none"
-                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
-            }`}
-          >
-            <DoorOpen className="h-3.5 w-3.5" />
-            Exits
-            <span className="text-[10px] opacity-70">({activeSubCounts.exits})</span>
-          </button>
-        </div>
-
-        {/* Activity List */}
-        <Card className="border border-zinc-800 bg-zinc-900/40 shadow-none overflow-hidden rounded-2xl">
+        {/* Activity list */}
+        <Card className="overflow-hidden">
           <CardContent className="p-0">
             {paginatedItems.length === 0 ? (
-              <div className="text-center py-12 px-4 space-y-2">
-                <p className="text-sm font-medium text-zinc-400">
+              <div className="flex flex-col items-center py-12 px-4 text-center">
+                <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 text-zinc-500">
+                  <Clock className="h-5 w-5" />
+                </span>
+                <p className="text-sm font-medium text-zinc-300">
                   {subTab === "PENDING"
                     ? "No pending pass requests found for the selected date."
                     : subTab === "ENTRIES"
@@ -398,283 +370,204 @@ export function HodActivityClient({
                     ? "No exit activity recorded for the selected date."
                     : "No activity records found for the selected date."}
                 </p>
-                <p className="text-xs text-zinc-500">
+                <p className="mt-1 text-xs text-zinc-500">
                   {search
                     ? "Try adjusting your search query or switching tabs."
                     : "Pass requests and gate scan logs will appear here."}
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-zinc-800/40">
+              <ul className="divide-y divide-zinc-800/70">
                 {paginatedItems.map((item) => {
                   if (item.kind === "student-permission") {
                     const perm = item.data;
                     const isPending = perm.status === "PENDING";
+                    const name = perm.student?.profile?.name || "Student";
                     return (
-                      <div
-                        key={`s-${perm.id}`}
-                        onClick={() => setSelectedPermission(perm)}
-                        className={`flex items-center justify-between px-6 py-4.5 hover:bg-zinc-800/30 transition-colors cursor-pointer ${
-                          isPending ? "bg-amber-500/[0.03]" : ""
-                        }`}
-                      >
-                        <div className="flex items-center gap-4 flex-1 min-w-0">
-                          <div className="flex flex-col gap-1 items-center justify-center p-2 rounded-xl bg-zinc-900 border border-zinc-800 min-w-20 shrink-0">
-                            <StatusBadge status={perm.status} />
-                          </div>
+                      <li key={`s-${perm.id}`}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPermission(perm)}
+                          className={`${rowBase} ${isPending ? "bg-amber-500/[0.04]" : ""}`}
+                        >
+                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400 font-semibold">
+                            {name.charAt(0).toUpperCase()}
+                          </span>
 
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <p className="text-sm font-semibold text-zinc-100 truncate">
-                                {perm.student?.profile?.name || "Student"}
-                              </p>
-                              {perm.student?.studentRoll && (
-                                <span className="font-mono text-xs text-zinc-400 font-bold px-1.5 py-0.5 rounded bg-zinc-800/70 border border-zinc-700/60">
-                                  {perm.student.studentRoll}
-                                </span>
-                              )}
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">
-                                Student
-                              </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-x-2 gap-y-1 flex-wrap">
+                              <span className="text-sm font-medium text-zinc-100 truncate max-w-full">{name}</span>
+                              {perm.student?.studentRoll && <span className={idChip}>{perm.student.studentRoll}</span>}
+                              <span className={kindChip}>Student</span>
                               {isPending && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                <span className={pendingChip}>
                                   <AlertCircle className="h-3 w-3" />
                                   Pending HOD Approval
                                 </span>
                               )}
-                            </div>
+                            </span>
 
-                            <p className="text-xs text-zinc-300 font-medium">
+                            <span className="mt-1 block text-xs text-zinc-300 break-words">
                               {perm.purpose}{" "}
                               {perm.destination && (
-                                <span className="text-zinc-500 font-normal">
-                                  → {perm.destination}
-                                </span>
+                                <span className="text-zinc-500">→ {perm.destination}</span>
                               )}
-                            </p>
+                            </span>
 
-                            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                              {perm.type === "ENTRY" ? (
-                                <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                                  <DoorClosed className="h-3 w-3" /> Entry Pass
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-1 text-[11px] font-semibold text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded-md border border-orange-500/20">
-                                  <DoorOpen className="h-3 w-3" /> Exit Pass
-                                </div>
-                              )}
-
+                            <span className="mt-2 flex items-center gap-x-3 gap-y-1.5 flex-wrap">
+                              {passTypeChip(perm.type)}
                               {perm.createdAt && (
                                 <span className="text-[11px] text-zinc-500 flex items-center gap-1">
-                                  <Clock className="h-3 w-3 text-zinc-400" />
+                                  <Clock className="h-3 w-3 shrink-0" />
                                   Requested: {formatDateTime(perm.createdAt)}{scheduledNote(perm)}
                                 </span>
                               )}
-
                               {perm.movements && perm.movements.length > 0 && (
-                                <span className="text-[11px] text-zinc-400 font-medium bg-zinc-800/60 px-2 py-0.5 rounded border border-zinc-700/50">
+                                <span className="rounded-full bg-zinc-950 px-2 py-0.5 text-[11px] font-medium text-zinc-400">
                                   {perm.movements.length} gate scan
                                   {perm.movements.length > 1 ? "s" : ""}
                                 </span>
                               )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                            </span>
+                          </span>
+
+                          <span className="shrink-0">
+                            <StatusBadge status={perm.status} />
+                          </span>
+                        </button>
+                      </li>
                     );
                   } else if (item.kind === "faculty-permission") {
                     const perm = item.data;
                     const isPending = perm.status === "PENDING";
+                    const name = perm.faculty?.profile?.name || "Faculty Member";
                     return (
-                      <div
-                        key={`fp-${perm.id}`}
-                        onClick={() => setSelectedPermission(perm)}
-                        className={`flex items-center justify-between px-6 py-4.5 hover:bg-zinc-800/30 transition-colors cursor-pointer ${
-                          isPending ? "bg-amber-500/[0.03]" : ""
-                        }`}
-                      >
-                        <div className="flex items-center gap-4 flex-1 min-w-0">
-                          <div className="flex flex-col gap-1 items-center justify-center p-2 rounded-xl bg-zinc-900 border border-zinc-800 min-w-20 shrink-0">
-                            <StatusBadge status={perm.status} />
-                          </div>
+                      <li key={`fp-${perm.id}`}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPermission(perm)}
+                          className={`${rowBase} ${isPending ? "bg-amber-500/[0.04]" : ""}`}
+                        >
+                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400 font-semibold">
+                            {name.charAt(0).toUpperCase()}
+                          </span>
 
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <p className="text-sm font-semibold text-zinc-100 truncate">
-                                {perm.faculty?.profile?.name || "Faculty Member"}
-                              </p>
-                              {perm.faculty?.employeeId && (
-                                <span className="font-mono text-xs text-zinc-400 font-bold px-1.5 py-0.5 rounded bg-zinc-800/70 border border-zinc-700/60">
-                                  {perm.faculty.employeeId}
-                                </span>
-                              )}
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 shrink-0">
-                                Faculty
-                              </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-x-2 gap-y-1 flex-wrap">
+                              <span className="text-sm font-medium text-zinc-100 truncate max-w-full">{name}</span>
+                              {perm.faculty?.employeeId && <span className={idChip}>{perm.faculty.employeeId}</span>}
+                              <span className={kindChip}>Faculty</span>
                               {perm.faculty?.designation && (
-                                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700/50">
+                                <span className="rounded-full bg-zinc-950 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
                                   {perm.faculty.designation}
                                 </span>
                               )}
                               {isPending && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                <span className={pendingChip}>
                                   <AlertCircle className="h-3 w-3" />
                                   Pending HOD Approval
                                 </span>
                               )}
-                            </div>
+                            </span>
 
-                            <p className="text-xs text-zinc-300 font-medium">
+                            <span className="mt-1 block text-xs text-zinc-300 break-words">
                               {perm.purpose}{" "}
                               {perm.destination && (
-                                <span className="text-zinc-500 font-normal">
-                                  → {perm.destination}
-                                </span>
+                                <span className="text-zinc-500">→ {perm.destination}</span>
                               )}
-                            </p>
+                            </span>
 
-                            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                              {perm.type === "ENTRY" ? (
-                                <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                                  <DoorClosed className="h-3 w-3" /> Entry Pass
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-1 text-[11px] font-semibold text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded-md border border-orange-500/20">
-                                  <DoorOpen className="h-3 w-3" /> Exit Pass
-                                </div>
-                              )}
-
+                            <span className="mt-2 flex items-center gap-x-3 gap-y-1.5 flex-wrap">
+                              {passTypeChip(perm.type)}
                               {perm.createdAt && (
                                 <span className="text-[11px] text-zinc-500 flex items-center gap-1">
-                                  <Clock className="h-3 w-3 text-zinc-400" />
+                                  <Clock className="h-3 w-3 shrink-0" />
                                   Requested: {formatDateTime(perm.createdAt)}{scheduledNote(perm)}
                                 </span>
                               )}
-
                               {perm.movements && perm.movements.length > 0 && (
-                                <span className="text-[11px] text-zinc-400 font-medium bg-zinc-800/60 px-2 py-0.5 rounded border border-zinc-700/50">
+                                <span className="rounded-full bg-zinc-950 px-2 py-0.5 text-[11px] font-medium text-zinc-400">
                                   {perm.movements.length} gate scan
                                   {perm.movements.length > 1 ? "s" : ""}
                                 </span>
                               )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                            </span>
+                          </span>
+
+                          <span className="shrink-0">
+                            <StatusBadge status={perm.status} />
+                          </span>
+                        </button>
+                      </li>
                     );
                   } else {
                     const mov = item.data;
                     const isExit = mov.type === "EXIT";
                     return (
-                      <div
-                        key={`fm-${mov.id}`}
-                        onClick={() => setSelectedMovement(mov)}
-                        className="flex items-center justify-between px-6 py-4.5 hover:bg-zinc-800/30 transition-colors cursor-pointer"
-                      >
-                        <div className="flex items-center gap-4 flex-1 min-w-0">
-                          <div
-                            className={`h-11 w-11 shrink-0 rounded-xl flex items-center justify-center border ${
-                              isExit
-                                ? "bg-orange-500/10 text-orange-400 border-orange-500/20"
-                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                      <li key={`fm-${mov.id}`}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMovement(mov)}
+                          className={rowBase}
+                        >
+                          <span
+                            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+                              isExit ? "bg-sky-500/10 text-sky-400" : "bg-emerald-500/10 text-emerald-400"
                             }`}
                           >
-                            {isExit ? (
-                              <LogOut className="h-5 w-5" />
-                            ) : (
-                              <LogIn className="h-5 w-5" />
-                            )}
-                          </div>
+                            {isExit ? <LogOut className="h-5 w-5" /> : <LogIn className="h-5 w-5" />}
+                          </span>
 
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <p className="text-sm font-semibold text-zinc-100 truncate">
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-x-2 gap-y-1 flex-wrap">
+                              <span className="text-sm font-medium text-zinc-100 truncate max-w-full">
                                 {mov.faculty?.profile?.name || "Unknown Faculty"}
-                              </p>
-                              {mov.faculty?.employeeId && (
-                                <span className="font-mono text-xs text-zinc-400 font-bold px-1.5 py-0.5 rounded bg-zinc-800/70 border border-zinc-700/60">
-                                  {mov.faculty.employeeId}
-                                </span>
-                              )}
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 shrink-0">
-                                Faculty
                               </span>
+                              {mov.faculty?.employeeId && <span className={idChip}>{mov.faculty.employeeId}</span>}
+                              <span className={kindChip}>Faculty</span>
                               <span
-                                className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${
-                                  isExit
-                                    ? "bg-orange-500/20 text-orange-400"
-                                    : "bg-emerald-500/20 text-emerald-400"
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${
+                                  isExit ? "bg-sky-500/10 text-sky-400" : "bg-emerald-500/10 text-emerald-400"
                                 }`}
                               >
                                 {mov.type} GATE SCAN
                               </span>
-                            </div>
+                            </span>
 
-                            <div className="flex items-center gap-3 text-xs text-zinc-400 flex-wrap">
+                            <span className="mt-1.5 flex items-center gap-x-3 gap-y-1 text-xs text-zinc-500 flex-wrap">
                               {mov.faculty?.designation && (
-                                <span className="text-zinc-400 font-medium">
-                                  {mov.faculty.designation}
-                                </span>
+                                <span className="text-zinc-400">{mov.faculty.designation}</span>
                               )}
-                              <span className="flex items-center gap-1 text-zinc-400">
-                                <DoorOpen className="h-3 w-3 text-zinc-500" />
+                              <span className="flex items-center gap-1">
+                                <DoorOpen className="h-3 w-3 shrink-0" />
                                 {mov.gate?.name || "Gate"}
                                 {mov.gate?.location ? ` (${mov.gate.location})` : ""}
                               </span>
-                              <span>•</span>
-                              <span className="text-zinc-500">
-                                {mov.createdAt ? formatDateTime(mov.createdAt) : "—"}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                              <span aria-hidden>•</span>
+                              <span>{mov.createdAt ? formatDateTime(mov.createdAt) : "—"}</span>
+                            </span>
+                          </span>
+                        </button>
+                      </li>
                     );
                   }
                 })}
-              </div>
+              </ul>
             )}
           </CardContent>
         </Card>
 
-        {/* Pagination Controls */}
-        {displayTotal > pageSize && (
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 py-4 px-6 rounded-xl border border-zinc-800 bg-zinc-900/60 shadow-none">
-            <p className="text-xs text-zinc-400 font-medium">
-              Showing {(currentPage - 1) * pageSize + 1} to{" "}
-              {Math.min(currentPage * pageSize, displayTotal)} of {displayTotal}{" "}
-              records
-            </p>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-zinc-500">
-                Page {currentPage} of {totalPages}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={currentPage <= 1}
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className="h-8 px-3 text-xs shadow-none border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 disabled:opacity-40"
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={currentPage >= totalPages}
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className="h-8 px-3 text-xs shadow-none border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 disabled:opacity-40"
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Pagination (docks at the bottom of the screen) */}
+        <PagerBar
+          page={currentPage}
+          pageSize={pageSize}
+          total={displayTotal}
+          onPageChange={setCurrentPage}
+          itemLabel="records"
+        />
       </div>
 
-      {/* Permission Detail Modal (Both Student & Faculty) */}
+      {/* Permission detail modal (student & faculty) */}
       <Modal
         open={!!selectedPermission}
         onClose={() => setSelectedPermission(null)}
@@ -687,64 +580,54 @@ export function HodActivityClient({
         }
       >
         {selectedPermission && (
-          <div className="space-y-4 pt-2 text-xs">
-            {/* Applicant Profile Box */}
-            <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-between gap-4">
-              <div>
-                <p className="text-[11px] text-zinc-500 uppercase font-semibold tracking-wider">
+          <div className="space-y-4">
+            {/* Applicant */}
+            <div className="flex items-center justify-between gap-4 rounded-2xl border border-zinc-800 p-4">
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-wider text-zinc-500">
                   {selectedPermission.student ? "Student Applicant" : "Faculty Member"}
                 </p>
-                <p className="text-sm font-bold text-zinc-100 mt-0.5">
+                <p className="mt-0.5 text-sm font-medium text-zinc-100 break-words">
                   {selectedPermission.student?.profile?.name ||
                     selectedPermission.faculty?.profile?.name ||
                     "Applicant"}
                 </p>
-                <p className="text-xs text-zinc-400 font-mono mt-0.5">
+                <p className="mt-0.5 font-mono text-xs text-zinc-500">
                   {selectedPermission.student?.studentRoll ||
                     selectedPermission.faculty?.employeeId ||
                     selectedPermission.faculty?.designation ||
                     "—"}
                 </p>
               </div>
-              <div className="text-right space-y-1">
+              <div className="shrink-0 text-right space-y-1">
                 <StatusBadge status={selectedPermission.status} />
-                <p className="text-[11px] text-zinc-500">
-                  {selectedPermission.type} PASS
-                </p>
+                <p className="text-[11px] text-zinc-500">{selectedPermission.type} PASS</p>
               </div>
             </div>
 
-            {/* Purpose & Destination */}
+            {/* Purpose & destination */}
             <div className="space-y-2">
-              <div className="p-3 rounded-lg bg-zinc-950/60 border border-zinc-800/80">
-                <span className="text-zinc-500 font-medium block text-[11px] uppercase">
-                  Purpose of Leave
-                </span>
-                <p className="text-sm text-zinc-200 font-medium mt-0.5">
-                  {selectedPermission.purpose}
-                </p>
+              <div className="rounded-2xl bg-zinc-950 p-3">
+                <span className="block text-[11px] uppercase tracking-wider text-zinc-500">Purpose of Leave</span>
+                <p className="mt-0.5 text-sm text-zinc-200 break-words">{selectedPermission.purpose}</p>
               </div>
 
               {selectedPermission.destination && (
-                <div className="p-3 rounded-lg bg-zinc-950/60 border border-zinc-800/80">
-                  <span className="text-zinc-500 font-medium block text-[11px] uppercase">
-                    Destination
-                  </span>
-                  <p className="text-sm text-zinc-200 font-medium mt-0.5 flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5 text-zinc-400" />
+                <div className="rounded-2xl bg-zinc-950 p-3">
+                  <span className="block text-[11px] uppercase tracking-wider text-zinc-500">Destination</span>
+                  <p className="mt-0.5 flex items-center gap-1.5 text-sm text-zinc-200 break-words">
+                    <MapPin className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
                     {selectedPermission.destination}
                   </p>
                 </div>
               )}
             </div>
 
-            {/* Date & Timing Grid */}
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="p-3 rounded-lg bg-zinc-950/60 border border-zinc-800/80">
-                <span className="text-zinc-500 font-medium block text-[11px]">
-                  Pass Date / Requested
-                </span>
-                <p className="text-zinc-200 font-semibold mt-0.5">
+            {/* Date & timing */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="rounded-2xl bg-zinc-950 p-3">
+                <span className="block text-[11px] uppercase tracking-wider text-zinc-500">Pass Date / Requested</span>
+                <p className="mt-0.5 text-sm font-medium text-zinc-200">
                   {selectedPermission.exitDate
                     ? formatDate(selectedPermission.exitDate)
                     : selectedPermission.createdAt
@@ -753,11 +636,9 @@ export function HodActivityClient({
                 </p>
               </div>
 
-              <div className="p-3 rounded-lg bg-zinc-950/60 border border-zinc-800/80">
-                <span className="text-zinc-500 font-medium block text-[11px]">
-                  Expected Timing
-                </span>
-                <p className="text-zinc-200 font-semibold mt-0.5">
+              <div className="rounded-2xl bg-zinc-950 p-3">
+                <span className="block text-[11px] uppercase tracking-wider text-zinc-500">Expected Timing</span>
+                <p className="mt-0.5 text-sm font-medium text-zinc-200">
                   {selectedPermission.expectedExit
                     ? formatDateTime(selectedPermission.expectedExit).split(", ")[1]
                     : "Anytime"}
@@ -768,52 +649,47 @@ export function HodActivityClient({
               </div>
             </div>
 
-            {/* Contact / Remarks */}
+            {/* Contact / remarks */}
             {(selectedPermission.contactNumber || selectedPermission.remarks) && (
-              <div className="p-3 rounded-lg bg-zinc-950/60 border border-zinc-800/80 space-y-1">
+              <div className="rounded-2xl bg-zinc-950 p-3 space-y-1 text-xs">
                 {selectedPermission.contactNumber && (
-                  <p className="text-zinc-400 flex items-center gap-1.5">
-                    <Phone className="h-3.5 w-3.5 text-zinc-500" /> Contact:{" "}
-                    <span className="text-zinc-200 font-mono">
-                      {selectedPermission.contactNumber}
-                    </span>
+                  <p className="flex items-center gap-1.5 text-zinc-500">
+                    <Phone className="h-3.5 w-3.5" /> Contact:{" "}
+                    <span className="font-mono text-zinc-200">{selectedPermission.contactNumber}</span>
                   </p>
                 )}
                 {selectedPermission.remarks && (
-                  <p className="text-zinc-400">
-                    <span className="text-zinc-500">Remarks:</span>{" "}
-                    {selectedPermission.remarks}
+                  <p className="text-zinc-300 break-words">
+                    <span className="text-zinc-500">Remarks:</span> {selectedPermission.remarks}
                   </p>
                 )}
               </div>
             )}
 
-            {/* Gate Scans */}
-            <div className="space-y-2 pt-2 border-t border-zinc-800/60">
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                Recorded Gate Scans
-              </p>
+            {/* Gate scans */}
+            <div className="space-y-2 pt-3 border-t border-zinc-800">
+              <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Recorded Gate Scans</p>
               {selectedPermission.movements && selectedPermission.movements.length > 0 ? (
                 <div className="grid gap-2">
                   {selectedPermission.movements.map((mov: any, idx: number) => (
                     <div
                       key={idx}
-                      className="p-2.5 bg-zinc-950/60 rounded-lg border border-zinc-800 flex items-center justify-between text-xs"
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-800 p-3 text-xs"
                     >
-                      <div className="flex items-center gap-2">
-                        {mov.type === "EXIT" ? (
-                          <DoorOpen className="h-4 w-4 text-orange-400" />
-                        ) : (
-                          <DoorClosed className="h-4 w-4 text-emerald-400" />
-                        )}
-                        <div>
-                          <p className="text-zinc-200 font-medium">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                            mov.type === "EXIT" ? "bg-sky-500/10 text-sky-400" : "bg-emerald-500/10 text-emerald-400"
+                          }`}
+                        >
+                          {mov.type === "EXIT" ? <DoorOpen className="h-4 w-4" /> : <DoorClosed className="h-4 w-4" />}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="font-medium text-zinc-200 break-words">
                             {mov.type === "EXIT" ? "Exited" : "Returned"} via{" "}
                             {mov.gate?.name || "Main Gate"}
                           </p>
-                          <p className="text-[11px] text-zinc-500">
-                            {formatDateTime(mov.createdAt)}
-                          </p>
+                          <p className="text-[11px] text-zinc-500">{formatDateTime(mov.createdAt)}</p>
                         </div>
                       </div>
                       <StatusBadge status={mov.type} />
@@ -821,7 +697,7 @@ export function HodActivityClient({
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-zinc-500 italic p-2 rounded bg-zinc-950/40">
+                <p className="rounded-2xl bg-zinc-950 p-3 text-xs text-zinc-500">
                   No gate scans registered for this pass yet.
                 </p>
               )}
@@ -830,73 +706,63 @@ export function HodActivityClient({
         )}
       </Modal>
 
-      {/* Standalone Faculty Movement Detail Modal */}
+      {/* Standalone faculty movement detail modal */}
       <Modal
         open={!!selectedMovement}
         onClose={() => setSelectedMovement(null)}
         title="Faculty Gate Scan Details"
       >
         {selectedMovement && (
-          <div className="space-y-4 pt-2 text-xs">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-zinc-500 mb-1">Faculty</p>
-                <p className="text-sm font-semibold text-zinc-200">
-                  {selectedMovement.faculty?.profile?.name}
-                </p>
-                {selectedMovement.faculty?.employeeId && (
-                  <p className="text-xs font-mono text-zinc-400">
-                    {selectedMovement.faculty.employeeId}
-                  </p>
-                )}
-                {selectedMovement.faculty?.designation && (
-                  <p className="text-xs text-zinc-400">
-                    {selectedMovement.faculty.designation}
-                  </p>
-                )}
-              </div>
-              <div>
-                <p className="text-zinc-500 mb-1">Movement Type</p>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div className="min-w-0">
+              <dt className="mb-1 text-[11px] uppercase tracking-wider text-zinc-500">Faculty</dt>
+              <dd className="text-sm font-medium text-zinc-200 break-words">
+                {selectedMovement.faculty?.profile?.name}
+              </dd>
+              {selectedMovement.faculty?.employeeId && (
+                <dd className="font-mono text-xs text-zinc-500">{selectedMovement.faculty.employeeId}</dd>
+              )}
+              {selectedMovement.faculty?.designation && (
+                <dd className="text-xs text-zinc-500">{selectedMovement.faculty.designation}</dd>
+              )}
+            </div>
+            <div className="min-w-0">
+              <dt className="mb-1 text-[11px] uppercase tracking-wider text-zinc-500">Movement Type</dt>
+              <dd>
                 <span
-                  className={`text-xs uppercase font-bold tracking-wider px-2.5 py-1 rounded-full ${
+                  className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wider ${
                     selectedMovement.type === "EXIT"
-                      ? "bg-orange-500/20 text-orange-400"
-                      : "bg-emerald-500/20 text-emerald-400"
+                      ? "bg-sky-500/10 text-sky-400"
+                      : "bg-emerald-500/10 text-emerald-400"
                   }`}
                 >
                   {selectedMovement.type}
                 </span>
-              </div>
-
-              {selectedMovement.faculty?.department && (
-                <div>
-                  <p className="text-zinc-500 mb-1">Department</p>
-                  <p className="text-sm text-zinc-200">
-                    {selectedMovement.faculty.department}
-                  </p>
-                </div>
-              )}
-
-              <div>
-                <p className="text-zinc-500 mb-1">Gate</p>
-                <p className="text-sm text-zinc-200">
-                  {selectedMovement.gate?.name || "Gate"}
-                  {selectedMovement.gate?.location
-                    ? ` (${selectedMovement.gate.location})`
-                    : ""}
-                </p>
-              </div>
-
-              <div className="col-span-2">
-                <p className="text-zinc-500 mb-1">Timestamp</p>
-                <p className="text-sm text-zinc-200 font-medium">
-                  {selectedMovement.createdAt
-                    ? formatDateTime(selectedMovement.createdAt)
-                    : "—"}
-                </p>
-              </div>
+              </dd>
             </div>
-          </div>
+
+            {selectedMovement.faculty?.department && (
+              <div className="min-w-0">
+                <dt className="mb-1 text-[11px] uppercase tracking-wider text-zinc-500">Department</dt>
+                <dd className="text-sm text-zinc-200 break-words">{selectedMovement.faculty.department}</dd>
+              </div>
+            )}
+
+            <div className="min-w-0">
+              <dt className="mb-1 text-[11px] uppercase tracking-wider text-zinc-500">Gate</dt>
+              <dd className="text-sm text-zinc-200 break-words">
+                {selectedMovement.gate?.name || "Gate"}
+                {selectedMovement.gate?.location ? ` (${selectedMovement.gate.location})` : ""}
+              </dd>
+            </div>
+
+            <div className="sm:col-span-2 min-w-0">
+              <dt className="mb-1 text-[11px] uppercase tracking-wider text-zinc-500">Timestamp</dt>
+              <dd className="text-sm font-medium text-zinc-200">
+                {selectedMovement.createdAt ? formatDateTime(selectedMovement.createdAt) : "—"}
+              </dd>
+            </div>
+          </dl>
         )}
       </Modal>
     </>

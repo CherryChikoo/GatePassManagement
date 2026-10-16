@@ -3,32 +3,25 @@ import { ResetPasswordButton } from "@/components/users/reset-password-button";
 import { istDateString } from "@/lib/time/ist";
 
 import React, { useState } from "react";
-import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge, StatusBadge, EmptyState } from "@/components/ui/primitives";
+import { PagerBar } from "@/components/ui/pager-bar";
+import { Badge, StatusBadge, EmptyState, StatCard } from "@/components/ui/primitives";
 import { BackButton } from "@/components/ui/back-button";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import {
   History,
-  Briefcase,
   Building2,
   Mail,
   Phone,
   Calendar,
   MapPin,
   Clock,
-  Shield,
   Search,
   CheckCircle2,
   XCircle,
-  AlertCircle,
   LogIn,
   LogOut,
-  FileText,
-  User,
-  Sparkles,
 } from "lucide-react";
 
 interface Props {
@@ -113,7 +106,6 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
     return true;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredPermissions.length / pageSize));
   const paginatedPermissions = filteredPermissions.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
@@ -133,52 +125,50 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
   ).length;
 
   return (
-    <div className="min-h-[calc(100vh-12rem)] flex flex-col justify-between max-w-6xl mx-auto w-full">
-      <div className="space-y-6 flex-1">
-        {/* Top Navigation */}
-        <div>
-          <BackButton href="/faculty-admin/faculty" label="Back to Faculty Directory" />
-        </div>
+    <div className="mx-auto max-w-6xl w-full space-y-6">
+      {/* Top navigation */}
+      <div>
+        <BackButton href="/faculty-admin/faculty" label="Back to Faculty Directory" />
+      </div>
 
-      {/* Faculty Profile Summary Card */}
-      <Card className="border border-zinc-800 bg-zinc-900/70 shadow-none overflow-hidden rounded-2xl">
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="flex items-start gap-4">
-              <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 font-bold text-xl shrink-0">
+      {/* Faculty profile summary */}
+      <Card>
+        <CardContent className="p-5 sm:p-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+            <div className="flex items-start gap-4 min-w-0">
+              <div className="flex h-14 w-14 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-lg sm:text-xl font-semibold text-orange-400">
                 {initials}
               </div>
-              <div className="space-y-1">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <h1 className="text-xl md:text-2xl font-bold text-zinc-100 tracking-tight">
-                    {faculty.name}
-                  </h1>
+              <div className="min-w-0 space-y-1.5">
+                <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 break-words">
+                  {faculty.name}
+                </h1>
+                <div className="flex flex-wrap items-center gap-2">
                   {faculty.employeeId && (
-                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 border border-zinc-700/60">
+                    <span className="rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 font-mono text-[11px] text-zinc-500">
                       {faculty.employeeId}
                     </span>
                   )}
-                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                  <span className="rounded-full bg-orange-500/10 px-2.5 py-0.5 text-[11px] font-medium text-orange-400">
                     {faculty.designation || "Faculty Member"}
                   </span>
                   <Badge variant={faculty.active ? "success" : "danger"}>
                     {faculty.active ? "Active" : "Disabled"}
                   </Badge>
-                  <ResetPasswordButton profileId={faculty.profileId} name={faculty.name} className="h-7" />
                 </div>
 
-                <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-400 pt-1">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1 text-xs text-zinc-500">
                   <span className="flex items-center gap-1.5">
-                    <Building2 className="h-3.5 w-3.5 text-zinc-500" />
+                    <Building2 className="h-3.5 w-3.5 shrink-0" />
                     {faculty.department || "General Department"}
                   </span>
-                  <span className="flex items-center gap-1.5 font-mono">
-                    <Mail className="h-3.5 w-3.5 text-zinc-500" />
+                  <span className="flex items-center gap-1.5 min-w-0 break-all">
+                    <Mail className="h-3.5 w-3.5 shrink-0" />
                     {faculty.email}
                   </span>
                   {faculty.phone && (
                     <span className="flex items-center gap-1.5">
-                      <Phone className="h-3.5 w-3.5 text-zinc-500" />
+                      <Phone className="h-3.5 w-3.5 shrink-0" />
                       {faculty.phone}
                     </span>
                   )}
@@ -186,45 +176,31 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
               </div>
             </div>
 
-            <div className="flex items-center gap-3 self-start md:self-center">
-              <span className="text-xs font-medium px-3 py-1 rounded-lg bg-zinc-800 text-zinc-300 border border-zinc-700/50">
+            <div className="flex flex-wrap items-center gap-2 md:justify-end md:self-center shrink-0">
+              <span className="rounded-full border border-zinc-800 bg-zinc-950 px-3 py-1 text-xs font-medium text-zinc-400">
                 Department Faculty
               </span>
+              <ResetPasswordButton profileId={faculty.profileId} name={faculty.name} />
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Summary Stat Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/50 space-y-1">
-          <p className="text-xs text-zinc-400 font-medium">Total Passes Taken</p>
-          <p className="text-2xl font-bold text-zinc-100">{stats.total}</p>
-          <p className="text-[11px] text-zinc-500">All requested permissions</p>
-        </div>
-
-        <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-          <p className="text-xs text-emerald-400 font-medium">Approved Passes</p>
-          <p className="text-2xl font-bold text-emerald-300">{stats.approved}</p>
-          <p className="text-[11px] text-zinc-500">Authorized by HOD/Admin</p>
-        </div>
-
-        <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 space-y-1">
-          <p className="text-xs text-blue-400 font-medium">Exited / Completed</p>
-          <p className="text-2xl font-bold text-blue-300">{completedCount}</p>
-          <p className="text-[11px] text-zinc-500">Recorded campus gate logs</p>
-        </div>
-
-        <div className="p-4 rounded-xl border border-red-500/20 bg-red-500/5 space-y-1">
-          <p className="text-xs text-red-400 font-medium">Rejected Passes</p>
-          <p className="text-2xl font-bold text-red-300">{stats.rejected}</p>
-          <p className="text-[11px] text-zinc-500">Denied requests</p>
-        </div>
+      {/* Summary stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <StatCard title="Total Passes Taken" value={stats.total} icon={<History />} description="All requested permissions" />
+        <StatCard title="Approved Passes" value={stats.approved} icon={<CheckCircle2 />} description="Authorized by HOD/Admin" />
+        <StatCard title="Exited / Completed" value={completedCount} icon={<LogOut />} description="Recorded campus gate logs" />
+        <StatCard title="Rejected Passes" value={stats.rejected} icon={<XCircle />} description="Denied requests" />
       </div>
 
-      {/* Filter Tabs & Search Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
-        <div className="flex bg-zinc-900/60 p-1.5 rounded-xl w-full max-w-md border border-zinc-800">
+      {/* Filter tabs, date & search */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div
+          className="flex sm:inline-flex max-w-full self-start rounded-full bg-zinc-950 p-1 border border-zinc-800 overflow-x-auto scrollbar-none"
+          role="tablist"
+          aria-label="Filter passes"
+        >
           {(
             [
               { id: "ALL", label: "All Passes", count: stats.total },
@@ -235,73 +211,73 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
           ).map((tab) => (
             <button
               key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
               onClick={() => {
                 setActiveTab(tab.id);
                 setCurrentPage(1);
               }}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
-                activeTab === tab.id
-                  ? "bg-zinc-800 text-zinc-100 shadow-sm"
-                  : "text-zinc-400 hover:text-zinc-200"
+              className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 text-xs font-medium px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap ${
+                activeTab === tab.id ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
               }`}
             >
               <span>{tab.label}</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                  activeTab === tab.id ? "bg-zinc-700 text-zinc-200" : "bg-zinc-800 text-zinc-500"
-                }`}
-              >
-                {tab.count}
-              </span>
+              <span className="text-[10px] font-semibold text-zinc-500">{tab.count}</span>
             </button>
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            type="date"
-            aria-label="Filter by date"
-            value={passDate}
-            max={istDateString()}
-            onChange={(e) => {
-              setPassDate(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="h-9 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 text-xs text-zinc-200 [color-scheme:light]"
-          />
-          {passDate && (
-            <button
-              type="button"
-              onClick={() => {
-                setPassDate("");
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 sm:flex-none">
+              <Calendar className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+              <input
+                type="date"
+                aria-label="Filter by date"
+                value={passDate}
+                max={istDateString()}
+                onChange={(e) => {
+                  setPassDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-10 w-full sm:w-auto rounded-full border border-zinc-800 bg-zinc-900 pl-10 pr-4 text-sm text-zinc-200 outline-none hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 [color-scheme:light] transition-colors"
+              />
+            </div>
+            {passDate && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPassDate("");
+                  setCurrentPage(1);
+                }}
+                className="h-10 shrink-0 rounded-full border border-zinc-800 bg-zinc-900 px-3.5 text-xs font-medium text-zinc-400 hover:bg-zinc-950 hover:text-zinc-200 transition-colors"
+              >
+                All dates
+              </button>
+            )}
+          </div>
+
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 z-10" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
                 setCurrentPage(1);
               }}
-              className="h-9 px-2.5 rounded-md border border-zinc-800 text-xs text-zinc-400 hover:text-zinc-200"
-            >
-              All dates
-            </button>
-          )}
-        </div>
-
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
-            }}
-            placeholder="Search by purpose or destination..."
-            className="pl-9 h-9 bg-zinc-900 border-zinc-800 text-xs"
-          />
+              placeholder="Search by purpose or destination..."
+              className="h-10 rounded-full border-zinc-800 bg-zinc-900 pl-10 pr-4 text-sm placeholder:text-zinc-500 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
+            />
+          </div>
         </div>
       </div>
 
-      {/* Passes List */}
+      {/* Passes list */}
       {filteredPermissions.length === 0 ? (
-        <Card className="border border-zinc-800/80 bg-zinc-900/40 rounded-2xl p-12 text-center">
+        <Card>
           <EmptyState
-            icon={<History className="h-10 w-10 text-zinc-500" />}
+            icon={<History className="h-6 w-6" />}
             title={`No ${activeTab !== "ALL" ? activeTab.toLowerCase() : ""} passes found`}
             description={
               searchQuery
@@ -313,64 +289,59 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
           />
         </Card>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid gap-3 sm:gap-4">
           {paginatedPermissions.map((pass) => (
-            <Card
-              key={pass.id}
-              className="border border-zinc-800 hover:border-zinc-700 bg-zinc-900/60 transition-all rounded-2xl overflow-hidden shadow-none"
-            >
-              <CardContent className="p-5">
+            <Card key={pass.id} className="hover:border-zinc-700">
+              <CardContent className="p-4 sm:p-5">
                 <div className="space-y-4">
-                  {/* Top Row: Type, Purpose, Status, Applied At */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800/60">
-                    <div className="flex items-center gap-2.5 flex-wrap">
+                  {/* Top row: type, purpose, status, applied at */}
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-3 pb-4 border-b border-zinc-800">
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
                       <span
-                        className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md uppercase tracking-wider ${
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wider ${
                           pass.type === "EXIT"
-                            ? "bg-orange-500/15 text-orange-400 border border-orange-500/30"
-                            : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                            ? "bg-sky-500/10 text-sky-400"
+                            : "bg-emerald-500/10 text-emerald-400"
                         }`}
                       >
                         {pass.type} PASS
                       </span>
-                      <h3 className="font-semibold text-zinc-100 text-base">
-                        {pass.purpose}
-                      </h3>
+                      <h3 className="text-base font-medium text-zinc-100 break-words">{pass.purpose}</h3>
                       <StatusBadge status={pass.status} />
                     </div>
 
                     {pass.createdAt && (
-                      <span className="text-xs text-zinc-400">
+                      <span className="text-xs text-zinc-500 shrink-0">
                         Applied on {formatDateTime(pass.createdAt)}
                       </span>
                     )}
                   </div>
 
-                  {/* Details Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-                    <div className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/60 space-y-1">
-                      <span className="text-zinc-500 font-medium flex items-center gap-1.5">
-                        <MapPin className="h-3.5 w-3.5 text-zinc-400" /> Destination
+                  {/* Details grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+                    <div className="rounded-2xl bg-zinc-950 p-3 space-y-1 min-w-0">
+                      <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-zinc-500">
+                        <MapPin className="h-3.5 w-3.5" /> Destination
                       </span>
-                      <p className="text-sm font-semibold text-zinc-200">
+                      <p className="text-sm font-medium text-zinc-200 break-words">
                         {pass.destination || "Not specified"}
                       </p>
                     </div>
 
-                    <div className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/60 space-y-1">
-                      <span className="text-zinc-500 font-medium flex items-center gap-1.5">
-                        <Calendar className="h-3.5 w-3.5 text-zinc-400" /> Pass Date
+                    <div className="rounded-2xl bg-zinc-950 p-3 space-y-1 min-w-0">
+                      <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-zinc-500">
+                        <Calendar className="h-3.5 w-3.5" /> Pass Date
                       </span>
-                      <p className="text-sm font-semibold text-zinc-200">
+                      <p className="text-sm font-medium text-zinc-200">
                         {pass.exitDate ? formatDate(pass.exitDate) : "—"}
                       </p>
                     </div>
 
-                    <div className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/60 space-y-1">
-                      <span className="text-zinc-500 font-medium flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5 text-zinc-400" /> Expected Times
+                    <div className="rounded-2xl bg-zinc-950 p-3 space-y-1 min-w-0">
+                      <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-zinc-500">
+                        <Clock className="h-3.5 w-3.5" /> Expected Times
                       </span>
-                      <p className="text-sm font-semibold text-zinc-200">
+                      <p className="text-sm font-medium text-zinc-200">
                         {pass.expectedExit
                           ? formatDateTime(pass.expectedExit).split(", ")[1]
                           : "Anytime"}
@@ -381,31 +352,31 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
                     </div>
                   </div>
 
-                  {/* Remarks / Contact */}
+                  {/* Remarks / contact */}
                   {(pass.remarks || pass.contactNumber) && (
-                    <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-400 px-1">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400">
                       {pass.contactNumber && (
                         <span className="flex items-center gap-1">
                           <Phone className="h-3 w-3 text-zinc-500" /> Contact: {pass.contactNumber}
                         </span>
                       )}
                       {pass.remarks && (
-                        <span>
+                        <span className="break-words">
                           <span className="text-zinc-500">Remarks:</span> {pass.remarks}
                         </span>
                       )}
                     </div>
                   )}
 
-                  {/* Rejection Alert Box */}
+                  {/* Rejection */}
                   {pass.rejectionReason && (
-                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-300 flex items-start gap-2">
-                      <XCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-semibold text-red-200">Rejection Reason: </span>
+                    <div className="flex items-start gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300">
+                      <XCircle className="h-4 w-4 shrink-0 mt-0.5 text-red-400" />
+                      <div className="min-w-0 break-words">
+                        <span className="font-medium text-red-400">Rejection Reason: </span>
                         {pass.rejectionReason}
                         {pass.rejectedAt && (
-                          <span className="block text-[11px] text-red-400/80 mt-0.5">
+                          <span className="mt-0.5 block text-[11px] text-red-400/80">
                             Rejected on {formatDateTime(pass.rejectedAt)}
                           </span>
                         )}
@@ -413,10 +384,10 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
                     </div>
                   )}
 
-                  {/* Approval Information Box */}
+                  {/* Approval */}
                   {pass.approvedAt && (
-                    <div className="flex items-center gap-2 text-xs text-emerald-400 px-1">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                    <div className="flex items-center gap-2 text-xs text-emerald-400">
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                       <span>
                         Approved on {formatDateTime(pass.approvedAt)}
                         {pass.approverName ? ` by ${pass.approverName}` : ""}
@@ -424,34 +395,36 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
                     </div>
                   )}
 
-                  {/* Gate Movement Logs */}
+                  {/* Gate movement logs */}
                   {pass.movements && pass.movements.length > 0 && (
-                    <div className="pt-2 border-t border-zinc-800/60">
-                      <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+                    <div className="pt-4 border-t border-zinc-800">
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
                         Gate Movement History
                       </p>
                       <div className="grid gap-2">
                         {pass.movements.map((m) => (
                           <div
                             key={m.id}
-                            className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-950/40 border border-zinc-800/50 text-xs"
+                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-3 rounded-2xl border border-zinc-800 p-3 text-xs"
                           >
-                            <div className="flex items-center gap-2">
-                              {m.type === "EXIT" ? (
-                                <LogOut className="h-3.5 w-3.5 text-orange-400" />
-                              ) : (
-                                <LogIn className="h-3.5 w-3.5 text-emerald-400" />
-                              )}
-                              <span className="font-semibold text-zinc-200">
-                                {m.type} registered at {m.gateName}
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+                                  m.type === "EXIT" ? "bg-sky-500/10 text-sky-400" : "bg-emerald-500/10 text-emerald-400"
+                                }`}
+                              >
+                                {m.type === "EXIT" ? <LogOut className="h-3.5 w-3.5" /> : <LogIn className="h-3.5 w-3.5" />}
                               </span>
-                              {m.gateLocation && (
-                                <span className="text-zinc-500">({m.gateLocation})</span>
-                              )}
+                              <span className="font-medium text-zinc-200 break-words">
+                                {m.type} registered at {m.gateName}
+                                {m.gateLocation && (
+                                  <span className="font-normal text-zinc-500"> ({m.gateLocation})</span>
+                                )}
+                              </span>
                             </div>
-                            <div className="text-right text-zinc-400">
+                            <div className="pl-9 sm:pl-0 sm:text-right text-zinc-500 shrink-0">
                               <span>{m.createdAt ? formatDateTime(m.createdAt) : "—"}</span>
-                              <span className="text-zinc-500 ml-2">by {m.securityName}</span>
+                              <span className="ml-2">by {m.securityName}</span>
                             </div>
                           </div>
                         ))}
@@ -464,45 +437,15 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
           ))}
         </div>
       )}
-      </div>
 
-      {/* Pagination Bar (Sticky at bottom, touches sidebar seamlessly with 0px gap) */}
-      {filteredPermissions.length > 0 && (
-        <div className="sticky bottom-0 -mx-4 lg:-mx-8 -mb-4 lg:-mb-8 mt-10 border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl z-30 shadow-[0_-10px_40px_-10px_rgba(16,24,40,0.12)]">
-          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-            <p className="text-sm text-zinc-400 font-medium">
-              Showing {(currentPage - 1) * pageSize + 1} to{" "}
-              {Math.min(currentPage * pageSize, filteredPermissions.length)} of{" "}
-              {filteredPermissions.length} passes
-            </p>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-zinc-500">
-                Page {currentPage} of {totalPages}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={currentPage <= 1}
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className="h-8 px-3 text-xs shadow-none border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 disabled:opacity-40"
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={currentPage >= totalPages}
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className="h-8 px-3 text-xs shadow-none border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 disabled:opacity-40"
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Pagination (docks at the bottom of the screen) */}
+      <PagerBar
+        page={currentPage}
+        pageSize={pageSize}
+        total={filteredPermissions.length}
+        onPageChange={setCurrentPage}
+        itemLabel="passes"
+      />
     </div>
   );
 }

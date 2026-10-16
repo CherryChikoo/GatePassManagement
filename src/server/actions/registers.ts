@@ -25,6 +25,7 @@ import {
   type StaffResolver,
 } from "@/lib/registers/validate";
 import { istDateString, istDateToInstant, istDayRangeFromParam, parseDateParam, parsePageParam } from "@/lib/time/ist";
+import { invalidateSecurityCache } from "./security";
 
 const PAGE_SIZE = 25;
 const VIEW_ROLES = ["SECURITY", "ADMIN", "SECURITY_SUPERVISOR"] as const;
@@ -417,9 +418,12 @@ export async function markFacultyReturn(permissionId: string, gateId?: string) {
       if (p.qr) await tx.qrCredential.update({ where: { id: p.qr.id }, data: { usedForEntry: true, active: false } });
     });
   } catch (err: any) {
+    if (err?.code === "P2002") return { error: "Return already recorded" };
     return { error: err?.message || "Could not record the return" };
   }
 
+  // The gate log shows this return straight away (not after its 15 s cache)
+  await invalidateSecurityCache();
   revalidateRegisters();
   revalidatePath("/security");
   revalidatePath("/security/log");

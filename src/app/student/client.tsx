@@ -64,14 +64,17 @@ export function StudentDashboardClient({ user }: Props) {
 
   const state = dashboardData?.state;
 
-  // Poll while waiting on someone else: the approver (PENDING) or the gate scan (QR_CODE)
+  // Poll while waiting on someone else: the approver (PENDING) or the gate scan (QR_CODE).
+  // Every 15 s and only while the screen is visible (a background tab doesn't need
+  // it; returning to the tab refreshes straight away).
   useEffect(() => {
     if (state === "PENDING" || state === "QR_CODE") {
       const interval = setInterval(() => {
+        if (document.visibilityState !== "visible") return;
         startTransition(() => {
-          useAppStore.getState().refresh(true);
+          useAppStore.getState().refresh();
         });
-      }, 10000);
+      }, 15_000);
       return () => clearInterval(interval);
     }
   }, [state]);
@@ -102,10 +105,12 @@ export function StudentDashboardClient({ user }: Props) {
   if (!dashboardData || !dashboardData.student) {
     return (
         <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center p-8 max-w-md rounded-2xl bg-zinc-900/50 border border-zinc-800">
-            <AlertCircle className="h-10 w-10 text-amber-400 mx-auto mb-3" />
-            <h2 className="text-lg font-bold text-zinc-100 mb-1">Student Record Not Found</h2>
-            <p className="text-sm text-zinc-400 mb-6">
+          <div className="w-full max-w-md text-center p-6 sm:p-8 rounded-3xl bg-zinc-900 border border-zinc-800 shadow-card">
+            <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/10 text-amber-400">
+              <AlertCircle className="h-7 w-7" />
+            </span>
+            <h2 className="text-lg font-medium text-zinc-100 mb-1">Student Record Not Found</h2>
+            <p className="text-sm text-zinc-500 leading-relaxed mb-6">
               Please contact the campus administrator to initialize your student profile.
             </p>
             <RecordMissingSignOut />
@@ -121,7 +126,7 @@ export function StudentDashboardClient({ user }: Props) {
 
   return (
     <>
-      <div className="max-w-2xl mx-auto py-2">
+      <div className="mx-auto w-full max-w-2xl py-1 sm:py-2">
         {showRejected && (
           <RejectedView permission={latestPermission} onDone={dismissRejection} />
         )}
@@ -173,6 +178,7 @@ function RecordMissingSignOut() {
         variant="outline"
         loading={signingOut}
         disabled={signingOut}
+        className="w-full sm:w-auto"
       >
         {signingOut ? "Signing out…" : "Sign Out"}
       </Button>
@@ -180,6 +186,9 @@ function RecordMissingSignOut() {
     </>
   );
 }
+
+/** Matches the TimeField (shared, not editable here) to the h-12 rounded-2xl white inputs. */
+const TIME_FIELD_CLS = "h-12! rounded-2xl! bg-zinc-900! text-base! sm:text-sm! hover:border-zinc-700 focus:border-orange-500/50!";
 
 const REJECTION_ACK_KEY = "gatepass:rejection-ack";
 const REJECTED_AUTO_RETURN_S = 20;
@@ -204,39 +213,39 @@ function RejectedView({ permission, onDone }: { permission: any; onDone: () => v
     permission.approverType === "WARDEN" ? "Hostel Warden" : permission.approverType === "FACULTY_ADMIN" ? "HOD" : "approver";
 
   return (
-    <div className="space-y-6 animate-scale-in" role="alert">
-      <div className="text-center space-y-2">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-red-500/15 text-red-400 mb-2">
-          <XCircle className="h-8 w-8" />
-        </div>
-        <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">
+    <div className="space-y-5 sm:space-y-6 animate-scale-in" role="alert">
+      <div className="text-center px-2">
+        <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-500/10 text-red-400">
+          <XCircle className="h-7 w-7" />
+        </span>
+        <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
           {permission.type === "ENTRY" ? "Entry Request Rejected" : "Exit Request Rejected"}
         </h1>
-        <p className="text-sm text-zinc-400">
+        <p className="mt-2 text-sm text-zinc-500 leading-relaxed">
           Your request was rejected by your {approverRole}
           {permission.approverName ? ` (${permission.approverName})` : ""}.
         </p>
       </div>
 
-      <Card className="border-red-500/30 bg-zinc-900/60 shadow-xl">
-        <CardContent className="p-6 space-y-4">
-          <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20">
-            <span className="text-xs font-semibold text-red-300 uppercase tracking-wider block mb-1">Reason</span>
-            <p className="text-sm text-zinc-100 whitespace-pre-wrap break-words">
+      <Card>
+        <CardContent className="p-5 sm:p-6 space-y-4">
+          <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20">
+            <span className="text-[11px] font-medium text-red-400 uppercase tracking-wider block mb-1.5">Reason</span>
+            <p className="text-sm text-zinc-100 leading-relaxed whitespace-pre-wrap break-words">
               {permission.rejectionReason || "No reason was provided."}
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div className="p-3 rounded-xl bg-zinc-800/40 border border-zinc-800/60">
-              <span className="text-zinc-500 block mb-1">Purpose</span>
-              <span className="text-zinc-200 font-medium text-sm break-words">{permission.purpose}</span>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-4 rounded-2xl bg-zinc-950 min-w-0">
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">Purpose</dt>
+              <dd className="text-sm font-medium text-zinc-200 break-words">{permission.purpose}</dd>
             </div>
-            <div className="p-3 rounded-xl bg-zinc-800/40 border border-zinc-800/60">
-              <span className="text-zinc-500 block mb-1">{permission.type === "ENTRY" ? "Coming From" : "Destination"}</span>
-              <span className="text-zinc-200 font-medium text-sm break-words">{permission.destination || "—"}</span>
+            <div className="p-4 rounded-2xl bg-zinc-950 min-w-0">
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">{permission.type === "ENTRY" ? "Coming From" : "Destination"}</dt>
+              <dd className="text-sm font-medium text-zinc-200 break-words">{permission.destination || "—"}</dd>
             </div>
-          </div>
-          <Button type="button" onClick={onDone} className="w-full h-11 bg-orange-600 hover:bg-orange-500 text-white font-semibold">
+          </dl>
+          <Button type="button" onClick={onDone} className="w-full h-12">
             Submit a new request
           </Button>
           <p className="text-center text-xs text-zinc-500" aria-live="polite">
@@ -263,6 +272,9 @@ function QrCodeView({
 }) {
   // Hostel pass: HOD-approved, scanned by the hostel warden (not gate security)
   const isHostelPass = permission?.passKind === "HOSTEL";
+  // Hosteller out on this pass: the same QR is scanned again when they come back
+  const isReturning = permission?.status === "EXITED" && permission?.type !== "ENTRY" && !isHostelPass;
+  const isHostellerStudent = student?.studentType === "HOSTELLER";
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<string>("");
@@ -346,23 +358,25 @@ function QrCodeView({
   }, [permission.qr?.expiresAt, permission.status]);
 
   return (
-    <div className="space-y-6 animate-scale-in">
+    <div className="space-y-5 sm:space-y-6 animate-scale-in">
       {/* Header */}
-      <div className="text-center space-y-1">
-        <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mb-2 ${
+      <div className="text-center px-2">
+        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
           permission.type === "ENTRY"
-            ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
-            : "bg-orange-500/15 border border-orange-500/30 text-orange-400"
+            ? "bg-emerald-500/10 text-emerald-400"
+            : "bg-orange-500/10 text-orange-400"
         }`}>
-          <ShieldCheck className="h-4 w-4" />
-          <span>{isHostelPass ? "Active HOSTEL Pass" : permission.type === "ENTRY" ? "Active Campus ENTRY Pass" : "Active Campus EXIT Pass"}</span>
-        </div>
-        <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">
-          {isHostelPass ? "Show to Your Hostel Warden" : "Scan at Campus Gate"}
+          <ShieldCheck className="h-3.5 w-3.5" />
+          <span>{isHostelPass ? "Active HOSTEL Pass" : isReturning ? "Return Pass" : permission.type === "ENTRY" ? "Active Campus ENTRY Pass" : "Active Campus EXIT Pass"}</span>
+        </span>
+        <h1 className="mt-3 text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
+          {isHostelPass ? "Show to Your Hostel Warden" : isReturning ? "Scan When You Return" : "Scan at Campus Gate"}
         </h1>
-        <p className="text-sm text-zinc-400">
+        <p className="mt-2 text-sm text-zinc-500 leading-relaxed max-w-md mx-auto">
           {isHostelPass
             ? "Your HOD approved this pass. Show this QR code to your hostel warden when you reach the hostel."
+            : isReturning
+            ? "You're out on this pass. When you come back, show this same QR code to the gate security officer to record your return."
             : permission.type === "ENTRY"
             ? "Present this QR code to the gate security officer to enter campus."
             : "Present this QR code to the gate security officer to exit campus."}
@@ -370,77 +384,85 @@ function QrCodeView({
       </div>
 
       {/* Main QR Card */}
-      <Card className="overflow-hidden border-zinc-800 bg-zinc-900/70 shadow-2xl">
+      <Card className="overflow-hidden">
         {/* Countdown header */}
-        <div className="bg-gradient-to-r from-emerald-600/20 via-blue-600/20 to-teal-600/20 border-b border-zinc-800/80 px-4 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between">
+        <div className="border-b border-zinc-800/70 px-5 sm:px-6 py-3.5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            <Clock className="h-4 w-4 text-emerald-400 animate-pulse shrink-0" />
-            <span className="text-xs font-semibold text-emerald-400 truncate">
+            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${isExpired ? "bg-red-500/10 text-red-400" : "bg-emerald-500/10 text-emerald-400"}`}>
+              <Clock className={`h-4 w-4 ${isExpired ? "" : "animate-pulse"}`} />
+            </span>
+            <span className={`text-sm font-medium tabular-nums truncate ${isExpired ? "text-red-400" : "text-emerald-400"}`}>
               {isExpired ? "Pass Expired" : timeLeft || "Calculating validity..."}
             </span>
           </div>
           <StatusBadge status={permission.status} />
         </div>
 
-        <CardContent className="p-4 sm:p-6 md:p-8 flex flex-col items-center text-center space-y-5 sm:space-y-6 min-w-0">
-          {/* QR Code Container */}
-          <div className="p-3 sm:p-4 rounded-2xl bg-white shadow-2xl ring-4 ring-emerald-500/20 transition-all hover:scale-[1.02] max-w-full">
+        <CardContent className="p-5 sm:p-8 flex flex-col items-center text-center space-y-5 sm:space-y-6 min-w-0">
+          {/* QR Code Container — always black on white with a quiet zone, so it scans fast */}
+          <div className="w-full max-w-[18rem] sm:max-w-[20rem] rounded-3xl border border-zinc-800 bg-white p-2.5 sm:p-3">
             {qrError ? (
-              <div className="w-48 h-48 sm:w-60 sm:h-60 md:w-64 md:h-64 flex items-center justify-center bg-zinc-100 rounded-lg max-w-full p-4">
-                <p className="text-sm text-zinc-700 font-medium">{qrError}</p>
+              <div className="aspect-square w-full flex items-center justify-center rounded-2xl bg-zinc-950 p-5">
+                <p className="text-sm text-zinc-300 font-medium leading-relaxed">{qrError}</p>
               </div>
             ) : qrImage ? (
               <img
                 src={qrImage}
                 alt="Gate Pass QR Code"
-                className="w-48 h-48 sm:w-60 sm:h-60 md:w-64 md:h-64 max-w-full aspect-square object-contain mx-auto"
+                className="block w-full h-auto aspect-square object-contain [image-rendering:pixelated]"
               />
             ) : (
-              <div className="w-48 h-48 sm:w-60 sm:h-60 md:w-64 md:h-64 flex items-center justify-center bg-zinc-100 rounded-lg max-w-full">
-                <QrCode className="h-12 w-12 sm:h-14 sm:w-14 text-zinc-400 animate-pulse" />
+              <div className="aspect-square w-full flex items-center justify-center rounded-2xl bg-zinc-950">
+                <QrCode className="h-12 w-12 sm:h-14 sm:w-14 text-zinc-600 animate-pulse" />
               </div>
             )}
           </div>
 
           {/* Student & Pass Meta */}
-          <div className="w-full space-y-2.5 pt-1 min-w-0">
-            <div className="flex items-center justify-between py-2 px-3 sm:px-4 rounded-xl bg-zinc-800/40 border border-zinc-800/60 text-xs gap-2 min-w-0">
-              <span className="text-zinc-500 shrink-0">Student</span>
-              <span className="text-zinc-200 font-medium truncate max-w-[160px] sm:max-w-[280px]">
+          <dl className="w-full rounded-2xl border border-zinc-800 divide-y divide-zinc-800/70 text-left min-w-0">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 min-w-0">
+              <dt className="text-xs text-zinc-500 shrink-0">Student</dt>
+              <dd className="text-sm font-medium text-zinc-100 truncate min-w-0 text-right">
                 {user.name} ({student.studentRoll})
-              </span>
+              </dd>
             </div>
-            <div className="flex items-center justify-between py-2 px-3 sm:px-4 rounded-xl bg-zinc-800/40 border border-zinc-800/60 text-xs gap-2 min-w-0">
-              <span className="text-zinc-500 shrink-0">Purpose</span>
-              <span className="text-zinc-200 font-medium truncate max-w-[160px] sm:max-w-[280px]">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 min-w-0">
+              <dt className="text-xs text-zinc-500 shrink-0">Purpose</dt>
+              <dd className="text-sm font-medium text-zinc-100 truncate min-w-0 text-right">
                 {permission.purpose}
-              </span>
+              </dd>
             </div>
             {permission.destination && (
-              <div className="flex items-center justify-between py-2 px-3 sm:px-4 rounded-xl bg-zinc-800/40 border border-zinc-800/60 text-xs gap-2 min-w-0">
-                <span className="text-zinc-500 shrink-0">Destination</span>
-                <span className="text-zinc-200 font-medium truncate max-w-[160px] sm:max-w-[280px]">
+              <div className="flex items-center justify-between gap-3 px-4 py-3 min-w-0">
+                <dt className="text-xs text-zinc-500 shrink-0">Destination</dt>
+                <dd className="text-sm font-medium text-zinc-100 truncate min-w-0 text-right">
                   {permission.destination}
-                </span>
+                </dd>
               </div>
             )}
-            <div className="flex items-center justify-between py-2 px-3 sm:px-4 rounded-xl bg-zinc-800/40 border border-zinc-800/60 text-xs gap-2 min-w-0">
-              <span className="text-zinc-500 shrink-0">Valid Until</span>
-              <span className="text-amber-400 font-medium truncate max-w-[160px] sm:max-w-[280px]">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 min-w-0">
+              <dt className="text-xs text-zinc-500 shrink-0">Valid Until</dt>
+              <dd className="text-sm font-medium text-amber-400 truncate min-w-0 text-right">
                 {permission.qr?.expiresAt
                   ? formatDateTime(permission.qr.expiresAt)
                   : "End of allocated slot"}
-              </span>
+              </dd>
             </div>
-          </div>
+          </dl>
 
-          <p className="text-xs text-zinc-500 max-w-sm">
+          <p className="text-xs text-zinc-500 leading-relaxed max-w-sm">
             {isHostelPass ? (
               <>This QR code refreshes automatically every minute — screenshots will not work. Once your warden scans it, your arrival at the hostel is recorded and this pass is completed.</>
             ) : (
               <>
                 This QR code refreshes automatically every minute — screenshots will not work at the gate.
-                Once scanned by security, your {permission.type === "ENTRY" ? "entry" : "exit"} will be logged and this pass will be completed.
+                {isReturning
+                  ? "Once security scans it at the gate, your return is logged and this pass is completed."
+                  : permission.type === "ENTRY"
+                  ? "Once scanned by security, your entry will be logged and this pass will be completed."
+                  : isHostellerStudent
+                  ? "Security scans it when you leave, and again when you come back."
+                  : "Once scanned by security, your exit will be logged and this pass will be completed."}
               </>
             )}
           </p>
@@ -506,92 +528,97 @@ function PendingApprovalView({
         onConfirm={handleCancelConfirm}
         variant="danger"
       />
-      <div className="space-y-6 animate-scale-in">
-      {/* Title */}
-      <div className="text-center space-y-2">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-amber-500/15 text-amber-400 shadow-lg shadow-amber-500/10 mb-2">
-          <Hourglass className="h-8 w-8 animate-spin" style={{ animationDuration: "6s" }} />
+      <div className="space-y-4 sm:space-y-6 animate-scale-in">
+      {/* Status (feature card) */}
+      <div
+        className="relative overflow-hidden rounded-3xl border border-orange-500/20 p-5 sm:p-6 shadow-card"
+        style={{ background: "linear-gradient(160deg, #fff3f0 0%, #ffe1d9 55%, #ffd2c7 100%)" }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/80 border border-white text-orange-400">
+            <Hourglass className="h-6 w-6 animate-spin" style={{ animationDuration: "6s" }} />
+          </span>
+          <StatusBadge status="PENDING" />
         </div>
-        <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">
+        <h1 className="mt-4 text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
           {permission.type === "ENTRY" ? "Entry Request Pending Approval" : "Exit Request Pending Approval"}
         </h1>
-        <p className="text-sm text-zinc-400 max-w-md mx-auto">
+        <p className="mt-2 text-sm text-zinc-300 leading-relaxed">
           Your campus {permission.type === "ENTRY" ? "entry" : "exit"} pass request has been submitted and is currently awaiting approval from your{" "}
-          <span className="text-amber-400 font-semibold">{approverLabel}</span>
+          <span className="text-zinc-100 font-medium">{approverLabel}</span>
           {permission.approverName ? ` (${permission.approverName})` : ""}.
         </p>
+
+        {/* Live waiting indicator */}
+        <div className="mt-5 flex items-center gap-3 rounded-2xl bg-white/70 border border-white px-4 py-3">
+          <span className="relative flex h-2.5 w-2.5 shrink-0">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-orange-500 opacity-60 animate-ping" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-orange-500" />
+          </span>
+          <p className="text-xs text-zinc-300 leading-relaxed">
+            This page automatically refreshes every few seconds. Once approved, your QR pass will appear here instantly.
+          </p>
+        </div>
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 flex items-center gap-3 text-red-400 text-sm">
+        <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 flex items-start gap-3 text-red-400 text-sm">
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {/* Details Card */}
-      <Card className="border-zinc-800 bg-zinc-900/60 shadow-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800/80 bg-zinc-950/40 flex items-center justify-between">
-          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+      <Card>
+        <CardContent className="p-5 sm:p-6 space-y-4">
+          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
             {permission.type === "ENTRY" ? "Entry Request Summary" : "Exit Request Summary"}
-          </span>
-          <StatusBadge status="PENDING" />
-        </div>
+          </h2>
 
-        <CardContent className="p-6 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div className="p-3 rounded-xl bg-zinc-800/40 border border-zinc-800/60">
-              <span className="text-zinc-500 block mb-1">Purpose</span>
-              <span className="text-zinc-200 font-medium text-sm">
+          <dl className="grid grid-cols-2 gap-3">
+            <div className="col-span-2 sm:col-span-1 p-4 rounded-2xl bg-zinc-950 min-w-0">
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">Purpose</dt>
+              <dd className="text-sm font-medium text-zinc-200 break-words">
                 {permission.purpose}
-              </span>
+              </dd>
             </div>
-            <div className="p-3 rounded-xl bg-zinc-800/40 border border-zinc-800/60">
-              <span className="text-zinc-500 block mb-1">{permission.type === "ENTRY" ? "Coming From" : "Destination"}</span>
-              <span className="text-zinc-200 font-medium text-sm">
+            <div className="col-span-2 sm:col-span-1 p-4 rounded-2xl bg-zinc-950 min-w-0">
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">{permission.type === "ENTRY" ? "Coming From" : "Destination"}</dt>
+              <dd className="text-sm font-medium text-zinc-200 break-words">
                 {permission.destination || "Not specified"}
-              </span>
+              </dd>
             </div>
-            <div className="p-3 rounded-xl bg-zinc-800/40 border border-zinc-800/60">
-              <span className="text-zinc-500 block mb-1">{permission.type === "ENTRY" ? "Entry Date" : "Exit Date"}</span>
-              <span className="text-zinc-200 font-medium">
+            <div className="p-4 rounded-2xl bg-zinc-950 min-w-0">
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">{permission.type === "ENTRY" ? "Entry Date" : "Exit Date"}</dt>
+              <dd className="text-sm font-medium text-zinc-200">
                 {permission.exitDate ? formatDateTime(permission.exitDate).split(",")[0] : "Today"}
-              </span>
+              </dd>
             </div>
-            <div className="p-3 rounded-xl bg-zinc-800/40 border border-zinc-800/60">
-              <span className="text-zinc-500 block mb-1">{permission.type === "ENTRY" ? "Expected Entry Time" : "Expected Exit Time"}</span>
-              <span className="text-zinc-200 font-medium">
+            <div className="p-4 rounded-2xl bg-zinc-950 min-w-0">
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">{permission.type === "ENTRY" ? "Expected Entry Time" : "Expected Exit Time"}</dt>
+              <dd className="text-sm font-medium text-zinc-200">
                 {permission.expectedExit ? formatDateTime(permission.expectedExit).split(", ")[1] : "--:--"}
-              </span>
+              </dd>
             </div>
-          </div>
+          </dl>
 
           {permission.remarks && (
-            <div className="p-3 rounded-xl bg-zinc-800/40 border border-zinc-800/60 text-xs">
-              <span className="text-zinc-500 block mb-1">Remarks</span>
-              <span className="text-zinc-300">{permission.remarks}</span>
+            <div className="p-4 rounded-2xl bg-zinc-950">
+              <p className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">Remarks</p>
+              <p className="text-sm text-zinc-300 break-words">{permission.remarks}</p>
             </div>
           )}
 
-          {/* Live waiting indicator */}
-          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex items-center gap-3">
-            <div className="h-2.5 w-2.5 rounded-full bg-amber-400 animate-ping" />
-            <p className="text-xs text-amber-300/90 leading-relaxed">
-              This page automatically refreshes every few seconds. Once approved, your QR pass will appear here instantly.
-            </p>
-          </div>
-
           {/* Cancel button */}
-          <div className="pt-2 flex justify-center">
+          <div className="pt-1">
             <Button
               type="button"
               variant="outline"
-              size="sm"
               disabled={cancelling}
               onClick={() => setShowCancelDialog(true)}
-              className="text-zinc-400 hover:text-red-400 hover:border-red-500/40"
+              className="w-full h-11 text-zinc-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10"
             >
-              <XCircle className="h-4 w-4 mr-2" />
+              <XCircle className="h-4 w-4" />
               {cancelling ? "Cancelling..." : "Cancel This Request"}
             </Button>
           </div>
@@ -716,13 +743,13 @@ function PermissionFormView({
     return () => clearInterval(interval);
   }, []);
   return (
-    <div className="space-y-6 animate-scale-in">
+    <div className="space-y-5 sm:space-y-6 animate-scale-in">
       {/* Title */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
+      <div className="min-w-0">
+        <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
           {requestType === "ENTRY" ? "Request Campus Entry Pass" : requestType === "HOSTEL" ? "Request Hostel Pass" : "Request Campus Exit Pass"}
         </h1>
-        <p className="text-sm text-zinc-400 mt-1">
+        <p className="mt-1.5 text-sm text-zinc-500 leading-relaxed">
           {requestType === "ENTRY"
             ? "Submit an entry request to obtain approval and an Entry QR code to enter campus."
             : requestType === "HOSTEL"
@@ -731,124 +758,130 @@ function PermissionFormView({
         </p>
       </div>
 
-      {/* Toggle between EXIT and ENTRY */}
-      <div className="flex gap-2 sm:gap-3">
-        <button 
+      {/* Request type: EXIT / ENTRY (/ HOSTEL for hostellers) */}
+      <div className={`grid ${isHosteller ? "grid-cols-3" : "grid-cols-2"} gap-1 rounded-[22px] bg-zinc-950 p-1 border border-zinc-800`}>
+        <button
           type="button"
+          aria-pressed={requestType === "EXIT"}
           onClick={() => setRequestType("EXIT")}
-          className={`flex-1 rounded-xl border-2 px-3 sm:px-6 py-3 sm:py-4 transition-all cursor-pointer text-left min-w-0 ${
+          className={`min-w-0 rounded-[18px] px-2 sm:px-4 py-2.5 sm:py-3 transition-colors cursor-pointer ${
             requestType === "EXIT"
-              ? "border-orange-500 bg-orange-500/15 ring-2 ring-orange-500/20"
-              : "border-zinc-800 bg-zinc-900/40 hover:bg-zinc-800/40 opacity-70"
+              ? "bg-zinc-900 shadow-card text-zinc-100"
+              : "text-zinc-500 hover:text-zinc-200"
           }`}
         >
-          <div className={`flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm ${requestType === "EXIT" ? "text-orange-400 font-bold" : "text-zinc-400"}`}>
-            <MapPin className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+          <span className="flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium">
+            <MapPin className={`h-4 w-4 shrink-0 ${requestType === "EXIT" ? "text-orange-400" : ""}`} />
             <span className="truncate">EXIT Pass</span>
-          </div>
-          <p className="text-[10px] sm:text-xs text-zinc-500 text-center mt-1 truncate">Leave campus</p>
+          </span>
+          <span className="block text-[11px] sm:text-xs text-zinc-500 text-center mt-0.5 truncate">Leave campus</span>
         </button>
-        
-        <button 
+
+        <button
           type="button"
+          aria-pressed={requestType === "ENTRY"}
           onClick={() => setRequestType("ENTRY")}
-          className={`flex-1 rounded-xl border-2 px-3 sm:px-6 py-3 sm:py-4 transition-all cursor-pointer text-left min-w-0 ${
+          className={`min-w-0 rounded-[18px] px-2 sm:px-4 py-2.5 sm:py-3 transition-colors cursor-pointer ${
             requestType === "ENTRY"
-              ? "border-emerald-500 bg-emerald-500/15 ring-2 ring-emerald-500/20"
-              : "border-zinc-800 bg-zinc-900/40 hover:bg-zinc-800/40 opacity-70"
+              ? "bg-zinc-900 shadow-card text-zinc-100"
+              : "text-zinc-500 hover:text-zinc-200"
           }`}
         >
-          <div className={`flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm ${requestType === "ENTRY" ? "text-emerald-400 font-bold" : "text-zinc-400"}`}>
-            <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+          <span className="flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium">
+            <Sparkles className={`h-4 w-4 shrink-0 ${requestType === "ENTRY" ? "text-emerald-400" : ""}`} />
             <span className="truncate">ENTRY Pass</span>
-          </div>
-          <p className="text-[10px] sm:text-xs text-zinc-500 text-center mt-1 truncate">Enter campus</p>
+          </span>
+          <span className="block text-[11px] sm:text-xs text-zinc-500 text-center mt-0.5 truncate">Enter campus</span>
         </button>
 
         {isHosteller && (
           <button
             type="button"
+            aria-pressed={requestType === "HOSTEL"}
             onClick={() => {
               setRequestType("HOSTEL");
               setFieldErrors({});
             }}
-            className={`flex-1 rounded-xl border-2 px-3 sm:px-6 py-3 sm:py-4 transition-all cursor-pointer text-left min-w-0 ${
+            className={`min-w-0 rounded-[18px] px-2 sm:px-4 py-2.5 sm:py-3 transition-colors cursor-pointer ${
               requestType === "HOSTEL"
-                ? "border-sky-500 bg-sky-500/15 ring-2 ring-sky-500/20"
-                : "border-zinc-800 bg-zinc-900/40 hover:bg-zinc-800/40 opacity-70"
+                ? "bg-zinc-900 shadow-card text-zinc-100"
+                : "text-zinc-500 hover:text-zinc-200"
             }`}
           >
-            <div className={`flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm ${requestType === "HOSTEL" ? "text-sky-300 font-bold" : "text-zinc-400"}`}>
-              <Home className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+            <span className="flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium">
+              <Home className={`h-4 w-4 shrink-0 ${requestType === "HOSTEL" ? "text-sky-400" : ""}`} />
               <span className="truncate">HOSTEL Pass</span>
-            </div>
-            <p className="text-[10px] sm:text-xs text-zinc-500 text-center mt-1 truncate">Go to hostel</p>
+            </span>
+            <span className="block text-[11px] sm:text-xs text-zinc-500 text-center mt-0.5 truncate">Go to hostel</span>
           </button>
         )}
       </div>
 
       {/* Expiry Alert Banner */}
       {wasExpired && !hideExpiryAlert && (
-        <div className="relative rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 space-y-2 animate-fade-in">
-          <button 
+        <div className="relative rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 sm:p-5 animate-fade-in">
+          <button
             type="button"
+            aria-label="Dismiss"
             onClick={() => setHideExpiryAlert(true)}
-            className="absolute top-4 right-4 text-amber-500/60 hover:text-amber-400 transition-colors"
+            className="absolute top-2 right-2 flex h-10 w-10 items-center justify-center rounded-full text-amber-400/70 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
-          <div className="flex items-center gap-2.5 text-amber-400 font-semibold text-sm">
+          <div className="flex items-center gap-2.5 pr-10 text-amber-400 font-medium text-sm">
             <Clock className="h-5 w-5 flex-shrink-0" />
             <span>Gate Pass Expired</span>
           </div>
-          <p className="text-xs text-zinc-300 pl-7 pr-6 leading-relaxed">
-            Your previous approved gate pass for <span className="font-semibold text-zinc-100">&ldquo;{latestPermission.purpose}&rdquo;</span> expired because it was not scanned at the gate within the valid time window. You must submit a new request.
+          <p className="mt-2 text-xs text-zinc-300 pl-7 pr-2 leading-relaxed">
+            Your previous approved gate pass for <span className="font-medium text-zinc-100">&ldquo;{latestPermission.purpose}&rdquo;</span> expired because it was not scanned at the gate within the valid time window. You must submit a new request.
           </p>
         </div>
       )}
 
       {/* Error message */}
       {error && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 flex items-center gap-3 text-red-400 text-sm">
+        <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 flex items-start gap-3 text-red-400 text-sm">
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {/* Form Card */}
-      <Card className={`border-zinc-800 bg-zinc-900/60 shadow-2xl transition-all ${requestType === "ENTRY" ? "border-emerald-500/20" : "border-orange-500/20"}`}>
-        <CardContent className="p-6 md:p-8">
+      <Card>
+        <CardContent className="p-5 sm:p-6 md:p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             <input type="hidden" name="type" value={requestType} />
             {/* Purpose */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-300 flex items-center gap-2">
-                <FileText className={`h-4 w-4 ${requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}`} />
-                {requestType === "ENTRY" ? "Purpose of Campus Entry" : requestType === "HOSTEL" ? "Purpose of Going to Hostel" : "Purpose of Exit"} <span className={requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}>*</span>
+              <label htmlFor="purpose" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                <FileText className="h-4 w-4 text-zinc-500" />
+                {requestType === "ENTRY" ? "Purpose of Campus Entry" : requestType === "HOSTEL" ? "Purpose of Going to Hostel" : "Purpose of Exit"} <span className="text-orange-400">*</span>
               </label>
 
               <Input
+                id="purpose"
                 name="purpose"
                 placeholder={requestType === "ENTRY" ? "e.g. Returning from home, Doctor visit return, Project return..." : "e.g. Doctor's appointment, Home visit, Project work..."}
                 required
                 error={fieldErrors.purpose}
-                className={`bg-zinc-950/60 border-zinc-800 ${requestType === "ENTRY" ? "focus:border-emerald-500" : "focus:border-orange-500"}`}
+                className="text-base sm:text-sm"
               />
             </div>
 
             {/* Destination / Coming From (a hostel pass always goes to the hostel) */}
             {requestType !== "HOSTEL" && (
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-300 flex items-center gap-2">
-                <MapPin className={`h-4 w-4 ${requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}`} />
-                {requestType === "ENTRY" ? "Origin / Coming From Location" : "Destination / Location"} <span className={requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}>*</span>
+              <label htmlFor="destination" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-zinc-500" />
+                {requestType === "ENTRY" ? "Origin / Coming From Location" : "Destination / Location"} <span className="text-orange-400">*</span>
               </label>
               <Input
+                id="destination"
                 name="destination"
                 placeholder={requestType === "ENTRY" ? "e.g. Home, Hospital, City Center" : "e.g. Apollo Hospital, City Center, Home"}
                 required
                 error={fieldErrors.destination}
-                className={`bg-zinc-950/60 border-zinc-800 ${requestType === "ENTRY" ? "focus:border-emerald-500" : "focus:border-orange-500"}`}
+                className="text-base sm:text-sm"
               />
             </div>
             )}
@@ -871,28 +904,29 @@ function PermissionFormView({
               />
             ) : (
             /* Timings Grid */
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
               <div className="space-y-2">
-                <label className="text-xs font-medium text-zinc-400 flex items-center gap-1.5">
-                  <Calendar className="h-3.5 w-3.5 text-zinc-500" />
-                  {requestType === "ENTRY" ? "Entry Date" : "Exit Date"} <span className={requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}>*</span>
+                <label htmlFor="exitDate" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-zinc-500" />
+                  {requestType === "ENTRY" ? "Entry Date" : "Exit Date"} <span className="text-orange-400">*</span>
                 </label>
                 <Input
+                  id="exitDate"
                   type="date"
                   name="exitDate"
                   value={todayStr}
                   readOnly
                   required
-                  className="bg-zinc-950/60 border-zinc-800 text-sm cursor-not-allowed"
+                  className="bg-zinc-950 text-zinc-400 text-sm cursor-not-allowed [color-scheme:light]"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-medium text-zinc-400 flex items-center gap-1.5">
-                  <Clock className="h-3.5 w-3.5 text-zinc-500" />
-                  {requestType === "ENTRY" ? "Expected Entry Time" : "Expected Exit Time"} <span className={requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}>*</span>
+                <label htmlFor="expectedExit" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-zinc-500" />
+                  {requestType === "ENTRY" ? "Expected Entry Time" : "Expected Exit Time"} <span className="text-orange-400">*</span>
                 </label>
-                <TimeField name="expectedExit" required defaultToNow />
+                <TimeField name="expectedExit" required defaultToNow className={TIME_FIELD_CLS} />
                 {fieldErrors.expectedExit && <p className="text-xs text-red-400">{fieldErrors.expectedExit}</p>}
               </div>
             </div>
@@ -900,11 +934,12 @@ function PermissionFormView({
 
             {/* Contact Number */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-300 flex items-center gap-2">
-                <Phone className={`h-4 w-4 ${requestType === "ENTRY" ? "text-emerald-400" : "text-orange-400"}`} />
+              <label htmlFor="contactNumber" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                <Phone className="h-4 w-4 text-zinc-500" />
                 Emergency Contact Number
               </label>
               <Input
+                id="contactNumber"
                 name="contactNumber"
                 type="tel"
                 inputMode="tel"
@@ -914,20 +949,21 @@ function PermissionFormView({
                   e.currentTarget.value = phoneOnly(e.currentTarget.value);
                 }}
                 error={fieldErrors.contactNumber}
-                className={`bg-zinc-950/60 border-zinc-800 ${requestType === "ENTRY" ? "focus:border-emerald-500" : "focus:border-orange-500"}`}
+                className="text-base sm:text-sm"
               />
             </div>
 
             {/* Remarks */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-300">
-                Additional Remarks (Optional)
+              <label htmlFor="remarks" className="text-sm font-medium text-zinc-300">
+                Additional Remarks <span className="font-normal text-zinc-500">(Optional)</span>
               </label>
               <Textarea
+                id="remarks"
                 name="remarks"
                 placeholder="Any special notes or details..."
                 rows={2}
-                className={`bg-zinc-950/60 border-zinc-800 ${requestType === "ENTRY" ? "focus:border-emerald-500" : "focus:border-orange-500"} text-sm`}
+                className="px-4 py-3"
               />
             </div>
 
@@ -935,11 +971,7 @@ function PermissionFormView({
             <Button
               type="submit"
               disabled={loading || !(requestType === "HOSTEL" ? hostelPassApprover?.available : assignedApprover?.available)}
-              className={`w-full h-11 text-white font-semibold text-sm cursor-pointer shadow-none ${
-                requestType === "ENTRY"
-                  ? "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600"
-                  : "bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600"
-              }`}
+              className="w-full h-12 text-sm"
             >
               {loading ? (
                 <div className="flex items-center gap-2">
@@ -980,8 +1012,8 @@ function HostelOutingFields({
   const maxDate = istDateString(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
   const [outingTo, setOutingTo] = useState(todayStr);
   const [informed, setInformed] = useState<"" | "yes" | "no">("");
-  const label = "text-xs font-medium text-zinc-400 flex items-center gap-1.5";
-  const inputCls = "bg-zinc-950/60 border-zinc-800 text-sm focus:border-orange-500";
+  const label = "text-sm font-medium text-zinc-300 flex items-center gap-2";
+  const inputCls = "text-base sm:text-sm";
 
   const details = [
     { k: "Name", v: studentName },
@@ -996,20 +1028,20 @@ function HostelOutingFields({
   ];
 
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
+    <div className="space-y-6">
+      <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3 rounded-2xl bg-zinc-950 p-4">
         {details.map((d) => (
           <div key={d.k} className="min-w-0">
-            <p className="text-[10px] uppercase tracking-wider text-zinc-500">{d.k}</p>
-            <p className="text-sm font-medium text-zinc-200 truncate">{d.v || "—"}</p>
+            <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{d.k}</dt>
+            <dd className="mt-0.5 text-sm font-medium text-zinc-200 truncate">{d.v || "—"}</dd>
           </div>
         ))}
-      </div>
+      </dl>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
         <div className="space-y-2">
           <label htmlFor="exitDate" className={label}>
-            <Calendar className="h-3.5 w-3.5 text-zinc-500" /> Outing Date From <span className="text-orange-400">*</span>
+            <Calendar className="h-4 w-4 text-zinc-500" /> Outing Date From <span className="text-orange-400">*</span>
           </label>
           <Input
             id="exitDate"
@@ -1028,7 +1060,7 @@ function HostelOutingFields({
         </div>
         <div className="space-y-2">
           <label htmlFor="outingDateTo" className={label}>
-            <Calendar className="h-3.5 w-3.5 text-zinc-500" /> Outing Date To <span className="text-orange-400">*</span>
+            <Calendar className="h-4 w-4 text-zinc-500" /> Outing Date To <span className="text-orange-400">*</span>
           </label>
           <Input
             id="outingDateTo"
@@ -1044,16 +1076,16 @@ function HostelOutingFields({
         </div>
         <div className="space-y-2">
           <label htmlFor="expectedExit" className={label}>
-            <Clock className="h-3.5 w-3.5 text-zinc-500" /> Out Time (on the From date) <span className="text-orange-400">*</span>
+            <Clock className="h-4 w-4 text-zinc-500" /> Out Time (on the From date) <span className="text-orange-400">*</span>
           </label>
-          <TimeField name="expectedExit" required defaultToNow />
+          <TimeField name="expectedExit" required defaultToNow className={TIME_FIELD_CLS} />
           {fieldErrors.expectedExit && <p className="text-xs text-red-400">{fieldErrors.expectedExit}</p>}
         </div>
         <div className="space-y-2">
           <label htmlFor="inTime" className={label}>
-            <Clock className="h-3.5 w-3.5 text-zinc-500" /> In Time (on the To date)
+            <Clock className="h-4 w-4 text-zinc-500" /> In Time (on the To date)
           </label>
-          <TimeField name="inTime" />
+          <TimeField name="inTime" className={TIME_FIELD_CLS} />
           {fieldErrors.inTime && <p className="text-xs text-red-400">{fieldErrors.inTime}</p>}
         </div>
       </div>
@@ -1062,12 +1094,12 @@ function HostelOutingFields({
         <legend className="text-sm font-medium text-zinc-300">
           Informed to Parent / Guardian <span className="text-orange-400">*</span>
         </legend>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-1 rounded-full bg-zinc-950 p-1 border border-zinc-800">
           {(["yes", "no"] as const).map((v) => (
             <label
               key={v}
-              className={`flex-1 cursor-pointer rounded-lg border px-3 py-2 text-sm text-center transition-colors ${
-                informed === v ? "border-orange-500 bg-orange-500/10 text-orange-300" : "border-zinc-800 text-zinc-300 hover:bg-zinc-800/40"
+              className={`flex h-10 cursor-pointer items-center justify-center rounded-full px-3 text-sm font-medium transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-orange-500/40 ${
+                informed === v ? "bg-zinc-900 shadow-card text-orange-400" : "text-zinc-500 hover:text-zinc-200"
               }`}
             >
               <input
@@ -1085,7 +1117,7 @@ function HostelOutingFields({
         </div>
       </fieldset>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
         <div className="space-y-2">
           <label htmlFor="guardianName" className={label}>Parent / Guardian Name</label>
           <Input id="guardianName" name="guardianName" maxLength={100} className={inputCls} />

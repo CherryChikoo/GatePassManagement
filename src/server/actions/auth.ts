@@ -8,6 +8,10 @@ import { getRoleDashboardPath, invalidateProfileCache } from "@/lib/auth/helpers
 import { checkRateLimit, resetRateLimit } from "@/lib/auth/rate-limiter";
 import { logger } from "@/lib/logger";
 import { LIMITS } from "@/lib/constants";
+import { createClient } from "@supabase/supabase-js";
+
+/** Cookie read once by the app frame to tell the user their password was changed by staff. */
+const PASSWORD_NOTICE_COOKIE = "gp_pw_notice";
 
 export async function loginAction(formData: FormData) {
   try {
@@ -75,6 +79,30 @@ export async function loginAction(formData: FormData) {
     }
 
     logger.info('User logged in successfully', { userId: data.user.id, role: profile.role });
+
+    // Staff changed this user's password: show a one-time notice after sign-in.
+    // The details come with the sign-in response (no extra request); clearing the
+    // flag is one request, only on this first sign-in after a change.
+    const meta = (data.user.app_metadata ?? {}) as Record<string, unknown>;
+    if (meta.password_notice_pending === true) {
+      const cookieStore = await cookies();
+      cookieStore.set(
+        PASSWORD_NOTICE_COOKIE,
+        JSON.stringify({
+          by: typeof meta.password_changed_by === "string" ? meta.password_changed_by : "",
+          role: typeof meta.password_changed_by_role === "string" ? meta.password_changed_by_role : "",
+          at: typeof meta.password_changed_at === "string" ? meta.password_changed_at : "",
+        }),
+        { path: "/", maxAge: 60 * 60 * 24, sameSite: "lax", secure: process.env.NODE_ENV === "production" }
+      );
+      try {
+        await createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        }).auth.admin.updateUserById(data.user.id, { app_metadata: { password_notice_pending: false } });
+      } catch (err: any) {
+        logger.warn('Could not clear the password notice flag', { error: err?.message });
+      }
+    }
 
     return { redirectUrl: getRoleDashboardPath(profile.role) };
   } catch (err: any) {

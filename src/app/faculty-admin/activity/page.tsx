@@ -29,7 +29,7 @@ export default async function FacultyAdminActivityPage({
 
   if (!faculty) {
     return (
-      <div className="p-8 text-center text-zinc-400">
+      <div className="mx-auto max-w-3xl py-16 text-center text-sm text-zinc-500">
         Faculty record not found for HOD account.
       </div>
     );

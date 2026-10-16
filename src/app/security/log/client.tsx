@@ -2,26 +2,29 @@
 import { useT } from "@/components/providers/language-provider";
 import { MovementDetails, VisitorDetails } from "@/components/registers/derived-views";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/primitives";
-import { formatDateTime, formatTime } from "@/lib/utils";
-import { DoorOpen, DoorClosed, Users, Search, Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight } from "lucide-react";
+import { formatTime } from "@/lib/utils";
+import { DoorOpen, DoorClosed, Users, Search, Calendar as CalendarIcon, ChevronRight, Eye } from "lucide-react";
 import { useState, useEffect } from "react";
 import { BackButton } from "@/components/ui/back-button";
+import { GoBackButton } from "@/components/ui/go-back-button";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/primitives";
+import { dt, IconAction, PersonCell, RowActions } from "@/components/ui/data-table";
+import { PagerBar } from "@/components/ui/pager-bar";
+import { cn } from "@/lib/utils";
 
-export function SecurityLogClient({ 
-  user, 
+export function SecurityLogClient({
+  user,
   studentEntries,
   studentExits,
   outsiderVisits,
   selectedDate
-}: { 
-  user: any; 
-  studentEntries: any[]; 
+}: {
+  user: any;
+  studentEntries: any[];
   studentExits: any[];
   outsiderVisits: any[];
   selectedDate: string;
@@ -37,78 +40,8 @@ export function SecurityLogClient({
   }, [activeTab, searchQuery]);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
 
-  
+
   const ITEMS_PER_PAGE = 10;
-
-  const renderPagination = (totalItems: number) => {
-    const totalPages = Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE));
-    const startItem = totalItems === 0 ? 0 : (page - 1) * ITEMS_PER_PAGE + 1;
-    const endItem = Math.min(page * ITEMS_PER_PAGE, totalItems);
-
-    return (
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-zinc-800/40 px-4 sm:px-6 py-3.5 bg-zinc-950/40 rounded-b-xl">
-        <p className="text-xs sm:text-sm text-zinc-400">
-          {t("Showing {from}–{to} of {total} results", { from: startItem, to: endItem, total: totalItems })}
-        </p>
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 px-2.5 border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed text-xs"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-          >
-            <ChevronLeft className="h-4 w-4 sm:mr-1" />
-            <span className="hidden sm:inline">{t("Previous")}</span>
-          </Button>
-
-          {totalPages > 1 ? (
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter((pNum) => {
-                  if (totalPages <= 5) return true;
-                  if (pNum === 1 || pNum === totalPages) return true;
-                  return Math.abs(pNum - page) <= 1;
-                })
-                .map((pNum, idx, arr) => {
-                  const prev = arr[idx - 1];
-                  const showEllipsis = prev && pNum - prev > 1;
-                  return (
-                    <span key={pNum} className="flex items-center">
-                      {showEllipsis && <span className="px-1 text-zinc-600 text-xs">...</span>}
-                      <button
-                        type="button"
-                        onClick={() => setPage(pNum)}
-                        className={`h-8 min-w-[2rem] px-2 rounded-md text-xs font-medium transition-colors ${
-                          page === pNum
-                            ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                            : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60"
-                        }`}
-                      >
-                        {pNum}
-                      </button>
-                    </span>
-                  );
-                })}
-            </div>
-          ) : (
-            <span className="text-xs text-zinc-500 px-2">{t("Page {page} of {pages}", { page: 1, pages: 1 })}</span>
-          )}
-
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 px-2.5 border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed text-xs"
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages || totalPages === 0}
-          >
-            <span className="hidden sm:inline">{t("Next")}</span>
-            <ChevronRight className="h-4 w-4 sm:ml-1" />
-          </Button>
-        </div>
-      </div>
-    );
-  };
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newDate = e.target.value;
@@ -117,192 +50,332 @@ export function SecurityLogClient({
     }
   };
 
+  const emptyState = (icon: React.ReactNode, text: string) => (
+    <div className="flex flex-col items-center gap-3 px-4 py-14 text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 text-zinc-500">{icon}</span>
+      <p className="text-sm text-zinc-500">{text}</p>
+    </div>
+  );
+
   const renderMovementList = (movements: any[], type: "ENTRY" | "EXIT") => {
-    const filtered = movements.filter(m => 
+    const filtered = movements.filter(m =>
       m.student?.profile?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       m.student?.studentRoll?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+    const DirIcon = type === "EXIT" ? DoorOpen : DoorClosed;
+    const dirTone = type === "EXIT" ? "bg-sky-500/10 text-sky-400" : "bg-emerald-500/10 text-emerald-400";
+    const facultyBadge = (
+      <span className="inline-flex shrink-0 items-center rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-400">
+        {t("Faculty")}
+      </span>
+    );
+    const purposeLine = (mov: any) =>
+      `${mov.permission?.purpose ?? ""} ${mov.permission?.destination ? `→ ${mov.permission.destination}` : ""}`.trim();
 
     return (
-      <div>
+      <>
         {filtered.length === 0 ? (
-          <p className="text-center text-sm text-zinc-500 py-12">
-            {type === "EXIT" ? t("No exits found for this date.") : t("No entries found for this date.")}
-          </p>
+          emptyState(
+            <DirIcon className="h-5 w-5" />,
+            type === "EXIT" ? t("No exits found for this date.") : t("No entries found for this date.")
+          )
         ) : (
-          <div className="divide-y divide-zinc-800/30">
-            {paginated.map((mov) => (
-              <div key={mov.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 p-3 sm:px-6 sm:py-4 table-row-hover transition-colors cursor-pointer" onClick={() => setSelectedRecord(mov)}>
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className={`rounded-lg p-1.5 shrink-0 ${type === "EXIT" ? "bg-orange-500/15 text-orange-400" : "bg-blue-500/15 text-blue-400"}`}>
-                    {type === "EXIT" ? <DoorOpen className="h-4 w-4" /> : <DoorClosed className="h-4 w-4" />}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-zinc-200 truncate">
-                      {mov.student?.profile?.name || t("Unknown person")} — {mov.student?.studentRoll}
-                      {mov.student?.isFaculty && (
-                        <span className="ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400">
-                          {t("Faculty")}
+          <>
+            {/* Phones: stacked rows */}
+            <ul className={cn(dt.mobileList, "sm:hidden")}>
+              {paginated.map((mov) => (
+                <li key={mov.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRecord(mov)}
+                    className="flex w-full min-h-[72px] items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-zinc-950/70 active:bg-zinc-950"
+                  >
+                    <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl", dirTone)}>
+                      <DirIcon className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="truncate text-base font-medium text-zinc-100">
+                          {mov.student?.profile?.name || t("Unknown person")}
                         </span>
-                      )}
-                    </p>
-                    <p className="text-xs text-zinc-500 truncate mt-0.5">
-                      {mov.gate?.name} • {mov.permission?.purpose} {mov.permission?.destination ? `→ ${mov.permission.destination}` : ""}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-1 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800/60">
-                  <p className="text-xs sm:text-sm text-zinc-300 font-medium">
-                    {formatTime(mov.createdAt)}
-                  </p>
-                  <p className="text-xs text-zinc-500">
-                    {mov.student?.profile?.phone}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
+                        {mov.student?.isFaculty && facultyBadge}
+                      </span>
+                      <span className="mt-0.5 flex items-center gap-2 min-w-0 text-xs text-zinc-500">
+                        {mov.student?.studentRoll && <span className={dt.chip}>{mov.student.studentRoll}</span>}
+                        <span className="truncate">{mov.student?.profile?.phone}</span>
+                      </span>
+                      <span className="mt-1 block truncate text-xs text-zinc-500">
+                        {[mov.gate?.name, purposeLine(mov)].filter(Boolean).join(" • ")}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="text-base font-semibold text-zinc-100 tabular-nums">{formatTime(mov.createdAt)}</span>
+                      <ChevronRight className="h-4 w-4 text-zinc-600" aria-hidden="true" />
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            {/* Larger screens: table */}
+            <div className={cn(dt.wrap, "hidden sm:block")}>
+              <table className={dt.table}>
+                <thead>
+                  <tr>
+                    <th className={dt.th}>{t("Name")}</th>
+                    <th className={dt.th}>{t("Gate")}</th>
+                    <th className={dt.th}>{t("Purpose")}</th>
+                    <th className={dt.th}>{t("Time")}</th>
+                    <th className={dt.thRight}>
+                      <span className="sr-only">{t("Action")}</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginated.map((mov) => (
+                    <tr key={mov.id} className={dt.trClickable} onClick={() => setSelectedRecord(mov)}>
+                      <td className={dt.td}>
+                        <PersonCell
+                          name={mov.student?.profile?.name || t("Unknown person")}
+                          chip={
+                            <>
+                              {mov.student?.studentRoll && <span className={dt.chip}>{mov.student.studentRoll}</span>}
+                              {mov.student?.isFaculty && facultyBadge}
+                            </>
+                          }
+                          sub={mov.student?.profile?.phone}
+                        />
+                      </td>
+                      <td className={cn(dt.td, "whitespace-nowrap")}>{mov.gate?.name || "—"}</td>
+                      <td className={cn(dt.tdMuted, "max-w-[280px] truncate")}>{purposeLine(mov) || "—"}</td>
+                      <td className={cn(dt.td, "whitespace-nowrap")}>
+                        <span className="inline-flex items-center gap-2 font-medium text-zinc-100 tabular-nums">
+                          <span className={cn("flex h-7 w-7 items-center justify-center rounded-full", dirTone)}>
+                            <DirIcon className="h-3.5 w-3.5" />
+                          </span>
+                          {formatTime(mov.createdAt)}
+                        </span>
+                      </td>
+                      <td className={dt.tdActions}>
+                        <RowActions>
+                          <IconAction label={t("View details")} icon={<Eye />} onClick={() => setSelectedRecord(mov)} />
+                        </RowActions>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
-        {renderPagination(filtered.length)}
-      </div>
+        <PagerBar page={page} pageSize={ITEMS_PER_PAGE} total={filtered.length} onPageChange={setPage} itemLabel={t("records")} />
+      </>
     );
   };
 
   const renderOutsidersList = () => {
-    const filtered = outsiderVisits.filter(o => 
+    const filtered = outsiderVisits.filter(o =>
       o.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       o.phone.includes(searchQuery) ||
       o.vehicleNumber?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+    const purposeLine = (outsider: any) =>
+      `${outsider.purpose} ${outsider.visitingStudent ? `(${t("Visiting")}: ${outsider.visitingStudent})` : ""}`.trim();
 
     return (
-      <div>
+      <>
         {filtered.length === 0 ? (
-          <p className="text-center text-sm text-zinc-500 py-12">
-            {t("No visitor visits found for this date.")}
-          </p>
+          emptyState(<Users className="h-5 w-5" />, t("No visitor visits found for this date."))
         ) : (
-          <div className="divide-y divide-zinc-800/30">
-            {paginated.map((outsider) => (
-              <div key={outsider.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 p-3 sm:px-6 sm:py-4 table-row-hover transition-colors cursor-pointer" onClick={() => setSelectedRecord(outsider)}>
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="rounded-lg p-1.5 bg-zinc-800 text-zinc-400 shrink-0">
-                    <Users className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-zinc-200 truncate">
-                        {outsider.name}
-                      </p>
-                      <StatusBadge status={outsider.status} />
-                    </div>
-                    <p className="text-xs text-zinc-500 truncate mt-0.5">
-                      {outsider.category} • {outsider.purpose} {outsider.visitingStudent ? `(${t("Visiting")}: ${outsider.visitingStudent})` : ""}
-                    </p>
-                    <p className="text-xs text-zinc-500 mt-0.5">
-                      {outsider.phone} {outsider.vehicleNumber ? `• ${t("Vehicle")}: ${outsider.vehicleNumber}` : ""}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-1.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-800/60">
-                  <div className="flex items-center gap-1.5 text-xs sm:text-sm text-zinc-300 font-medium">
-                    <DoorClosed className="h-3.5 w-3.5 text-blue-400" />
-                    {formatTime(outsider.entryTime)}
-                  </div>
-                  {outsider.exitTime && (
-                    <div className="flex items-center gap-1.5 text-xs sm:text-sm text-zinc-400">
-                      <DoorOpen className="h-3.5 w-3.5 text-orange-400" />
-                      {formatTime(outsider.exitTime)}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          <>
+            {/* Phones: stacked rows */}
+            <ul className={cn(dt.mobileList, "sm:hidden")}>
+              {paginated.map((outsider) => (
+                <li key={outsider.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRecord(outsider)}
+                    className="flex w-full min-h-[72px] items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-zinc-950/70 active:bg-zinc-950"
+                  >
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-base font-semibold text-orange-400">
+                      {(outsider.name || "?").charAt(0).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="truncate text-base font-medium text-zinc-100">{outsider.name}</span>
+                        <StatusBadge status={outsider.status} />
+                      </span>
+                      <span className="mt-0.5 block truncate text-sm text-zinc-400">
+                        {outsider.category} • {purposeLine(outsider)}
+                      </span>
+                      <span className="mt-0.5 block truncate text-xs text-zinc-500">
+                        {outsider.phone} {outsider.vehicleNumber ? `• ${t("Vehicle")}: ${outsider.vehicleNumber}` : ""}
+                      </span>
+                      <span className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-400 tabular-nums">
+                          <DoorClosed className="h-3.5 w-3.5" />
+                          {formatTime(outsider.entryTime)}
+                        </span>
+                        {outsider.exitTime && (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/10 px-2.5 py-1 text-xs font-semibold text-sky-400 tabular-nums">
+                            <DoorOpen className="h-3.5 w-3.5" />
+                            {formatTime(outsider.exitTime)}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                    <ChevronRight className="mt-3 h-5 w-5 shrink-0 text-zinc-600" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            {/* Larger screens: table */}
+            <div className={cn(dt.wrap, "hidden sm:block")}>
+              <table className={dt.table}>
+                <thead>
+                  <tr>
+                    <th className={dt.th}>{t("Name")}</th>
+                    <th className={dt.th}>{t("Purpose")}</th>
+                    <th className={dt.th}>{t("Vehicle")}</th>
+                    <th className={dt.th}>{t("In")}</th>
+                    <th className={dt.th}>{t("Out")}</th>
+                    <th className={dt.th}>{t("Status")}</th>
+                    <th className={dt.thRight}>
+                      <span className="sr-only">{t("Action")}</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginated.map((outsider) => (
+                    <tr key={outsider.id} className={dt.trClickable} onClick={() => setSelectedRecord(outsider)}>
+                      <td className={dt.td}>
+                        <PersonCell name={outsider.name || "—"} sub={outsider.phone} />
+                      </td>
+                      <td className={cn(dt.td, "max-w-[280px]")}>
+                        <span className="block truncate text-zinc-300">{purposeLine(outsider)}</span>
+                        <span className="block truncate text-xs text-zinc-500">{outsider.category}</span>
+                      </td>
+                      <td className={cn(dt.tdMuted, "whitespace-nowrap font-mono")}>{outsider.vehicleNumber || "—"}</td>
+                      <td className={cn(dt.td, "whitespace-nowrap")}>
+                        <span className="inline-flex items-center gap-1.5 font-medium text-zinc-100 tabular-nums">
+                          <DoorClosed className="h-3.5 w-3.5 text-emerald-400" />
+                          {formatTime(outsider.entryTime)}
+                        </span>
+                      </td>
+                      <td className={cn(dt.td, "whitespace-nowrap")}>
+                        {outsider.exitTime ? (
+                          <span className="inline-flex items-center gap-1.5 text-zinc-300 tabular-nums">
+                            <DoorOpen className="h-3.5 w-3.5 text-sky-400" />
+                            {formatTime(outsider.exitTime)}
+                          </span>
+                        ) : (
+                          <span className="text-zinc-600">—</span>
+                        )}
+                      </td>
+                      <td className={dt.td}>
+                        <StatusBadge status={outsider.status} />
+                      </td>
+                      <td className={dt.tdActions}>
+                        <RowActions>
+                          <IconAction label={t("View details")} icon={<Eye />} onClick={() => setSelectedRecord(outsider)} />
+                        </RowActions>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
-        {renderPagination(filtered.length)}
-      </div>
+        <PagerBar page={page} pageSize={ITEMS_PER_PAGE} total={filtered.length} onPageChange={setPage} itemLabel={t("records")} />
+      </>
     );
   };
 
+  const tabs = [
+    { key: "ENTRIES" as const, label: t("Entries"), count: studentEntries.length, icon: <DoorClosed className="h-4 w-4" /> },
+    { key: "EXITS" as const, label: t("Exits"), count: studentExits.length, icon: <DoorOpen className="h-4 w-4" /> },
+    { key: "OUTSIDERS" as const, label: t("Visitor Visits"), count: outsiderVisits.length, icon: <Users className="h-4 w-4" /> },
+  ];
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <BackButton href="/security" label={t("Back to Dashboard")} />
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-100">{t("Entries & Exits")}</h1>
+    <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+        <div className="min-w-0">
+          <GoBackButton className="mb-3" />
+          <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">{t("Entries & Exits")}</h1>
           <p className="text-sm text-zinc-500 mt-1">
             {t("{entries} entries, {exits} exits, {visits} visitor visits", { entries: studentEntries.length, exits: studentExits.length, visits: outsiderVisits.length })}
           </p>
         </div>
-        
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
-          <div className="relative flex-1 sm:flex-none">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-            <Input 
-              placeholder={t("Search by name, roll no...")} 
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-9 w-full sm:w-[250px] bg-zinc-900 border-zinc-800 text-zinc-100 placeholder:text-zinc-500"
-            />
-          </div>
-          <div className="relative flex items-center justify-center bg-zinc-900 border border-zinc-800 rounded-md px-3 h-10 shrink-0">
-            <input 
-              type="date" 
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full lg:w-auto">
+          <label className="relative flex h-12 sm:h-11 shrink-0 cursor-pointer items-center gap-2.5 rounded-full border border-zinc-800 bg-zinc-900 pl-4 pr-3 transition-colors hover:border-zinc-700 focus-within:border-orange-500/50 focus-within:ring-4 focus-within:ring-orange-500/10">
+            <CalendarIcon className="h-4 w-4 shrink-0 text-orange-400" />
+            <input
+              type="date"
+              aria-label={t("Date")}
               value={selectedDate}
               onChange={handleDateChange}
-              className="bg-transparent text-sm text-zinc-200 focus:outline-none [color-scheme:light] cursor-pointer"
+              className="min-w-0 flex-1 bg-transparent text-base sm:text-sm font-medium text-zinc-100 outline-none [color-scheme:light] cursor-pointer"
+            />
+          </label>
+          <div className="relative flex-1 sm:min-w-[260px]">
+            <Input
+              icon={<Search className="h-4 w-4" />}
+              type="search"
+              placeholder={t("Search by name, roll no...")}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="h-12 sm:h-11 rounded-full text-base sm:text-sm focus:ring-4 focus:ring-orange-500/10"
             />
           </div>
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-zinc-800 pb-px overflow-x-auto scrollbar-none">
-        <button
-          onClick={() => setActiveTab("ENTRIES")}
-          className={`px-4 py-2 text-sm font-medium transition-colors relative ${
-            activeTab === "ENTRIES" ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
-          }`}
-        >
-          {t("Entries")}
-          {activeTab === "ENTRIES" && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab("EXITS")}
-          className={`px-4 py-2 text-sm font-medium transition-colors relative ${
-            activeTab === "EXITS" ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
-          }`}
-        >
-          {t("Exits")}
-          {activeTab === "EXITS" && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-orange-500" />
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab("OUTSIDERS")}
-          className={`px-4 py-2 text-sm font-medium transition-colors relative ${
-            activeTab === "OUTSIDERS" ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
-          }`}
-        >
-          {t("Visitor Visits")}
-          {activeTab === "OUTSIDERS" && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-zinc-400" />
-          )}
-        </button>
+      <div
+        role="tablist"
+        aria-label={t("Gate Logs")}
+        className="grid w-full grid-cols-3 gap-1 rounded-[22px] border border-zinc-800 bg-zinc-950 p-1"
+      >
+        {tabs.map((tab) => {
+          const active = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                "flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-[18px] px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors",
+                active ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
+              )}
+            >
+              <span className={cn("hidden sm:inline-flex", active && "text-orange-400")}>{tab.icon}</span>
+              <span className="min-w-0 text-center leading-tight break-words">{tab.label}</span>
+              <span
+                className={cn(
+                  "shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums",
+                  active ? "bg-orange-500/10 text-orange-400" : "bg-zinc-900 text-zinc-500"
+                )}
+              >
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          {activeTab === "ENTRIES" && renderMovementList(studentEntries, "ENTRY")}
-          {activeTab === "EXITS" && renderMovementList(studentExits, "EXIT")}
-          {activeTab === "OUTSIDERS" && renderOutsidersList()}
-        </CardContent>
+      <Card className="overflow-hidden">
+        {activeTab === "ENTRIES" && renderMovementList(studentEntries, "ENTRY")}
+        {activeTab === "EXITS" && renderMovementList(studentExits, "EXIT")}
+        {activeTab === "OUTSIDERS" && renderOutsidersList()}
       </Card>
 
 

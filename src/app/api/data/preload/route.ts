@@ -6,6 +6,7 @@ import { autoExpireOutdatedPermissions } from "@/lib/permissions/auto-expire";
 import { resolveStudentApprover, getFacultyApproverOptions } from "@/lib/permissions/approver";
 import { istDateString, istStartOfDay } from "@/lib/time/ist";
 import { fillMovementPeople } from "@/lib/people";
+import { canScanReturn } from "@/lib/passes/return-scan";
 
 /**
  * Unified preload endpoint — returns ALL data the logged-in user needs
@@ -17,12 +18,12 @@ import { fillMovementPeople } from "@/lib/people";
  * GET /api/data/preload
  */
 export async function GET() {
-  const user = await getAuthUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: NO_STORE });
+    }
+
     // Proactively clean up any expired passes (time limit ended or previous days)
     await autoExpireOutdatedPermissions();
 
@@ -72,23 +73,14 @@ const QR_PUBLIC_SELECT = {
 // ──────────────────────────────────────────────────────────────
 
 async function preloadFacultyAdmin(profileId: string) {
-  let faculty = await prisma.faculty.findUnique({
+  const faculty = await prisma.faculty.findUnique({
     where: { profileId },
     select: { id: true, department: true, designation: true, maxApprovals: true, employeeId: true },
   });
 
-  if (!faculty) {
-    faculty = await prisma.faculty.create({
-      data: {
-        profileId,
-        department: "Computer Science",
-        designation: "Head of Department",
-        employeeId: `HOD-${Date.now().toString().slice(-4)}`,
-        maxApprovals: 50,
-      },
-      select: { id: true, department: true, designation: true, maxApprovals: true, employeeId: true },
-    });
-  }
+  // An HOD's department decides what they can see and approve. Never guess it:
+  // without a faculty record the account is not set up (the admin assigns it).
+  if (!faculty) return { dashboard: null };
 
   const today = istStartOfDay();
 
@@ -586,6 +578,8 @@ async function preloadStudent(profileId: string) {
         // The stored QR token is never sent to the browser; the pass screen
         // fetches rotating 60-second tokens instead.
         qr: { select: QR_PUBLIC_SELECT },
+        // Recorded return (hostellers scan the same pass to come back)
+        movements: { where: { type: "ENTRY" }, select: { id: true }, take: 1 },
       },
     }),
     // Pre-fetch first page of history
@@ -661,9 +655,16 @@ async function preloadStudent(profileId: string) {
   // Student flow: FORM → PENDING (locked) → QR_CODE (approved) or REJECTED (reason) → FORM
   const REJECTION_VISIBLE_MS = 24 * 60 * 60 * 1000;
   let state: "FORM" | "PENDING" | "QR_CODE" | "REJECTED" = "FORM";
+  // Hosteller out on an outing pass: the same QR is shown again for the return scan
+  const isOutOnPass =
+    !!latestPermission &&
+    canScanReturn(
+      { ...latestPermission, facultyId: null, studentId: student.id, studentType: student.studentType },
+      latestPermission.movements.length > 0
+    );
   if (latestPermission && latestPermission.status === "PENDING") {
     state = "PENDING";
-  } else if (isQrValid) {
+  } else if (isQrValid || isOutOnPass) {
     state = "QR_CODE";
   } else if (
     latestPermission?.status === "REJECTED" &&
@@ -730,7 +731,7 @@ async function preloadSecurity() {
     outsidersInsideList,
     outsidersHistory,
   ] = await Promise.all([
-    prisma.outsider.count({ where: { createdAt: { gte: today } } }),
+    prisma.outsider.count({ where: { entryTime: { gte: today } } }),
     prisma.movement.count({ where: { type: "EXIT", createdAt: { gte: today } } }),
     prisma.movement.count({ where: { type: "ENTRY", createdAt: { gte: today } } }),
     prisma.outsider.count({ where: { status: "INSIDE" } }),
@@ -938,6 +939,13 @@ async function preloadAdmin() {
 // passes and people. The supervisor cannot approve or reject anything.
 // ──────────────────────────────────────────────────────────────
 
+/** { "CSE": 120, … } from a student.groupBy on department */
+function toDeptCounts(rows: { department: string | null; _count: { _all: number } }[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const r of rows) out[r.department || "General"] = (out[r.department || "General"] || 0) + r._count._all;
+  return out;
+}
+
 async function preloadSupervisor() {
   const today = istStartOfDay();
 
@@ -1017,14 +1025,9 @@ async function preloadSupervisor() {
       },
     }),
     // Student directory (same shape as the Director/Dean directory)
-    prisma.student.findMany({
-      orderBy: { studentRoll: "asc" },
-      include: {
-        profile: { select: { id: true, name: true, email: true, phone: true, active: true } },
-        faculty: { select: { id: true, department: true, profile: { select: { name: true } } } },
-        warden: { select: { id: true, hostelBlock: true, profile: { select: { name: true } } } },
-      },
-    }),
+    // Student counts per department; the student directory itself is paged on the
+    // server (getExecutiveStudents), so the 45-second poll no longer ships every student.
+    prisma.student.groupBy({ by: ["department"], _count: { _all: true } }),
     // Faculty & HOD directory
     prisma.profile.findMany({
       where: { role: { in: ["FACULTY", "FACULTY_ADMIN"] } },
@@ -1053,7 +1056,7 @@ async function preloadSupervisor() {
       recentRequests: requests.slice(0, 8),
     },
     requests,
-    students,
+    studentDeptCounts: toDeptCounts(students),
     allFaculty,
   };
 }
@@ -1208,14 +1211,9 @@ async function preloadDirector(profileId: string) {
       },
     }),
     // All students campus-wide
-    prisma.student.findMany({
-      orderBy: { studentRoll: "asc" },
-      include: {
-        profile: { select: { id: true, name: true, email: true, phone: true, active: true } },
-        faculty: { select: { id: true, department: true, profile: { select: { name: true } } } },
-        warden: { select: { id: true, hostelBlock: true, profile: { select: { name: true } } } },
-      },
-    }),
+    // Student counts per department; the student directory itself is paged on the
+    // server (getExecutiveStudents), so the 45-second poll no longer ships every student.
+    prisma.student.groupBy({ by: ["department"], _count: { _all: true } }),
     // Recent student passes campus-wide
     prisma.permission.findMany({
       where: { studentId: { not: null } },
@@ -1266,7 +1264,7 @@ async function preloadDirector(profileId: string) {
     allFaculty,
     allHODs,
     allMovements: recentMovements,
-    students: campusStudents,
+    studentDeptCounts: toDeptCounts(campusStudents),
     recentStudentPasses,
   };
 }
@@ -1418,14 +1416,9 @@ async function preloadDean(profileId: string) {
       },
     }),
     // All students campus-wide
-    prisma.student.findMany({
-      orderBy: { studentRoll: "asc" },
-      include: {
-        profile: { select: { id: true, name: true, email: true, phone: true, active: true } },
-        faculty: { select: { id: true, department: true, profile: { select: { name: true } } } },
-        warden: { select: { id: true, hostelBlock: true, profile: { select: { name: true } } } },
-      },
-    }),
+    // Student counts per department; the student directory itself is paged on the
+    // server (getExecutiveStudents), so the 45-second poll no longer ships every student.
+    prisma.student.groupBy({ by: ["department"], _count: { _all: true } }),
     // Recent student passes campus-wide
     prisma.permission.findMany({
       where: { studentId: { not: null } },
@@ -1474,7 +1467,7 @@ async function preloadDean(profileId: string) {
     allFaculty,
     allHODs,
     allMovements: recentMovements,
-    students: campusStudents,
+    studentDeptCounts: toDeptCounts(campusStudents),
     recentStudentPasses,
   };
 }

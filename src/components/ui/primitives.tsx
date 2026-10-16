@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { usePathname } from "next/navigation";
 import { T } from "@/components/providers/language-provider";
 
 // ──────────────────────────────────────────────────────────────
@@ -191,7 +192,7 @@ export function StatCard({
     >
       <div className="flex items-start justify-between gap-3 min-w-0">
         <p className="text-sm sm:text-[15px] text-zinc-300 leading-snug truncate">{title}</p>
-        <div className="-mt-1 -mr-1 flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full border border-zinc-800 bg-zinc-950 text-zinc-300 [&>svg]:h-4 [&>svg]:w-4 sm:[&>svg]:h-[18px] sm:[&>svg]:w-[18px]">
+        <div className="-mt-1 -mr-1 flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full border border-orange-500/15 bg-orange-500/10 text-orange-400 [&>svg]:h-4 [&>svg]:w-4 sm:[&>svg]:h-[18px] sm:[&>svg]:w-[18px]">
           {icon}
         </div>
       </div>
@@ -264,6 +265,8 @@ interface ModalProps {
 }
 
 export function Modal({ open, onClose, title, children, className }: ModalProps) {
+  // On Security screens the dialog closes with a labelled "Go Back" button
+  const goBackStyle = (usePathname() ?? "").startsWith("/security");
   React.useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";
@@ -295,22 +298,37 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
         {title && (
           <div className="flex items-center justify-between border-b border-zinc-800 p-4 sm:p-5 flex-shrink-0">
             <h2 className="text-base sm:text-lg font-semibold text-zinc-100 truncate pr-2">{title}</h2>
-            <button
-              onClick={onClose}
-              className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors shrink-0"
-              aria-label="Close dialog"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
+            {goBackStyle ? (
+              // Security screens: a clear "Go Back" instead of a small ✕
+              <button
+                onClick={onClose}
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 pl-1 pr-3.5 text-sm font-medium text-zinc-100 hover:bg-zinc-950 transition-colors -mr-1"
               >
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-600 text-white">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" aria-hidden="true">
+                    <path d="M19 12H5M12 19l-7-7 7-7" />
+                  </svg>
+                </span>
+                <T>Go Back</T>
+              </button>
+            ) : (
+              <button
+                onClick={onClose}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-950 hover:text-zinc-200 transition-colors shrink-0 -mr-1"
+                aria-label="Close dialog"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
         )}
         <div className="p-4 sm:p-6 overflow-y-auto min-w-0">{children}</div>

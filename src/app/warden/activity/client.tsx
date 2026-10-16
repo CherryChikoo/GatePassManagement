@@ -3,15 +3,14 @@ import { istDateString } from "@/lib/time/ist";
 import { scheduledNote } from "@/lib/pass-dates";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { StatusBadge, Modal } from "@/components/ui/primitives";
 import { formatDateTime } from "@/lib/utils";
-import { DoorOpen, DoorClosed, ArrowLeft, MapPin, Calendar, Clock, ArrowRight } from "lucide-react";
-import Link from "next/link";
+import { DoorOpen, DoorClosed, ArrowLeft, MapPin, Calendar, Clock, ArrowRight, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { logoutAction } from "@/server/actions/auth";
 import { BackButton } from "@/components/ui/back-button";
+import { PagerBar } from "@/components/ui/pager-bar";
 
 export function WardenActivityClient({ 
   user, 
@@ -49,7 +48,6 @@ export function WardenActivityClient({
   });
   
   const displayTotal = search || activeTab !== "ALL" ? filteredPermissions.length : total;
-  const totalPages = Math.ceil(displayTotal / 25) || 1;
   
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,135 +56,136 @@ export function WardenActivityClient({
 
   return (
     <>
-      <div className="space-y-6">
-        
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <BackButton href="/warden" label="Back to Dashboard" />
-            <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Student Activity Log</h1>
-            <p className="text-sm text-zinc-500 mt-1">{displayTotal} records found for your students</p>
+      <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
+
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+          <div className="min-w-0">
+            <BackButton href="/warden" label="Back to Dashboard" className="-ml-3 mb-2" />
+            <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">Student Activity Log</h1>
+            <p className="mt-1 text-sm text-zinc-500">{displayTotal} records found for your students</p>
           </div>
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
             {/* Search */}
-            <div className="relative w-full sm:w-64 group">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-4 w-4 text-zinc-400 group-focus-within:text-orange-500 transition-colors" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-              </div>
+            <div className="relative w-full sm:flex-1 lg:w-72 lg:flex-none">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
               <input
                 type="text"
                 placeholder="Search name or roll..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full h-9 pl-9 pr-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-colors"
+                aria-label="Search name or roll"
+                className="w-full h-10 rounded-full border border-zinc-800 bg-zinc-900 pl-10 pr-4 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
               />
             </div>
             {/* Date Picker */}
-            <div className="relative flex items-center group w-full sm:w-auto">
-              <Calendar className="absolute left-3 h-4 w-4 text-zinc-400 group-hover:text-zinc-200 transition-colors pointer-events-none z-10" />
+            <div className="relative flex items-center w-full sm:w-auto">
+              <Calendar className="absolute left-3.5 h-4 w-4 text-zinc-500 pointer-events-none z-10" />
               <input
                 type="date"
                 value={selectedDate}
                 max={istDateString()}
                 onChange={handleDateChange}
-                className="relative w-full sm:w-auto h-9 pl-9 pr-3 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500/50 [color-scheme:light] cursor-pointer hover:border-zinc-700 hover:bg-zinc-800 transition-colors [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                aria-label="Activity date"
+                className="relative w-full sm:w-auto h-10 rounded-full border border-zinc-800 bg-zinc-900 pl-10 pr-4 text-sm font-medium text-zinc-100 outline-none [color-scheme:light] cursor-pointer transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
               />
             </div>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-2 p-1 bg-zinc-900 border border-zinc-800 rounded-lg w-fit">
-          <button onClick={() => setActiveTab("ALL")} className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === "ALL" ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"}`}>All Data</button>
-          <button onClick={() => setActiveTab("ENTRIES")} className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === "ENTRIES" ? "bg-emerald-500/20 text-emerald-300" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"}`}>Entries</button>
-          <button onClick={() => setActiveTab("EXITS")} className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === "EXITS" ? "bg-orange-500/20 text-orange-300" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"}`}>Exits</button>
-        </div>
-
         <Card>
-          <CardContent className="p-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 sm:p-6 pb-3 sm:pb-4">
+            <h2 className="text-base sm:text-lg font-medium text-zinc-100">Passes</h2>
+            {/* Tabs */}
+            <div
+              className="inline-flex max-w-full self-start sm:self-auto rounded-full bg-zinc-950 p-1 border border-zinc-800 overflow-x-auto scrollbar-none"
+              role="tablist"
+              aria-label="Filter activity"
+            >
+              {([
+                ["ALL", "All Data"],
+                ["ENTRIES", "Entries"],
+                ["EXITS", "Exits"],
+              ] as const).map(([tab, label]) => (
+                <button
+                  key={tab}
+                  role="tab"
+                  aria-selected={activeTab === tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`text-xs font-medium px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap ${
+                    activeTab === tab ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <CardContent className="p-0 sm:p-0">
             {filteredPermissions.length === 0 ? (
-              <p className="text-center text-sm text-zinc-500 py-8">
+              <div className="flex flex-col items-center py-12 text-sm text-zinc-500 border-t border-zinc-800/70">
+                <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 text-zinc-500">
+                  <Calendar className="h-5 w-5" />
+                </span>
                 No activity found for the selected date.
-              </p>
+              </div>
             ) : (
-              <div className="divide-y divide-zinc-800/30">
+              <ul className="divide-y divide-zinc-800/70 border-t border-zinc-800/70">
                 {filteredPermissions.map((perm) => {
                   const exitMove = perm.movements?.find((m: any) => m.type === "EXIT");
                   const entryMove = perm.movements?.find((m: any) => m.type === "ENTRY");
-                  
+
                   return (
-                    <div 
-                      key={perm.id} 
-                      onClick={() => setSelectedPermission(perm)}
-                      className="flex items-center justify-between px-6 py-4 table-row-hover transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <div className="flex flex-col gap-1 items-center justify-center p-2 rounded-lg bg-zinc-900/50 border border-zinc-800 min-w-16">
-                           <StatusBadge status={perm.status} />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-zinc-200 truncate">
-                            {perm.student?.profile?.name} — {perm.student?.studentRoll}
-                          </p>
-                          <p className="text-xs text-zinc-500">
+                    <li key={perm.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPermission(perm)}
+                        className="w-full flex items-center gap-3 sm:gap-4 px-4 sm:px-6 py-3.5 text-left hover:bg-zinc-950/70 transition-colors cursor-pointer"
+                      >
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400 font-semibold">
+                          {(perm.student?.profile?.name || "S").charAt(0).toUpperCase()}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm font-medium text-zinc-100 truncate">
+                            {perm.student?.profile?.name}
+                            <span className="text-zinc-500 font-normal"> · {perm.student?.studentRoll}</span>
+                          </span>
+                          <span className="block text-xs text-zinc-500 truncate">
                             {perm.purpose} {perm.destination ? `→ ${perm.destination}` : ""}
-                          </p>
-                          <div className="flex items-center gap-3 mt-1.5">
+                          </span>
+                          <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                             {perm.type === 'ENTRY' ? (
-                               <div className="flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                                 <DoorClosed className="h-3 w-3" /> Entry Pass
-                               </div>
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
+                                <DoorClosed className="h-3 w-3" /> Entry Pass
+                              </span>
                             ) : (
-                               <div className="flex items-center gap-1 text-[11px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                                 <DoorOpen className="h-3 w-3" /> Exit Pass
-                               </div>
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-400">
+                                <DoorOpen className="h-3 w-3" /> Exit Pass
+                              </span>
                             )}
-                            <span className="text-[11px] text-zinc-500 flex items-center gap-1">
-                               <Clock className="h-3 w-3" /> Requested: {formatDateTime(perm.createdAt)}{scheduledNote(perm)}
+                            <span className="text-[11px] text-zinc-500 flex items-center gap-1 min-w-0">
+                              <Clock className="h-3 w-3 shrink-0" /> Requested: {formatDateTime(perm.createdAt)}{scheduledNote(perm)}
                             </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                          </span>
+                        </span>
+                        <span className="shrink-0 self-start sm:self-center">
+                          <StatusBadge status={perm.status} />
+                        </span>
+                      </button>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             )}
           </CardContent>
         </Card>
 
-        {/* Pagination */}
-        {total > 25 && (
-          <div className="flex justify-between items-center py-4 px-6 border-t border-zinc-800/50">
-            <p className="text-sm text-zinc-400">
-              Showing {(currentPage - 1) * 25 + 1} to {Math.min(currentPage * 25, total)} of {displayTotal} records
-            </p>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-zinc-500">
-                Page {currentPage} of {totalPages}
-              </span>
-              <div className="flex gap-2">
-                <Link href={`/warden/activity?date=${selectedDate}&page=${currentPage - 1}`}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={currentPage <= 1}
-                  >
-                    Previous
-                  </Button>
-                </Link>
-                <Link href={`/warden/activity?date=${selectedDate}&page=${currentPage + 1}`}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={currentPage >= totalPages}
-                  >
-                    Next
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </div>
-        )}
+        <PagerBar
+          page={currentPage}
+          pageSize={25}
+          total={displayTotal}
+          hrefForPage={(p) => `/warden/activity?date=${selectedDate}&page=${p}`}
+          itemLabel="records"
+        />
       </div>
 
       <Modal
@@ -195,68 +194,67 @@ export function WardenActivityClient({
         title="Permission Details"
       >
         {selectedPermission && (
-          <div className="space-y-4 pt-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-zinc-500 mb-1">Student</p>
-                <p className="text-sm text-zinc-200">{selectedPermission.student?.profile?.name}</p>
-                <p className="text-xs text-zinc-400">{selectedPermission.student?.studentRoll}</p>
-              </div>
-              <div>
-                <p className="text-xs text-zinc-500 mb-1">Pass Status</p>
-                <StatusBadge status={selectedPermission.status} />
-                <p className="text-xs text-zinc-500 mt-1">Requested: {formatDateTime(selectedPermission.createdAt)}{scheduledNote(selectedPermission)}</p>
-              </div>
-
-              <div className="col-span-2">
-                <p className="text-xs text-zinc-500 mb-1">Purpose</p>
-                <p className="text-sm text-zinc-200">{selectedPermission.purpose}</p>
-              </div>
-              {selectedPermission.destination && (
-                <div className="col-span-2">
-                  <p className="text-xs text-zinc-500 mb-1">Destination</p>
-                  <p className="text-sm text-zinc-200">{selectedPermission.destination}</p>
-                </div>
-              )}
-              <div>
-                <p className="text-xs text-zinc-500 mb-1">Expected Exit</p>
-                <p className="text-sm text-zinc-200">
-                  {selectedPermission.expectedExit ? formatDateTime(selectedPermission.expectedExit) : "None"}
-                </p>
-              </div>
-              {selectedPermission.type !== 'EXIT' && (
-                <div>
-                  <p className="text-xs text-zinc-500 mb-1">Expected Return</p>
-                  <p className="text-sm text-zinc-200">
-                    {selectedPermission.expectedReturn ? formatDateTime(selectedPermission.expectedReturn) : "None"}
-                  </p>
-                </div>
-              )}
-              
-              <div className="col-span-2 space-y-2 mt-2">
-                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">Gate Scans</p>
-                {selectedPermission.movements?.length > 0 ? (
-                  selectedPermission.movements.map((mov: any, idx: number) => (
-                    <div key={idx} className="p-3 bg-zinc-900/50 rounded-lg border border-zinc-800 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        {mov.type === "EXIT" ? <DoorOpen className="h-4 w-4 text-orange-400" /> : <DoorClosed className="h-4 w-4 text-emerald-400" />}
-                        <div>
-                          <p className="text-sm text-zinc-200 font-medium">{mov.type === "EXIT" ? "Exited" : "Returned"} via {mov.gate?.name}</p>
-                          <p className="text-xs text-zinc-500">{formatDateTime(mov.createdAt)}</p>
-                        </div>
-                      </div>
-                      <StatusBadge status={mov.type} />
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-zinc-500">No gate scans recorded yet.</p>
-                )}
-              </div>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div className="min-w-0">
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Student</dt>
+              <dd className="mt-1 text-sm text-zinc-200 break-words">{selectedPermission.student?.profile?.name}</dd>
+              <dd className="text-xs text-zinc-500">{selectedPermission.student?.studentRoll}</dd>
             </div>
-          </div>
+            <div className="min-w-0">
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Pass Status</dt>
+              <dd className="mt-1"><StatusBadge status={selectedPermission.status} /></dd>
+              <dd className="text-xs text-zinc-500 mt-1">Requested: {formatDateTime(selectedPermission.createdAt)}{scheduledNote(selectedPermission)}</dd>
+            </div>
+
+            <div className="min-w-0 sm:col-span-2">
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Purpose</dt>
+              <dd className="mt-1 text-sm text-zinc-200 break-words">{selectedPermission.purpose}</dd>
+            </div>
+            {selectedPermission.destination && (
+              <div className="min-w-0 sm:col-span-2">
+                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Destination</dt>
+                <dd className="mt-1 text-sm text-zinc-200 break-words">{selectedPermission.destination}</dd>
+              </div>
+            )}
+            <div className="min-w-0">
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Expected Exit</dt>
+              <dd className="mt-1 text-sm text-zinc-200">
+                {selectedPermission.expectedExit ? formatDateTime(selectedPermission.expectedExit) : "None"}
+              </dd>
+            </div>
+            {selectedPermission.type !== 'EXIT' && (
+              <div className="min-w-0">
+                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Expected Return</dt>
+                <dd className="mt-1 text-sm text-zinc-200">
+                  {selectedPermission.expectedReturn ? formatDateTime(selectedPermission.expectedReturn) : "None"}
+                </dd>
+              </div>
+            )}
+
+            <div className="min-w-0 sm:col-span-2 space-y-2 pt-2">
+              <dt className="text-xs font-medium uppercase tracking-wider text-zinc-500">Gate Scans</dt>
+              {selectedPermission.movements?.length > 0 ? (
+                selectedPermission.movements.map((mov: any, idx: number) => (
+                  <dd key={idx} className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-800 p-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-950">
+                        {mov.type === "EXIT" ? <DoorOpen className="h-4 w-4 text-orange-400" /> : <DoorClosed className="h-4 w-4 text-emerald-400" />}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm text-zinc-100 font-medium truncate">{mov.type === "EXIT" ? "Exited" : "Returned"} via {mov.gate?.name}</p>
+                        <p className="text-xs text-zinc-500">{formatDateTime(mov.createdAt)}</p>
+                      </div>
+                    </div>
+                    <StatusBadge status={mov.type} />
+                  </dd>
+                ))
+              ) : (
+                <dd className="text-sm text-zinc-500">No gate scans recorded yet.</dd>
+              )}
+            </div>
+          </dl>
         )}
       </Modal>
-    
     </>
   );
 }

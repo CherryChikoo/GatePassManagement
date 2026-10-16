@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { deanTitle } from "@/lib/auth/titles";
+import { checkRateLimit, resetRateLimit } from "@/lib/auth/rate-limiter";
 
 function getAdminSupabase() {
   return createClient(
@@ -84,17 +85,28 @@ export async function updateProfileSettings(formData: FormData) {
     };
   }
 
+  // Security accounts change only their name and phone; login details are managed by the admin
+  if (user.role === "SECURITY" && (password || newEmail)) {
+    return { error: "Ask the administrator to change your email or password." };
+  }
   if (password && password.length < 8) return { error: "New password must be at least 8 characters" };
   if (password || newEmail) {
     if (!currentPassword) {
       return { error: newEmail ? "Enter your current password to change your email" : "Enter your current password to set a new one" };
     }
     // Re-authenticate: a hijacked session alone must not be enough to take over the account.
+    // Limited like the login (5 tries / 15 min), so it can't be used to guess the password.
+    const limitKey = `password-check:${user.id}`;
+    const limit = checkRateLimit(limitKey, { maxAttempts: 5, windowMs: 15 * 60_000, blockDurationMs: 30 * 60_000 });
+    if (!limit.allowed) {
+      return { error: `Too many attempts. Try again in ${Math.ceil((limit.resetAt - Date.now()) / 60_000)} minutes.` };
+    }
     const { error: verifyError } = await getVerifierSupabase().auth.signInWithPassword({
       email: user.email,
       password: currentPassword,
     });
     if (verifyError) return { error: "Current password is incorrect" };
+    resetRateLimit(limitKey);
   }
 
   if (newEmail) {

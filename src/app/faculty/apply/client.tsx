@@ -11,6 +11,7 @@ import { FACULTY_REQUEST_TYPES, facultyRequestDays, facultyRequestTypeLabel } fr
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/stores/app-store";
 import { EmptyState, StatusBadge, Modal } from "@/components/ui/primitives";
+import { PagerBar } from "@/components/ui/pager-bar";
 import { formatDateTime, formatDate } from "@/lib/utils";
 import { useStoreReady } from "@/components/providers/store-hydrator";
 import QRCode from "qrcode";
@@ -18,6 +19,11 @@ import QRCode from "qrcode";
 type TabState = "APPLY" | "HISTORY";
 
 /** "12 Oct 2026" or "12 Oct 2026 – 14 Oct 2026" */
+/** Out on an exit pass with no return recorded yet: the same QR is scanned again to come back. */
+function isOutOnPass(p: any): boolean {
+  return p?.status === "EXITED" && p?.type !== "ENTRY" && !(p?.movements ?? []).some((m: any) => m.type === "ENTRY");
+}
+
 function passDates(p: { exitDate?: string | Date | null; endDate?: string | Date | null }): string {
   if (!p.exitDate) return "—";
   const start = formatDate(p.exitDate);
@@ -62,31 +68,31 @@ function ApproverChoice({ options }: { options: FacultyApproverOptions | undefin
     return (
       <div>
         <p className="block text-sm font-medium text-zinc-300 mb-2">Approver</p>
-        <div className="rounded-lg border border-zinc-700 bg-zinc-900/50 px-4 py-3 flex items-center justify-between gap-3">
-          <span className="text-sm font-semibold text-zinc-100">{options.dean?.name ?? "No Dean available"}</span>
-          <span className="text-xs font-medium text-orange-400">Dean</span>
+        <div className="flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+          <span className="min-w-0 truncate text-sm font-medium text-zinc-100">{options.dean?.name ?? "No Dean available"}</span>
+          <span className="shrink-0 rounded-full bg-orange-500/10 px-2.5 py-0.5 text-xs font-medium text-orange-400">Dean</span>
         </div>
-        <p className="text-xs text-zinc-500 mt-1.5">An HOD&apos;s own pass is approved by the Dean.</p>
+        <p className="mt-2 text-xs text-zinc-500">An HOD&apos;s own pass is approved by the Dean.</p>
       </div>
     );
   }
 
   return (
-    <fieldset>
+    <fieldset className="min-w-0">
       <legend className="block text-sm font-medium text-zinc-300 mb-2">Request approval from *</legend>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
         {choices.map((c) => (
           <label
             key={c.value}
-            className={`flex flex-col gap-0.5 rounded-lg border px-3 py-2.5 transition-colors ${
+            className={`flex min-h-14 min-w-0 flex-col justify-center gap-0.5 rounded-2xl border px-4 py-3 transition-colors ${
               !c.available
-                ? "border-zinc-800 bg-zinc-900/30 opacity-50 cursor-not-allowed"
+                ? "border-zinc-800 bg-zinc-950 opacity-50 cursor-not-allowed"
                 : choice === c.value
-                ? "border-orange-500 bg-orange-500/10 cursor-pointer"
-                : "border-zinc-700 bg-zinc-900 hover:bg-zinc-800/60 cursor-pointer"
+                ? "border-orange-500/60 bg-orange-500/10 cursor-pointer"
+                : "border-zinc-800 bg-zinc-900 hover:border-zinc-700 hover:bg-zinc-950 cursor-pointer"
             }`}
           >
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-2.5">
               <input
                 type="radio"
                 name="approverChoice"
@@ -95,21 +101,21 @@ function ApproverChoice({ options }: { options: FacultyApproverOptions | undefin
                 disabled={!c.available}
                 onChange={() => setChoice(c.value)}
                 required
-                className="accent-orange-500"
+                className="h-4 w-4 shrink-0 accent-orange-500"
               />
-              <span className="text-sm font-semibold text-zinc-100">{c.label}</span>
+              <span className="text-sm font-medium text-zinc-100">{c.label}</span>
             </span>
-            <span className="text-xs text-zinc-400 pl-5 truncate">{c.detail}</span>
+            <span className="truncate pl-[26px] text-xs text-zinc-500">{c.detail}</span>
           </label>
         ))}
       </div>
-      <p className="text-xs text-zinc-500 mt-1.5">
+      <p className="mt-2 text-xs text-zinc-500">
         {choice === "BOTH"
           ? "Your pass is issued only after both the HOD and the Dean approve. If either rejects, the request is rejected."
           : "Only the selected approver needs to approve your pass."}
       </p>
       {!firstAvailable && (
-        <p className="text-xs text-red-400 mt-1.5">No HOD or Dean is available. Contact the administrator.</p>
+        <p className="mt-2 text-xs text-red-400">No HOD or Dean is available. Contact the administrator.</p>
       )}
     </fieldset>
   );
@@ -119,6 +125,8 @@ export function FacultyApplyClient() {
   const router = useRouter();
   const isReady = useStoreReady();
   const myPasses = useAppStore((s) => s.data.myPasses);
+  // Out on an exit pass with no return yet (the same QR is shown again for the return scan)
+  const outOnPass = ((myPasses as any[] | undefined) || []).find((p: any) => isOutOnPass(p)) ?? null;
   const approverOptions = useAppStore((s) => s.data.approverOptions) as FacultyApproverOptions | undefined;
 
   const [activeTab, setActiveTab] = useState<TabState>("APPLY");
@@ -143,9 +151,10 @@ export function FacultyApplyClient() {
   const hasPending = (myPasses || []).some((p: any) => p.status === "PENDING");
   useEffect(() => {
     if (!hasPending) return;
+    // Every 15 s while the screen is visible (returning to the tab refreshes at once)
     const interval = setInterval(() => {
-      useAppStore.getState().refresh(true);
-    }, 10000);
+      if (document.visibilityState === "visible") useAppStore.getState().refresh();
+    }, 15_000);
     return () => clearInterval(interval);
   }, [hasPending]);
 
@@ -244,15 +253,15 @@ export function FacultyApplyClient() {
   const renderApplyForm = () => {
     if (success) {
       return (
-        <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="flex items-center justify-center min-h-[50vh] px-4">
           <div className="text-center animate-scale-in">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/15 text-emerald-400 mb-4">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-400 mb-5">
               <CheckCircle2 className="h-8 w-8" />
             </div>
-            <h2 className="text-2xl font-bold text-zinc-100 mb-2">
+            <h2 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 mb-2">
               Request Submitted!
             </h2>
-            <p className="text-sm text-zinc-500 mb-6 max-w-sm mx-auto">
+            <p className="text-sm text-zinc-500 max-w-sm mx-auto">
               Your {type.toLowerCase()} request has been sent for approval.
             </p>
           </div>
@@ -275,26 +284,28 @@ export function FacultyApplyClient() {
           ? "Dean"
           : "HOD";
       return (
-        <Card className={pendingPass ? "border-amber-500/30" : "border-emerald-500/30"}>
-          <CardContent className="p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              {pendingPass ? (
-                <Clock className="h-6 w-6 text-amber-400 shrink-0" />
-              ) : (
-                <ShieldCheck className="h-6 w-6 text-emerald-400 shrink-0" />
-              )}
-              <div>
-                <p className={`text-base font-semibold ${pendingPass ? "text-amber-300" : "text-emerald-300"}`}>
+        <Card className={pendingPass ? "border-amber-500/25" : "border-emerald-500/25"}>
+          <CardContent className="p-5 sm:p-6 space-y-5">
+            <div className="flex items-start gap-3 sm:gap-4">
+              <span
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
+                  pendingPass ? "bg-amber-500/10 text-amber-400" : "bg-emerald-500/10 text-emerald-400"
+                }`}
+              >
+                {pendingPass ? <Clock className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}
+              </span>
+              <div className="min-w-0">
+                <p className="text-base font-medium text-zinc-100">
                   {pendingPass ? `Request pending — waiting for the ${waitingFor || "approver"}` : `Your ${pass.type} pass is approved`}
                 </p>
-                <p className="text-xs text-zinc-400">
+                <p className="mt-1 text-sm text-zinc-500 leading-relaxed">
                   {pendingPass
                     ? "You can request another pass after this one is approved and used, rejected, or cancelled."
                     : "Show the QR at the gate. You can request another pass after this one is used."}
                 </p>
               </div>
             </div>
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 rounded-2xl bg-zinc-950 p-4">
               {[
                 ["Request Type", facultyRequestTypeLabel(pass.requestType) || pass.type],
                 ["Dates", passDates(pass)],
@@ -305,15 +316,16 @@ export function FacultyApplyClient() {
               ].map(([k, v]) => (
                 <div key={k as string} className="min-w-0">
                   <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{k}</dt>
-                  <dd className="text-zinc-200 break-words">{(v as any) || "—"}</dd>
+                  <dd className="mt-0.5 text-sm text-zinc-200 break-words">{(v as any) || "—"}</dd>
                 </div>
               ))}
             </dl>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col sm:flex-row gap-2.5">
               {activeApprovedPass && !pendingPass && (
                 <Button
+                  variant="success"
                   onClick={() => setSelectedQrPass(activeApprovedPass)}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                  className="h-12 w-full sm:h-11 sm:w-auto"
                 >
                   <QrCode className="h-4 w-4" /> View QR
                 </Button>
@@ -334,70 +346,82 @@ export function FacultyApplyClient() {
                     }
                     setCancelling(false);
                   }}
-                  className="border-zinc-700 text-zinc-200 hover:bg-zinc-800"
+                  className="h-12 w-full sm:h-11 sm:w-auto"
                 >
                   {cancelling ? "Cancelling…" : "Cancel request"}
                 </Button>
               )}
             </div>
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && (
+              <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {error}
+              </div>
+            )}
           </CardContent>
         </Card>
       );
     }
 
     return (
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         {activeApprovedPass && (
-          <div className="flex items-center justify-between p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+            <div className="flex items-start sm:items-center gap-3 min-w-0">
               <ShieldCheck className="h-5 w-5 text-emerald-400 shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-emerald-300">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-emerald-300">
                   You have an active approved {activeApprovedPass.type} pass!
                 </p>
-                <p className="text-xs text-zinc-400">
+                <p className="text-xs text-zinc-500 break-words">
                   {facultyRequestTypeLabel(activeApprovedPass.requestType) || activeApprovedPass.purpose} • {passDates(activeApprovedPass)}
                 </p>
               </div>
             </div>
             <Button
-              size="sm"
+              variant="success"
               onClick={() => setSelectedQrPass(activeApprovedPass)}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-8 px-3 shadow-none flex items-center gap-1.5 shrink-0"
+              className="h-11 w-full sm:h-10 sm:w-auto shrink-0"
             >
-              <QrCode className="h-3.5 w-3.5" />
+              <QrCode className="h-4 w-4" />
               View QR
             </Button>
           </div>
         )}
 
-        <div className="flex gap-3">
-          <button 
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+          <button
+            type="button"
+            aria-pressed={type === "EXIT"}
             onClick={() => setType("EXIT")}
-            className={`flex-1 rounded-xl border-2 px-6 py-4 transition-colors ${type === "EXIT" ? "border-orange-500 bg-orange-500/10" : "border-zinc-700 bg-zinc-800/30 hover:bg-zinc-800/50"}`}
+            className={`flex h-14 items-center justify-center gap-2 rounded-2xl border px-3 text-sm font-medium transition-colors ${
+              type === "EXIT"
+                ? "border-orange-500/60 bg-orange-500/10 text-orange-400"
+                : "border-zinc-800 bg-zinc-900 text-zinc-500 hover:border-zinc-700 hover:text-zinc-200"
+            }`}
           >
-            <div className={`flex items-center justify-center gap-2 ${type === "EXIT" ? "text-orange-400" : "text-zinc-400"}`}>
-              <MapPin className="h-5 w-5" />
-              <span className="font-semibold">EXIT Request</span>
-            </div>
+            <LogOut className="h-4 w-4 shrink-0" />
+            <span>Exit request</span>
           </button>
-          
-          <button 
+
+          <button
+            type="button"
+            aria-pressed={type === "ENTRY"}
             onClick={() => setType("ENTRY")}
-            className={`flex-1 rounded-xl border-2 px-6 py-4 transition-colors ${type === "ENTRY" ? "border-orange-500 bg-orange-500/10" : "border-zinc-700 bg-zinc-800/30 hover:bg-zinc-800/50"}`}
+            className={`flex h-14 items-center justify-center gap-2 rounded-2xl border px-3 text-sm font-medium transition-colors ${
+              type === "ENTRY"
+                ? "border-orange-500/60 bg-orange-500/10 text-orange-400"
+                : "border-zinc-800 bg-zinc-900 text-zinc-500 hover:border-zinc-700 hover:text-zinc-200"
+            }`}
           >
-            <div className={`flex items-center justify-center gap-2 ${type === "ENTRY" ? "text-orange-400" : "text-zinc-400"}`}>
-              <MapPin className="h-5 w-5" />
-              <span className="font-semibold">ENTRY Request</span>
-            </div>
+            <LogIn className="h-4 w-4 shrink-0" />
+            <span>Entry request</span>
           </button>
         </div>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-5 sm:p-6">
             {error && (
-              <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400 animate-fade-in">
+              <div className="mb-5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300 animate-fade-in">
                 {error}
               </div>
             )}
@@ -412,15 +436,15 @@ export function FacultyApplyClient() {
               className="space-y-6"
             >
               {/* Faculty details (from the profile) */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3 rounded-2xl bg-zinc-950 p-4">
                 {[
                   { label: "Faculty Name", value: userName },
                   { label: "Designation", value: facultyInfo?.designation },
                   { label: "Department", value: facultyInfo?.department },
-                ].map((d) => (
-                  <div key={d.label} className="min-w-0">
+                ].map((d, i) => (
+                  <div key={d.label} className={`min-w-0 ${i === 0 ? "col-span-2 sm:col-span-1" : ""}`}>
                     <p className="text-[11px] uppercase tracking-wider text-zinc-500">{d.label}</p>
-                    <p className="text-sm font-medium text-zinc-200 truncate">{d.value || "—"}</p>
+                    <p className="mt-0.5 text-sm font-medium text-zinc-200 truncate">{d.value || "—"}</p>
                   </div>
                 ))}
               </div>
@@ -434,7 +458,7 @@ export function FacultyApplyClient() {
                   value={requestType}
                   onChange={(e) => setRequestType(e.target.value)}
                   required
-                  className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500 [&>option]:bg-zinc-900"
+                  className="block h-12 w-full min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 [&>option]:bg-zinc-900"
                 >
                   {FACULTY_REQUEST_TYPES.map((t) => (
                     <option key={t.value} value={t.value}>{t.label}</option>
@@ -444,7 +468,7 @@ export function FacultyApplyClient() {
 
               {/* Dates (no time fields) */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="startDate" className="block text-sm font-medium text-zinc-300 mb-2">Start Date *</label>
                   <input
                     id="startDate"
@@ -454,10 +478,10 @@ export function FacultyApplyClient() {
                     min={today}
                     onChange={(e) => setStartDate(e.target.value)}
                     required
-                    className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500 [color-scheme:light]"
+                    className="block h-12 w-full min-w-0 appearance-none rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-left text-base sm:text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 [color-scheme:light]"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="endDate" className="block text-sm font-medium text-zinc-300 mb-2">
                     End Date {isMultiDay ? "*" : ""}
                   </label>
@@ -470,12 +494,14 @@ export function FacultyApplyClient() {
                     onChange={(e) => setEndDate(e.target.value)}
                     readOnly={!isMultiDay}
                     required={isMultiDay}
-                    className={`w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500 [color-scheme:light] ${isMultiDay ? "" : "opacity-60 cursor-not-allowed"}`}
+                    className={`block h-12 w-full min-w-0 appearance-none rounded-2xl border border-zinc-800 px-4 text-left text-base sm:text-sm outline-none transition-colors focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 [color-scheme:light] ${
+                      isMultiDay ? "bg-zinc-900 text-zinc-100 hover:border-zinc-700" : "bg-zinc-950 text-zinc-500 cursor-not-allowed"
+                    }`}
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="block text-sm font-medium text-zinc-300 mb-2">Number of Days</p>
-                  <div className="px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-100">
+                  <div className="flex h-12 items-center rounded-2xl bg-zinc-950 px-4 text-base sm:text-sm font-medium text-zinc-100">
                     {days === null ? "—" : requestType === "ONE_HOUR" ? "1 hour" : days}
                   </div>
                 </div>
@@ -488,7 +514,7 @@ export function FacultyApplyClient() {
               <div>
                 <label htmlFor="reason" className="block text-sm font-medium text-zinc-300 mb-2">Reason *</label>
                 <div className="relative">
-                  <FileText className="absolute left-3 top-3.5 h-4 w-4 text-zinc-500 pointer-events-none" />
+                  <FileText className="absolute left-4 top-4 h-4 w-4 text-zinc-500 pointer-events-none" />
                   <textarea
                     id="reason"
                     name="reason"
@@ -496,7 +522,7 @@ export function FacultyApplyClient() {
                     required
                     maxLength={500}
                     placeholder="e.g., Personal work, Official duty at university"
-                    className="w-full pl-10 pr-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                    className="block min-h-24 w-full rounded-2xl border border-zinc-800 bg-zinc-900 pl-11 pr-4 py-3.5 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 resize-none"
                   />
                 </div>
               </div>
@@ -509,18 +535,18 @@ export function FacultyApplyClient() {
                   name="note"
                   rows={2}
                   maxLength={500}
-                  className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                  className="block min-h-24 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3.5 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 resize-none"
                 />
               </div>
 
               <Button
                 type="submit"
-                className="w-full bg-orange-600 hover:bg-orange-500 text-white font-semibold"
+                className="h-12 w-full text-base"
                 size="lg"
                 disabled={loading}
               >
                 {loading ? "Submitting..." : (
-                  <>Submit {type} Request <Send className="h-4 w-4 ml-2" /></>
+                  <>Submit {type} Request <Send className="h-4 w-4" /></>
                 )}
               </Button>
             </form>
@@ -566,20 +592,19 @@ export function FacultyApplyClient() {
       );
     }
 
-    const totalPages = Math.max(1, Math.ceil(passesToDisplay.length / ITEMS_PER_PAGE));
     const paginated = passesToDisplay.slice(
       (currentPage - 1) * ITEMS_PER_PAGE,
       currentPage * ITEMS_PER_PAGE
     );
 
     return (
-      <div className="min-h-[calc(100vh-15rem)] flex flex-col justify-between">
-        <div className="space-y-6 flex-1">
+      <div className="space-y-4 sm:space-y-6">
+        <div className="space-y-4">
           {/* Filter Controls Row */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 min-w-0">
               {/* Status Tabs */}
-              <div className="flex bg-zinc-900/60 p-1 rounded-xl border border-zinc-800">
+              <div className="flex max-w-full rounded-full bg-zinc-950 p-1 border border-zinc-800 overflow-x-auto scrollbar-none" role="tablist" aria-label="Filter passes by status">
                 {(
                   [
                     { id: "ALL", label: "All Passes" },
@@ -600,22 +625,24 @@ export function FacultyApplyClient() {
                   return (
                     <button
                       key={tab.id}
+                      role="tab"
+                      aria-selected={historyStatus === tab.id}
                       onClick={() => {
                         setHistoryStatus(tab.id);
                         setCurrentPage(1);
                       }}
-                      className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                      className={`shrink-0 whitespace-nowrap py-1.5 px-3.5 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 ${
                         historyStatus === tab.id
-                          ? "bg-zinc-800 text-zinc-100 shadow-none"
-                          : "text-zinc-400 hover:text-zinc-200"
+                          ? "bg-zinc-900 text-zinc-100 shadow-card"
+                          : "text-zinc-500 hover:text-zinc-200"
                       }`}
                     >
                       <span>{tab.label}</span>
                       <span
-                        className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                        className={`min-w-5 text-center text-[10px] px-1.5 py-px rounded-full ${
                           historyStatus === tab.id
-                            ? "bg-zinc-700 text-zinc-200"
-                            : "bg-zinc-800 text-zinc-500"
+                            ? "bg-orange-500/10 text-orange-400"
+                            : "bg-zinc-900 text-zinc-500"
                         }`}
                       >
                         {count}
@@ -625,10 +652,10 @@ export function FacultyApplyClient() {
                 })}
               </div>
 
-              {/* Redesigned Date Filter Input */}
+              {/* Date filter */}
               <div className="flex items-center gap-2">
-                <div className="relative flex items-center group">
-                  <CalendarIcon className="absolute left-3 h-4 w-4 text-zinc-400 group-hover:text-zinc-200 transition-colors pointer-events-none z-10" />
+                <div className="relative flex flex-1 sm:flex-none items-center group">
+                  <CalendarIcon className="absolute left-3.5 h-4 w-4 text-zinc-500 group-hover:text-zinc-300 transition-colors pointer-events-none z-10" />
                   <input
                     type="date"
                     value={historyDate}
@@ -636,7 +663,8 @@ export function FacultyApplyClient() {
                       setHistoryDate(e.target.value);
                       setCurrentPage(1);
                     }}
-                    className="relative h-9 pl-9 pr-3 w-40 sm:w-44 bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-medium rounded-xl focus:outline-none focus:border-zinc-700 [color-scheme:light] cursor-pointer hover:border-zinc-700 hover:bg-zinc-800/80 transition-colors [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                    aria-label="Filter by date"
+                    className="relative h-10 w-full sm:w-44 min-w-0 appearance-none rounded-full border border-zinc-800 bg-zinc-900 pl-10 pr-4 text-left text-sm text-zinc-200 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 [color-scheme:light] cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                   />
                 </div>
 
@@ -647,176 +675,181 @@ export function FacultyApplyClient() {
                       setHistoryDate("");
                       setCurrentPage(1);
                     }}
-                    className="h-9 px-2.5 rounded-xl border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs flex items-center gap-1 transition-colors shadow-none"
+                    className="h-10 shrink-0 px-3.5 rounded-full border border-zinc-800 bg-zinc-900 hover:bg-zinc-950 hover:border-zinc-700 text-zinc-500 hover:text-zinc-200 text-xs font-medium flex items-center gap-1.5 transition-colors"
                     title="Clear date filter"
                   >
                     <X className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">Clear</span>
+                    <span>Clear</span>
                   </button>
                 )}
               </div>
             </div>
 
-            <div className="text-xs text-zinc-400 font-medium">
+            <div className="text-xs text-zinc-500">
               {passesToDisplay.length} request{passesToDisplay.length !== 1 ? "s" : ""} found
             </div>
           </div>
 
           {passesToDisplay.length === 0 ? (
-            <EmptyState
-              icon={<History className="h-10 w-10 text-zinc-500" />}
-              title="No History"
-              description={
-                historyDate
-                  ? "No passes found for this date."
-                  : historyStatus !== "ALL"
-                  ? `No ${historyStatus.toLowerCase()} passes found.`
-                  : "You haven't requested any passes yet."
-              }
-            />
+            <Card>
+              <EmptyState
+                icon={<History className="h-6 w-6 text-zinc-500" />}
+                title="No History"
+                description={
+                  historyDate
+                    ? "No passes found for this date."
+                    : historyStatus !== "ALL"
+                    ? `No ${historyStatus.toLowerCase()} passes found.`
+                    : "You haven't requested any passes yet."
+                }
+              />
+            </Card>
           ) : (
-            <div className="space-y-3">
-              {paginated.map((pass: any) => (
-                <Card key={pass.id} className="overflow-hidden border border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 transition-colors shadow-none rounded-xl">
-                  <CardContent className="p-4">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2 flex-wrap">
-                          <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${
-                            pass.type === "EXIT" ? "bg-orange-500/20 text-orange-400" : "bg-emerald-500/20 text-emerald-400"
-                          }`}>
-                            {pass.type}
-                          </span>
-                          <span className="font-semibold text-zinc-100">{pass.purpose}</span>
-                          <StatusBadge status={pass.status} />
+            <Card>
+              <CardContent className="p-2 sm:p-3">
+                <ul className="divide-y divide-zinc-800/70">
+                  {paginated.map((pass: any) => (
+                    <li key={pass.id} className="px-3 py-4 sm:px-4">
+                      <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 md:gap-6">
+                        <div className="flex-1 min-w-0 space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-0.5 rounded-full ${
+                              pass.type === "EXIT" ? "bg-blue-500/10 text-blue-400" : "bg-emerald-500/10 text-emerald-400"
+                            }`}>
+                              {pass.type === "EXIT" ? <LogOut className="h-3 w-3" /> : <LogIn className="h-3 w-3" />}
+                              {pass.type}
+                            </span>
+                            <StatusBadge status={pass.status} />
+                          </div>
+                          <p className="text-sm font-medium text-zinc-100 break-words">{pass.purpose}</p>
+                          <div className="text-xs text-zinc-500 flex flex-wrap items-center gap-x-4 gap-y-1">
+                            {pass.requestType ? (
+                              <span className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" /> {facultyRequestTypeLabel(pass.requestType)}</span>
+                            ) : pass.destination ? (
+                              <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" /> {pass.destination}</span>
+                            ) : null}
+                            <span className="flex items-center gap-1.5"><CalendarIcon className="h-3.5 w-3.5" /> {passDates(pass)}</span>
+                          </div>
                           {pass.status === "PENDING" && pass.approvalMode === "BOTH" && (
-                            <span className="text-[11px] text-zinc-400">
+                            <p className="text-[11px] text-zinc-500">
                               HOD {pass.hodApprovedAt ? "✓ approved" : "· waiting"} &nbsp;|&nbsp; Dean{" "}
                               {pass.deanApprovedAt ? "✓ approved" : "· waiting"}
-                            </span>
+                            </p>
+                          )}
+                          {pass.rejectionReason && (
+                            <p className="text-xs text-red-400 break-words">
+                              Reason: {pass.rejectionReason}
+                            </p>
                           )}
                           {pass.status === "APPROVED" && pass.qr?.active && (
                             <Button
+                              variant="success"
                               size="sm"
                               onClick={() => setSelectedQrPass(pass)}
-                              className="bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] h-6 px-2.5 rounded-md font-semibold shadow-none flex items-center gap-1 ml-auto shrink-0"
+                              className="mt-1 h-10 w-full sm:h-9 sm:w-auto"
                             >
-                              <QrCode className="h-3 w-3" />
+                              <QrCode className="h-4 w-4" />
                               View QR Pass
                             </Button>
                           )}
+                          {/* Out on this pass: the same QR is scanned again at the gate for the return */}
+                          {isOutOnPass(pass) && (
+                            <Button
+                              size="sm"
+                              onClick={() => setSelectedQrPass(pass)}
+                              className="mt-1 h-10 w-full sm:h-9 sm:w-auto"
+                            >
+                              <QrCode className="h-4 w-4" />
+                              Show return QR
+                            </Button>
+                          )}
                         </div>
-                        <div className="text-sm text-zinc-400 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                          {pass.requestType ? (
-                            <span className="flex items-center gap-1"><FileText className="h-3.5 w-3.5" /> {facultyRequestTypeLabel(pass.requestType)}</span>
-                          ) : pass.destination ? (
-                            <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {pass.destination}</span>
-                          ) : null}
-                          <span className="flex items-center gap-1"><CalendarIcon className="h-3.5 w-3.5" /> {passDates(pass)}</span>
-                        </div>
-                        {pass.rejectionReason && (
-                          <p className="text-xs text-red-400 mt-2">
-                            Reason: {pass.rejectionReason}
-                          </p>
+
+                        {/* Movement Logs for this pass */}
+                        {pass.movements && pass.movements.length > 0 && (
+                          <div className="flex flex-col gap-1.5 rounded-2xl bg-zinc-950 px-3.5 py-3 md:min-w-[170px] shrink-0">
+                            <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Gate Logs</span>
+                            {pass.movements.map((m: any) => (
+                              <div key={m.id} className="text-xs text-zinc-500 flex items-center gap-1.5 min-w-0">
+                                {m.type === "EXIT" ? <LogOut className="h-3 w-3 shrink-0 text-blue-400" /> : <LogIn className="h-3 w-3 shrink-0 text-emerald-400" />}
+                                <span className="font-medium text-zinc-300">{formatDateTime(m.createdAt).split(", ")[1]}</span>
+                                <span className="truncate">({m.gate?.name})</span>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
-                      
-                      {/* Movement Logs for this pass */}
-                      {pass.movements && pass.movements.length > 0 && (
-                        <div className="flex flex-col gap-1 md:text-right border-t border-zinc-800 md:border-t-0 md:border-l md:pl-4 pt-3 md:pt-0 shrink-0 min-w-[140px]">
-                          <span className="text-xs font-semibold text-zinc-500 mb-1 uppercase tracking-wider md:text-right">Gate Logs</span>
-                          {pass.movements.map((m: any) => (
-                            <div key={m.id} className="text-xs text-zinc-400 flex items-center md:justify-end gap-1.5">
-                              {m.type === "EXIT" ? <LogOut className="h-3 w-3 text-orange-500" /> : <LogIn className="h-3 w-3 text-emerald-500" />}
-                              <span className="font-medium text-zinc-300">{formatDateTime(m.createdAt).split(", ")[1]}</span>
-                              <span>({m.gate?.name})</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
           )}
         </div>
 
-        {/* Pagination Bar (Sticky at bottom, touches sidebar seamlessly with 0px gap) */}
-        {passesToDisplay.length > 0 && (
-          <div className="sticky bottom-0 -mx-4 lg:-mx-8 -mb-4 lg:-mb-8 mt-10 border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl z-30 shadow-[0_-10px_40px_-10px_rgba(16,24,40,0.12)]">
-            <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-              <p className="text-sm text-zinc-400 font-medium">
-                Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{" "}
-                {Math.min(currentPage * ITEMS_PER_PAGE, passesToDisplay.length)} of{" "}
-                {passesToDisplay.length} requests
-              </p>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-zinc-500">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={currentPage <= 1}
-                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                    className="h-8 px-3 text-xs shadow-none border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 disabled:opacity-40"
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={currentPage >= totalPages}
-                    onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                    className="h-8 px-3 text-xs shadow-none border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 disabled:opacity-40"
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Pagination (docked at the bottom of the screen while this tab is shown) */}
+        <PagerBar
+          page={currentPage}
+          pageSize={ITEMS_PER_PAGE}
+          total={passesToDisplay.length}
+          onPageChange={setCurrentPage}
+          itemLabel="requests"
+        />
       </div>
     );
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
-          My Passes
-        </h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          Apply for a pass and see today&apos;s passes. Past passes are in the Activity tab.
-        </p>
-      </div>
+    <div className="mx-auto max-w-3xl space-y-6 lg:space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
+            My Passes
+          </h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            Apply for a pass and see today&apos;s passes. Past passes are in the Activity tab.
+          </p>
+        </div>
 
-      {/* Tabs */}
-      <div className="flex bg-zinc-900/50 p-1 rounded-xl w-full border border-zinc-800/50 max-w-xs">
-        {(["APPLY", "HISTORY"] as TabState[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 text-sm font-medium py-2 rounded-lg transition-all duration-200 ${
-              activeTab === tab 
-                ? "bg-zinc-800 text-zinc-100 shadow-md" 
-                : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
-            }`}
-          >
-            {tab === "APPLY" ? "Apply" : "Today's Passes"}
-          </button>
-        ))}
+        {/* Tabs */}
+        <div className="flex w-full sm:w-auto shrink-0 rounded-full bg-zinc-950 p-1 border border-zinc-800" role="tablist" aria-label="My passes">
+          {(["APPLY", "HISTORY"] as TabState[]).map((tab) => (
+            <button
+              key={tab}
+              role="tab"
+              aria-selected={activeTab === tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 sm:flex-none h-9 whitespace-nowrap px-4 text-sm font-medium rounded-full transition-colors ${
+                activeTab === tab
+                  ? "bg-zinc-900 text-zinc-100 shadow-card"
+                  : "text-zinc-500 hover:text-zinc-200"
+              }`}
+            >
+              {tab === "APPLY" ? "Apply" : "Today's Passes"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {!isReady ? (
         <div className="animate-pulse space-y-4">
-          <div className="h-64 bg-zinc-900/50 rounded-xl" />
+          <div className="h-14 rounded-2xl bg-zinc-900 border border-zinc-800" />
+          <div className="h-80 rounded-3xl bg-zinc-900 border border-zinc-800" />
         </div>
       ) : (
-        <div className="mt-4">
+        <div>
+          {activeTab === "APPLY" && outOnPass && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-3xl border border-orange-500/20 bg-orange-500/10 p-4 sm:p-5">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-zinc-100">You&apos;re out on a pass</p>
+                <p className="mt-0.5 text-sm text-zinc-400">When you come back, show the same QR at the gate so security records your return.</p>
+              </div>
+              <Button onClick={() => setSelectedQrPass(outOnPass)} className="w-full sm:w-auto">
+                <QrCode className="h-4 w-4" />
+                Show return QR
+              </Button>
+            </div>
+          )}
           {activeTab === "APPLY" && renderApplyForm()}
           {activeTab === "HISTORY" && renderHistory()}
         </div>
@@ -829,36 +862,46 @@ export function FacultyApplyClient() {
         title="Gate Pass QR Code"
       >
         {selectedQrPass && (
-          <div className="flex flex-col items-center text-center space-y-4 py-2">
+          <div className="flex flex-col items-center text-center space-y-5 py-2">
             {qrError ? (
-              <div className="w-56 h-56 flex items-center justify-center bg-zinc-800 rounded-2xl p-4">
+              <div className="w-60 h-60 max-w-full flex items-center justify-center bg-zinc-950 border border-zinc-800 rounded-3xl p-5">
                 <p className="text-sm text-zinc-300">{qrError}</p>
               </div>
             ) : qrImage ? (
-              <div className="bg-white p-3 rounded-2xl border border-zinc-200 shadow-sm">
-                <img src={qrImage} alt="Gate Pass QR Code" className="w-56 h-56" />
+              <div className="bg-white p-3 rounded-3xl border border-zinc-800 shadow-card">
+                <img src={qrImage} alt="Gate Pass QR Code" className="w-60 h-60 max-w-full" />
               </div>
             ) : (
-              <div className="w-56 h-56 flex items-center justify-center bg-zinc-800 rounded-2xl">
+              <div className="w-60 h-60 max-w-full flex items-center justify-center bg-zinc-950 border border-zinc-800 rounded-3xl">
                 <QrCode className="h-12 w-12 text-zinc-500 animate-pulse" />
               </div>
             )}
-            <div className="space-y-1.5">
-              <span className="inline-block text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                {selectedQrPass.type} PASS • APPROVED
-              </span>
-              <h4 className="font-semibold text-zinc-100 text-base">{selectedQrPass.purpose}</h4>
-              <p className="text-xs text-zinc-400">
+            <div className="space-y-2 min-w-0">
+              {isOutOnPass(selectedQrPass) ? (
+                <span className="inline-block text-[11px] px-2.5 py-0.5 rounded-full font-medium uppercase tracking-wider bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                  Return • show at the gate
+                </span>
+              ) : (
+                <span className="inline-block text-[11px] px-2.5 py-0.5 rounded-full font-medium uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  {selectedQrPass.type} PASS • APPROVED
+                </span>
+              )}
+              <h4 className="font-medium text-zinc-100 text-base break-words">{selectedQrPass.purpose}</h4>
+              <p className="text-xs text-zinc-500">
                 {facultyRequestTypeLabel(selectedQrPass.requestType) || `Destination: ${selectedQrPass.destination || "—"}`} • {passDates(selectedQrPass)}
               </p>
-              {selectedQrPass.qr?.expiresAt && (
-                <p className="text-xs text-amber-400 font-mono">
+              {selectedQrPass.qr?.expiresAt && !isOutOnPass(selectedQrPass) && (
+                <p className="text-xs font-medium text-amber-400">
                   Valid Until: {formatDateTime(selectedQrPass.qr.expiresAt)}
                 </p>
               )}
             </div>
-            <p className="text-xs text-zinc-500 max-w-xs">
-              Present this QR code to campus security at the gate. Valid for one movement.
+            <p className="text-xs text-zinc-500 max-w-xs leading-relaxed">
+              {isOutOnPass(selectedQrPass)
+                ? "You're out on this pass. Show this QR to security when you come back; they scan it to record your return."
+                : selectedQrPass.type === "ENTRY"
+                ? "Present this QR code to campus security at the gate. Valid for one entry."
+                : "Present this QR code to campus security at the gate. They scan it when you leave, and again when you come back."}
             </p>
           </div>
         )}

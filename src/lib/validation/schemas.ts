@@ -5,8 +5,9 @@ import { z } from "zod";
 // ──────────────────────────────────────────────────────────────
 
 export const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  email: z.string().max(254).email("Please enter a valid email"),
+  // Existing accounts may still have 6-character passwords, so sign-in accepts them
+  password: z.string().min(6, "Password must be at least 6 characters").max(128),
 });
 
 // ──────────────────────────────────────────────────────────────
@@ -106,24 +107,26 @@ export const batchGrantSchema = z.object({
 
 export const createUserSchema = z.object({
   name: z.string().min(2, "Name is required").max(100),
-  email: z.string().email("Invalid email"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  email: z.string().trim().max(254).email("Invalid email"),
+  // Same rule as Settings and staff password changes
+  password: z.string().min(8, "Password must be at least 8 characters").max(72, "Password must be at most 72 characters"),
   role: z.enum(["STUDENT", "FACULTY", "WARDEN", "SECURITY", "HEAD_SECURITY", "SECURITY_SUPERVISOR", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "ADMIN"]),
-  phone: z.string().optional().or(z.literal("")),
+  phone: z.string().trim().max(20).optional().or(z.literal("")),
   // Student-specific
-  studentRoll: z.string().optional().or(z.literal("")),
-  department: z.string().optional().or(z.literal("")),
-  year: z.coerce.number().optional(),
+  // Roll numbers are stored uppercase so gate lookups use the unique index
+  studentRoll: z.string().trim().toUpperCase().max(30).optional().or(z.literal("")),
+  department: z.string().trim().max(100).optional().or(z.literal("")),
+  year: z.coerce.number().int().min(1, "Year must be 1–6").max(6, "Year must be 1–6").optional(),
   semester: z.coerce.number().int().min(1, "Semester must be 1–12").max(12, "Semester must be 1–12").optional(),
-  section: z.string().optional().or(z.literal("")),
+  section: z.string().trim().max(20).optional().or(z.literal("")),
   studentType: z.enum(["DAY_SCHOLAR", "HOSTELLER"]).optional(),
   hostelType: z.enum(["BOYS", "LADIES"]).optional(),
-  roomNumber: z.string().optional().or(z.literal("")),
-  hostelBlock: z.string().optional().or(z.literal("")),
+  roomNumber: z.string().trim().max(20).optional().or(z.literal("")),
+  hostelBlock: z.string().trim().max(50).optional().or(z.literal("")),
   // Faculty-specific
-  designation: z.string().optional().or(z.literal("")),
+  designation: z.string().trim().max(100).optional().or(z.literal("")),
   // Warden-specific
-  wardenHostelBlock: z.string().optional().or(z.literal("")),
+  wardenHostelBlock: z.string().trim().max(50).optional().or(z.literal("")),
 });
 
 export const createGateSchema = z.object({
@@ -147,7 +150,7 @@ export const staffStudentUpdateSchema = z.object({
 /** Additional fields only an ADMIN may change. */
 export const adminStudentUpdateSchema = staffStudentUpdateSchema.extend({
   email: z.string().trim().email("Invalid email").optional(),
-  studentRoll: z.string().trim().min(1).max(30).optional(),
+  studentRoll: z.string().trim().toUpperCase().min(1).max(30).optional(),
   department: optionalText(100),
   studentType: z.enum(["DAY_SCHOLAR", "HOSTELLER"]).optional(),
   hostelType: z.enum(["BOYS", "LADIES"]).optional().nullable().or(z.literal("")),

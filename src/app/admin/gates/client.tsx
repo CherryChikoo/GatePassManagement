@@ -68,70 +68,86 @@ export function GatesClient({ user, gates }: Props) {
 
   return (
     <>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <BackButton href="/admin" label="Back to Dashboard" />
-            <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
-              Gate Management
-            </h1>
-            <p className="text-sm text-zinc-500 mt-1">{gatesList.length} gate(s) configured</p>
+      <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
+        <div className="space-y-3">
+          <BackButton href="/admin" label="Back to Dashboard" className="-ml-2" />
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
+                Gate Management
+              </h1>
+              <p className="mt-1 text-sm text-zinc-500">{gatesList.length} gate(s) configured</p>
+            </div>
+            <Button onClick={openCreate} className="w-full sm:w-auto">
+              <Plus className="h-4 w-4" />
+              Add Gate
+            </Button>
           </div>
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" />
-            Add Gate
-          </Button>
         </div>
 
         {gatesList.length === 0 ? (
-          <EmptyState
-            icon={<DoorOpen className="h-8 w-8" />}
-            title="No Gates Configured"
-            description="Add campus gates to enable movement registration."
-            action={
-              <Button onClick={openCreate}>
-                <Plus className="h-4 w-4" />
-                Add First Gate
-              </Button>
-            }
-          />
+          <Card>
+            <EmptyState
+              icon={<DoorOpen className="h-8 w-8" />}
+              title="No Gates Configured"
+              description="Add campus gates to enable movement registration."
+              action={
+                <Button onClick={openCreate}>
+                  <Plus className="h-4 w-4" />
+                  Add First Gate
+                </Button>
+              }
+            />
+          </Card>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             {gatesList.map((gate) => (
-              <Card key={gate.id} glow>
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-xl bg-violet-500/15 p-2.5 text-violet-400">
+              <Card key={gate.id} glow className="flex flex-col">
+                <CardContent className="p-5 sm:p-6 flex flex-1 flex-col">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span
+                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+                          gate.active ? "bg-orange-500/10 text-orange-400" : "bg-zinc-950 text-zinc-500"
+                        }`}
+                      >
                         <DoorOpen className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-zinc-200">{gate.name}</p>
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-base font-medium text-zinc-100 truncate">{gate.name}</p>
                         {gate.location && (
-                          <p className="text-xs text-zinc-500 flex items-center gap-1 mt-0.5">
-                            <MapPin className="h-3 w-3" />
-                            {gate.location}
+                          <p className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500 min-w-0">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{gate.location}</span>
                           </p>
                         )}
                       </div>
                     </div>
-                    <Badge variant={gate.active ? "success" : "danger"}>
+                    <Badge variant={gate.active ? "success" : "danger"} className="shrink-0">
                       {gate.active ? "Active" : "Inactive"}
                     </Badge>
                   </div>
-                  <div className="mt-4 pt-4 border-t border-zinc-800/50 flex items-center justify-between">
-                    <p className="text-xs text-zinc-600">
-                      Created {formatDate(gate.createdAt)}
-                    </p>
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(gate)} className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 h-8 px-2">
-                        <Edit className="h-3.5 w-3.5" />
-                        Edit
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleToggle(gate.id)} loading={toggling === gate.id} className="h-8 px-2">
-                        <Power className="h-3.5 w-3.5" />
-                        {gate.active ? "Disable" : "Enable"}
-                      </Button>
+                  <div className="mt-auto pt-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/70 pt-4">
+                      <p className="text-xs text-zinc-500">
+                        Created {formatDate(gate.createdAt)}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => openEdit(gate)} className="h-10 sm:h-9">
+                          <Edit className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleToggle(gate.id)}
+                          loading={toggling === gate.id}
+                          className={`h-10 sm:h-9 ${gate.active ? "text-red-400 border-red-500/30 hover:bg-red-500/10 hover:border-red-500/40" : "text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10 hover:border-emerald-500/40"}`}
+                        >
+                          <Power className="h-3.5 w-3.5" />
+                          {gate.active ? "Disable" : "Enable"}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -152,13 +168,13 @@ export function GatesClient({ user, gates }: Props) {
           className="space-y-4"
         >
           {error && (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>
+            <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>
           )}
           <Input name="name" label="Gate Name *" placeholder="e.g., Main Gate, Back Gate" defaultValue={editingGate?.name || ""} required id="gate-name" />
           <Input name="location" label="Location" placeholder="e.g., North Campus Entrance" defaultValue={editingGate?.location || ""} id="gate-location" />
-          <div className="flex justify-end gap-3">
-            <Button type="button" variant="outline" onClick={() => { setShowModal(false); setError(null); setEditingGate(null); }}>Cancel</Button>
-            <Button type="submit" loading={loading}>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3 pt-2">
+            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => { setShowModal(false); setError(null); setEditingGate(null); }}>Cancel</Button>
+            <Button type="submit" loading={loading} className="w-full sm:w-auto">
               {editingGate ? "Save Changes" : <><Plus className="h-4 w-4" />Create Gate</>}
             </Button>
           </div>

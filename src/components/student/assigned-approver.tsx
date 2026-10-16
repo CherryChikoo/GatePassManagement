@@ -21,7 +21,7 @@ export function AssignedApproverCard({
 
   if (!approver || !approver.available) {
     return (
-      <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 flex items-start gap-3">
+      <div role="alert" className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 flex items-start gap-3">
         <AlertCircle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
         <div className="text-sm">
           <p className="font-semibold text-amber-300">You can't submit a request yet</p>
@@ -42,8 +42,8 @@ export function AssignedApproverCard({
         <ShieldCheck className={`h-4 w-4 ${accentText}`} />
         Approver
       </p>
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 flex items-center justify-between gap-3">
-        <span className="text-sm font-semibold text-zinc-100 truncate">{approver.name}</span>
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3.5 flex items-center justify-between gap-3">
+        <span className="text-sm font-medium text-zinc-100 truncate">{approver.name}</span>
         <span className={`text-xs font-medium ${accentText} shrink-0`}>{approver.label}</span>
       </div>
       <p className="text-xs text-zinc-500">

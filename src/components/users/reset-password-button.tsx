@@ -5,8 +5,9 @@ import { Eye, EyeOff, KeyRound } from "lucide-react";
 import { Modal } from "@/components/ui/primitives";
 import { actionErrorMessage } from "@/lib/deployment";
 import { resetUserPassword } from "@/server/actions/admin";
+import { cn } from "@/lib/utils";
 
-/** Admin / HOD: set a new password for a student or faculty member. */
+/** Admin / HOD / Warden: set a new password for a student (Admin and HOD: faculty too). */
 export function ResetPasswordButton({ profileId, name, className = "" }: { profileId: string; name: string; className?: string }) {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
@@ -42,30 +43,41 @@ export function ResetPasswordButton({ profileId, name, className = "" }: { profi
   }
 
   const inputCls =
-    "h-11 w-full rounded-xl border border-zinc-700/50 bg-zinc-900 px-3.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500/40";
+    "h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10";
 
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-zinc-700 text-xs font-semibold text-zinc-200 hover:bg-zinc-800 ${className}`}
+        className={cn(
+          "inline-flex items-center justify-center gap-1.5 h-10 sm:h-9 px-3.5 rounded-full border border-zinc-800 bg-zinc-900 text-xs font-medium text-zinc-200 hover:bg-zinc-950 hover:border-zinc-700 transition-colors",
+          className
+        )}
       >
-        <KeyRound className="h-3.5 w-3.5" /> Reset password
+        <KeyRound className="h-3.5 w-3.5 text-zinc-500" /> Change password
       </button>
-      <Modal open={open} onClose={close} title={`Reset password — ${name}`}>
+      <Modal open={open} onClose={close} title={`Change password — ${name}`}>
         {done ? (
-          <div className="space-y-4">
-            <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
-              Password changed. Give the new password to {name}; they can change it later in Settings.
+          <div className="space-y-5">
+            <p className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300 leading-relaxed">
+              Password changed for {name}. Give them the new password. The next time they sign in, they will see that their password was changed and by whom; they can set their own in Settings.
             </p>
-            <button type="button" onClick={close} className="w-full h-10 rounded-xl border border-zinc-700 text-sm text-zinc-200 hover:bg-zinc-800">
+            <button
+              type="button"
+              onClick={close}
+              className="w-full h-12 rounded-full border border-zinc-800 bg-zinc-900 text-sm font-medium text-zinc-200 hover:bg-zinc-950 hover:border-zinc-700 transition-colors"
+            >
               Close
             </button>
           </div>
         ) : (
-          <form onSubmit={submit} className="space-y-4">
-            {error && <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">{error}</p>}
+          <form onSubmit={submit} className="space-y-5">
+            {error && (
+              <p role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {error}
+              </p>
+            )}
             <div className="space-y-1.5">
               <label htmlFor="rp-new" className="block text-sm font-medium text-zinc-300">New password *</label>
               <div className="relative">
@@ -78,18 +90,18 @@ export function ResetPasswordButton({ profileId, name, className = "" }: { profi
                   minLength={8}
                   maxLength={72}
                   required
-                  className={`${inputCls} pr-10`}
+                  className={`${inputCls} pr-12`}
                 />
                 <button
                   type="button"
                   onClick={() => setShow((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-950 hover:text-zinc-300 transition-colors"
                   aria-label={show ? "Hide password" : "Show password"}
                 >
                   {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              <p className="text-[11px] text-zinc-500">At least 8 characters.</p>
+              <p className="text-xs text-zinc-500">At least 8 characters.</p>
             </div>
             <div className="space-y-1.5">
               <label htmlFor="rp-confirm" className="block text-sm font-medium text-zinc-300">Confirm new password *</label>
@@ -103,7 +115,11 @@ export function ResetPasswordButton({ profileId, name, className = "" }: { profi
                 className={inputCls}
               />
             </div>
-            <button type="submit" disabled={busy} className="w-full h-11 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold disabled:opacity-60">
+            <button
+              type="submit"
+              disabled={busy}
+              className="w-full h-12 rounded-full bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium transition-colors disabled:opacity-60"
+            >
               {busy ? "Saving…" : "Set new password"}
             </button>
           </form>

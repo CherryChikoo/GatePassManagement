@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Image from "next/image";
 import { LogOut, Loader2 } from "lucide-react";
+import { PAGE_FOOTER_SLOT_ID } from "@/components/ui/pager-bar";
+import { PasswordChangedNotice } from "@/components/users/password-changed-notice";
 import { logoutAndClear } from "@/stores/app-store";
 import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
 import { useT } from "@/components/providers/language-provider";
@@ -40,7 +42,7 @@ export function StudentShell({
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-[100dvh] flex flex-col bg-zinc-950 text-zinc-100">
       <header className="sticky top-0 z-30 px-3 pt-3">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-[22px] glass shadow-card px-3 sm:px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-3">
@@ -73,7 +75,16 @@ export function StudentShell({
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-4 py-6">{children}</main>
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+        <PasswordChangedNotice />
+        {children}
+      </main>
+
+      {/* Pagination bars (PagerBar) dock here: stays at the bottom of the screen */}
+      <div
+        id={PAGE_FOOTER_SLOT_ID}
+        className="sticky bottom-0 z-30 mx-auto w-full max-w-3xl px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] empty:hidden"
+      />
 
       {signingOut && <SigningOutOverlay />}
     </div>

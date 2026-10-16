@@ -48,6 +48,8 @@ export const te: Record<string, string> = {
   "Sign out": "సైన్ అవుట్",
   "Signing out…": "సైన్ అవుట్ అవుతోంది…",
   "Back to Dashboard": "డాష్‌బోర్డ్‌కు తిరిగి",
+  "Back to Registers": "రిజిస్టర్లకు తిరిగి",
+  "Go Back": "వెనక్కి వెళ్ళండి",
 
   // ─── Sign in ──────────────────────────────────────────────
   "Sign in to Gate Pass": "Gate Pass‌లోకి సైన్ ఇన్ చేయండి",
@@ -222,7 +224,8 @@ export const te: Record<string, string> = {
   "Entry/Exit Log": "ప్రవేశ/నిష్క్రమణ లాగ్",
   "Manual Registration": "నమోదు",
   "Register a new visitor.": "కొత్త సందర్శకుడిని నమోదు చేయండి.",
-  "Visitor Photo (Optional)": "సందర్శకుని ఫోటో (ఐచ్ఛికం)",
+  "Visitor Photo": "సందర్శకుని ఫోటో",
+  "Take the visitor's photo before registering": "నమోదు చేసే ముందు సందర్శకుని ఫోటో తీయండి",
   "Take Photo": "ఫోటో తీయండి",
   "Retake Photo": "ఫోటో మళ్ళీ తీయండి",
   "Full Name": "పూర్తి పేరు",
@@ -288,6 +291,8 @@ export const te: Record<string, string> = {
 
   // ─── Settings ─────────────────────────────────────────────
   "Account Settings": "ఖాతా సెట్టింగ్‌లు",
+  "Keep your name and phone number up to date.": "మీ పేరు మరియు ఫోన్ నంబర్‌ను తాజాగా ఉంచండి.",
+  "Ask the administrator to change your email or password.": "ఇమెయిల్ లేదా పాస్‌వర్డ్ మార్చడానికి అడ్మినిస్ట్రేటర్‌ను అడగండి.",
   "Security Staff": "సెక్యూరిటీ సిబ్బంది",
   "Manage your personal profile information, department details, and authentication credentials.":
     "మీ వ్యక్తిగత ప్రొఫైల్ వివరాలు, విభాగ వివరాలు మరియు లాగిన్ వివరాలను ఇక్కడ నిర్వహించండి.",
@@ -455,6 +460,41 @@ export const te: Record<string, string> = {
   "Ladies hostel": "లేడీస్ హాస్టల్",
   "Roll / Room": "రోల్ / గది",
   Exited: "బయటకు వెళ్ళిన సమయం",
+
+  // ─── Security home, quick entry, scan, pager ──────────────
+  Scan: "స్కాన్",
+  "Search registers…": "రిజిస్టర్లను వెతకండి…",
+  "Tap + to add an entry straight away, or open a register to see its records.":
+    "వెంటనే నమోదు చేయడానికి + నొక్కండి, లేదా రికార్డులు చూడటానికి రిజిస్టర్‌ను తెరవండి.",
+  "No register matches your search.": "మీ శోధనకు సరిపోయే రిజిస్టర్ లేదు.",
+  "Saved. Ready for the next one.": "సేవ్ అయింది. తదుపరి వ్యక్తి కోసం సిద్ధం.",
+  "{n} saved": "{n} సేవ్ అయ్యాయి",
+  Done: "పూర్తయింది",
+  Required: "తప్పనిసరి",
+  "View details": "వివరాలు చూడండి",
+  "Photo required": "ఫోటో అవసరం",
+  "No photo needed": "ఫోటో అవసరం లేదు",
+  "More details (optional)": "మరిన్ని వివరాలు (ఐచ్ఛికం)",
+  "Capture the visitor's face with the device camera.": "పరికరం కెమెరాతో సందర్శకుని ముఖాన్ని ఫోటో తీయండి.",
+  "Entry Details": "ప్రవేశ వివరాలు",
+  "Exit Details": "నిష్క్రమణ వివరాలు",
+  Showing: "చూపిస్తున్నవి",
+  of: "లో",
+  "No {items}": "{items} లేవు",
+  "Page {page}": "పేజీ {page}",
+  Pagination: "పేజీలు",
+  results: "ఫలితాలు",
+  records: "రికార్డులు",
+  entries: "ప్రవేశాలు",
+  exits: "నిష్క్రమణలు",
+  visitors: "సందర్శకులు",
+  students: "విద్యార్థులు",
+  passes: "పాస్‌లు",
+  requests: "అభ్యర్థనలు",
+  users: "వినియోగదారులు",
+  "faculty members": "అధ్యాపకులు",
+  "department heads": "విభాగాధిపతులు",
+  days: "రోజులు",
 
   // ─── Register titles & descriptions ───────────────────────
   "Faculty Book & Pass": "ఫ్యాకల్టీ బుక్ & పాస్",

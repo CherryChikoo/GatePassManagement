@@ -16,6 +16,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { StatCard, EmptyState } from "@/components/ui/primitives";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
 import { useAppStore } from "@/stores/app-store";
@@ -37,72 +38,98 @@ export function SupervisorDashboardClient({ user }: { user: { name: string } }) 
     { href: "/supervisor/activity", icon: History, title: "Activity", text: "Past passes and gate movements by date" },
   ];
 
+  const firstName = (user.name || "").replace(/^(dr|prof|mr|mrs|ms)\.?\s+/i, "").split(" ")[0] || user.name;
+  const hour = Number(new Intl.DateTimeFormat("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date()));
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const todayLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date());
+
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2.5 flex-wrap">
-          Security Supervisor
-          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-teal-500/15 text-teal-300 border-teal-500/30">
+    <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
+      {/* Greeting */}
+      <div className="min-w-0">
+        <p className="text-sm text-zinc-500">{todayLabel}</p>
+        <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
+          {greeting}, <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{firstName}</span>
+        </h1>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-zinc-500">
+          <span className="font-medium text-zinc-300">Security Supervisor</span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2.5 py-0.5 text-xs font-medium text-orange-400">
             <Eye className="h-3 w-3" aria-hidden="true" /> View only
           </span>
-        </h1>
-        <p className="text-sm text-zinc-400 mt-1">
-          Welcome, {user.name}. Campus-wide overview of student and faculty passes. Approvals are handled by HODs,
-          wardens and the Dean.
+        </div>
+        <p className="mt-1 text-sm text-zinc-500">
+          Campus-wide overview of student and faculty passes. Approvals are handled by HODs, wardens and the Dean.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard title="Requests Today" value={s.requestsToday} icon={<ClipboardCheck className="h-5 w-5 text-teal-400" />} description="Student + faculty" />
-        <StatCard title="Pending (Students)" value={s.pendingStudent} icon={<Hourglass className="h-5 w-5 text-amber-400" />} description="Awaiting HOD / warden" />
-        <StatCard title="Pending (Faculty)" value={s.pendingFaculty} icon={<Hourglass className="h-5 w-5 text-amber-400" />} description="Awaiting HOD / Dean" />
-        <StatCard title="Approved Today" value={s.approvedToday} icon={<CheckCircle2 className="h-5 w-5 text-emerald-400" />} />
-        <StatCard title="Rejected Today" value={s.rejectedToday} icon={<XCircle className="h-5 w-5 text-red-400" />} />
-        <StatCard title="Exits Today" value={s.exitsToday} icon={<DoorOpen className="h-5 w-5 text-orange-400" />} description="Gate scans" />
-        <StatCard title="Entries Today" value={s.entriesToday} icon={<LogIn className="h-5 w-5 text-cyan-400" />} description="Gate scans" />
-        <StatCard title="Students" value={s.totalStudents} icon={<GraduationCap className="h-5 w-5 text-blue-400" />} />
-        <StatCard title="Faculty & HODs" value={s.totalFaculty} icon={<Briefcase className="h-5 w-5 text-indigo-400" />} />
-        <StatCard title="Visitors Inside" value={s.visitorsInside} icon={<Users className="h-5 w-5 text-zinc-300" />} />
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+        <StatCard title="Requests Today" value={s.requestsToday} icon={<ClipboardCheck />} description="Student + faculty" />
+        <StatCard title="Pending (Students)" value={s.pendingStudent} icon={<Hourglass />} description="Awaiting HOD / warden" />
+        <StatCard title="Pending (Faculty)" value={s.pendingFaculty} icon={<Hourglass />} description="Awaiting HOD / Dean" />
+        <StatCard title="Approved Today" value={s.approvedToday} icon={<CheckCircle2 />} />
+        <StatCard title="Rejected Today" value={s.rejectedToday} icon={<XCircle />} />
+        <StatCard title="Exits Today" value={s.exitsToday} icon={<DoorOpen />} description="Gate scans" />
+        <StatCard title="Entries Today" value={s.entriesToday} icon={<LogIn />} description="Gate scans" />
+        <StatCard title="Students" value={s.totalStudents} icon={<GraduationCap />} />
+        <StatCard title="Faculty & HODs" value={s.totalFaculty} icon={<Briefcase />} />
+        <StatCard title="Visitors Inside" value={s.visitorsInside} icon={<Users />} />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {links.map(({ href, icon: Icon, title, text }) => (
-          <Link
-            key={href}
-            href={href}
-            className="group rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-teal-500/40 transition-colors"
-          >
-            <div className="flex items-center gap-2 text-zinc-100 font-semibold text-sm">
-              <Icon className="h-4 w-4 text-teal-400" aria-hidden="true" />
-              {title}
-              <ArrowRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
+        {/* Left: recent requests */}
+        <Card className="xl:col-span-2">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="font-medium">Recent requests</CardTitle>
+              <Link
+                href="/supervisor/requests"
+                className="inline-flex h-9 items-center gap-1 rounded-full px-3 text-xs font-medium text-orange-400 hover:bg-orange-500/10 transition-colors"
+              >
+                View all <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
             </div>
-            <p className="text-xs text-zinc-400 mt-1">{text}</p>
-          </Link>
-        ))}
-      </div>
+          </CardHeader>
+          <CardContent className="pt-2">
+            {recent.length === 0 ? (
+              <EmptyState
+                icon={<ClipboardCheck className="h-6 w-6" />}
+                title="No requests today"
+                description="Student and faculty pass requests will appear here."
+              />
+            ) : (
+              <div className="space-y-3">
+                {recent.map((r) => (
+                  <RequestCard key={r.id} r={r} compact />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-zinc-100">Recent requests</h2>
-          <Link href="/supervisor/requests" className="text-xs text-teal-400 hover:underline flex items-center gap-1">
-            View all <ArrowRight className="h-3 w-3" aria-hidden="true" />
-          </Link>
+        {/* Right: quick links */}
+        <div className="min-w-0">
+          <Card>
+            <CardContent className="p-5 sm:p-6 space-y-3">
+              <h2 className="text-base font-medium text-zinc-100">Quick links</h2>
+              {links.map(({ href, icon: Icon, title, text }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="flex items-center gap-3 rounded-2xl border border-zinc-800 px-3 py-3 hover:bg-zinc-950 transition-colors"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-950 text-zinc-400">
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-zinc-100">{title}</span>
+                    <span className="block text-xs text-zinc-500 truncate">{text}</span>
+                  </span>
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
         </div>
-        {recent.length === 0 ? (
-          <EmptyState
-            icon={<ClipboardCheck className="h-6 w-6" />}
-            title="No requests today"
-            description="Student and faculty pass requests will appear here."
-          />
-        ) : (
-          <div className="space-y-3">
-            {recent.map((r) => (
-              <RequestCard key={r.id} r={r} compact />
-            ))}
-          </div>
-        )}
-      </section>
+      </div>
     </div>
   );
 }

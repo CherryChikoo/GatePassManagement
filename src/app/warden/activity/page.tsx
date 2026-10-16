@@ -24,7 +24,7 @@ export default async function WardenActivityPage({
   });
 
   if (!warden) {
-    return <div>Warden not found</div>;
+    return <p className="py-12 text-center text-sm text-zinc-500">Warden not found</p>;
   }
 
   // A pass belongs to a day if it was requested OR scheduled on that day

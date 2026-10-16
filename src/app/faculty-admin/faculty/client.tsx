@@ -5,10 +5,12 @@ import { useAppStore } from "@/stores/app-store";
 import { useStoreReady } from "@/components/providers/store-hydrator";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge, EmptyState } from "@/components/ui/primitives";
-import Link from "next/link";
+import { dt, PersonCell, RowActions, IconAction } from "@/components/ui/data-table";
+import { PagerBar } from "@/components/ui/pager-bar";
+// Student/faculty pages load their data on hover/touch (intent), not on click
+import { IntentLink as Link } from "@/components/ui/intent-link";
 import {
   Users,
   Search,
@@ -18,8 +20,8 @@ import {
   Briefcase,
   Shield,
   ChevronDown,
-  BadgeCheck,
   History,
+  Eye,
 } from "lucide-react";
 
 interface Props {
@@ -62,31 +64,129 @@ export function FacultyAdminFacultyClient({ user }: Props) {
   });
 
   const total = filteredFaculty.length;
-  const totalPages = Math.ceil(total / pageSize) || 1;
   const paginatedFaculty = filteredFaculty.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   );
 
+  const getInitials = (f: any) =>
+    f.name
+      ? f.name
+          .split(" ")
+          .map((n: string) => n[0])
+          .slice(0, 2)
+          .join("")
+          .toUpperCase()
+      : "F";
+
+  // Expanded details panel (shared by the phone cards and the table rows)
+  const renderDetails = (f: any) => (
+    <div className="space-y-4">
+      {/* Top info bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-800">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
+            <Briefcase className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="text-base font-medium text-zinc-100 break-words">{f.name}</h4>
+              {f.faculty?.employeeId && (
+                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
+                  {f.faculty.employeeId}
+                </span>
+              )}
+              <span className="rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-medium text-orange-400">
+                {f.faculty?.designation || "Faculty Member"}
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-zinc-500 break-all">
+              {f.email} {f.phone ? `• ${f.phone}` : ""}
+            </p>
+          </div>
+        </div>
+        <Link
+          href={`/faculty-admin/faculty/${f.id}`}
+          prefetch={true}
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-orange-600 px-4 text-xs font-medium text-white hover:bg-orange-700 transition-colors"
+        >
+          <History className="h-3.5 w-3.5" />
+          View Pass History
+        </Link>
+      </div>
+
+      {/* Detail tiles */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3.5 space-y-1.5 min-w-0">
+          <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+            <Building2 className="h-3.5 w-3.5" />
+            Department
+          </span>
+          <p className="text-sm font-medium text-zinc-200 break-words">
+            {f.faculty?.department || "General Department"}
+          </p>
+          <p className="text-xs text-zinc-500">{f.faculty?.designation || "Teaching Staff"}</p>
+        </div>
+
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3.5 space-y-1.5 min-w-0">
+          <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+            <Mail className="h-3.5 w-3.5" />
+            Contact Information
+          </span>
+          <p className="text-xs text-zinc-200 truncate font-mono">{f.email}</p>
+          <p className="text-xs text-zinc-500">{f.phone || "No phone registered"}</p>
+        </div>
+
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3.5 space-y-1.5 min-w-0">
+          <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+            <Users className="h-3.5 w-3.5" />
+            Staff Credentials
+          </span>
+          <p className="text-xs text-zinc-300">
+            <span className="text-zinc-500">Employee ID: </span>
+            <span className="font-mono text-zinc-200">{f.faculty?.employeeId || "N/A"}</span>
+          </p>
+          <p className="text-xs text-zinc-300">
+            <span className="text-zinc-500">Role: </span>
+            <span className="font-medium text-zinc-200">Faculty</span>
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3.5 space-y-1.5 min-w-0">
+          <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+            <Shield className="h-3.5 w-3.5" />
+            Account Status
+          </span>
+          <div className="flex items-center gap-2 pt-0.5">
+            <Badge variant={f.active !== false ? "success" : "danger"}>
+              {f.active !== false ? "Active" : "Disabled"}
+            </Badge>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2.5">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 flex items-center gap-3 flex-wrap">
             <span>Faculty Directory</span>
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+            <span className="rounded-full bg-orange-500/10 px-2.5 py-0.5 text-xs font-medium text-orange-400">
               {nonHodFaculty.length} Total
             </span>
           </h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          <p className="mt-1 text-sm text-zinc-500">
             Complete roster of academic faculty members and their departments.
           </p>
         </div>
 
-        {/* Search bar */}
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+        {/* Search */}
+        <div className="relative w-full sm:w-72 shrink-0">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 z-10" />
           <Input
             value={searchTerm}
             onChange={(e) => {
@@ -94,303 +194,210 @@ export function FacultyAdminFacultyClient({ user }: Props) {
               setCurrentPage(1);
             }}
             placeholder="Search by name, email, dept..."
-            className="pl-9 bg-zinc-900/60 border-zinc-800 text-sm"
+            className="h-10 rounded-full border-zinc-800 bg-zinc-900 pl-10 pr-4 text-sm placeholder:text-zinc-500 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
           />
         </div>
       </div>
 
-      {/* Faculty Table Card */}
-      <Card className="border-zinc-800 bg-zinc-900/60 shadow-xl overflow-hidden">
+      {/* Faculty list */}
+      <Card className="overflow-hidden">
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-zinc-800/80 bg-zinc-950/40">
-                  <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Faculty</th>
-                  <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Email</th>
-                  <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Department</th>
-                  <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Status</th>
-                  <th className="px-5 py-3.5 text-right font-semibold text-zinc-400">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800/40">
-                {paginatedFaculty.map((f: any) => {
-                  const isExpanded = expandedFacultyId === f.id;
-                  const initials = f.name
-                    ? f.name
-                        .split(" ")
-                        .map((n: string) => n[0])
-                        .slice(0, 2)
-                        .join("")
-                        .toUpperCase()
-                    : "F";
-
-                  return (
-                    <React.Fragment key={f.id}>
-                      <tr
-                        onClick={() => setExpandedFacultyId(isExpanded ? null : f.id)}
-                        className={`table-row-hover transition-colors cursor-pointer select-none ${
-                          isExpanded ? "bg-zinc-850/60" : ""
-                        }`}
-                        title="Click row to view full details"
-                      >
-                        {/* Column 1: Faculty Name & Emp ID */}
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-3">
-                            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-indigo-500/20 to-blue-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-semibold text-xs shrink-0">
-                              {initials}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <p className="font-semibold text-zinc-100 hover:text-indigo-400 transition-colors">
-                                  {f.name}
-                                </p>
-                                {f.faculty?.employeeId && (
-                                  <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/60">
-                                    {f.faculty.employeeId}
-                                  </span>
-                                )}
-                              </div>
-                              {f.phone && (
-                                <p className="text-xs text-zinc-500 mt-0.5 flex items-center gap-1">
-                                  <Phone className="h-3 w-3 text-zinc-500" />
-                                  {f.phone}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Column 2: Email */}
-                        <td className="px-5 py-3.5">
-                          <p className="text-xs text-zinc-300 font-mono">{f.email}</p>
-                        </td>
-
-                        {/* Column 3: Department */}
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-1.5 text-zinc-300">
-                            <Building2 className="h-3.5 w-3.5 text-zinc-500" />
-                            <span className="text-xs font-medium">
-                              {f.faculty?.department || "General Department"}
+          {/* Phones: stacked rows */}
+          <ul className={`sm:hidden ${dt.mobileList}`}>
+            {paginatedFaculty.map((f: any) => {
+              const isExpanded = expandedFacultyId === f.id;
+              const toggle = () => setExpandedFacultyId(isExpanded ? null : f.id);
+              return (
+                <li key={f.id} className={isExpanded ? "bg-zinc-950/70" : ""}>
+                  <div className="flex items-center gap-2 px-4 py-3.5">
+                    <button
+                      type="button"
+                      onClick={toggle}
+                      className="flex flex-1 min-w-0 items-center gap-3 text-left"
+                      title="Tap to view full details"
+                    >
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400 text-sm font-semibold">
+                        {getInitials(f)}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm font-medium text-zinc-100 truncate">{f.name}</span>
+                          {f.faculty?.employeeId && (
+                            <span className="shrink-0 rounded-full border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">
+                              {f.faculty.employeeId}
                             </span>
-                          </div>
-                        </td>
-
-                        {/* Column 4: Status */}
-                        <td className="px-5 py-3.5">
+                          )}
+                        </span>
+                        <span className="block text-xs text-zinc-500 truncate">{f.email}</span>
+                        <span className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500 min-w-0">
+                          <Building2 className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{f.faculty?.department || "General Department"}</span>
+                        </span>
+                        {f.phone && (
+                          <span className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500 tabular-nums">
+                            <Phone className="h-3 w-3 shrink-0" />
+                            {f.phone}
+                          </span>
+                        )}
+                        <span className="mt-1.5 block">
                           <Badge variant={f.active !== false ? "success" : "danger"}>
                             {f.active !== false ? "Active" : "Disabled"}
                           </Badge>
-                        </td>
+                        </span>
+                      </span>
+                    </button>
+                    <RowActions className="shrink-0 gap-0.5">
+                      <IconAction label="History" icon={<History />} href={`/faculty-admin/faculty/${f.id}`} />
+                      <IconAction
+                        label={isExpanded ? "Hide Details" : "View Details"}
+                        icon={<Eye />}
+                        onClick={toggle}
+                      />
+                      <IconAction
+                        label={isExpanded ? "Collapse details" : "Expand details"}
+                        icon={
+                          <ChevronDown className={`transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
+                        }
+                        onClick={toggle}
+                        active={isExpanded}
+                      />
+                    </RowActions>
+                  </div>
+                  {isExpanded && (
+                    <div className="px-3 pb-4 animate-fade-in">
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">{renderDetails(f)}</div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
 
-                        {/* Column 5: Actions */}
-                        <td className="px-5 py-3.5 text-right">
-                          <div
-                            className="flex items-center justify-end gap-1.5"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Link
-                              href={`/faculty-admin/faculty/${f.id}`}
-                              prefetch={true}
-                              className="inline-flex items-center justify-center gap-1.5 border border-zinc-700/80 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-200 hover:text-zinc-100 px-2.5 h-8 text-xs font-semibold rounded-lg transition-colors shadow-none"
-                              title="View full gate pass and permissions history"
-                            >
-                              <History className="h-3.5 w-3.5 text-indigo-400" />
-                              History
-                            </Link>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setExpandedFacultyId(isExpanded ? null : f.id)}
-                              className="text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 px-3 h-8 text-xs font-medium shadow-none"
-                            >
-                              {isExpanded ? "Hide Details" : "View Details"}
-                            </Button>
-                            <button
-                              type="button"
-                              onClick={() => setExpandedFacultyId(isExpanded ? null : f.id)}
-                              className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors ml-1"
-                              title={isExpanded ? "Collapse details" : "Click to view full details"}
-                            >
-                              <ChevronDown
-                                className={`h-4 w-4 transition-transform duration-200 ${
-                                  isExpanded ? "rotate-180 text-orange-400" : ""
-                                }`}
-                              />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+          {/* Tablet & up: table */}
+          {paginatedFaculty.length > 0 && (
+            <div className={`hidden sm:block ${dt.wrap}`}>
+              <table className={dt.table}>
+                <thead>
+                  <tr>
+                    <th className={dt.th}>Faculty</th>
+                    <th className={dt.th}>Email</th>
+                    <th className={dt.th}>Department</th>
+                    <th className={dt.th}>Status</th>
+                    <th className={dt.thRight}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedFaculty.map((f: any) => {
+                    const isExpanded = expandedFacultyId === f.id;
+                    const toggle = () => setExpandedFacultyId(isExpanded ? null : f.id);
 
-                      {/* Expanded Details Row */}
-                      {isExpanded && (
-                        <tr className="bg-zinc-950/80 border-b border-zinc-800/80 animate-fade-in">
-                          <td
-                            colSpan={5}
-                            className="p-5 bg-gradient-to-b from-zinc-900/70 to-zinc-950/95 border-l-2 border-l-indigo-500"
-                          >
-                            <div className="space-y-4">
-                              {/* Top Info Bar */}
-                              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-zinc-800/60">
-                                <div className="flex items-center gap-3">
-                                  <div className="h-10 w-10 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold">
-                                    <Briefcase className="h-5 w-5" />
-                                  </div>
-                                  <div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <h4 className="font-bold text-zinc-100 text-base">{f.name}</h4>
-                                      {f.faculty?.employeeId && (
-                                        <span className="px-2 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/30 font-mono text-xs font-bold text-indigo-400">
-                                          {f.faculty.employeeId}
-                                        </span>
-                                      )}
-                                      <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/30">
-                                        {f.faculty?.designation || "Faculty Member"}
-                                      </span>
-                                    </div>
-                                    <p className="text-xs text-zinc-400 mt-0.5">
-                                      {f.email} {f.phone ? `• ${f.phone}` : ""}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Link
-                                    href={`/faculty-admin/faculty/${f.id}`}
-                                    prefetch={true}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex items-center gap-1.5 px-3.5 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-none transition-all"
-                                  >
-                                    <History className="h-3.5 w-3.5" />
-                                    View Pass History
-                                  </Link>
-                                </div>
-                              </div>
-
-                              {/* 4 Detail Grid Cards */}
-                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                                {/* Card 1: Department & Academic Cohort */}
-                                <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-1.5">
-                                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                                    <Building2 className="h-3.5 w-3.5 text-indigo-400" />
-                                    Department
+                    return (
+                      <React.Fragment key={f.id}>
+                        <tr
+                          onClick={toggle}
+                          className={`${dt.trClickable} select-none`}
+                          title="Click row to view full details"
+                        >
+                          {/* Faculty name & emp ID */}
+                          <td className={dt.td}>
+                            <PersonCell
+                              name={f.name || "Faculty"}
+                              chip={
+                                f.faculty?.employeeId ? (
+                                  <span className={dt.chip}>{f.faculty.employeeId}</span>
+                                ) : undefined
+                              }
+                              sub={
+                                f.phone ? (
+                                  <span className="inline-flex items-center gap-1 tabular-nums">
+                                    <Phone className="h-3 w-3" />
+                                    {f.phone}
                                   </span>
-                                  <p className="text-sm font-semibold text-zinc-200">
-                                    {f.faculty?.department || "General Department"}
-                                  </p>
-                                  <p className="text-xs text-zinc-400">
-                                    {f.faculty?.designation || "Teaching Staff"}
-                                  </p>
-                                </div>
+                                ) : undefined
+                              }
+                            />
+                          </td>
 
-                                {/* Card 2: Contact Information */}
-                                <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-1.5">
-                                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                                    <Mail className="h-3.5 w-3.5 text-blue-400" />
-                                    Contact Information
-                                  </span>
-                                  <p className="text-xs text-zinc-200 truncate font-mono">
-                                    {f.email}
-                                  </p>
-                                  <p className="text-xs text-zinc-400">
-                                    {f.phone || "No phone registered"}
-                                  </p>
-                                </div>
+                          {/* Email */}
+                          <td className={dt.tdMuted}>{f.email}</td>
 
-                                {/* Card 3: Identification */}
-                                <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-1.5">
-                                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                                    <Users className="h-3.5 w-3.5 text-emerald-400" />
-                                    Staff Credentials
-                                  </span>
-                                  <p className="text-xs text-zinc-300">
-                                    <span className="text-zinc-500">Employee ID: </span>
-                                    <span className="font-mono text-zinc-200">
-                                      {f.faculty?.employeeId || "N/A"}
-                                    </span>
-                                  </p>
-                                  <p className="text-xs text-zinc-300">
-                                    <span className="text-zinc-500">Role: </span>
-                                    <span className="font-medium text-indigo-300">Faculty</span>
-                                  </p>
-                                </div>
-
-                                {/* Card 4: Account Status */}
-                                <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-1.5">
-                                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                                    <Shield className="h-3.5 w-3.5 text-orange-400" />
-                                    Account Status
-                                  </span>
-                                  <div className="flex items-center gap-2 pt-0.5">
-                                    <Badge variant={f.active !== false ? "success" : "danger"}>
-                                      {f.active !== false ? "Active" : "Disabled"}
-                                    </Badge>
-                                  </div>
-                                </div>
-                              </div>
+                          {/* Department */}
+                          <td className={dt.td}>
+                            <div className="flex items-center gap-1.5">
+                              <Building2 className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                              <span className="text-xs">{f.faculty?.department || "General Department"}</span>
                             </div>
                           </td>
+
+                          {/* Status */}
+                          <td className={dt.td}>
+                            <Badge variant={f.active !== false ? "success" : "danger"}>
+                              {f.active !== false ? "Active" : "Disabled"}
+                            </Badge>
+                          </td>
+
+                          {/* Actions */}
+                          <td className={dt.tdActions}>
+                            <RowActions>
+                              <IconAction label="History" icon={<History />} href={`/faculty-admin/faculty/${f.id}`} />
+                              <IconAction
+                                label={isExpanded ? "Hide Details" : "View Details"}
+                                icon={<Eye />}
+                                onClick={toggle}
+                              />
+                              <IconAction
+                                label={isExpanded ? "Collapse details" : "Expand details"}
+                                icon={
+                                  <ChevronDown
+                                    className={`transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+                                  />
+                                }
+                                onClick={toggle}
+                                active={isExpanded}
+                              />
+                            </RowActions>
+                          </td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+
+                        {/* Expanded details row */}
+                        {isExpanded && (
+                          <tr className="animate-fade-in">
+                            <td colSpan={5} className="px-2 pb-3">
+                              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+                                {renderDetails(f)}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {filteredFaculty.length === 0 && (
-            <div className="py-12 text-center">
-              <EmptyState
-                icon={<Users className="h-8 w-8 text-zinc-500" />}
-                title="No faculty members found"
-                description={
-                  searchTerm
-                    ? "Try adjusting your search filter."
-                    : "No faculty profiles registered for this department."
-                }
-              />
-            </div>
+            <EmptyState
+              icon={<Users className="h-6 w-6" />}
+              title="No faculty members found"
+              description={
+                searchTerm
+                  ? "Try adjusting your search filter."
+                  : "No faculty profiles registered for this department."
+              }
+            />
           )}
         </CardContent>
       </Card>
 
-      {/* Pagination Bar (Matching Student Section) */}
-      {total > 0 && (
-        <div className="fixed bottom-0 left-0 lg:left-72 right-0 z-50 flex justify-between items-center py-3 px-4 lg:px-8 border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl shadow-[0_-10px_40px_-10px_rgba(16,24,40,0.12)]">
-          <p className="text-sm text-zinc-400 font-medium">
-            Showing {(currentPage - 1) * pageSize + 1} to{" "}
-            {Math.min(currentPage * pageSize, total)} of {total} faculty members
-          </p>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-500">
-              Page {currentPage} of {totalPages}
-            </span>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                className="h-8 px-3 shadow-none"
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                className="h-8 px-3 shadow-none"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom spacer for fixed pagination bar */}
-      {total > 0 && <div className="h-20" />}
+      <PagerBar
+        page={currentPage}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={setCurrentPage}
+        itemLabel="faculty members"
+      />
     </div>
   );
 }

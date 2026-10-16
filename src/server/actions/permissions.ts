@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { resolveStudentActivePass } from "@/lib/permissions/auto-expire";
 import { resolveStudentApprover } from "@/lib/permissions/approver";
 import { generateQrToken, generateCompactLiveQr } from "@/lib/qr/token";
+import { canScanReturn, RETURN_QR_TTL_MS } from "@/lib/passes/return-scan";
 import { getStaffScope, studentWhereForScope } from "@/lib/auth/scope";
 import { istDateString, istDateTime, istDateToInstant, istDayRange, istStartOfDay } from "@/lib/time/ist";
 
@@ -327,6 +328,8 @@ export async function batchCreatePermissions(studentIds: string[], data: Record<
   const allowed = await prisma.student.findMany({
     where: { AND: [{ id: { in: input.studentIds } }, allowedWhere] },
     select: { id: true },
+    // Fixed order = locks always taken in the same order (no deadlock between two grants)
+    orderBy: { id: "asc" },
   });
   if (allowed.length !== new Set(input.studentIds).size) {
     return {
@@ -423,10 +426,26 @@ export async function generateLiveQrToken(permissionId: string) {
 
   const permission = await prisma.permission.findFirst({
     where: { id: permissionId, ...ownerFilter },
-    include: { qr: true },
+    include: {
+      qr: true,
+      movements: { where: { type: "ENTRY" }, select: { id: true }, take: 1 },
+      student: { select: { studentType: true } },
+    },
   });
 
   if (!permission) return { error: "Permission not found" };
+
+  // Faculty / hostellers who are out on this pass: the same QR is shown again for
+  // the return scan. Each displayed code lives 2 minutes (the screen refreshes it).
+  if (permission.qr && canScanReturn({ ...permission, studentType: permission.student?.studentType }, permission.movements.length > 0)) {
+    const token = generateCompactLiveQr({
+      permissionId: permission.id,
+      tokenId: permission.qr.id,
+      expiresAt: new Date(Date.now() + RETURN_QR_TTL_MS),
+    });
+    return { token, expiresAt: null, returning: true };
+  }
+
   if (permission.status !== "APPROVED") return { error: "Permission is not approved" };
   if (!permission.qr || !permission.qr.active) return { error: "QR credential is not active" };
   if (permission.qr.expiresAt < new Date()) return { error: "This gate pass has expired." };
@@ -445,7 +464,7 @@ export async function generateLiveQrToken(permissionId: string) {
     expiresAt: permission.qr.expiresAt,
   });
 
-  return { token, expiresAt: permission.qr.expiresAt };
+  return { token, expiresAt: permission.qr.expiresAt, returning: false };
 }
 
 /**

@@ -43,16 +43,23 @@ async function uploadImage(base64Data: string, folderPath: string, fileStem: str
   const extension = decoded.mimeType.split("/")[1];
   const filePath = `${folderPath}/${fileStem}_${Date.now()}.${extension}`;
 
-  const { data, error } = await adminStorage().from(BUCKET_NAME).upload(filePath, decoded.buffer, {
-    contentType: decoded.mimeType,
-    cacheControl: "3600",
-    upsert: false,
-  });
-  if (error) {
-    console.error("[storage] upload error:", error.message);
-    return { path: null, error: "Photo upload failed" };
+  // A brief Storage or network hiccup shouldn't hold up the gate: up to 3 tries
+  // (0.4 s, then 1.2 s apart). Same path every try, so a retry can never make a
+  // second copy (upsert: false → "already exists" means the first try landed).
+  let lastError = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, attempt === 1 ? 400 : 1200));
+    const { data, error } = await adminStorage().from(BUCKET_NAME).upload(filePath, decoded.buffer, {
+      contentType: decoded.mimeType,
+      cacheControl: "3600",
+      upsert: false,
+    });
+    if (!error) return { path: data.path, error: null };
+    if (/already exists|duplicate/i.test(error.message)) return { path: filePath, error: null };
+    lastError = error.message;
   }
-  return { path: data.path, error: null };
+  console.error("[storage] upload failed after 3 tries:", lastError);
+  return { path: null, error: "Photo upload failed" };
 }
 
 const safeSegment = (s: string) => s.replace(/[^a-z0-9_-]/gi, "_").slice(0, 60) || "x";

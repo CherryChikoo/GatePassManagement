@@ -48,8 +48,8 @@ export function DirectorDashboardClient({ user, title }: Props & { title?: strin
   const allFaculty = rawAllFaculty || [];
   const rawAllMovements = useAppStore((s) => s.data.allMovements);
   const allMovements = rawAllMovements || [];
-  const rawStudents = useAppStore((s) => s.data.students);
-  const allStudents = rawStudents || [];
+  // Students per department (counted on the server; the list itself is paged)
+  const studentDeptCountsData = useAppStore((s) => s.data.studentDeptCounts) as Record<string, number> | undefined;
   const rawStudentPasses = useAppStore((s) => s.data.recentStudentPasses) || dashboardData?.recentStudentPasses || [];
 
   // Group faculty count by department
@@ -59,12 +59,8 @@ export function DirectorDashboardClient({ user, title }: Props & { title?: strin
     deptFacultyCounts[d] = (deptFacultyCounts[d] || 0) + 1;
   });
 
-  // Group student count by department
-  const deptStudentCounts: Record<string, number> = {};
-  allStudents.forEach((s: any) => {
-    const d = s.department || "General";
-    deptStudentCounts[d] = (deptStudentCounts[d] || 0) + 1;
-  });
+  // Student count by department
+  const deptStudentCounts: Record<string, number> = studentDeptCountsData ?? {};
 
   if (!isReady || dashboardData === undefined) {
     return <DashboardSkeleton />;
@@ -119,185 +115,249 @@ export function DirectorDashboardClient({ user, title }: Props & { title?: strin
     })
     .slice(0, 10);
 
+  const firstName =
+    (user?.name || "").replace(/^(dr|prof|mr|mrs|ms)\.?\s+/i, "").split(" ")[0] || user?.name || title || "Director";
+  const hour = Number(new Intl.DateTimeFormat("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date()));
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const todayLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date());
+
+  const segBtn = (active: boolean) =>
+    `inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap ${
+      active ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
+    }`;
+
+  const quickLinks = [
+    { href: "/director/activity", label: "Activity", hint: "Past pass requests, approvals and gate movements across campus", icon: <History className="h-4 w-4" /> },
+    { href: "/director/hods", label: "HOD Directory", hint: "Department heads directory, contact and departmental oversight", icon: <Shield className="h-4 w-4" /> },
+    { href: "/director/faculty", label: "Faculty Directory", hint: "Campus-wide faculty records across all academic departments", icon: <Users className="h-4 w-4" /> },
+    { href: "/director/students", label: "All Students Directory", hint: "Campus-wide student registry, academic cohorts, mentors & hostel accommodation", icon: <GraduationCap className="h-4 w-4" /> },
+  ];
+
   return (
     <>
-      <div className="space-y-8">
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2.5 flex-wrap">
-              {title ?? "Director Dashboard"}
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30">
-                Campus Executive
-              </span>
-              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                All Departments
-              </span>
+      <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
+        {/* Greeting */}
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm text-zinc-500">{todayLabel}</p>
+            <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
+              {greeting}, <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{firstName}</span>
             </h1>
-            <p className="text-sm text-zinc-400 mt-1">
+            <p className="mt-1.5 text-sm text-zinc-500">
+              <span className="font-medium text-zinc-300">{title ?? "Director Dashboard"}</span> · Campus Executive · All Departments
+            </p>
+            <p className="mt-1 text-sm text-zinc-500">
               Full campus oversight across faculty, staff, students, wardens & security infrastructure
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Link href="/director/activity">
-              <Button className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-lg shadow-purple-600/20">
-                <History className="h-4 w-4 mr-1.5" />
-                View Activity
-              </Button>
-            </Link>
+          <Link href="/director/activity" className="shrink-0">
+            <Button className="w-full sm:w-auto">
+              <History className="h-4 w-4" />
+              View Activity
+            </Button>
+          </Link>
+        </div>
+
+        {/* Stats */}
+        <div className="space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+            <StatCard title="Total Faculty" value={stats.totalFaculty} icon={<Briefcase />} description="Active teaching staff" />
+            <StatCard title="Total HODs" value={stats.totalHODs} icon={<Shield />} description="Department heads" />
+            <StatCard title="Total Students" value={stats.totalStudents} icon={<GraduationCap />} description="Campus enrolled" />
+            <StatCard
+              title="Wardens & Security"
+              value={stats.totalWardens + stats.totalSecurity}
+              icon={<Building2 />}
+              description={`${stats.totalWardens} Wardens • ${stats.totalSecurity} Security`}
+            />
+            <StatCard
+              title="Pending Faculty Passes"
+              value={stats.pendingFacultyPasses}
+              icon={<ClipboardCheck />}
+              description="Awaiting HOD / Dean"
+              className="col-span-2 sm:col-span-2 lg:col-span-1"
+            />
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <StatCard title="Approved Today" value={stats.approvedToday} icon={<CheckCircle2 />} description="Passes granted today" />
+            <StatCard title="Rejected Today" value={stats.rejectedToday} icon={<XCircle />} description="Passes denied today" />
+            <StatCard title="Exits Today" value={stats.exitsToday} icon={<DoorOpen />} description="Scanned gate exits" />
+            <StatCard title="Entries Today" value={stats.entriesToday} icon={<MapPin />} description="Scanned gate returns" />
           </div>
         </div>
 
-        {/* Primary Metric Stats Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          <StatCard
-            title="Total Faculty"
-            value={stats.totalFaculty}
-            icon={<Briefcase className="h-5 w-5 text-emerald-400" />}
-            description="Active teaching staff"
-          />
-          <StatCard
-            title="Total HODs"
-            value={stats.totalHODs}
-            icon={<Shield className="h-5 w-5 text-indigo-400" />}
-            description="Department heads"
-          />
-          <StatCard
-            title="Total Students"
-            value={stats.totalStudents}
-            icon={<GraduationCap className="h-5 w-5 text-blue-400" />}
-            description="Campus enrolled"
-          />
-          <StatCard
-            title="Wardens & Security"
-            value={stats.totalWardens + stats.totalSecurity}
-            icon={<Building2 className="h-5 w-5 text-amber-400" />}
-            description={`${stats.totalWardens} Wardens • ${stats.totalSecurity} Security`}
-          />
-          <StatCard
-            title="Pending Faculty Passes"
-            value={stats.pendingFacultyPasses}
-            icon={<ClipboardCheck className="h-5 w-5 text-purple-400" />}
-            description="Awaiting HOD / Dean"
-          />
-        </div>
-
-        {/* Daily Movement & Pass Activity Overview */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <StatCard
-            title="Approved Today"
-            value={stats.approvedToday}
-            icon={<CheckCircle2 className="h-5 w-5 text-emerald-400" />}
-            description="Passes granted today"
-          />
-          <StatCard
-            title="Rejected Today"
-            value={stats.rejectedToday}
-            icon={<XCircle className="h-5 w-5 text-red-400" />}
-            description="Passes denied today"
-          />
-          <StatCard
-            title="Exits Today"
-            value={stats.exitsToday}
-            icon={<DoorOpen className="h-5 w-5 text-orange-400" />}
-            description="Scanned gate exits"
-          />
-          <StatCard
-            title="Entries Today"
-            value={stats.entriesToday}
-            icon={<MapPin className="h-5 w-5 text-cyan-400" />}
-            description="Scanned gate returns"
-          />
-        </div>
-
-        {/* Quick Hub Navigation Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Link href="/director/activity" className="group">
-            <Card className="border-zinc-800 bg-zinc-900/60 hover:border-purple-500/40 hover:bg-zinc-900/90 transition-all duration-200 h-full">
-              <CardContent className="p-5 flex items-start gap-4">
-                <div className="p-3 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 group-hover:scale-105 transition-transform">
-                  <History className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-zinc-100 group-hover:text-purple-400 transition-colors flex items-center gap-1.5">
-                    Activity <ArrowRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Past pass requests, approvals and gate movements across campus
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
+          {/* Left: recent passes */}
+          <div className="xl:col-span-2 min-w-0">
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="min-w-0">
+                  <CardTitle className="font-medium">Recent Gate Passes</CardTitle>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Latest gate passes and permissions requested across campus departments
                   </p>
                 </div>
-              </CardContent>
-            </Card>
-          </Link>
+                <div className="flex flex-wrap items-center gap-2 pt-2">
+                  {/* Category Filter: All / Faculty / Students */}
+                  <div
+                    className="inline-flex max-w-full rounded-full bg-zinc-950 p-1 border border-zinc-800 overflow-x-auto scrollbar-none"
+                    role="tablist"
+                    aria-label="Filter by requester"
+                  >
+                    <button
+                      role="tab"
+                      aria-selected={activityCategory === "ALL"}
+                      onClick={() => setActivityCategory("ALL")}
+                      className={segBtn(activityCategory === "ALL")}
+                    >
+                      All
+                    </button>
+                    <button
+                      role="tab"
+                      aria-selected={activityCategory === "FACULTY"}
+                      onClick={() => setActivityCategory("FACULTY")}
+                      className={segBtn(activityCategory === "FACULTY")}
+                    >
+                      <Briefcase className="h-3 w-3" /> Faculty
+                    </button>
+                    <button
+                      role="tab"
+                      aria-selected={activityCategory === "STUDENTS"}
+                      onClick={() => setActivityCategory("STUDENTS")}
+                      className={segBtn(activityCategory === "STUDENTS")}
+                    >
+                      <GraduationCap className="h-3 w-3" /> Students
+                    </button>
+                  </div>
 
-          <Link href="/director/hods" className="group">
-            <Card className="border-zinc-800 bg-zinc-900/60 hover:border-indigo-500/40 hover:bg-zinc-900/90 transition-all duration-200 h-full">
-              <CardContent className="p-5 flex items-start gap-4">
-                <div className="p-3 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 group-hover:scale-105 transition-transform">
-                  <Shield className="h-6 w-6" />
+                  {/* Status Tabs */}
+                  <div
+                    className="inline-flex max-w-full rounded-full bg-zinc-950 p-1 border border-zinc-800 overflow-x-auto scrollbar-none"
+                    role="tablist"
+                    aria-label="Filter by status"
+                  >
+                    {(["ALL", "PENDING", "APPROVED", "REJECTED"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        role="tab"
+                        aria-selected={activeTab === tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={segBtn(activeTab === tab)}
+                      >
+                        {tab === "ALL" ? "All Status" : tab.charAt(0) + tab.slice(1).toLowerCase()}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-semibold text-zinc-100 group-hover:text-indigo-400 transition-colors flex items-center gap-1.5">
-                    HOD Directory <ArrowRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Department heads directory, contact and departmental oversight
+              </CardHeader>
+              <CardContent className="pt-2">
+                {filteredActivity.length === 0 ? (
+                  <p className="py-12 text-center text-sm text-zinc-500">
+                    No pass activity found matching the selected filter.
                   </p>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
+                ) : (
+                  <ul className="divide-y divide-zinc-800/70">
+                    {filteredActivity.map((item: any) => {
+                      const isStudent = !!item.student;
+                      const requesterName = isStudent
+                        ? item.student.profile?.name || "Student"
+                        : item.faculty?.profile?.name || "Faculty Member";
+                      const dept = isStudent
+                        ? item.student.department || "Department"
+                        : item.faculty?.department || "Department";
+                      const desig = isStudent
+                        ? "Student"
+                        : item.faculty?.designation || (item.faculty?.profile?.role === "FACULTY_ADMIN" ? "HOD" : "Faculty");
+                      const idTag = isStudent
+                        ? item.student.studentRoll
+                        : item.faculty?.employeeId || "N/A";
 
-          <Link href="/director/faculty" className="group">
-            <Card className="border-zinc-800 bg-zinc-900/60 hover:border-emerald-500/40 hover:bg-zinc-900/90 transition-all duration-200 h-full">
-              <CardContent className="p-5 flex items-start gap-4">
-                <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 group-hover:scale-105 transition-transform">
-                  <Users className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-zinc-100 group-hover:text-emerald-400 transition-colors flex items-center gap-1.5">
-                    Faculty Directory <ArrowRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Campus-wide faculty records across all academic departments
-                  </p>
-                </div>
+                      return (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedActivity(item)}
+                            className="w-full flex items-center gap-3 sm:gap-4 py-3 text-left rounded-2xl px-2 -mx-2 hover:bg-zinc-950 transition-colors"
+                          >
+                            <span
+                              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+                                isStudent ? "bg-zinc-950 text-zinc-400" : "bg-orange-500/10 text-orange-400"
+                              }`}
+                            >
+                              {isStudent ? <GraduationCap className="h-5 w-5" /> : <Briefcase className="h-5 w-5" />}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-sm font-medium text-zinc-100 truncate">
+                                {requesterName}
+                                {idTag && <span className="text-zinc-500 font-normal"> · {idTag}</span>}
+                              </span>
+                              <span className="mt-1 flex items-center gap-1.5 min-w-0">
+                                <span
+                                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                    isStudent ? "bg-zinc-950 text-zinc-400 border border-zinc-800" : "bg-orange-500/10 text-orange-400"
+                                  }`}
+                                >
+                                  {isStudent ? "Student" : "Faculty"}
+                                </span>
+                                <span className="shrink-0 rounded-full border border-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
+                                  {getDepartmentCode(dept)}
+                                </span>
+                                <span className="min-w-0 truncate text-xs text-zinc-500">
+                                  {desig} • Purpose: {item.purpose || "Official"}
+                                  {item.destination && ` • Destination: ${item.destination}`}
+                                </span>
+                              </span>
+                            </span>
+                            <span className="flex flex-col items-end gap-1 shrink-0">
+                              <StatusBadge status={item.status} />
+                              <span className="text-[11px] text-zinc-500">{formatDateTime(item.createdAt)}</span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </CardContent>
             </Card>
-          </Link>
+          </div>
 
-          <Link href="/director/students" className="group">
-            <Card className="border-zinc-800 bg-zinc-900/60 hover:border-purple-500/40 hover:bg-zinc-900/90 transition-all duration-200 h-full">
-              <CardContent className="p-5 flex items-start gap-4">
-                <div className="p-3 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 group-hover:scale-105 transition-transform">
-                  <GraduationCap className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-zinc-100 group-hover:text-purple-400 transition-colors flex items-center gap-1.5">
-                    All Students Directory <ArrowRight className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Campus-wide student registry, academic cohorts, mentors & hostel accommodation
-                  </p>
-                </div>
+          {/* Right: quick links */}
+          <div className="space-y-4 lg:space-y-6 min-w-0">
+            <Card>
+              <CardContent className="p-5 sm:p-6 space-y-3">
+                <h2 className="text-base font-medium text-zinc-100">Quick links</h2>
+                {quickLinks.map((l) => (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    className="flex items-center gap-3 rounded-2xl border border-zinc-800 px-3 py-3 hover:bg-zinc-950 transition-colors"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-950 text-zinc-400">{l.icon}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-zinc-100">{l.label}</span>
+                      <span className="block text-xs text-zinc-500 truncate">{l.hint}</span>
+                    </span>
+                  </Link>
+                ))}
               </CardContent>
             </Card>
-          </Link>
+          </div>
         </div>
 
         {/* Academic Departments Breakdown */}
-        <Card className="border-zinc-800 bg-zinc-900/40">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold text-zinc-100 flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-indigo-400" />
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="font-medium flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-orange-400" />
               Academic Departments Breakdown
             </CardTitle>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-zinc-500">
               Departmental staffing, student enrollment, and HOD leadership overview across campus
             </p>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <CardContent className="pt-2">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
               {DEPARTMENTS.map((dept) => {
                 const facCount = deptFacultyCounts[dept.name] || deptFacultyCounts[dept.code] || 0;
                 const stuCount = deptStudentCounts[dept.name] || deptStudentCounts[dept.code] || 0;
@@ -307,186 +367,31 @@ export function DirectorDashboardClient({ user, title }: Props & { title?: strin
                 );
 
                 return (
-                  <div
-                    key={dept.code}
-                    className="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-xs px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                          {dept.code}
-                        </span>
-                        <span className="text-xs font-semibold text-zinc-200">{dept.name}</span>
-                      </div>
-                      <p className="text-[11px] text-zinc-400 mt-1 flex items-center gap-1">
-                        <Shield className="h-3 w-3 text-amber-400" />
-                        {hodProfile ? `HOD: ${hodProfile.name}` : "No HOD Appointed"}
-                      </p>
-                    </div>
-                    <div className="text-right flex items-center gap-3">
+                  <div key={dept.code} className="min-w-0 rounded-2xl border border-zinc-800 p-3.5 sm:p-4">
+                    <span className="inline-flex rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-semibold text-orange-400">
+                      {dept.code}
+                    </span>
+                    <p className="mt-2 text-xs font-medium text-zinc-200 truncate" title={dept.name}>
+                      {dept.name}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-zinc-500 flex items-center gap-1 min-w-0">
+                      <Shield className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{hodProfile ? `HOD: ${hodProfile.name}` : "No HOD Appointed"}</span>
+                    </p>
+                    <div className="mt-3 flex items-end gap-4">
                       <div>
-                        <span className="text-base font-extrabold text-zinc-100">{facCount}</span>
-                        <span className="block text-[10px] text-zinc-400 font-medium">Faculty</span>
+                        <span className="block text-xl font-light leading-none text-zinc-100">{facCount}</span>
+                        <span className="mt-1 block text-[10px] text-zinc-500">Faculty</span>
                       </div>
-                      <div className="pl-2.5 border-l border-zinc-800">
-                        <span className="text-base font-extrabold text-purple-400">{stuCount}</span>
-                        <span className="block text-[10px] text-zinc-400 font-medium">Students</span>
+                      <div className="border-l border-zinc-800 pl-4">
+                        <span className="block text-xl font-light leading-none text-zinc-100">{stuCount}</span>
+                        <span className="mt-1 block text-[10px] text-zinc-500">Students</span>
                       </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Recent Pass Activity Section */}
-        <Card className="border-zinc-800 bg-zinc-900/40">
-          <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between pb-3 gap-3">
-            <div>
-              <CardTitle className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
-                <History className="h-5 w-5 text-purple-400" />
-                Recent Gate Passes
-              </CardTitle>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Latest gate passes and permissions requested across campus departments
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Category Filter: All / Faculty / Students */}
-              <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
-                <button
-                  onClick={() => setActivityCategory("ALL")}
-                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
-                    activityCategory === "ALL"
-                      ? "bg-zinc-900 text-zinc-100 shadow-card shadow-sm"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  All
-                </button>
-                <button
-                  onClick={() => setActivityCategory("FACULTY")}
-                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all flex items-center gap-1 ${
-                    activityCategory === "FACULTY"
-                      ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/40"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  <Briefcase className="h-3 w-3" /> Faculty
-                </button>
-                <button
-                  onClick={() => setActivityCategory("STUDENTS")}
-                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all flex items-center gap-1 ${
-                    activityCategory === "STUDENTS"
-                      ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  <GraduationCap className="h-3 w-3" /> Students
-                </button>
-              </div>
-
-              {/* Status Tabs */}
-              <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
-                {(["ALL", "PENDING", "APPROVED", "REJECTED"] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
-                      activeTab === tab
-                        ? "bg-purple-600 text-white shadow-sm"
-                        : "text-zinc-400 hover:text-zinc-200"
-                    }`}
-                  >
-                    {tab === "ALL" ? "All Status" : tab.charAt(0) + tab.slice(1).toLowerCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {filteredActivity.length === 0 ? (
-              <div className="py-12 text-center text-zinc-500 text-sm">
-                No pass activity found matching the selected filter.
-              </div>
-            ) : (
-              <div className="divide-y divide-zinc-800/60">
-                {filteredActivity.map((item: any) => {
-                  const isStudent = !!item.student;
-                  const requesterName = isStudent
-                    ? item.student.profile?.name || "Student"
-                    : item.faculty?.profile?.name || "Faculty Member";
-                  const dept = isStudent
-                    ? item.student.department || "Department"
-                    : item.faculty?.department || "Department";
-                  const desig = isStudent
-                    ? "Student"
-                    : item.faculty?.designation || (item.faculty?.profile?.role === "FACULTY_ADMIN" ? "HOD" : "Faculty");
-                  const idTag = isStudent
-                    ? item.student.studentRoll
-                    : item.faculty?.employeeId || "N/A";
-
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => setSelectedActivity(item)}
-                      className="p-4 flex items-center justify-between gap-4 hover:bg-zinc-800/30 transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        <div
-                          className={`h-10 w-10 rounded-xl border flex items-center justify-center shrink-0 ${
-                            isStudent
-                              ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
-                              : "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
-                          }`}
-                        >
-                          {isStudent ? (
-                            <GraduationCap className="h-5 w-5" />
-                          ) : (
-                            <Briefcase className="h-5 w-5" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-sm font-semibold text-zinc-100 truncate">{requesterName}</p>
-                            {idTag && (
-                              <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-zinc-800 text-zinc-300">
-                                {idTag}
-                              </span>
-                            )}
-                            <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${
-                                isStudent
-                                  ? "bg-purple-500/15 text-purple-400 border-purple-500/30"
-                                  : "bg-indigo-500/15 text-indigo-400 border-indigo-500/30"
-                              }`}
-                            >
-                              {isStudent ? "Student" : "Faculty"}
-                            </span>
-                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                              {getDepartmentCode(dept)}
-                            </span>
-                          </div>
-                          <p className="text-xs text-zinc-400 mt-0.5 truncate">
-                            {desig} • <span className="text-zinc-300">Purpose: {item.purpose || "Official"}</span>
-                            {item.destination && ` • Destination: ${item.destination}`}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 shrink-0">
-                        <StatusBadge status={item.status} />
-                        <span className="text-xs text-zinc-500 hidden sm:inline">
-                          {formatDateTime(item.createdAt)}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>
@@ -499,50 +404,50 @@ export function DirectorDashboardClient({ user, title }: Props & { title?: strin
           title="Gate Pass Request Details"
         >
           <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-400 uppercase tracking-wider font-semibold">
+            <div className="rounded-2xl bg-zinc-950 p-4 space-y-1.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
                   {selectedActivity.student ? "Student Applicant" : "Faculty Member"}
                 </span>
                 <StatusBadge status={selectedActivity.status} />
               </div>
-              <p className="text-base font-bold text-zinc-100">
+              <p className="text-base font-medium text-zinc-100 break-words">
                 {selectedActivity.student?.profile?.name ||
                   selectedActivity.faculty?.profile?.name ||
                   "Requester"}
               </p>
-              <p className="text-xs text-zinc-400">
+              <p className="text-xs text-zinc-500">
                 {selectedActivity.student
                   ? `Roll: ${selectedActivity.student.studentRoll} • Department of ${selectedActivity.student.department || "General"}`
                   : `${selectedActivity.faculty?.designation || "Faculty"} • Department of ${selectedActivity.faculty?.department || "General"}`}
               </p>
               {(selectedActivity.student?.profile?.phone || selectedActivity.faculty?.profile?.phone) && (
-                <p className="text-xs text-zinc-400">
+                <p className="text-xs text-zinc-500">
                   Phone: {selectedActivity.student?.profile?.phone || selectedActivity.faculty?.profile?.phone}
                 </p>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-                <span className="text-zinc-500 block">Purpose</span>
-                <span className="text-zinc-200 font-medium">{selectedActivity.purpose || "N/A"}</span>
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-zinc-800 p-3">
+                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Purpose</dt>
+                <dd className="mt-0.5 text-sm text-zinc-200 break-words">{selectedActivity.purpose || "N/A"}</dd>
               </div>
-              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-                <span className="text-zinc-500 block">Destination</span>
-                <span className="text-zinc-200 font-medium">{selectedActivity.destination || "N/A"}</span>
+              <div className="rounded-2xl border border-zinc-800 p-3">
+                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Destination</dt>
+                <dd className="mt-0.5 text-sm text-zinc-200 break-words">{selectedActivity.destination || "N/A"}</dd>
               </div>
-              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-                <span className="text-zinc-500 block">Requested At</span>
-                <span className="text-zinc-200 font-medium">{formatDateTime(selectedActivity.createdAt)}</span>
+              <div className="rounded-2xl border border-zinc-800 p-3">
+                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Requested At</dt>
+                <dd className="mt-0.5 text-sm text-zinc-200 break-words">{formatDateTime(selectedActivity.createdAt)}</dd>
               </div>
-              <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-                <span className="text-zinc-500 block">Approver Role</span>
-                <span className="text-zinc-200 font-medium">
+              <div className="rounded-2xl border border-zinc-800 p-3">
+                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Approver Role</dt>
+                <dd className="mt-0.5 text-sm text-zinc-200 break-words">
                   {selectedActivity.approverType === "FACULTY_ADMIN" ? "HOD" : selectedActivity.approverType || "—"}
-                </span>
+                </dd>
               </div>
-            </div>
+            </dl>
           </div>
         </Modal>
       )}

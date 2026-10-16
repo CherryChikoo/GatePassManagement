@@ -151,12 +151,14 @@ function handleSessionChanged() {
 // ─── Store ──────────────────────────────────────────────────────────────────
 
 let syncTimer: ReturnType<typeof setInterval> | null = null;
+/** The preload request currently running, shared by concurrent refresh() calls */
+let refreshInFlight: Promise<void> | null = null;
 let visibilityHandler: (() => void) | null = null;
 
 function startBackgroundSync(refresh: (force?: boolean) => Promise<void>) {
   stopBackgroundSync();
 
-  // Periodic sync (every 15s, but ONLY if the tab is actively open/visible)
+  // Periodic sync (every SYNC_INTERVAL_MS, only while the tab is visible)
   syncTimer = setInterval(() => {
     if (typeof document !== 'undefined' && document.visibilityState === "visible") {
       refresh();
@@ -252,7 +254,11 @@ export const useAppStore = create<AppStore>()(
         if (!force && Date.now() - state.lastSyncAt < THROTTLE_MS) {
           return;
         }
+        // A refresh already running (tab return, poll, after an action…): share it
+        // instead of sending a second identical request.
+        if (refreshInFlight) return refreshInFlight;
 
+        refreshInFlight = (async () => {
         try {
           const preloadData = await fetchPreload();
           // Another tab signed in as a different user → this tab must not show the old screens
@@ -274,6 +280,10 @@ export const useAppStore = create<AppStore>()(
           // Keep showing existing data; surface the error if we have nothing yet
           if (!get().isInitialized) set({ error: err.message });
         }
+        })().finally(() => {
+          refreshInFlight = null;
+        });
+        return refreshInFlight;
       },
 
       setData: (key, value) => {

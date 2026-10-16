@@ -73,9 +73,14 @@ export function AccountSyncPanel() {
 
   if (error && !report) {
     return (
-      <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-300 flex items-center justify-between gap-2">
-        <span>{error}</span>
-        <button onClick={load} className="underline">Retry</button>
+      <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300 flex flex-wrap items-center justify-between gap-2">
+        <span className="min-w-0">{error}</span>
+        <button
+          onClick={load}
+          className="inline-flex h-9 items-center rounded-full px-3 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors"
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -89,38 +94,49 @@ export function AccountSyncPanel() {
 
   return (
     <div
-      className={`rounded-xl border px-4 py-3 space-y-2 ${
-        r.inSync ? "border-emerald-500/30 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/10"
+      className={`rounded-2xl border p-4 sm:p-5 space-y-3 ${
+        r.inSync ? "border-emerald-500/20 bg-emerald-500/10" : "border-amber-500/25 bg-amber-500/10"
       }`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm">
-          {r.inSync ? (
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-          ) : (
-            <AlertTriangle className="h-4 w-4 text-amber-400" />
-          )}
-          <span className="font-semibold text-zinc-100">
-            Portal accounts: {r.portalCount - r.archivedCount} · Supabase logins: {r.loginCount}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          <span
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-900 ${
+              r.inSync ? "text-emerald-400" : "text-amber-400"
+            }`}
+          >
+            {r.inSync ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
           </span>
-          {r.archivedCount > 0 && (
-            <span className="text-xs text-zinc-500">(+{r.archivedCount} archived for gate history, cannot sign in)</span>
-          )}
-          <span className={r.inSync ? "text-emerald-300" : "text-amber-300"}>
-            {r.inSync ? "In sync" : "Out of sync"}
-          </span>
+          <div className="min-w-0 text-sm">
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <span className="font-medium text-zinc-100">
+                Portal accounts: {r.portalCount - r.archivedCount} · Supabase logins: {r.loginCount}
+              </span>
+              <span className={`text-xs font-medium ${r.inSync ? "text-emerald-400" : "text-amber-400"}`}>
+                {r.inSync ? "In sync" : "Out of sync"}
+              </span>
+            </p>
+            {r.archivedCount > 0 && (
+              <p className="mt-0.5 text-xs text-zinc-500">(+{r.archivedCount} archived for gate history, cannot sign in)</p>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:shrink-0">
           {portalIssues > 0 && (
             <button
               onClick={fixPortal}
               disabled={busy !== null}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 disabled:opacity-50"
+              className="inline-flex h-10 sm:h-9 flex-1 sm:flex-none items-center justify-center rounded-full bg-amber-500/15 px-4 text-xs font-medium text-amber-300 hover:bg-amber-500/25 transition-colors disabled:opacity-50"
             >
               {busy === "fix" ? "Fixing…" : "Fix portal accounts"}
             </button>
           )}
-          <button onClick={load} disabled={busy !== null} className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200" aria-label="Recheck">
+          <button
+            onClick={load}
+            disabled={busy !== null}
+            className="inline-flex h-10 w-10 sm:h-9 sm:w-9 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200 transition-colors disabled:opacity-50"
+            aria-label="Recheck"
+          >
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -130,25 +146,25 @@ export function AccountSyncPanel() {
       {error && <p className="text-xs text-red-300">{error}</p>}
 
       {orphans.length > 0 && (
-        <div className="text-xs text-zinc-300">
-          <p className="font-semibold text-amber-200">Portal accounts with no login ({orphans.length}):</p>
-          <ul className="mt-1 space-y-0.5">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 sm:p-4 text-xs text-zinc-300">
+          <p className="font-medium text-amber-300">Portal accounts with no login ({orphans.length}):</p>
+          <ul className="mt-2 space-y-1">
             {orphans.slice(0, 10).map((p) => (
-              <li key={p.id}>
+              <li key={p.id} className="break-words">
                 {p.name} · {p.email} · {p.role}
               </li>
             ))}
-            {orphans.length > 10 && <li>…and {orphans.length - 10} more</li>}
+            {orphans.length > 10 && <li className="text-zinc-500">…and {orphans.length - 10} more</li>}
           </ul>
         </div>
       )}
 
       {r.emailMismatch.length > 0 && (
-        <div className="text-xs text-zinc-300">
-          <p className="font-semibold text-amber-200">Email differs between portal and login ({r.emailMismatch.length}):</p>
-          <ul className="mt-1 space-y-0.5">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 sm:p-4 text-xs text-zinc-300">
+          <p className="font-medium text-amber-300">Email differs between portal and login ({r.emailMismatch.length}):</p>
+          <ul className="mt-2 space-y-1">
             {r.emailMismatch.map((m) => (
-              <li key={m.profileId}>
+              <li key={m.profileId} className="break-words">
                 portal {m.portalEmail} → login {m.loginEmail}
               </li>
             ))}
@@ -157,25 +173,25 @@ export function AccountSyncPanel() {
       )}
 
       {r.loginWithoutPortal.length > 0 && (
-        <div className="text-xs text-zinc-300">
-          <p className="font-semibold text-amber-200">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 sm:p-4 text-xs text-zinc-300">
+          <p className="font-medium text-amber-300">
             Supabase logins with no portal account ({r.loginWithoutPortal.length}) — they cannot use the portal:
           </p>
-          <ul className="mt-1 space-y-1">
+          <ul className="mt-2 divide-y divide-zinc-800/70">
             {r.loginWithoutPortal.map((l) => (
-              <li key={l.id} className="flex items-center gap-2">
-                <span>{l.email || l.id}</span>
+              <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+                <span className="min-w-0 break-all">{l.email || l.id}</span>
                 <button
                   onClick={() => removeLogin(l.id, l.email)}
                   disabled={busy !== null}
-                  className="text-red-300 hover:text-red-200 underline disabled:opacity-50"
+                  className="inline-flex h-9 items-center rounded-full px-3 font-medium text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
                 >
                   {busy === l.id ? "Deleting…" : "Delete login"}
                 </button>
               </li>
             ))}
           </ul>
-          <p className="text-zinc-500 mt-1">To give one of these people access instead, create them in Create User with the same email after deleting the login.</p>
+          <p className="text-zinc-500 mt-2">To give one of these people access instead, create them in Create User with the same email after deleting the login.</p>
         </div>
       )}
     </div>

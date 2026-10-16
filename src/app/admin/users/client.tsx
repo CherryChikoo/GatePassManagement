@@ -24,7 +24,6 @@ import { Search,
   UserPlus,
   Users,
   Shield,
-  Power,
   ArrowLeft,
   Mail,
   Lock,
@@ -35,16 +34,22 @@ import { Search,
   Trash2,
   AlertTriangle,
   User,
-  Pencil,
+  PencilLine,
+  Ban,
+  CircleCheck,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   History,
+  Loader2,
  } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/ui/back-button";
+import { PagerBar } from "@/components/ui/pager-bar";
+import { dt, PersonCell, RowActions, IconAction } from "@/components/ui/data-table";
 import { DEPARTMENTS, getDepartmentCode, getDepartmentFullName } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 
 interface Props {
   user: { name: string; email: string; role: string };
@@ -333,18 +338,6 @@ export function UserManagementClient({
     setAssigning(false);
   }
 
-  const roleColors: Record<string, string> = {
-    ADMIN: "bg-violet-500",
-    STUDENT: "bg-blue-500",
-    FACULTY: "bg-emerald-500",
-    FACULTY_ADMIN: "bg-indigo-500",
-    WARDEN: "bg-amber-500",
-    SECURITY: "bg-red-500",
-    DIRECTOR: "bg-purple-500",
-    DEAN: "bg-cyan-500",
-    SECURITY_SUPERVISOR: "bg-teal-500",
-  };
-
   const ROLES = ["STUDENT", "FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "WARDEN", "SECURITY", "SECURITY_SUPERVISOR"];
 
   const filteredUsers = usersData.users.filter((u: any) => {
@@ -361,20 +354,278 @@ export function UserManagementClient({
     );
   });
 
+  // ── Shared visual helpers (markup only) ─────────────────────
+  const sectionCls = "rounded-2xl border border-zinc-800 p-4 sm:p-5 space-y-4";
+  const sectionLabelCls = "flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-zinc-500";
+  const fieldLabelCls = "block text-sm font-medium text-zinc-300";
+  const tileLabelCls = "flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500";
+
+  function initials(name: string) {
+    return name.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase();
+  }
+
+  function employeeIdOf(u: any) {
+    return u.faculty?.employeeId || u.warden?.employeeId || u.securityStaff?.employeeId || "N/A";
+  }
+
+  // Assignment / department summary for staff rows
+  function renderAssignment(u: any, role: string) {
+    return (
+      <>
+        {(role === "FACULTY" || role === "FACULTY_ADMIN" || role === "DIRECTOR" || role === "DEAN") && (
+          <>
+            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+              {u.faculty?.department ? (
+                <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-2 py-0.5 text-[11px] font-medium text-orange-400">
+                  {getDepartmentCode(u.faculty.department)}
+                </span>
+              ) : null}
+              <span className="font-medium text-zinc-200 break-words">
+                {u.faculty?.department || "No Department"}
+              </span>
+            </div>
+            <p className="text-zinc-500 mt-0.5">
+              {u.faculty?.designation || (role === "DIRECTOR" ? "Director" : role === "DEAN" ? "Dean" : role === "FACULTY_ADMIN" ? "Head of Department" : "Faculty")}
+            </p>
+          </>
+        )}
+        {role === "WARDEN" && (
+          <>
+            <p className="font-medium text-zinc-200">
+              {u.warden?.hostelBlock ? `Hostel Block ${u.warden.hostelBlock}` : "All Blocks"}
+            </p>
+            <p className="text-zinc-500 mt-0.5">Warden</p>
+          </>
+        )}
+        {role === "SECURITY" && (
+          <>
+            <p className="font-medium text-zinc-200">
+              {u.securityStaff?.gate?.name ? `Assigned: ${u.securityStaff.gate.name}` : "Unassigned Gate"}
+            </p>
+            <p className="text-zinc-500 mt-0.5">Security Personnel</p>
+          </>
+        )}
+        {role === "ADMIN" && (
+          <p className="text-zinc-500">System Administrator</p>
+        )}
+      </>
+    );
+  }
+
+  // "All Data" icon action (opens the user's page; spinner while navigating)
+  function allDataAction(u: any) {
+    const navigating = isNavigatingId && navigatingUserId === u.id;
+    return (
+      <IconAction
+        label="All Data"
+        icon={navigating ? <Loader2 className="animate-spin" /> : <History />}
+        onClick={() => navigateToHistory(u.id)}
+        disabled={navigating}
+      />
+    );
+  }
+
+  // Row actions (All Data / Edit / Disable / Delete, + expand toggle in the table) as icon buttons with hover labels.
+  // `isExpanded` undefined = no expand toggle (the phone row itself toggles).
+  function renderActions(u: any, isExpanded?: boolean) {
+    return (
+      <RowActions>
+        {allDataAction(u)}
+        <IconAction label="Edit" icon={<PencilLine />} tone="coral" onClick={() => handleOpenEdit(u)} />
+        <IconAction
+          label={u.active ? "Disable" : "Enable"}
+          icon={toggling === u.id ? <Loader2 className="animate-spin" /> : u.active ? <Ban /> : <CircleCheck />}
+          tone={u.active ? "danger" : "success"}
+          onClick={() => handleToggle(u.id)}
+          disabled={toggling === u.id || deleting === u.id}
+        />
+        <IconAction
+          label="Delete"
+          icon={deleting === u.id ? <Loader2 className="animate-spin" /> : <Trash2 />}
+          tone="danger"
+          onClick={() => handleDeleteClick(u.id)}
+          disabled={deleting === u.id || toggling === u.id}
+        />
+        {isExpanded !== undefined && (
+          <IconAction
+            label={isExpanded ? "Collapse details" : "View full details"}
+            icon={<ChevronDown className={`transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />}
+            active={isExpanded}
+            onClick={() => setExpandedUserId(isExpanded ? null : u.id)}
+          />
+        )}
+      </RowActions>
+    );
+  }
+
+  // Expanded "full details" panel, shared by the table and the stacked list
+  function renderExpanded(u: any, role: string) {
+    const allDataButton = allDataAction(u);
+
+    if (role === "STUDENT") {
+      return (
+        <div className="space-y-4">
+          {/* Top info bar */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-zinc-800/70">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
+                <GraduationCap className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-base font-medium text-zinc-100 break-words">{u.name}</h4>
+                  {u.student?.studentRoll && (
+                    <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-2 py-0.5 font-mono text-[11px] font-medium text-orange-400">
+                      {u.student.studentRoll}
+                    </span>
+                  )}
+                  <Badge variant={u.student?.studentType === "HOSTELLER" ? "info" : "default"}>
+                    {u.student?.studentType === "HOSTELLER" ? "Hosteller" : "Day Scholar"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-zinc-500 mt-0.5 break-all">
+                  {u.email} {u.phone ? `• ${u.phone}` : ""}
+                </p>
+              </div>
+            </div>
+            <RowActions className="self-end md:self-auto">
+              {allDataButton}
+              <IconAction label="Edit Student Details" icon={<PencilLine />} tone="coral" onClick={() => handleOpenEdit(u)} />
+            </RowActions>
+          </div>
+
+          {/* Detail tiles */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3.5 space-y-1.5 min-w-0">
+              <span className={tileLabelCls}>
+                <GraduationCap className="h-3.5 w-3.5 text-orange-400" />
+                Academic Cohort
+              </span>
+              <p className="text-sm font-medium text-zinc-200 break-words">
+                {u.student?.department || "General Department"}
+              </p>
+              <p className="text-xs text-zinc-500">
+                {u.student?.year ? `Year ${u.student.year}` : "Year N/A"}
+                {u.student?.section ? ` • Section ${u.student.section}` : ""}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3.5 space-y-1.5 min-w-0">
+              <span className={tileLabelCls}>
+                <Building2 className="h-3.5 w-3.5 text-orange-400" />
+                Residency & Hostel
+              </span>
+              <p className="text-sm font-medium text-zinc-200">
+                {u.student?.studentType === "HOSTELLER" ? "Hosteller" : "Day Scholar"}
+              </p>
+              <p className="text-xs text-zinc-500">
+                {u.student?.studentType === "HOSTELLER" ? (
+                  <>
+                    {u.student?.hostelBlock ? `Block: ${u.student.hostelBlock}` : "Block not assigned"}
+                    {u.student?.roomNumber ? ` • Room: ${u.student.roomNumber}` : ""}
+                  </>
+                ) : (
+                  "Lives Off-Campus"
+                )}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3.5 space-y-1.5 min-w-0">
+              <span className={tileLabelCls}>
+                <Users className="h-3.5 w-3.5 text-orange-400" />
+                Assigned Mentors
+              </span>
+              <div className="text-xs space-y-1">
+                <p className="text-zinc-300">
+                  <span className="text-zinc-500">Faculty: </span>
+                  {u.student?.faculty?.profile?.name ? (
+                    <span className="font-medium text-zinc-100">{u.student.faculty.profile.name}</span>
+                  ) : (
+                    <span className="text-zinc-600 italic">Unassigned</span>
+                  )}
+                </p>
+                {u.student?.studentType === "HOSTELLER" && (
+                  <p className="text-zinc-300">
+                    <span className="text-zinc-500">Warden: </span>
+                    {u.student?.warden?.profile?.name ? (
+                      <span className="font-medium text-zinc-100">{u.student.warden.profile.name}</span>
+                    ) : (
+                      <span className="text-zinc-600 italic">Unassigned</span>
+                    )}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3.5 space-y-1.5 min-w-0">
+              <span className={tileLabelCls}>
+                <Shield className="h-3.5 w-3.5 text-orange-400" />
+                Campus & Account
+              </span>
+              <div className="flex items-center gap-2 pt-0.5">
+                <Badge variant={u.active ? "success" : "danger"}>
+                  {u.active ? "Active" : "Disabled"}
+                </Badge>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="space-y-1 min-w-0">
+          <h4 className="text-sm font-medium text-zinc-100 flex flex-wrap items-center gap-x-2">
+            {u.name}
+            <span className="text-xs font-mono font-normal text-zinc-500">
+              ({u.faculty?.employeeId || u.warden?.employeeId || u.securityStaff?.employeeId || "No Employee ID"})
+            </span>
+          </h4>
+          <p className="text-xs text-zinc-500 break-all">
+            Email: <span className="text-zinc-200">{u.email}</span>
+            {u.phone ? ` • Phone: ${u.phone}` : ""}
+          </p>
+          {(role === "FACULTY" || role === "FACULTY_ADMIN") && u.faculty && (
+            <p className="text-xs text-zinc-400">
+              {u.faculty.department ? `Department: ${getDepartmentFullName(u.faculty.department)} (${getDepartmentCode(u.faculty.department)})` : "No Department"} • {u.faculty.designation || (role === "FACULTY_ADMIN" ? "Head of Department" : "Faculty Member")} {role === "FACULTY" ? `• ${u.faculty._count?.assignedStudents || 0} Assigned Students` : ""}
+            </p>
+          )}
+          {role === "WARDEN" && u.warden && (
+            <p className="text-xs text-zinc-400">
+              {u.warden.hostelBlock ? `Hostel Block ${u.warden.hostelBlock}` : "All Hostel Blocks"} • {u.warden._count?.assignedHostellers || 0} Hostellers
+            </p>
+          )}
+          {role === "SECURITY" && u.securityStaff && (
+            <p className="text-xs text-zinc-400">
+              {u.securityStaff.isHead && <span className="mr-1.5 rounded-full bg-orange-500/10 px-2 py-0.5 font-medium text-orange-400">Head Security</span>}
+              {u.securityStaff.gate?.name ? `Gate: ${u.securityStaff.gate.name}` : "Unassigned Gate"}
+            </p>
+          )}
+        </div>
+        <RowActions className="self-end md:self-auto shrink-0">
+          {allDataButton}
+          <IconAction label="Edit Details" icon={<PencilLine />} tone="coral" onClick={() => handleOpenEdit(u)} />
+        </RowActions>
+      </div>
+    );
+  }
+
   return (
     <>
-      <div className="space-y-8 pb-12">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <BackButton href="/admin" label="Back to Dashboard" />
-            <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
+      <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8 pb-12">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div className="min-w-0">
+            <BackButton href="/admin" label="Back to Dashboard" className="-ml-3 mb-2" />
+            <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
               User Management
             </h1>
-            <p className="text-sm text-zinc-500 mt-1">
+            <p className="mt-1 text-sm text-zinc-500">
               {initialUsers.total} registered users
             </p>
           </div>
-          <Button onClick={() => setShowCreateModal(true)}>
+          <Button onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto">
             <UserPlus className="h-4 w-4" />
             Create User
           </Button>
@@ -383,538 +634,266 @@ export function UserManagementClient({
         <AccountSyncPanel />
 
         {success && (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400 animate-fade-in">
+          <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300 animate-fade-in">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
             {success}
           </div>
         )}
 
-        {/* Role Navigation Filters & Search */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
-
-          {ROLES.map((role) => (
-            <Button
-              key={role}
-              variant={currentRole === role ? "default" : "outline"}
-              size="default"
-              loading={isNavigatingRole && pendingRole === role}
-              onClick={() => handleRoleFilter(role)}
-              className={
-                currentRole === role 
-                  ? "bg-orange-600 hover:bg-orange-500 text-white border-transparent capitalize" 
-                  : isNavigatingRole && pendingRole === role
-                    ? "border-orange-500/50 text-orange-400 bg-orange-500/10 disabled:opacity-100 capitalize"
-                    : "border-zinc-700/50 capitalize"
-              }
-            >
-              {role === "FACULTY" ? "Faculty" : role === "FACULTY_ADMIN" ? "HOD" : role === "SECURITY" ? "Security" : role === "SECURITY_SUPERVISOR" ? "Security Supervisors" : role === "DIRECTOR" ? "Director" : role === "DEAN" ? "Dean" : `${role.toLowerCase()}s`}
-            </Button>
-          ))}
+        {/* Role tabs & search */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div
+            className="inline-flex max-w-full self-start rounded-full bg-zinc-950 p-1 border border-zinc-800 overflow-x-auto scrollbar-none"
+            role="tablist"
+            aria-label="Filter users by role"
+          >
+            {ROLES.map((role) => {
+              const isPending = isNavigatingRole && pendingRole === role;
+              return (
+                <button
+                  key={role}
+                  type="button"
+                  role="tab"
+                  aria-selected={currentRole === role}
+                  disabled={isPending}
+                  onClick={() => handleRoleFilter(role)}
+                  className={`inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-2 sm:py-1.5 rounded-full transition-colors whitespace-nowrap capitalize disabled:cursor-wait ${
+                    currentRole === role
+                      ? "bg-zinc-900 text-zinc-100 shadow-card"
+                      : isPending
+                        ? "text-orange-400"
+                        : "text-zinc-500 hover:text-zinc-200"
+                  }`}
+                >
+                  {isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {role === "FACULTY" ? "Faculty" : role === "FACULTY_ADMIN" ? "HOD" : role === "SECURITY" ? "Security" : role === "SECURITY_SUPERVISOR" ? "Security Supervisors" : role === "DIRECTOR" ? "Director" : role === "DEAN" ? "Dean" : `${role.toLowerCase()}s`}
+                </button>
+              );
+            })}
           </div>
-          
-          <div className="relative w-full sm:w-80 shrink-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
-            <Input
+
+          <div className="relative w-full lg:w-80 shrink-0">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
+            <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search users by name, email, roll no..."
-              className="pl-9 h-10 bg-zinc-900 border-zinc-800 text-sm focus-visible:ring-orange-500/30 w-full"
+              aria-label="Search users"
+              className="h-10 w-full rounded-full border border-zinc-800 bg-zinc-900 pl-10 pr-4 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
             />
           </div>
         </div>
 
-        {/* Users by Role */}
-        <div className="space-y-10">
+        {/* Users by role */}
+        <div className="space-y-6">
           {ROLES.map((role) => {
             const roleUsers = filteredUsers.filter((u) => u.role === role);
             if (roleUsers.length === 0) return null;
 
             return (
-              <div key={role} className="space-y-4">
-                <h2 className="text-lg font-semibold text-zinc-100 font-heading border-b border-zinc-800/50 pb-2 flex items-center gap-2">
-                  <div className={`w-2.5 h-2.5 rounded-full ${roleColors[role]}`}></div>
-                  {role === "FACULTY" ? "FACULTY" : role === "FACULTY_ADMIN" ? "HOD (HEAD OF DEPARTMENT)" : role === "SECURITY" ? "SECURITY" : role === "SECURITY_SUPERVISOR" ? "SECURITY SUPERVISOR" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : `${role}S`}
-                </h2>
-                <Card>
-                  <CardContent className="p-0">
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[650px] text-sm">
-                        <thead>
-                          <tr className="border-b border-zinc-800/50 bg-zinc-900/30">
+              <Card key={role} className="overflow-hidden">
+                <div className="flex items-center gap-2 px-5 sm:px-6 pt-5 pb-3">
+                  <span className="h-2 w-2 rounded-full bg-orange-500" />
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-orange-400">
+                    {role === "FACULTY" ? "FACULTY" : role === "FACULTY_ADMIN" ? "HOD (HEAD OF DEPARTMENT)" : role === "SECURITY" ? "SECURITY" : role === "SECURITY_SUPERVISOR" ? "SECURITY SUPERVISOR" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : `${role}S`}
+                  </h2>
+                </div>
+
+                {/* Phone & tablet: stacked rows */}
+                <ul className="lg:hidden divide-y divide-zinc-800/70 px-5 sm:px-6 pb-3">
+                  {roleUsers.map((u) => {
+                    const isExpanded = expandedUserId === u.id;
+                    return (
+                      <li key={u.id} className="py-3">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedUserId(isExpanded ? null : u.id)}
+                          aria-expanded={isExpanded}
+                          className="w-full flex items-center gap-3 text-left rounded-2xl px-2 -mx-2 py-1 hover:bg-zinc-950 transition-colors"
+                          title={isExpanded ? "Collapse details" : "Click to view full details"}
+                        >
+                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400 text-sm font-semibold">
+                            {initials(u.name)}
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-medium text-zinc-100 truncate">
+                              {u.name}
+                              {role === "STUDENT" && u.student?.studentRoll && (
+                                <span className="font-normal text-zinc-500"> · {u.student.studentRoll}</span>
+                              )}
+                            </span>
+                            <span className="block text-xs text-zinc-500 truncate">{u.email}</span>
                             {role === "STUDENT" ? (
-                              <>
-                                <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Student</th>
-                                <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Email</th>
-                                <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Status</th>
-                                <th className="px-5 py-3.5 text-right font-semibold text-zinc-400">Actions</th>
-                              </>
+                              u.phone && (
+                                <span className="flex items-center gap-1 text-xs text-zinc-500 truncate">
+                                  <Phone className="h-3 w-3" />
+                                  {u.phone}
+                                </span>
+                              )
                             ) : (
-                              <>
-                                <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Name & Contact</th>
-                                <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Employee ID</th>
-                                <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Assignment / Dept</th>
-                                <th className="px-5 py-3.5 text-left font-semibold text-zinc-400">Status</th>
-                                <th className="px-5 py-3.5 text-right font-semibold text-zinc-400">Actions</th>
-                              </>
+                              <span className="block text-xs text-zinc-500 truncate">
+                                <span className="font-mono">{employeeIdOf(u)}</span>
+                                {u.phone ? ` · ${u.phone}` : ""}
+                              </span>
                             )}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-800/30">
-                          {roleUsers.map((u) => {
-                            const isExpanded = expandedUserId === u.id;
+                          </span>
+                          <span className="flex flex-col items-end gap-1.5 shrink-0">
+                            <Badge variant={u.active ? "success" : "danger"}>
+                              {u.active ? "Active" : "Disabled"}
+                            </Badge>
+                            {u.role !== "ADMIN" && (
+                              <ChevronDown className={`h-4 w-4 text-zinc-500 transition-transform duration-200 ${isExpanded ? "rotate-180 text-orange-400" : ""}`} />
+                            )}
+                          </span>
+                        </button>
 
-                            return (
-                              <React.Fragment key={u.id}>
-                                <tr 
-                                  onClick={() => setExpandedUserId(isExpanded ? null : u.id)}
-                                  className={`table-row-hover transition-colors cursor-pointer select-none ${
-                                    isExpanded ? "bg-zinc-850/60" : ""
-                                  }`}
-                                  title="Click row to view full details"
-                                >
-                                  {role === "STUDENT" ? (
-                                    <>
-                                      {/* Student Column 1: Student Name & Roll */}
-                                      <td className="px-5 py-3.5">
-                                        <div className="flex items-center gap-3">
-                                          <div className="h-9 w-9 rounded-full bg-gradient-to-br from-orange-500/20 to-amber-500/20 border border-orange-500/30 flex items-center justify-center text-orange-400 font-semibold text-xs shrink-0">
-                                            {u.name.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase()}
-                                          </div>
-                                          <div>
-                                            <div className="flex items-center gap-2">
-                                              <p className="font-semibold text-zinc-100 hover:text-orange-400 transition-colors">{u.name}</p>
-                                              {u.student?.studentRoll && (
-                                                <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/60">
-                                                  {u.student.studentRoll}
-                                                </span>
-                                              )}
-                                            </div>
-                                            {u.phone && (
-                                              <p className="text-xs text-zinc-500 mt-0.5 flex items-center gap-1">
-                                                <Phone className="h-3 w-3 text-zinc-500" />
-                                                {u.phone}
-                                              </p>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </td>
+                        {role !== "STUDENT" && (
+                          <div className="mt-2 pl-14 text-xs">{renderAssignment(u, role)}</div>
+                        )}
 
-                                      {/* Student Column 2: Email */}
-                                      <td className="px-5 py-3.5">
-                                        <p className="text-xs text-zinc-300 font-mono">{u.email}</p>
-                                      </td>
+                        {u.role !== "ADMIN" && (
+                          <div className="mt-2 flex justify-end">
+                            {renderActions(u)}
+                          </div>
+                        )}
 
-                                      {/* Student Column 3: Status */}
-                                      <td className="px-5 py-3.5">
-                                        <div className="flex items-center gap-2">
-                                          <Badge variant={u.active ? "success" : "danger"}>
-                                            {u.active ? "Active" : "Disabled"}
-                                          </Badge>
+                        {isExpanded && (
+                          <div className="mt-3 rounded-2xl bg-zinc-950 p-4 animate-fade-in">
+                            {renderExpanded(u, role)}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
 
-                                        </div>
-                                      </td>
-                                    </>
-                                  ) : (
-                                    <>
-                                      {/* Non-student Column 1: Name & Contact */}
-                                      <td className="px-5 py-3.5">
-                                        <div className="flex items-center gap-2">
-                                          <p className="font-semibold text-zinc-100">{u.name}</p>
-                                        </div>
-                                        <p className="text-xs text-zinc-400 mt-0.5">{u.email}</p>
-                                        {u.phone && <p className="text-xs text-zinc-500">{u.phone}</p>}
-                                      </td>
+                {/* Desktop: table */}
+                <div className={`hidden lg:block ${dt.wrap}`}>
+                  <table className={cn(dt.table, "min-w-[760px]")}>
+                    <thead>
+                      <tr>
+                        {role === "STUDENT" ? (
+                          <>
+                            <th className={dt.th}>Student</th>
+                            <th className={dt.th}>Email</th>
+                            <th className={dt.th}>Status</th>
+                            <th className={dt.thRight}>Actions</th>
+                          </>
+                        ) : (
+                          <>
+                            <th className={dt.th}>Name & Contact</th>
+                            <th className={dt.th}>Employee ID</th>
+                            <th className={dt.th}>Assignment / Dept</th>
+                            <th className={dt.th}>Status</th>
+                            <th className={dt.thRight}>Actions</th>
+                          </>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {roleUsers.map((u) => {
+                        const isExpanded = expandedUserId === u.id;
 
-                                      {/* Non-student Column 2: Employee ID */}
-                                      <td className="px-5 py-3.5">
-                                        <span className="inline-block px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 font-mono text-xs font-medium text-zinc-300">
-                                          {u.faculty?.employeeId || u.warden?.employeeId || u.securityStaff?.employeeId || "N/A"}
-                                        </span>
-                                      </td>
-
-                                      {/* Non-student Column 3: Assignment */}
-                                      <td className="px-5 py-3.5 text-xs">
-                                        {(role === "FACULTY" || role === "FACULTY_ADMIN" || role === "DIRECTOR" || role === "DEAN") && (
-                                          <>
-                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                              {u.faculty?.department ? (
-                                                <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
-                                                  role === "DIRECTOR"
-                                                    ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
-                                                    : role === "DEAN"
-                                                    ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
-                                                    : role === "FACULTY_ADMIN"
-                                                    ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
-                                                    : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                                                }`}>
-                                                  {getDepartmentCode(u.faculty.department)}
-                                                </span>
-                                              ) : null}
-                                              <span className="font-medium text-zinc-200">
-                                                {u.faculty?.department || "No Department"}
-                                              </span>
-                                            </div>
-                                            <p className="text-zinc-400 mt-0.5">
-                                              {u.faculty?.designation || (role === "DIRECTOR" ? "Director" : role === "DEAN" ? "Dean" : role === "FACULTY_ADMIN" ? "Head of Department" : "Faculty")}
-                                            </p>
-                                          </>
-                                        )}
-                                        {role === "WARDEN" && (
-                                          <>
-                                            <p className="font-medium text-zinc-200">
-                                              {u.warden?.hostelBlock ? `Hostel Block ${u.warden.hostelBlock}` : "All Blocks"}
-                                            </p>
-                                            <p className="text-zinc-400 mt-0.5">Warden</p>
-                                          </>
-                                        )}
-                                        {role === "SECURITY" && (
-                                          <>
-                                            <p className="font-medium text-zinc-200">
-                                              {u.securityStaff?.gate?.name ? `Assigned: ${u.securityStaff.gate.name}` : "Unassigned Gate"}
-                                            </p>
-                                            <p className="text-zinc-400 mt-0.5">Security Personnel</p>
-                                          </>
-                                        )}
-                                        {role === "ADMIN" && (
-                                          <p className="text-zinc-400">System Administrator</p>
-                                        )}
-                                      </td>
-
-                                      {/* Non-student Column 4: Status */}
-                                      <td className="px-5 py-3.5">
-                                        <Badge variant={u.active ? "success" : "danger"}>
-                                          {u.active ? "Active" : "Disabled"}
-                                        </Badge>
-                                      </td>
-                                    </>
-                                  )}
-
-                                  {/* Actions Column */}
-                                  <td className="px-5 py-3.5 text-right">
-                                    {u.role !== "ADMIN" && (
-                                      <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                                        <Button
-                                          variant="ghost"
-                                          loading={isNavigatingId && navigatingUserId === u.id}
-                                          onClick={() => navigateToHistory(u.id)}
-                                          className="inline-flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 px-2.5 h-8 text-xs font-medium rounded-md transition-colors"
-                                          title="View full user details, permissions & activity"
-                                        >
-                                          {(!isNavigatingId || navigatingUserId !== u.id) && <History className="h-3.5 w-3.5 mr-1 text-orange-400" />}
-                                          All Data
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => handleOpenEdit(u)}
-                                          className="text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 px-2.5 h-8 text-xs font-medium"
-                                          title="Edit Details"
-                                        >
-                                          <Pencil className="h-3.5 w-3.5 mr-1" />
-                                          Edit
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => handleToggle(u.id)}
-                                          loading={toggling === u.id}
-                                          disabled={deleting === u.id}
-                                          className="px-2.5 h-8 text-xs font-medium"
-                                        >
-                                          <Power className="h-3.5 w-3.5 mr-1" />
-                                          {u.active ? "Disable" : "Enable"}
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => handleDeleteClick(u.id)}
-                                          loading={deleting === u.id}
-                                          disabled={toggling === u.id}
-                                          className="text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2.5 h-8 text-xs font-medium"
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5 mr-1" />
-                                          Delete
-                                        </Button>
-                                        <button
-                                          type="button"
-                                          onClick={() => setExpandedUserId(isExpanded ? null : u.id)}
-                                          className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors ml-1"
-                                          title={isExpanded ? "Collapse details" : "Click to view full details"}
-                                        >
-                                          <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${
-                                            isExpanded ? "rotate-180 text-orange-400" : ""
-                                          }`} />
-                                        </button>
-                                      </div>
-                                    )}
+                        return (
+                          <React.Fragment key={u.id}>
+                            <tr
+                              onClick={() => setExpandedUserId(isExpanded ? null : u.id)}
+                              className={`${dt.trClickable} select-none`}
+                              title="Click row to view full details"
+                            >
+                              {role === "STUDENT" ? (
+                                <>
+                                  <td className={dt.td}>
+                                    <PersonCell
+                                      name={u.name}
+                                      chip={u.student?.studentRoll ? <span className={`${dt.chip} shrink-0`}>{u.student.studentRoll}</span> : undefined}
+                                      sub={
+                                        u.phone ? (
+                                          <span className="inline-flex items-center gap-1">
+                                            <Phone className="h-3 w-3" />
+                                            {u.phone}
+                                          </span>
+                                        ) : undefined
+                                      }
+                                    />
                                   </td>
-                                </tr>
+                                  <td className={dt.tdMuted}>{u.email}</td>
+                                  <td className={dt.td}>
+                                    <Badge variant={u.active ? "success" : "danger"}>
+                                      {u.active ? "Active" : "Disabled"}
+                                    </Badge>
+                                  </td>
+                                </>
+                              ) : (
+                                <>
+                                  <td className={dt.td}>
+                                    <PersonCell
+                                      name={u.name}
+                                      sub={
+                                        <>
+                                          <span className="block truncate">{u.email}</span>
+                                          {u.phone && <span className="block truncate">{u.phone}</span>}
+                                        </>
+                                      }
+                                    />
+                                  </td>
+                                  <td className={dt.td}>
+                                    <span className={dt.chip}>{employeeIdOf(u)}</span>
+                                  </td>
+                                  <td className={`${dt.td} text-xs`}>{renderAssignment(u, role)}</td>
+                                  <td className={dt.td}>
+                                    <Badge variant={u.active ? "success" : "danger"}>
+                                      {u.active ? "Active" : "Disabled"}
+                                    </Badge>
+                                  </td>
+                                </>
+                              )}
 
-                                {/* Expanded Details Row for Student */}
-                                {isExpanded && role === "STUDENT" && (
-                                  <tr className="bg-zinc-950/80 border-b border-zinc-800/80 animate-fade-in">
-                                    <td colSpan={4} className="p-5 bg-gradient-to-b from-zinc-900/70 to-zinc-950/95 border-l-2 border-l-orange-500">
-                                      <div className="space-y-4">
-                                        {/* Top Info Bar */}
-                                        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-zinc-800/60">
-                                          <div className="flex items-center gap-3">
-                                            <div className="h-10 w-10 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-400 font-bold">
-                                              <GraduationCap className="h-5 w-5" />
-                                            </div>
-                                            <div>
-                                              <div className="flex flex-wrap items-center gap-2">
-                                                <h4 className="font-bold text-zinc-100 text-base">{u.name}</h4>
-                                                {u.student?.studentRoll && (
-                                                  <span className="px-2 py-0.5 rounded bg-orange-500/15 border border-orange-500/30 font-mono text-xs font-bold text-orange-400">
-                                                    {u.student.studentRoll}
-                                                  </span>
-                                                )}
-                                                <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                                                  u.student?.studentType === "HOSTELLER"
-                                                    ? "bg-purple-500/15 text-purple-300 border border-purple-500/30"
-                                                    : "bg-blue-500/15 text-blue-300 border border-blue-500/30"
-                                                }`}>
-                                                  {u.student?.studentType === "HOSTELLER" ? "Hosteller" : "Day Scholar"}
-                                                </span>
+                              {/* Actions */}
+                              <td className={dt.tdActions}>
+                                {u.role !== "ADMIN" && renderActions(u, isExpanded)}
+                              </td>
+                            </tr>
 
-                                              </div>
-                                              <p className="text-xs text-zinc-400 mt-0.5">
-                                                {u.email} {u.phone ? `• ${u.phone}` : ""}
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="flex flex-wrap items-center gap-2">
-                                            <Button
-                                              variant="outline"
-                                              loading={isNavigatingId && navigatingUserId === u.id}
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                navigateToHistory(u.id);
-                                              }}
-                                              className="inline-flex items-center gap-1.5 px-3 h-8 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 text-xs font-semibold shadow-sm transition-all"
-                                            >
-                                              {(!isNavigatingId || navigatingUserId !== u.id) && <History className="h-3.5 w-3.5 text-orange-400" />}
-                                              All Data
-                                            </Button>
-                                            <Button
-                                              size="sm"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleOpenEdit(u);
-                                              }}
-                                              className="bg-orange-600 hover:bg-orange-500 text-white text-xs h-8 shadow-lg shadow-orange-600/20"
-                                            >
-                                              <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                                              Edit Student Details
-                                            </Button>
-                                          </div>
-                                        </div>
-
-                                        {/* 4 Detail Grid Cards */}
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                                          {/* Card 1: Roll & Academic Cohort */}
-                                          <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-1.5">
-                                            <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                                              <GraduationCap className="h-3.5 w-3.5 text-orange-400" />
-                                              Academic Cohort
-                                            </span>
-                                            <p className="text-sm font-semibold text-zinc-200">
-                                              {u.student?.department || "General Department"}
-                                            </p>
-                                            <p className="text-xs text-zinc-400">
-                                              {u.student?.year ? `Year ${u.student.year}` : "Year N/A"}
-                                              {u.student?.section ? ` • Section ${u.student.section}` : ""}
-                                            </p>
-                                          </div>
-
-                                          {/* Card 2: Residency & Accommodation */}
-                                          <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-1.5">
-                                            <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                                              <Building2 className="h-3.5 w-3.5 text-purple-400" />
-                                              Residency & Hostel
-                                            </span>
-                                            <p className="text-sm font-semibold text-zinc-200">
-                                              {u.student?.studentType === "HOSTELLER" ? "Hosteller" : "Day Scholar"}
-                                            </p>
-                                            <p className="text-xs text-zinc-400">
-                                              {u.student?.studentType === "HOSTELLER" ? (
-                                                <>
-                                                  {u.student?.hostelBlock ? `Block: ${u.student.hostelBlock}` : "Block not assigned"}
-                                                  {u.student?.roomNumber ? ` • Room: ${u.student.roomNumber}` : ""}
-                                                </>
-                                              ) : (
-                                                "Lives Off-Campus"
-                                              )}
-                                            </p>
-                                          </div>
-
-                                          {/* Card 3: Assigned Mentors */}
-                                          <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-1.5">
-                                            <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                                              <Users className="h-3.5 w-3.5 text-emerald-400" />
-                                              Assigned Mentors
-                                            </span>
-                                            <div className="text-xs space-y-1">
-                                              <p className="text-zinc-300">
-                                                <span className="text-zinc-500">Faculty: </span>
-                                                {u.student?.faculty?.profile?.name ? (
-                                                  <span className="font-medium text-emerald-300">{u.student.faculty.profile.name}</span>
-                                                ) : (
-                                                  <span className="text-zinc-500 italic">Unassigned</span>
-                                                )}
-                                              </p>
-                                              {u.student?.studentType === "HOSTELLER" && (
-                                                <p className="text-zinc-300">
-                                                  <span className="text-zinc-500">Warden: </span>
-                                                  {u.student?.warden?.profile?.name ? (
-                                                    <span className="font-medium text-amber-300">{u.student.warden.profile.name}</span>
-                                                  ) : (
-                                                    <span className="text-zinc-500 italic">Unassigned</span>
-                                                  )}
-                                                </p>
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          {/* Card 4: Movement & Account Status */}
-                                          <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-1.5">
-                                            <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                                              <Shield className="h-3.5 w-3.5 text-blue-400" />
-                                              Campus & Account
-                                            </span>
-                                            <div className="flex items-center gap-2 pt-0.5">
-                                              <Badge variant={u.active ? "success" : "danger"}>
-                                                {u.active ? "Active" : "Disabled"}
-                                              </Badge>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-
-                                {/* Expanded Details Row for Non-Student */}
-                                {isExpanded && role !== "STUDENT" && (
-                                  <tr className="bg-zinc-950/80 border-b border-zinc-800/80 animate-fade-in">
-                                    <td colSpan={5} className="p-5 bg-gradient-to-b from-zinc-900/70 to-zinc-950/95 border-l-2 border-l-orange-500">
-                                      <div className="flex flex-wrap items-center justify-between gap-3">
-                                        <div className="space-y-1">
-                                          <h4 className="font-bold text-zinc-100 text-sm flex items-center gap-2">
-                                            {u.name}
-                                            <span className="text-xs font-mono text-zinc-400">
-                                              ({u.faculty?.employeeId || u.warden?.employeeId || u.securityStaff?.employeeId || "No Employee ID"})
-                                            </span>
-                                          </h4>
-                                          <p className="text-xs text-zinc-400">
-                                            Email: <span className="text-zinc-200">{u.email}</span>
-                                            {u.phone ? ` • Phone: ${u.phone}` : ""}
-                                          </p>
-                                          {(role === "FACULTY" || role === "FACULTY_ADMIN") && u.faculty && (
-                                            <p className={`text-xs ${role === "FACULTY_ADMIN" ? "text-indigo-400" : "text-emerald-400"}`}>
-                                              {u.faculty.department ? `Department: ${getDepartmentFullName(u.faculty.department)} (${getDepartmentCode(u.faculty.department)})` : "No Department"} • {u.faculty.designation || (role === "FACULTY_ADMIN" ? "Head of Department" : "Faculty Member")} {role === "FACULTY" ? `• ${u.faculty._count?.assignedStudents || 0} Assigned Students` : ""}
-                                            </p>
-                                          )}
-                                          {role === "WARDEN" && u.warden && (
-                                            <p className="text-xs text-amber-400">
-                                              {u.warden.hostelBlock ? `Hostel Block ${u.warden.hostelBlock}` : "All Hostel Blocks"} • {u.warden._count?.assignedHostellers || 0} Hostellers
-                                            </p>
-                                          )}
-                                          {role === "SECURITY" && u.securityStaff && (
-                                            <p className="text-xs text-blue-400">
-                                              {u.securityStaff.isHead && <span className="mr-1.5 rounded bg-orange-500/15 px-1.5 py-0.5 font-semibold text-orange-300">Head Security</span>}
-                                              {u.securityStaff.gate?.name ? `Gate: ${u.securityStaff.gate.name}` : "Unassigned Gate"}
-                                            </p>
-                                          )}
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <Button
-                                            variant="outline"
-                                            loading={isNavigatingId && navigatingUserId === u.id}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              navigateToHistory(u.id);
-                                            }}
-                                            className="inline-flex items-center gap-1.5 px-3 h-8 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 text-xs font-semibold shadow-sm transition-all"
-                                          >
-                                            {(!isNavigatingId || navigatingUserId !== u.id) && <History className="h-3.5 w-3.5 text-orange-400" />}
-                                            All Data
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleOpenEdit(u);
-                                            }}
-                                            className="bg-orange-600 hover:bg-orange-500 text-white text-xs h-8"
-                                          >
-                                            <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                                            Edit Details
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </React.Fragment>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+                            {isExpanded && (
+                              <tr className="animate-fade-in">
+                                <td colSpan={role === "STUDENT" ? 4 : 5} className="px-2 pb-3">
+                                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+                                    {renderExpanded(u, role)}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
             );
           })}
 
           {filteredUsers.length === 0 && (
-            <EmptyState
-              icon={<Users className="h-8 w-8" />}
-              title="No users found"
-              description="There are currently no users for this role. You can create a new one using the button above."
-            />
+            <Card>
+              <EmptyState
+                icon={<Users className="h-8 w-8" />}
+                title="No users found"
+                description="There are currently no users for this role. You can create a new one using the button above."
+              />
+            </Card>
           )}
         </div>
 
+        {/* Pagination (docked at the bottom of the screen) */}
+        <PagerBar
+          page={currentPage}
+          pageSize={15}
+          total={usersData.total}
+          hrefForPage={(p) => `/admin/users?page=${p}${currentRole !== "ALL" ? `&role=${currentRole}` : ""}`}
+          itemLabel="users"
+        />
       </div>
-
-      {/* Pagination Controls */}
-      {usersData.total > 15 && (
-        <div className="fixed bottom-0 left-0 lg:left-72 right-0 z-50 flex justify-between items-center py-3 px-4 lg:px-8 border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl shadow-[0_-10px_40px_-10px_rgba(16,24,40,0.12)]">
-          <p className="text-sm text-zinc-400 font-medium">
-            Showing {(currentPage - 1) * 15 + 1} to {Math.min(currentPage * 15, usersData.total)} of {usersData.total} users
-          </p>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-500">
-              Page {currentPage} of {Math.ceil(usersData.total / 15)}
-            </span>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage <= 1}
-                onClick={() => router.push(`/admin/users?page=${currentPage - 1}${currentRole !== "ALL" ? `&role=${currentRole}` : ""}`)}
-                className="h-8 px-3"
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage * 15 >= usersData.total}
-                onClick={() => router.push(`/admin/users?page=${currentPage + 1}${currentRole !== "ALL" ? `&role=${currentRole}` : ""}`)}
-                className="h-8 px-3"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add bottom padding to account for fixed pagination */}
-      {usersData.total > 25 && <div className="h-20"></div>}
 
       {/* Create User Modal */}
       <Modal
@@ -933,35 +912,32 @@ export function UserManagementClient({
             e.preventDefault();
             handleCreateUser(new FormData(e.currentTarget));
           }}
-          className="space-y-6"
+          className="space-y-4 sm:space-y-5"
         >
           {error && (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-              {error}
+            <div className="flex items-start gap-2.5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
             </div>
           )}
 
-          {/* Account Credentials Section */}
-          <div className="space-y-4 pt-2">
-            <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-              <Users className="h-4 w-4" /> Account Credentials
+          {/* Account credentials */}
+          <section className={sectionCls}>
+            <h3 className={sectionLabelCls}>
+              <Users className="h-3.5 w-3.5 text-orange-400" /> Account Credentials
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input name="name" label="Full Name *" required id="create-name" icon={<Users className="h-4 w-4" />} />
               <Input name="email" type="email" label="Email *" required id="create-email" icon={<Mail className="h-4 w-4" />} />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input name="password" type="password" label="Password *" required id="create-password" icon={<Lock className="h-4 w-4" />} />
+              <Input name="password" type="password" label="Password *" required minLength={8} maxLength={72} placeholder="At least 8 characters" id="create-password" icon={<Lock className="h-4 w-4" />} />
               <Input name="phone" type="tel" label="Phone" id="create-phone" icon={<Phone className="h-4 w-4" />} />
             </div>
-          </div>
+          </section>
 
-          <div className="h-px w-full bg-zinc-800/50"></div>
-
-          {/* Role Configuration */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-              <Shield className="h-4 w-4" /> Role & Permissions
+          {/* Role */}
+          <section className={sectionCls}>
+            <h3 className={sectionLabelCls}>
+              <Shield className="h-3.5 w-3.5 text-orange-400" /> Role & Permissions
             </h3>
             <Select
               label="Role *"
@@ -980,256 +956,259 @@ export function UserManagementClient({
               <option value="HEAD_SECURITY">Head Security (takes staff attendance)</option>
               <option value="SECURITY_SUPERVISOR">Security Supervisor (view only)</option>
             </Select>
+          </section>
 
-            {/* Student-specific fields */}
-            {selectedRole === "STUDENT" && (
-              <div className="space-y-4 rounded-xl border border-zinc-800/50 p-5 mt-4 bg-zinc-900/50">
-                <p className="text-sm font-medium text-blue-400 flex items-center gap-2 mb-4">
-                  <GraduationCap className="h-4 w-4" />
-                  Student-Specific Details
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Input name="studentRoll" label="Roll Number *" required id="create-roll" />
-                  <Select
-                    name="department"
-                    label="Department"
-                    id="create-department"
-                    value={createDept}
-                    onChange={(e) => setCreateDept(e.target.value)}
-                  >
-                    {DEPARTMENTS.map((dept) => (
-                      <option key={dept.code} value={dept.code}>
-                        {dept.code} - {dept.name}
-                      </option>
-                    ))}
-                    <option value="OTHER">Other / Custom Department</option>
-                  </Select>
-                </div>
-                {createDept === "OTHER" && (
-                  <Input
-                    name="customDepartment"
-                    label="Custom Department Name"
-                    id="create-student-custom-dept"
-                    placeholder="e.g. Biomedical Engineering"
-                    value={createCustomDept}
-                    onChange={(e) => setCreateCustomDept(e.target.value)}
-                  />
-                )}
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                  <Input name="year" type="number" min={1} max={6} label="Year" id="create-year" />
-                  <Input name="semester" type="number" min={1} max={12} label="Semester" id="create-semester" />
-                  <Input name="section" label="Section" id="create-section" />
-                  <Select name="studentType" label="Type" id="create-student-type" value={createStudentType} onChange={(e) => setCreateStudentType(e.target.value)}>
-                    <option value="DAY_SCHOLAR">Day Scholar</option>
-                    <option value="HOSTELLER">Hosteller</option>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Select name="assignedFacultyId" label="Assigned Faculty" id="create-faculty">
-                    <option value="">None</option>
-                    {faculty.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.profile.name} {f.department ? `(${f.department})` : ""}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                
-                {createStudentType === "HOSTELLER" && (
-                  <>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Student-specific fields */}
+          {selectedRole === "STUDENT" && (
+            <section className={sectionCls}>
+              <h3 className={sectionLabelCls}>
+                <GraduationCap className="h-3.5 w-3.5 text-orange-400" />
+                Student-Specific Details
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input name="studentRoll" label="Roll Number *" required id="create-roll" />
+                <Select
+                  name="department"
+                  label="Department"
+                  id="create-department"
+                  value={createDept}
+                  onChange={(e) => setCreateDept(e.target.value)}
+                >
+                  {DEPARTMENTS.map((dept) => (
+                    <option key={dept.code} value={dept.code}>
+                      {dept.code} - {dept.name}
+                    </option>
+                  ))}
+                  <option value="OTHER">Other / Custom Department</option>
+                </Select>
+              </div>
+              {createDept === "OTHER" && (
+                <Input
+                  name="customDepartment"
+                  label="Custom Department Name"
+                  id="create-student-custom-dept"
+                  placeholder="e.g. Biomedical Engineering"
+                  value={createCustomDept}
+                  onChange={(e) => setCreateCustomDept(e.target.value)}
+                />
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input name="year" type="number" min={1} max={6} label="Year" id="create-year" />
+                <Input name="semester" type="number" min={1} max={12} label="Semester" id="create-semester" />
+                <Input name="section" label="Section" id="create-section" />
+                <Select name="studentType" label="Type" id="create-student-type" value={createStudentType} onChange={(e) => setCreateStudentType(e.target.value)}>
+                  <option value="DAY_SCHOLAR">Day Scholar</option>
+                  <option value="HOSTELLER">Hosteller</option>
+                </Select>
+              </div>
+              <Select name="assignedFacultyId" label="Assigned Faculty" id="create-faculty">
+                <option value="">None</option>
+                {faculty.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.profile.name} {f.department ? `(${f.department})` : ""}
+                  </option>
+                ))}
+              </Select>
+
+              {createStudentType === "HOSTELLER" && (
+                <div className="space-y-4 rounded-2xl bg-zinc-950 p-4">
+                  <p className={sectionLabelCls}>
+                    <Building2 className="h-3.5 w-3.5 text-orange-400" />
+                    Hostel
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
                       <Select name="hostelType" label="Hostel" id="create-hostel-type" required defaultValue="">
                         <option value="" disabled>Select hostel</option>
                         <option value="BOYS">Boys Hostel</option>
                         <option value="LADIES">Ladies Hostel</option>
                       </Select>
-                      <Input name="roomNumber" label="Room Number" id="create-room" />
-                      <Input name="hostelBlock" label="Hostel Block" id="create-hostel" />
                     </div>
-                    <div className="grid grid-cols-1 gap-4">
-                      <Select name="assignedWardenId" label="Assigned Warden" id="create-warden">
-                        <option value="">None</option>
-                        {wardens.map((w) => (
-                          <option key={w.id} value={w.id}>
-                            {w.profile.name} {w.hostelBlock ? `(Block ${w.hostelBlock})` : ""}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* Faculty-specific */}
-            {selectedRole === "FACULTY" && (
-              <div className="space-y-4 rounded-xl border border-zinc-800/50 p-5 mt-4 bg-zinc-900/50">
-                <p className="text-sm font-medium text-emerald-400 flex items-center gap-2 mb-4">
-                  <BookOpen className="h-4 w-4" />
-                  Faculty-Specific Details
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Input name="employeeId" label="Employee ID *" required id="create-fac-emp" />
-                  <Select
-                    name="department"
-                    label="Department *"
-                    required
-                    id="create-fac-dept"
-                    value={createDept}
-                    onChange={(e) => setCreateDept(e.target.value)}
-                  >
-                    {DEPARTMENTS.map((dept) => (
-                      <option key={dept.code} value={dept.code}>
-                        {dept.code} - {dept.name}
-                      </option>
-                    ))}
-                    <option value="OTHER">Other / Custom Department</option>
-                  </Select>
-                </div>
-                {createDept === "OTHER" && (
-                  <Input
-                    name="customDepartment"
-                    label="Custom Department Name"
-                    id="create-fac-custom-dept"
-                    placeholder="e.g. Biomedical Engineering"
-                    value={createCustomDept}
-                    onChange={(e) => setCreateCustomDept(e.target.value)}
-                  />
-                )}
-                <Input name="designation" label="Designation" defaultValue="Assistant Professor" id="create-designation" />
-              </div>
-            )}
-
-            {/* HOD-specific */}
-            {selectedRole === "FACULTY_ADMIN" && (
-              <div className="space-y-4 rounded-xl border border-zinc-800/50 p-5 mt-4 bg-zinc-900/50">
-                <p className="text-sm font-medium text-indigo-400 flex items-center gap-2 mb-4">
-                  <Shield className="h-4 w-4" />
-                  HOD (Head of Department) Details
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Input name="employeeId" label="Employee ID *" required id="create-hod-emp" defaultValue={`HOD-${Date.now().toString().slice(-4)}`} />
-                  <Select
-                    name="department"
-                    label="Department *"
-                    required
-                    id="create-hod-dept"
-                    value={createDept}
-                    onChange={(e) => setCreateDept(e.target.value)}
-                  >
-                    {DEPARTMENTS.map((dept) => (
-                      <option key={dept.code} value={dept.code}>
-                        {dept.code} - {dept.name}
-                      </option>
-                    ))}
-                    <option value="OTHER">Other / Custom Department</option>
-                  </Select>
-                </div>
-                {createDept === "OTHER" && (
-                  <Input
-                    name="customDepartment"
-                    label="Custom Department Name *"
-                    required
-                    id="create-hod-custom-dept"
-                    placeholder="e.g. Biomedical Engineering"
-                    value={createCustomDept}
-                    onChange={(e) => setCreateCustomDept(e.target.value)}
-                  />
-                )}
-                <Input name="designation" label="Designation" defaultValue="Head of Department" id="create-hod-designation" />
-              </div>
-            )}
-
-            {/* Director-specific */}
-            {selectedRole === "DIRECTOR" && (
-              <div className="space-y-4 rounded-xl border border-zinc-800/50 p-5 mt-4 bg-zinc-900/50">
-                <p className="text-sm font-medium text-purple-400 flex items-center gap-2 mb-4">
-                  <Shield className="h-4 w-4" />
-                  Director Details
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Input name="employeeId" label="Employee ID *" required id="create-dir-emp" defaultValue={`DIR-${Date.now().toString().slice(-4)}`} />
-                  <Input name="department" label="Department" defaultValue="All Departments" id="create-dir-dept" />
-                </div>
-                <Input
-                  name="designation"
-                  label="Title *"
-                  required
-                  maxLength={100}
-                  placeholder="e.g. Managing Director"
-                  id="create-dir-designation"
-                />
-              </div>
-            )}
-
-            {/* Dean-specific */}
-            {selectedRole === "DEAN" && (
-              <div className="space-y-4 rounded-xl border border-zinc-800/50 p-5 mt-4 bg-zinc-900/50">
-                <p className="text-sm font-medium text-cyan-400 flex items-center gap-2 mb-4">
-                  <Shield className="h-4 w-4" />
-                  Dean Details
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Input name="employeeId" label="Employee ID *" required id="create-dean-emp" defaultValue={`DEAN-${Date.now().toString().slice(-4)}`} />
-                  <Input name="department" label="Department" defaultValue="All Departments" id="create-dean-dept" />
-                </div>
-                <div className="space-y-1.5">
-                  <label htmlFor="create-dean-of" className="block text-sm font-medium text-zinc-300">Dean of *</label>
-                  <div className="flex items-stretch rounded-xl border border-zinc-700/50 bg-zinc-900 focus-within:ring-2 focus-within:ring-orange-500/40">
-                    <span className="flex items-center px-3.5 text-sm font-semibold text-zinc-400 border-r border-zinc-700/50 whitespace-nowrap">Dean of</span>
-                    <input
-                      id="create-dean-of"
-                      name="deanOf"
-                      required
-                      maxLength={80}
-                      placeholder="e.g. Placements, Internal Affairs, Academics"
-                      className="h-12 w-full min-w-0 bg-transparent px-3.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
-                    />
+                    <Input name="roomNumber" label="Room Number" id="create-room" />
+                    <Input name="hostelBlock" label="Hostel Block" id="create-hostel" />
                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* Warden-specific */}
-            {selectedRole === "WARDEN" && (
-              <div className="space-y-4 rounded-xl border border-zinc-800/50 p-5 mt-4 bg-zinc-900/50">
-                <p className="text-sm font-medium text-amber-400 flex items-center gap-2 mb-4">
-                  <Building2 className="h-4 w-4" />
-                  Warden-Specific Details
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Input name="employeeId" label="Employee ID *" required id="create-warden-emp" />
-                  <Input name="wardenHostelBlock" label="Hostel Block" id="create-warden-block" />
-                </div>
-              </div>
-            )}
-
-            {/* Security-specific */}
-            {(selectedRole === "SECURITY" || selectedRole === "HEAD_SECURITY") && (
-              <div className="space-y-4 rounded-xl border border-zinc-800/50 p-5 mt-4 bg-zinc-900/50">
-                <p className="text-sm font-medium text-red-400 flex items-center gap-2 mb-4">
-                  <Shield className="h-4 w-4" />
-                  Security-Specific Details
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Input name="employeeId" label="Employee ID *" required id="create-sec-emp" />
-                  <Select name="assignedGateId" label="Assigned Gate" id="create-sec-gate">
+                  <Select name="assignedWardenId" label="Assigned Warden" id="create-warden">
                     <option value="">None</option>
-                    {gates?.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
+                    {wardens.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.profile.name} {w.hostelBlock ? `(Block ${w.hostelBlock})` : ""}
                       </option>
                     ))}
                   </Select>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </section>
+          )}
 
-          <div className="flex justify-end gap-3 pt-6 border-t border-zinc-800/50 mt-6">
+          {/* Faculty-specific */}
+          {selectedRole === "FACULTY" && (
+            <section className={sectionCls}>
+              <h3 className={sectionLabelCls}>
+                <BookOpen className="h-3.5 w-3.5 text-orange-400" />
+                Faculty-Specific Details
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input name="employeeId" label="Employee ID *" required id="create-fac-emp" />
+                <Select
+                  name="department"
+                  label="Department *"
+                  required
+                  id="create-fac-dept"
+                  value={createDept}
+                  onChange={(e) => setCreateDept(e.target.value)}
+                >
+                  {DEPARTMENTS.map((dept) => (
+                    <option key={dept.code} value={dept.code}>
+                      {dept.code} - {dept.name}
+                    </option>
+                  ))}
+                  <option value="OTHER">Other / Custom Department</option>
+                </Select>
+              </div>
+              {createDept === "OTHER" && (
+                <Input
+                  name="customDepartment"
+                  label="Custom Department Name"
+                  id="create-fac-custom-dept"
+                  placeholder="e.g. Biomedical Engineering"
+                  value={createCustomDept}
+                  onChange={(e) => setCreateCustomDept(e.target.value)}
+                />
+              )}
+              <Input name="designation" label="Designation" defaultValue="Assistant Professor" id="create-designation" />
+            </section>
+          )}
+
+          {/* HOD-specific */}
+          {selectedRole === "FACULTY_ADMIN" && (
+            <section className={sectionCls}>
+              <h3 className={sectionLabelCls}>
+                <Shield className="h-3.5 w-3.5 text-orange-400" />
+                HOD (Head of Department) Details
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input name="employeeId" label="Employee ID *" required id="create-hod-emp" defaultValue={`HOD-${Date.now().toString().slice(-4)}`} />
+                <Select
+                  name="department"
+                  label="Department *"
+                  required
+                  id="create-hod-dept"
+                  value={createDept}
+                  onChange={(e) => setCreateDept(e.target.value)}
+                >
+                  {DEPARTMENTS.map((dept) => (
+                    <option key={dept.code} value={dept.code}>
+                      {dept.code} - {dept.name}
+                    </option>
+                  ))}
+                  <option value="OTHER">Other / Custom Department</option>
+                </Select>
+              </div>
+              {createDept === "OTHER" && (
+                <Input
+                  name="customDepartment"
+                  label="Custom Department Name *"
+                  required
+                  id="create-hod-custom-dept"
+                  placeholder="e.g. Biomedical Engineering"
+                  value={createCustomDept}
+                  onChange={(e) => setCreateCustomDept(e.target.value)}
+                />
+              )}
+              <Input name="designation" label="Designation" defaultValue="Head of Department" id="create-hod-designation" />
+            </section>
+          )}
+
+          {/* Director-specific */}
+          {selectedRole === "DIRECTOR" && (
+            <section className={sectionCls}>
+              <h3 className={sectionLabelCls}>
+                <Shield className="h-3.5 w-3.5 text-orange-400" />
+                Director Details
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input name="employeeId" label="Employee ID *" required id="create-dir-emp" defaultValue={`DIR-${Date.now().toString().slice(-4)}`} />
+                <Input name="department" label="Department" defaultValue="All Departments" id="create-dir-dept" />
+              </div>
+              <Input
+                name="designation"
+                label="Title *"
+                required
+                maxLength={100}
+                placeholder="e.g. Managing Director"
+                id="create-dir-designation"
+              />
+            </section>
+          )}
+
+          {/* Dean-specific */}
+          {selectedRole === "DEAN" && (
+            <section className={sectionCls}>
+              <h3 className={sectionLabelCls}>
+                <Shield className="h-3.5 w-3.5 text-orange-400" />
+                Dean Details
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input name="employeeId" label="Employee ID *" required id="create-dean-emp" defaultValue={`DEAN-${Date.now().toString().slice(-4)}`} />
+                <Input name="department" label="Department" defaultValue="All Departments" id="create-dean-dept" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="create-dean-of" className={fieldLabelCls}>Dean of *</label>
+                <div className="flex items-stretch overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 transition-colors hover:border-zinc-700 focus-within:border-orange-500/50 focus-within:ring-2 focus-within:ring-orange-500/40">
+                  <span className="flex items-center bg-zinc-950 px-4 text-sm font-medium text-zinc-500 border-r border-zinc-800 whitespace-nowrap">Dean of</span>
+                  <input
+                    id="create-dean-of"
+                    name="deanOf"
+                    required
+                    maxLength={80}
+                    placeholder="e.g. Placements, Internal Affairs, Academics"
+                    className="h-12 w-full min-w-0 bg-transparent px-4 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Warden-specific */}
+          {selectedRole === "WARDEN" && (
+            <section className={sectionCls}>
+              <h3 className={sectionLabelCls}>
+                <Building2 className="h-3.5 w-3.5 text-orange-400" />
+                Warden-Specific Details
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input name="employeeId" label="Employee ID *" required id="create-warden-emp" />
+                <Input name="wardenHostelBlock" label="Hostel Block" id="create-warden-block" />
+              </div>
+            </section>
+          )}
+
+          {/* Security-specific */}
+          {(selectedRole === "SECURITY" || selectedRole === "HEAD_SECURITY") && (
+            <section className={sectionCls}>
+              <h3 className={sectionLabelCls}>
+                <Shield className="h-3.5 w-3.5 text-orange-400" />
+                Security-Specific Details
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input name="employeeId" label="Employee ID *" required id="create-sec-emp" />
+                <Select name="assignedGateId" label="Assigned Gate" id="create-sec-gate">
+                  <option value="">None</option>
+                  {gates?.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </section>
+          )}
+
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-5 border-t border-zinc-800">
             <Button
               type="button"
               variant="outline"
+              className="w-full sm:w-auto"
               onClick={() => {
                 setShowCreateModal(false);
                 setError(null);
@@ -1237,7 +1216,7 @@ export function UserManagementClient({
             >
               Cancel
             </Button>
-            <Button type="submit" loading={loading}>
+            <Button type="submit" loading={loading} className="w-full sm:w-auto">
               <UserPlus className="h-4 w-4" />
               Create User
             </Button>
@@ -1251,15 +1230,15 @@ export function UserManagementClient({
         onClose={() => !deleting && setUserToDelete(null)}
         className="max-w-md"
       >
-        <div className="flex flex-col items-center justify-center p-4 text-center">
-          <div className="mb-4 rounded-full bg-red-500/10 p-3 text-red-500">
-            <AlertTriangle className="h-8 w-8" />
+        <div className="flex flex-col items-center justify-center p-2 sm:p-4 text-center">
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-500/10 text-red-400">
+            <AlertTriangle className="h-7 w-7" />
           </div>
-          <h2 className="mb-2 text-xl font-bold text-zinc-100">Delete User?</h2>
-          <p className="mb-6 text-sm text-zinc-400">
+          <h2 className="mb-2 text-xl font-medium text-zinc-100">Delete User?</h2>
+          <p className="mb-6 text-sm text-zinc-500 leading-relaxed">
             Are you sure you want to permanently delete this user? This action cannot be undone and will erase all associated records.
           </p>
-          <div className="flex w-full gap-3">
+          <div className="flex w-full flex-col-reverse sm:flex-row gap-3">
             <Button
               type="button"
               variant="outline"
@@ -1271,7 +1250,8 @@ export function UserManagementClient({
             </Button>
             <Button
               type="button"
-              className="flex-1 bg-red-600 hover:bg-red-500 text-white"
+              variant="destructive"
+              className="flex-1"
               onClick={confirmDelete}
               loading={!!deleting}
             >
@@ -1286,67 +1266,73 @@ export function UserManagementClient({
         open={!!editingUser}
         onClose={() => !editLoading && setEditingUser(null)}
         title={editingUser ? `Edit ${editingUser.role === 'STUDENT' ? 'Student' : editingUser.role} Details` : "Edit User"}
-        className="max-w-xl"
+        className="max-w-2xl"
       >
         {editingUser && (
-          <form onSubmit={handleSaveEdit} className="space-y-4">
+          <form onSubmit={handleSaveEdit} className="space-y-4 sm:space-y-5">
             {editError && (
-              <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-red-400 text-xs flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              <div className="flex items-start gap-2.5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                 <span>{editError}</span>
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">Full Name</label>
-                <Input
-                  name="name"
-                  defaultValue={editingUser.name}
-                  required
-                  className="bg-zinc-900 border-zinc-800"
-                />
-              </div>
+            {/* Account & contact */}
+            <section className={sectionCls}>
+              <h3 className={sectionLabelCls}>
+                <User className="h-3.5 w-3.5 text-orange-400" /> Account & Contact
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-zinc-400">Email Address</label>
+                  <label className={fieldLabelCls}>Full Name</label>
+                  <Input
+                    name="name"
+                    defaultValue={editingUser.name}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className={fieldLabelCls}>Email Address</label>
                   <Input
                     name="email"
                     type="email"
                     defaultValue={editingUser.email}
                     required
-                    className="bg-zinc-900 border-zinc-800"
                   />
                 </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">Phone Number</label>
-                <Input
-                  name="phone"
-                  defaultValue={editingUser.phone || ""}
-                  placeholder="+91-9876543210"
-                  className="bg-zinc-900 border-zinc-800"
-                />
+                <div className="space-y-1.5">
+                  <label className={fieldLabelCls}>Phone Number</label>
+                  <Input
+                    name="phone"
+                    defaultValue={editingUser.phone || ""}
+                    placeholder="+91-9876543210"
+                  />
+                </div>
               </div>
+            </section>
 
-              {editingUser.role === "STUDENT" && (
-                <>
+            {editingUser.role === "STUDENT" && (
+              <section className={sectionCls}>
+                <h3 className={sectionLabelCls}>
+                  <GraduationCap className="h-3.5 w-3.5 text-orange-400" /> Student Details
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-400">Roll Number</label>
+                    <label className={fieldLabelCls}>Roll Number</label>
                     <Input
                       name="studentRoll"
                       defaultValue={editingUser.student?.studentRoll || ""}
                       required
-                      className="bg-zinc-900 border-zinc-800 font-mono"
+                      className="font-mono"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-400">Department</label>
+                    <label className={fieldLabelCls}>Department</label>
                     <Select
                       name="department"
                       value={editDept}
                       onChange={(e) => setEditDept(e.target.value)}
-                      className="bg-zinc-900 border-zinc-800"
                     >
                       {DEPARTMENTS.map((d) => (
                         <option key={d.code} value={d.code}>
@@ -1357,70 +1343,64 @@ export function UserManagementClient({
                     </Select>
                   </div>
                   {editDept === "OTHER" && (
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-zinc-400">Custom Department</label>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <label className={fieldLabelCls}>Custom Department</label>
                       <Input
                         name="customDepartment"
                         value={editCustomDept}
                         onChange={(e) => setEditCustomDept(e.target.value)}
                         placeholder="Enter department name"
-                        className="bg-zinc-900 border-zinc-800"
                       />
                     </div>
                   )}
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-400">Year</label>
+                    <label className={fieldLabelCls}>Year</label>
                     <Input
                       name="year"
                       type="number"
                       min={1}
                       max={5}
                       defaultValue={editingUser.student?.year ?? ""}
-                      className="bg-zinc-900 border-zinc-800"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-400">Semester</label>
+                    <label className={fieldLabelCls}>Semester</label>
                     <Input
                       name="semester"
                       type="number"
                       min={1}
                       max={12}
                       defaultValue={editingUser.student?.semester ?? ""}
-                      className="bg-zinc-900 border-zinc-800"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-400">Section</label>
+                    <label className={fieldLabelCls}>Section</label>
                     <Input
                       name="section"
                       defaultValue={editingUser.student?.section ?? ""}
-                      className="bg-zinc-900 border-zinc-800"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-400">Student Type</label>
+                    <label className={fieldLabelCls}>Student Type</label>
                     <Select
                       name="studentType"
                       value={editStudentType}
                       onChange={(e) => setEditStudentType(e.target.value)}
-                      className="bg-zinc-900 border-zinc-800"
                     >
                       <option value="DAY_SCHOLAR">Day Scholar</option>
                       <option value="HOSTELLER">Hosteller</option>
                     </Select>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-400">Assigned Faculty Advisor</label>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <label className={fieldLabelCls}>Assigned Faculty Advisor</label>
                     <Select
                       name="facultyId"
                       defaultValue={editingUser.student?.facultyId || ""}
-                      className="bg-zinc-900 border-zinc-800"
                     >
                       <option value="">-- None --</option>
                       {faculty.map((f: any) => (
@@ -1434,11 +1414,10 @@ export function UserManagementClient({
                   {editStudentType === "HOSTELLER" && (
                     <>
                       <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-zinc-400">Assigned Warden (Hostellers)</label>
+                        <label className={fieldLabelCls}>Assigned Warden (Hostellers)</label>
                         <Select
                           name="wardenId"
                           defaultValue={editingUser.student?.wardenId || ""}
-                          className="bg-zinc-900 border-zinc-800"
                         >
                           <option value="">-- None --</option>
                           {wardens.map((w: any) => (
@@ -1450,11 +1429,10 @@ export function UserManagementClient({
                       </div>
 
                       <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-zinc-400">Hostel</label>
+                        <label className={fieldLabelCls}>Hostel</label>
                         <Select
                           name="hostelType"
                           defaultValue={editingUser.student?.hostelType || ""}
-                          className="bg-zinc-900 border-zinc-800"
                         >
                           <option value="">-- Not set --</option>
                           <option value="BOYS">Boys Hostel</option>
@@ -1463,46 +1441,48 @@ export function UserManagementClient({
                       </div>
 
                       <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-zinc-400">Hostel Block</label>
+                        <label className={fieldLabelCls}>Hostel Block</label>
                         <Input
                           name="hostelBlock"
                           defaultValue={editingUser.student?.hostelBlock || ""}
                           placeholder="e.g. Block A"
-                          className="bg-zinc-900 border-zinc-800"
                         />
                       </div>
 
                       <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-zinc-400">Room Number</label>
+                        <label className={fieldLabelCls}>Room Number</label>
                         <Input
                           name="roomNumber"
                           defaultValue={editingUser.student?.roomNumber || ""}
                           placeholder="e.g. 204"
-                          className="bg-zinc-900 border-zinc-800"
                         />
                       </div>
                     </>
                   )}
-                </>
-              )}
+                </div>
+              </section>
+            )}
 
-              {(editingUser.role === "FACULTY" || editingUser.role === "FACULTY_ADMIN" || editingUser.role === "DIRECTOR" || editingUser.role === "DEAN") && (
-                <>
+            {(editingUser.role === "FACULTY" || editingUser.role === "FACULTY_ADMIN" || editingUser.role === "DIRECTOR" || editingUser.role === "DEAN") && (
+              <section className={sectionCls}>
+                <h3 className={sectionLabelCls}>
+                  <BookOpen className="h-3.5 w-3.5 text-orange-400" /> Role Details
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-400">Employee ID</label>
+                    <label className={fieldLabelCls}>Employee ID</label>
                     <Input
                       name="employeeId"
                       defaultValue={editingUser.faculty?.employeeId || ""}
-                      className="bg-zinc-900 border-zinc-800 font-mono"
+                      className="font-mono"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-400">Department</label>
+                    <label className={fieldLabelCls}>Department</label>
                     <Select
                       name="department"
                       value={editDept}
                       onChange={(e) => setEditDept(e.target.value)}
-                      className="bg-zinc-900 border-zinc-800"
                     >
                       {DEPARTMENTS.map((d) => (
                         <option key={d.code} value={d.code}>
@@ -1513,22 +1493,21 @@ export function UserManagementClient({
                     </Select>
                   </div>
                   {editDept === "OTHER" && (
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-zinc-400">Custom Department</label>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <label className={fieldLabelCls}>Custom Department</label>
                       <Input
                         name="customDepartment"
                         value={editCustomDept}
                         onChange={(e) => setEditCustomDept(e.target.value)}
                         placeholder="Enter department name"
-                        className="bg-zinc-900 border-zinc-800"
                       />
                     </div>
                   )}
                   {editingUser.role === "DEAN" ? (
-                    <div className="space-y-1.5">
-                      <label htmlFor="edit-dean-of" className="text-xs font-medium text-zinc-400">Dean of *</label>
-                      <div className="flex items-stretch rounded-xl border border-zinc-800 bg-zinc-900 focus-within:ring-2 focus-within:ring-orange-500/40">
-                        <span className="flex items-center px-3 text-sm font-semibold text-zinc-400 border-r border-zinc-800 whitespace-nowrap">Dean of</span>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <label htmlFor="edit-dean-of" className={fieldLabelCls}>Dean of *</label>
+                      <div className="flex items-stretch overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 transition-colors hover:border-zinc-700 focus-within:border-orange-500/50 focus-within:ring-2 focus-within:ring-orange-500/40">
+                        <span className="flex items-center bg-zinc-950 px-4 text-sm font-medium text-zinc-500 border-r border-zinc-800 whitespace-nowrap">Dean of</span>
                         <input
                           id="edit-dean-of"
                           name="deanOf"
@@ -1536,63 +1515,70 @@ export function UserManagementClient({
                           maxLength={80}
                           defaultValue={(editingUser.faculty?.designation || "").replace(/^dean(\s+of)?\s*/i, "")}
                           placeholder="e.g. Placements, Internal Affairs"
-                          className="h-11 w-full min-w-0 bg-transparent px-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
+                          className="h-12 w-full min-w-0 bg-transparent px-4 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
                         />
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-zinc-400">{editingUser.role === "DIRECTOR" ? "Title *" : "Designation"}</label>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <label className={fieldLabelCls}>{editingUser.role === "DIRECTOR" ? "Title *" : "Designation"}</label>
                       <Input
                         name="designation"
                         required={editingUser.role === "DIRECTOR"}
                         maxLength={100}
                         placeholder={editingUser.role === "DIRECTOR" ? "e.g. Managing Director" : undefined}
                         defaultValue={editingUser.faculty?.designation || ""}
-                        className="bg-zinc-900 border-zinc-800"
                       />
                     </div>
                   )}
-                </>
-              )}
+                </div>
+              </section>
+            )}
 
-              {editingUser.role === "WARDEN" && (
-                <>
+            {editingUser.role === "WARDEN" && (
+              <section className={sectionCls}>
+                <h3 className={sectionLabelCls}>
+                  <Building2 className="h-3.5 w-3.5 text-orange-400" /> Warden Details
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-400">Employee ID</label>
+                    <label className={fieldLabelCls}>Employee ID</label>
                     <Input
                       name="employeeId"
                       defaultValue={editingUser.warden?.employeeId || ""}
-                      className="bg-zinc-900 border-zinc-800 font-mono"
+                      className="font-mono"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-400">Hostel Block</label>
+                    <label className={fieldLabelCls}>Hostel Block</label>
                     <Input
                       name="hostelBlock"
                       defaultValue={editingUser.warden?.hostelBlock || ""}
-                      className="bg-zinc-900 border-zinc-800"
                     />
                   </div>
-                </>
-              )}
+                </div>
+              </section>
+            )}
 
-              {editingUser.role === "SECURITY" && (
-                <>
+            {editingUser.role === "SECURITY" && (
+              <section className={sectionCls}>
+                <h3 className={sectionLabelCls}>
+                  <Shield className="h-3.5 w-3.5 text-orange-400" /> Security Details
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-400">Employee ID</label>
+                    <label className={fieldLabelCls}>Employee ID</label>
                     <Input
                       name="employeeId"
                       defaultValue={editingUser.securityStaff?.employeeId || ""}
-                      className="bg-zinc-900 border-zinc-800 font-mono"
+                      className="font-mono"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-400">Assigned Gate</label>
+                    <label className={fieldLabelCls}>Assigned Gate</label>
                     <Select
                       name="gateId"
                       defaultValue={editingUser.securityStaff?.gate?.id || ""}
-                      className="bg-zinc-900 border-zinc-800"
                     >
                       <option value="">-- None --</option>
                       {gates?.map((g: any) => (
@@ -1600,7 +1586,7 @@ export function UserManagementClient({
                       ))}
                     </Select>
                   </div>
-                  <label className="flex items-start gap-2.5 rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2.5 cursor-pointer sm:col-span-2">
+                  <label className="flex items-start gap-3 rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 cursor-pointer sm:col-span-2 hover:border-zinc-700 transition-colors">
                     <input
                       type="checkbox"
                       name="isHeadSecurity"
@@ -1612,14 +1598,15 @@ export function UserManagementClient({
                       <span className="block text-xs text-zinc-500">Can see and take the staff attendance register. Everything else is the same as Security.</span>
                     </span>
                   </label>
-                </>
-              )}
-            </div>
+                </div>
+              </section>
+            )}
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-zinc-800">
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-5 border-t border-zinc-800">
               <Button
                 type="button"
                 variant="outline"
+                className="w-full sm:w-auto"
                 onClick={() => setEditingUser(null)}
                 disabled={editLoading}
               >
@@ -1628,7 +1615,7 @@ export function UserManagementClient({
               <Button
                 type="submit"
                 loading={editLoading}
-                className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white"
+                className="w-full sm:w-auto"
               >
                 Save Changes
               </Button>
@@ -1645,44 +1632,44 @@ export function UserManagementClient({
         className="max-w-xl"
       >
         {selectedUserDetails?.details ? (
-          <div className="space-y-6">
-            <div className="flex items-center gap-4 border-b border-zinc-800/50 pb-4">
-              <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${roleColors[selectedUserDetails.role]} bg-opacity-20`}>
-                <User className={`h-6 w-6 text-zinc-200`} />
+          <div className="space-y-5">
+            <div className="flex items-center gap-4 border-b border-zinc-800 pb-4 min-w-0">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
+                <User className="h-6 w-6" />
               </div>
-              <div>
-                <h2 className="text-xl font-bold text-zinc-100">{selectedUserDetails.details.profile.name}</h2>
-                <p className="text-sm text-zinc-400">{selectedUserDetails.details.profile.email} • {selectedUserDetails.details.profile.phone || "No phone"}</p>
+              <div className="min-w-0">
+                <h2 className="text-lg font-medium text-zinc-100 truncate">{selectedUserDetails.details.profile.name}</h2>
+                <p className="text-sm text-zinc-500 break-all">{selectedUserDetails.details.profile.email} • {selectedUserDetails.details.profile.phone || "No phone"}</p>
               </div>
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Role Info</h3>
-              
+              <h3 className={sectionLabelCls}>Role Info</h3>
+
               {selectedUserDetails.role === "STUDENT" && (
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <p className="text-zinc-500">Roll Number</p>
-                    <p className="text-zinc-200 font-medium">{selectedUserDetails.details.studentRoll}</p>
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500">Roll Number</p>
+                    <p className="text-sm text-zinc-200 break-words">{selectedUserDetails.details.studentRoll}</p>
                   </div>
                   <div>
-                    <p className="text-zinc-500">Department</p>
-                    <p className="text-zinc-200 font-medium">{selectedUserDetails.details.department || "N/A"}</p>
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500">Department</p>
+                    <p className="text-sm text-zinc-200 break-words">{selectedUserDetails.details.department || "N/A"}</p>
                   </div>
                   <div>
-                    <p className="text-zinc-500">Type</p>
-                    <p className="text-zinc-200 font-medium">{selectedUserDetails.details.studentType}</p>
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500">Type</p>
+                    <p className="text-sm text-zinc-200 break-words">{selectedUserDetails.details.studentType}</p>
                   </div>
                   {selectedUserDetails.details.studentType === "HOSTELLER" && (
                     <div>
-                      <p className="text-zinc-500">Hostel Block / Room</p>
-                      <p className="text-zinc-200 font-medium">{selectedUserDetails.details.hostelBlock || "N/A"} - {selectedUserDetails.details.roomNumber || "N/A"}</p>
+                      <p className="text-[11px] uppercase tracking-wider text-zinc-500">Hostel Block / Room</p>
+                      <p className="text-sm text-zinc-200 break-words">{selectedUserDetails.details.hostelBlock || "N/A"} - {selectedUserDetails.details.roomNumber || "N/A"}</p>
                     </div>
                   )}
-                  
-                  <div className="col-span-2 pt-4 border-t border-zinc-800/50 space-y-4">
+
+                  <div className="sm:col-span-2 pt-4 border-t border-zinc-800 space-y-4">
                     <div>
-                      <label className="text-sm font-medium text-zinc-300 mb-1 block">Assigned Faculty</label>
+                      <label className="text-sm font-medium text-zinc-300 mb-1.5 block">Assigned Faculty</label>
                       <div className="flex gap-2">
                         <Select
                           disabled={assigning}
@@ -1698,7 +1685,7 @@ export function UserManagementClient({
                     </div>
                     {selectedUserDetails.details.studentType === "HOSTELLER" && (
                       <div>
-                        <label className="text-sm font-medium text-zinc-300 mb-1 block">Assigned Warden</label>
+                        <label className="text-sm font-medium text-zinc-300 mb-1.5 block">Assigned Warden</label>
                         <div className="flex gap-2">
                           <Select
                             disabled={assigning}
@@ -1718,51 +1705,51 @@ export function UserManagementClient({
               )}
 
               {(selectedUserDetails.role === "FACULTY" || selectedUserDetails.role === "FACULTY_ADMIN") && (
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <p className="text-zinc-500">Employee ID</p>
-                    <p className="text-zinc-200 font-medium">{selectedUserDetails.details.employeeId || "N/A"}</p>
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500">Employee ID</p>
+                    <p className="text-sm text-zinc-200 break-words">{selectedUserDetails.details.employeeId || "N/A"}</p>
                   </div>
                   <div>
-                    <p className="text-zinc-500">Department</p>
-                    <p className="text-zinc-200 font-medium">{selectedUserDetails.details.department || "N/A"}</p>
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500">Department</p>
+                    <p className="text-sm text-zinc-200 break-words">{selectedUserDetails.details.department || "N/A"}</p>
                   </div>
                   <div>
-                    <p className="text-zinc-500">Designation</p>
-                    <p className="text-zinc-200 font-medium">{selectedUserDetails.details.designation || "N/A"}</p>
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500">Designation</p>
+                    <p className="text-sm text-zinc-200 break-words">{selectedUserDetails.details.designation || "N/A"}</p>
                   </div>
                   <div>
-                    <p className="text-zinc-500">Assigned Students</p>
-                    <p className="text-zinc-200 font-medium">{selectedUserDetails.details._count.assignedStudents}</p>
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500">Assigned Students</p>
+                    <p className="text-sm text-zinc-200 break-words">{selectedUserDetails.details._count.assignedStudents}</p>
                   </div>
                 </div>
               )}
 
               {selectedUserDetails.role === "WARDEN" && (
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <p className="text-zinc-500">Employee ID</p>
-                    <p className="text-zinc-200 font-medium">{selectedUserDetails.details.employeeId || "N/A"}</p>
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500">Employee ID</p>
+                    <p className="text-sm text-zinc-200 break-words">{selectedUserDetails.details.employeeId || "N/A"}</p>
                   </div>
                   <div>
-                    <p className="text-zinc-500">Hostel Block</p>
-                    <p className="text-zinc-200 font-medium">{selectedUserDetails.details.hostelBlock || "N/A"}</p>
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500">Hostel Block</p>
+                    <p className="text-sm text-zinc-200 break-words">{selectedUserDetails.details.hostelBlock || "N/A"}</p>
                   </div>
                   <div>
-                    <p className="text-zinc-500">Assigned Hostellers</p>
-                    <p className="text-zinc-200 font-medium">{selectedUserDetails.details._count.assignedHostellers}</p>
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500">Assigned Hostellers</p>
+                    <p className="text-sm text-zinc-200 break-words">{selectedUserDetails.details._count.assignedHostellers}</p>
                   </div>
                 </div>
               )}
 
               {selectedUserDetails.role === "SECURITY" && (
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <p className="text-zinc-500">Employee ID</p>
-                    <p className="text-zinc-200 font-medium">{selectedUserDetails.details.employeeId || "N/A"}</p>
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500">Employee ID</p>
+                    <p className="text-sm text-zinc-200 break-words">{selectedUserDetails.details.employeeId || "N/A"}</p>
                   </div>
-                  <div className="col-span-2 pt-4 border-t border-zinc-800/50">
-                    <label className="text-sm font-medium text-zinc-300 mb-1 block">Assigned Gate</label>
+                  <div className="sm:col-span-2 pt-4 border-t border-zinc-800">
+                    <label className="text-sm font-medium text-zinc-300 mb-1.5 block">Assigned Gate</label>
                     <div className="flex gap-2">
                       <Select
                         disabled={assigning}
@@ -1781,10 +1768,9 @@ export function UserManagementClient({
             </div>
           </div>
         ) : (
-          <div className="p-8 text-center text-zinc-500">Failed to load details</div>
+          <div className="py-12 text-center text-sm text-zinc-500">Failed to load details</div>
         )}
       </Modal>
-    
     </>
   );
 }

@@ -46,8 +46,10 @@ export function useRegisterFilters() {
 export function RegisterToolbar({ filters, action, searchPlaceholder = "Searchâ€¦" }: { filters: RegisterFilters; action?: React.ReactNode; searchPlaceholder?: string }) {
   const t = useT();
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-      <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+      {/* Primary action first on phones (full width), at the end of the row on larger screens */}
+      {action && <div className="order-first sm:order-last sm:ml-auto [&>*]:w-full sm:[&>*]:w-auto">{action}</div>}
+      <div className="flex items-center gap-2 min-w-0">
         <input
           type="date"
           aria-label={t("Date")}
@@ -55,25 +57,35 @@ export function RegisterToolbar({ filters, action, searchPlaceholder = "Searchâ€
           max={istDateString()}
           disabled={filters.allDates}
           onChange={(e) => filters.setDate(e.target.value)}
-          className="h-10 rounded-xl border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-200 [color-scheme:light] disabled:opacity-40"
+          className="h-12 sm:h-10 min-w-0 flex-1 sm:flex-none rounded-full border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 [color-scheme:light] outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 disabled:opacity-40"
         />
-        <label className="flex items-center gap-1.5 text-xs text-zinc-400 whitespace-nowrap">
-          <input type="checkbox" checked={filters.allDates} onChange={(e) => filters.setAllDates(e.target.checked)} className="accent-orange-500" />
+        <label
+          className={`inline-flex h-12 sm:h-10 shrink-0 cursor-pointer select-none items-center gap-2 rounded-full border px-4 text-sm font-medium whitespace-nowrap transition-colors ${
+            filters.allDates
+              ? "border-orange-500/30 bg-orange-500/10 text-orange-400"
+              : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={filters.allDates}
+            onChange={(e) => filters.setAllDates(e.target.checked)}
+            className="h-4 w-4 accent-orange-500"
+          />
           {t("All dates")}
         </label>
       </div>
-      <div className="relative flex-1 min-w-0">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
+      <div className="relative flex-1 min-w-0 sm:min-w-[220px]">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
         <input
           type="search"
           aria-label={t("Search")}
           value={filters.qInput}
           onChange={(e) => filters.setQInput(e.target.value)}
           placeholder={t(searchPlaceholder)}
-          className="h-10 w-full rounded-xl border border-zinc-800 bg-zinc-900 pl-9 pr-3 text-sm text-zinc-200 placeholder:text-zinc-500"
+          className="h-12 sm:h-10 w-full rounded-full border border-zinc-800 bg-zinc-900 pl-11 pr-4 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
         />
       </div>
-      {action}
     </div>
   );
 }

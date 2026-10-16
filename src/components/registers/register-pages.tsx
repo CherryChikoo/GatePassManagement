@@ -3,11 +3,38 @@ import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BookOpen, ChevronRight, Eye } from "lucide-react";
+import {
+  ArrowLeftRight,
+  BedDouble,
+  BedSingle,
+  Briefcase,
+  Car,
+  CarTaxiFront,
+  ChevronRight,
+  ClipboardCheck,
+  ContactRound,
+  Eye,
+  FileSignature,
+  HardHat,
+  House,
+  KeyRound,
+  NotebookPen,
+  Package,
+  PackageOpen,
+  Plus,
+  School,
+  Search,
+  ShieldCheck,
+  Undo2,
+  UsersRound,
+  type LucideIcon,
+} from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
+import { GoBackButton } from "@/components/ui/go-back-button";
 import { REGISTERS, REGISTER_BY_KEY, isEntryRegister, registerSlug, type RegisterKey } from "@/lib/registers/definitions";
 import { getRegisterCountsToday } from "@/server/actions/registers";
 import { EntryRegisterView } from "./entry-register-view";
+import { QuickEntryModal } from "./quick-entry";
 import { localizeRegister } from "./localize";
 import { FacultyBookView, HomeOutingSummaryView, HostelOutingView, VisitorsBookView } from "./derived-views";
 
@@ -19,53 +46,146 @@ const BASE: Record<RegisterViewer, string> = {
   SECURITY_SUPERVISOR: "/supervisor",
 };
 
-export function RegistersHub({ viewer, hidden = [] }: { viewer: RegisterViewer; hidden?: string[] }) {
+/** One recognisable icon per register (the list is long; icons make it scannable). */
+const REGISTER_ICON: Record<RegisterKey, LucideIcon> = {
+  FACULTY_BOOK: Briefcase,
+  VISITORS: ContactRound,
+  ADMISSION: School,
+  CAR_BOOK: Car,
+  AUTO_BOOK: CarTaxiFront,
+  DAILY_LABOUR: HardHat,
+  LABOUR_CONTRACT: FileSignature,
+  SIROS_STOCK: Package,
+  COLLEGE_STOCK: PackageOpen,
+  SIROS_LABOUR_CONTRACT: UsersRound,
+  COLLEGE_DAILY: NotebookPen,
+  BOYS_HOSTEL_OUTING: BedDouble,
+  LADIES_HOSTEL_OUTING: BedSingle,
+  SECURITY_DAILY: ShieldCheck,
+  SECURITY_ATTENDANCE: ClipboardCheck,
+  HOME_OUTING_SUMMARY: House,
+  AUTO_IN_OUT: ArrowLeftRight,
+  KEYS: KeyRound,
+  RETURNABLE: Undo2,
+};
+
+export function RegistersHub({
+  viewer,
+  hidden = [],
+  creatable = [],
+}: {
+  viewer: RegisterViewer;
+  hidden?: string[];
+  /** Registers this user may add to: they get a "+" that opens the form right here */
+  creatable?: string[];
+}) {
   const t = useT();
   const base = BASE[viewer];
+  const isSecurity = viewer === "SECURITY";
   const [counts, setCounts] = useState<Record<string, number>>({});
-  useEffect(() => {
+  const loadCounts = () => {
     getRegisterCountsToday().then(setCounts).catch(() => setCounts({}));
-  }, []);
+  };
+  useEffect(loadCounts, []);
+
+  const [query, setQuery] = useState("");
+  const [quickKey, setQuickKey] = useState<RegisterKey | null>(null);
+
+  const visible = REGISTERS.filter((r) => !hidden.includes(r.key));
+  const q = query.trim().toLowerCase();
+  const list = q
+    ? visible.filter((r) => `${r.title} ${t(r.title)} ${r.description} ${t(r.description)}`.toLowerCase().includes(q))
+    : visible;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <BackButton href={base} label={t("Back to Dashboard")} />
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2">
-          <BookOpen className="h-6 w-6 text-orange-500" /> {t("Security Registers")}
-          {viewer !== "SECURITY" && (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-zinc-800 text-zinc-300 border-zinc-700">
-              <Eye className="h-3 w-3" /> {t("View only")}
-            </span>
-          )}
-        </h1>
-        <p className="text-sm text-zinc-400 mt-1">
-          {t("All gate registers. Security cannot change saved records; only Main Admin can edit or delete them.")}
-        </p>
+    <div className="mx-auto max-w-3xl space-y-5">
+      <div className="flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          {!isSecurity && <BackButton href={base} label={t("Back to Dashboard")} />}
+          <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 flex flex-wrap items-center gap-2">
+            {t(isSecurity ? "Registers" : "Security Registers")}
+            {!isSecurity && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-0.5 rounded-full border border-zinc-800 bg-zinc-950 text-zinc-400">
+                <Eye className="h-3 w-3" /> {t("View only")}
+              </span>
+            )}
+          </h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            {isSecurity
+              ? t("Tap + to add an entry straight away, or open a register to see its records.")
+              : t("All gate registers. Security cannot change saved records; only Main Admin can edit or delete them.")}
+          </p>
+        </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        {REGISTERS.filter((r) => !hidden.includes(r.key)).map((r) => (
-          <Link
-            key={r.key}
-            href={`${base}/registers/${registerSlug(r.key)}`}
-            className="group rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 hover:border-orange-500/40 transition-colors flex items-start gap-3"
-          >
-            <span className="shrink-0 h-8 w-8 rounded-lg bg-orange-500/10 text-orange-400 flex items-center justify-center">
-              <BookOpen className="h-4 w-4" aria-hidden="true" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-zinc-100">{t(r.title)}</span>
-              <span className="block text-xs text-zinc-500 mt-0.5">{t(r.description)}</span>
-              {isEntryRegister(r) && (counts[r.key] ?? 0) > 0 && (
-                <span className="inline-block mt-1.5 text-[11px] rounded bg-zinc-800 px-1.5 py-0.5 text-zinc-300">
-                  {t("{n} today", { n: counts[r.key] })}
+
+      {/* Find a register quickly */}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("Search registers…")}
+          aria-label={t("Search registers…")}
+          className="h-12 w-full rounded-full border border-zinc-800 bg-zinc-900 pl-11 pr-4 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
+        />
+      </div>
+
+      <ul className="overflow-hidden rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-card divide-y divide-zinc-800/70">
+        {list.map((r) => {
+          const Icon = REGISTER_ICON[r.key];
+          const href = `${base}/registers/${registerSlug(r.key)}`;
+          const n = counts[r.key] ?? 0;
+          // "+": entry registers open their form here; the visitors book opens visitor registration
+          const quickAdd = isEntryRegister(r) && creatable.includes(r.key);
+          const visitorAdd = isSecurity && r.key === "VISITORS";
+          return (
+            <li key={r.key} className="flex items-center gap-2 pr-2 sm:pr-3">
+              <Link href={href} className="group flex min-w-0 flex-1 items-center gap-3 px-3 sm:px-4 py-3.5 hover:bg-zinc-950/70 transition-colors">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
+                  <Icon className="h-5 w-5" aria-hidden="true" />
                 </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="truncate text-[15px] font-medium text-zinc-100">{t(r.title)}</span>
+                    {n > 0 && (
+                      <span className="shrink-0 rounded-full bg-zinc-950 border border-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-400 tabular-nums">
+                        {t("{n} today", { n })}
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-zinc-500">{t(r.description)}</span>
+                </span>
+              </Link>
+              {quickAdd ? (
+                <button
+                  type="button"
+                  onClick={() => setQuickKey(r.key)}
+                  aria-label={`${t("New entry")} — ${t(r.title)}`}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)] hover:bg-orange-700 active:scale-95 transition-[background-color,transform]"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
+              ) : visitorAdd ? (
+                <Link
+                  href="/security/visitors"
+                  aria-label={t("Register visitor")}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)] hover:bg-orange-700 active:scale-95 transition-[background-color,transform]"
+                >
+                  <Plus className="h-5 w-5" />
+                </Link>
+              ) : (
+                <Link href={href} aria-hidden="true" tabIndex={-1} className="flex h-11 w-11 shrink-0 items-center justify-center text-zinc-600">
+                  <ChevronRight className="h-5 w-5" />
+                </Link>
               )}
-            </span>
-            <ChevronRight className="h-4 w-4 text-zinc-600 group-hover:text-orange-400 shrink-0 mt-1" />
-          </Link>
-        ))}
-      </div>
+            </li>
+          );
+        })}
+        {list.length === 0 && <li className="px-4 py-10 text-center text-sm text-zinc-500">{t("No register matches your search.")}</li>}
+      </ul>
+
+      {quickKey && <QuickEntryModal registerKey={quickKey} onClose={() => setQuickKey(null)} onSaved={loadCounts} />}
     </div>
   );
 }
@@ -104,7 +224,7 @@ export function RegisterPage({
   return (
     <div className="space-y-5">
       <div>
-        <BackButton href={`${base}/registers`} label={t("All registers")} />
+        {isSecurity ? <GoBackButton className="mb-3" /> : <BackButton href={`${base}/registers`} label={t("All registers")} />}
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
           {def.title}
         </h1>

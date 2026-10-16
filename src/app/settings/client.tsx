@@ -60,45 +60,47 @@ export function SettingsClient({ user }: Props) {
   const [password, setPassword] = useState("");
 
   const isFacultyOrHod = ["FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN"].includes(user.role);
+  // Security guards only keep their name and phone up to date here (login details are managed by the admin)
+  const nameAndPhoneOnly = user.role === "SECURITY";
 
   const roleLabelMap: Record<string, { title: string; color: string }> = {
     DIRECTOR: {
       title: "Campus Director",
-      color: "bg-purple-500/15 text-purple-300 border-purple-500/30",
+      color: "bg-orange-500/10 text-orange-400 border-orange-500/20",
     },
     DEAN: {
       title: "Dean",
-      color: "bg-sky-500/15 text-sky-300 border-sky-500/30",
+      color: "bg-orange-500/10 text-orange-400 border-orange-500/20",
     },
     FACULTY_ADMIN: {
       title: "Head of Department (HOD)",
-      color: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30",
+      color: "bg-orange-500/10 text-orange-400 border-orange-500/20",
     },
     FACULTY: {
       title: "Faculty Incharge",
-      color: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30",
+      color: "bg-orange-500/10 text-orange-400 border-orange-500/20",
     },
     ADMIN: {
       title: "System Administrator",
-      color: "bg-purple-500/15 text-purple-300 border-purple-500/30",
+      color: "bg-orange-500/10 text-orange-400 border-orange-500/20",
     },
     WARDEN: {
       title: "Hostel Warden",
-      color: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+      color: "bg-orange-500/10 text-orange-400 border-orange-500/20",
     },
     SECURITY: {
       title: "Security Staff",
-      color: "bg-red-500/15 text-red-300 border-red-500/30",
+      color: "bg-orange-500/10 text-orange-400 border-orange-500/20",
     },
     STUDENT: {
       title: "Student",
-      color: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+      color: "bg-orange-500/10 text-orange-400 border-orange-500/20",
     },
   };
 
   const currentRoleInfo = roleLabelMap[user.role] || {
     title: user.role,
-    color: "bg-zinc-800 text-zinc-300 border-zinc-700",
+    color: "bg-zinc-950 text-zinc-300 border-zinc-800",
   };
 
   async function handleUpdate(e: React.FormEvent<HTMLFormElement>) {
@@ -143,38 +145,52 @@ export function SettingsClient({ user }: Props) {
     <>
       <TopLoadingBar active={loading} />
 
-      <div className="max-w-3xl mx-auto space-y-8 pb-16">
+      <div className="max-w-3xl mx-auto space-y-6 pb-16">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-3">
-            {t("Account Settings")}
-            <span
-              className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${currentRoleInfo.color}`}
-            >
-              {t(currentRoleInfo.title)}
-            </span>
-          </h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            {t("Manage your personal profile information, department details, and authentication credentials.")}
+          <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">{t("Account Settings")}</h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            {nameAndPhoneOnly
+              ? t("Keep your name and phone number up to date.")
+              : t("Manage your personal profile information, department details, and authentication credentials.")}
           </p>
         </div>
 
-        <Card className="border border-zinc-800 bg-zinc-900/60 shadow-none">
+        {/* Who is signed in */}
+        <div className="flex items-center gap-4 rounded-3xl border border-zinc-800/80 bg-zinc-900 p-5 sm:p-6 shadow-card">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-xl font-semibold text-orange-400">
+            {(user.name || "?").charAt(0).toUpperCase()}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-lg font-medium text-zinc-100">{user.name}</p>
+            <p className="truncate text-sm text-zinc-500">{user.email}</p>
+          </div>
+          <span className={`hidden sm:inline-flex shrink-0 text-xs font-medium px-3 py-1 rounded-full border ${currentRoleInfo.color}`}>
+            {t(currentRoleInfo.title)}
+          </span>
+        </div>
+
+        <Card>
           <CardHeader className="border-b border-zinc-800/80 pb-4">
-            <CardTitle className="text-base font-semibold flex items-center gap-2 text-zinc-100">
-              <User className="h-4 w-4 text-orange-500" />
+            <CardTitle className="text-base font-medium flex items-center gap-2 text-zinc-100">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500/10 text-orange-400">
+                <User className="h-4 w-4" />
+              </span>
               {t("Profile Details")}
+              <span className={`sm:hidden ml-auto text-[11px] font-medium px-2.5 py-0.5 rounded-full border ${currentRoleInfo.color}`}>
+                {t(currentRoleInfo.title)}
+              </span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-4 sm:p-6">
+          <CardContent className="p-5 sm:p-6">
             <form onSubmit={handleUpdate} className="space-y-6">
               {error && (
-                <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400 flex items-center gap-2.5 animate-in fade-in">
+                <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400 flex items-center gap-2.5 animate-in fade-in">
                   <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
                   <span>{t(error)}</span>
                 </div>
               )}
               {success && (
-                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400 flex items-center gap-2.5 animate-in fade-in">
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300 flex items-center gap-2.5 animate-in fade-in">
                   <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
                   <span>{success}</span>
                 </div>
@@ -192,7 +208,8 @@ export function SettingsClient({ user }: Props) {
                   icon={<User className="h-4 w-4" />}
                 />
 
-                {/* Email Address (Read-only) */}
+                {/* Email Address (Read-only) — not shown to Security (name & phone only) */}
+                {!nameAndPhoneOnly && (
                 <div>
                   <Input
                     label={t("Email Address")}
@@ -210,6 +227,7 @@ export function SettingsClient({ user }: Props) {
                       : t("Primary login email registered with campus authentication.")}
                   </p>
                 </div>
+                )}
 
                 {/* Phone Number */}
                 <Input
@@ -239,8 +257,8 @@ export function SettingsClient({ user }: Props) {
                     {selfManaged && user.role === "DEAN" ? (
                       <div className="space-y-1">
                         <label htmlFor="settings-dean-of" className="block text-sm font-medium text-zinc-300">Dean of</label>
-                        <div className="flex items-stretch rounded-xl border border-zinc-700/50 bg-zinc-900 focus-within:ring-2 focus-within:ring-orange-500/40">
-                          <span className="flex items-center px-3.5 text-sm font-semibold text-zinc-400 border-r border-zinc-700/50 whitespace-nowrap">Dean of</span>
+                        <div className="flex items-stretch rounded-2xl border border-zinc-800 bg-zinc-900 focus-within:border-orange-500/50 focus-within:ring-4 focus-within:ring-orange-500/10">
+                          <span className="flex items-center px-3.5 text-sm font-semibold text-zinc-400 border-r border-zinc-800 whitespace-nowrap">Dean of</span>
                           <input
                             id="settings-dean-of"
                             value={title}
@@ -290,12 +308,17 @@ export function SettingsClient({ user }: Props) {
                   </div>
                 )}
 
-                <div className="h-px w-full bg-zinc-800/80 my-6"></div>
+                {!nameAndPhoneOnly && (
+                <>
+                <div className="h-px w-full bg-zinc-800/80 my-2"></div>
 
                 {/* Change Password Section */}
                 <div>
-                  <h3 className="text-sm font-semibold text-zinc-200 mb-3 flex items-center gap-2">
-                    <Lock className="h-4 w-4 text-orange-500" /> {t("Change Password")}
+                  <h3 className="text-sm font-medium text-zinc-100 mb-3 flex items-center gap-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-950 text-zinc-400">
+                      <Lock className="h-4 w-4" />
+                    </span>
+                    {t("Change Password")}
                   </h3>
                   <div className="space-y-4">
                     <Input
@@ -326,13 +349,15 @@ export function SettingsClient({ user }: Props) {
                     {t("A new password must be at least 8 characters. Your current password is required to change it.")}
                   </p>
                 </div>
+                </>
+                )}
               </div>
 
               <div className="flex justify-end pt-5 border-t border-zinc-800/80 mt-6">
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="w-full sm:w-auto bg-orange-600 hover:bg-orange-500 text-white font-semibold shadow-none flex items-center justify-center gap-2"
+                  className="w-full sm:w-auto sm:px-8"
                 >
                   <Save className="h-4 w-4" />
                   {loading ? t("Saving Changes...") : t("Save Changes")}

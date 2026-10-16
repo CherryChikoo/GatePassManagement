@@ -56,107 +56,69 @@ export function DirectorOversightClient() {
   });
 
   return (
-    <div className="space-y-8">
+    <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2.5">
-          <span>Campus Executive Oversight</span>
-          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">Campus Executive Oversight</h1>
+          <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2.5 py-1 text-xs font-medium text-orange-400">
+            <Eye className="h-3 w-3" aria-hidden="true" />
             Full Operations View
           </span>
-        </h1>
-        <p className="text-sm text-zinc-400 mt-1">
+        </div>
+        <p className="mt-1 text-sm text-zinc-500">
           Macro indicators of institutional movement, personnel, departments, and gate security
         </p>
       </div>
 
       {/* Campus Population Snapshot */}
-      <div>
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-4 flex items-center gap-2">
-          <Users className="h-4 w-4 text-purple-400" />
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-orange-400">
+          <Users className="h-3.5 w-3.5" aria-hidden="true" />
           Campus Population & Personnel
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          <StatCard
-            title="Enrolled Students"
-            value={stats.totalStudents}
-            icon={<GraduationCap className="h-5 w-5 text-blue-400" />}
-            description="Undergraduate & Postgrad"
-          />
-          <StatCard
-            title="Teaching Faculty"
-            value={stats.totalFaculty}
-            icon={<Briefcase className="h-5 w-5 text-emerald-400" />}
-            description="Across all divisions"
-          />
-          <StatCard
-            title="Department Heads"
-            value={stats.totalHODs}
-            icon={<Shield className="h-5 w-5 text-indigo-400" />}
-            description="HOD leadership"
-          />
-          <StatCard
-            title="Hostel Wardens"
-            value={stats.totalWardens}
-            icon={<Building2 className="h-5 w-5 text-amber-400" />}
-            description="Hostel administration"
-          />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+          <StatCard title="Enrolled Students" value={stats.totalStudents} icon={<GraduationCap />} description="Undergraduate & Postgrad" />
+          <StatCard title="Teaching Faculty" value={stats.totalFaculty} icon={<Briefcase />} description="Across all divisions" />
+          <StatCard title="Department Heads" value={stats.totalHODs} icon={<Shield />} description="HOD leadership" />
+          <StatCard title="Hostel Wardens" value={stats.totalWardens} icon={<Building2 />} description="Hostel administration" />
           <StatCard
             title="Gate Security Staff"
             value={stats.totalSecurity}
-            icon={<DoorOpen className="h-5 w-5 text-red-400" />}
+            icon={<DoorOpen />}
             description="Active security guards"
+            className="col-span-2 sm:col-span-2 lg:col-span-1"
           />
         </div>
-      </div>
+      </section>
 
       {/* Today's Movement & Flow Metrics */}
-      <div>
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-4 flex items-center gap-2">
-          <Activity className="h-4 w-4 text-cyan-400" />
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-orange-400">
+          <Activity className="h-3.5 w-3.5" aria-hidden="true" />
           Today&apos;s Gate Movement & Authorizations
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <StatCard
-            title="Passes Approved Today"
-            value={stats.approvedToday}
-            icon={<CheckCircle2 className="h-5 w-5 text-emerald-400" />}
-            description="Authorized departures"
-          />
-          <StatCard
-            title="Passes Denied Today"
-            value={stats.rejectedToday}
-            icon={<XCircle className="h-5 w-5 text-red-400" />}
-            description="Rejected requests"
-          />
-          <StatCard
-            title="Recorded Gate Exits"
-            value={stats.exitsToday}
-            icon={<DoorOpen className="h-5 w-5 text-orange-400" />}
-            description="Exit scans registered"
-          />
-          <StatCard
-            title="Recorded Gate Entries"
-            value={stats.entriesToday}
-            icon={<MapPin className="h-5 w-5 text-cyan-400" />}
-            description="Return scans registered"
-          />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard title="Passes Approved Today" value={stats.approvedToday} icon={<CheckCircle2 />} description="Authorized departures" />
+          <StatCard title="Passes Denied Today" value={stats.rejectedToday} icon={<XCircle />} description="Rejected requests" />
+          <StatCard title="Recorded Gate Exits" value={stats.exitsToday} icon={<DoorOpen />} description="Exit scans registered" />
+          <StatCard title="Recorded Gate Entries" value={stats.entriesToday} icon={<MapPin />} description="Return scans registered" />
         </div>
-      </div>
+      </section>
 
       {/* Department Distribution Grid */}
-      <Card className="border-zinc-800 bg-zinc-900/40">
-        <CardHeader>
-          <CardTitle className="text-base font-semibold text-zinc-100 flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-indigo-400" />
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="font-medium flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-orange-400" />
             Academic Departments Breakdown
           </CardTitle>
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-zinc-500">
             Faculty staffing and HOD assignment overview by department
           </p>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <CardContent className="pt-2">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             {DEPARTMENTS.map((dept) => {
               const count = deptFacultyCounts[dept.name] || deptFacultyCounts[dept.code] || 0;
               const hasHOD = allHODs.some(
@@ -165,24 +127,22 @@ export function DirectorOversightClient() {
               );
 
               return (
-                <div
-                  key={dept.code}
-                  className="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-between gap-3"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-xs px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                        {dept.code}
-                      </span>
-                      <span className="text-xs font-semibold text-zinc-200">{dept.name}</span>
-                    </div>
-                    <p className="text-[11px] text-zinc-500 mt-1">
-                      {hasHOD ? "HOD Appointed" : "No HOD Assigned"}
-                    </p>
+                <div key={dept.code} className="min-w-0 rounded-2xl border border-zinc-800 p-3.5 sm:p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-semibold text-orange-400">
+                      {dept.code}
+                    </span>
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${hasHOD ? "bg-emerald-500" : "bg-zinc-700"}`} aria-hidden="true" />
                   </div>
-                  <div className="text-right">
-                    <span className="text-lg font-extrabold text-zinc-100">{count}</span>
-                    <span className="block text-[10px] text-zinc-400 font-medium">Faculty</span>
+                  <p className="mt-2 text-xs font-medium text-zinc-200 truncate" title={dept.name}>
+                    {dept.name}
+                  </p>
+                  <p className="text-[11px] text-zinc-500">
+                    {hasHOD ? "HOD Appointed" : "No HOD Assigned"}
+                  </p>
+                  <div className="mt-3">
+                    <span className="block text-xl font-light leading-none text-zinc-100">{count}</span>
+                    <span className="mt-1 block text-[10px] text-zinc-500">Faculty</span>
                   </div>
                 </div>
               );
