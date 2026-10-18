@@ -3,5 +3,5 @@ import { ExecutiveStudentsClient } from "@/components/dashboard/executive-studen
 
 export default async function SupervisorStudentsPage() {
   await requireRole("SECURITY_SUPERVISOR");
-  return <ExecutiveStudentsClient role="SECURITY_SUPERVISOR" roleTitle="Security Supervisor · View only" />;
+  return <ExecutiveStudentsClient role="SECURITY_SUPERVISOR" roleTitle="Security Supervisor" />;
 }

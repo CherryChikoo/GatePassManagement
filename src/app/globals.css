@@ -269,3 +269,34 @@ input:-webkit-autofill:active {
 @media (prefers-reduced-motion: reduce) {
   .animate-qr-sweep { animation: none; top: 50%; }
 }
+
+/* Pointer cursor on everything clickable. Tailwind v4 resets buttons to the
+   default arrow; restore the hand for buttons, links, choices and pickers. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"],
+  [role="radio"],
+  [role="checkbox"],
+  a[href],
+  summary,
+  select:not(:disabled),
+  label:has(> input[type="checkbox"]:not(:disabled)),
+  label:has(> input[type="radio"]:not(:disabled)),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled),
+  input[type="date"]:not(:disabled),
+  input[type="time"]:not(:disabled) {
+    cursor: pointer;
+  }
+  button:disabled,
+  select:disabled,
+  input:disabled,
+  textarea:disabled {
+    cursor: not-allowed;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+  }
+}

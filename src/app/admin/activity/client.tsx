@@ -1,5 +1,7 @@
 "use client";
 
+import { DateField } from "@/components/ui/date-field";
+import { LoadingPill } from "@/components/ui/loading-pill";
 import React, { useState, useEffect } from "react";
 // Student/faculty pages load their data on hover/touch (intent), not on click
 import { IntentLink as Link } from "@/components/ui/intent-link";
@@ -219,6 +221,8 @@ export function ActivityClient({ user, data: initialData }: Props) {
   const [savingOutsider, setSavingOutsider] = useState(false);
   // The visitor's photo is mandatory (compressed in the browser before upload)
   const [visitorPhoto, setVisitorPhoto] = useState<string | null>(null);
+  // Visitor on foot: no vehicle number needed
+  const [visitorOnFoot, setVisitorOnFoot] = useState(false);
   async function handleVisitorPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -253,7 +257,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
         purpose: formData.get("purpose") as string,
         visitingStudent: (formData.get("visitingStudent") as string) || "",
         gate: (formData.get("gate") as string) || "",
-        vehicleNumber: (formData.get("vehicleNumber") as string) || "",
+        vehicleNumber: visitorOnFoot ? "On foot" : ((formData.get("vehicleNumber") as string) || "").trim().toUpperCase(),
       });
       if (!res?.success) {
         setActionError(res?.error || "Failed to register visitor.");
@@ -261,6 +265,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
       }
       setShowAddModal(false);
       setVisitorPhoto(null);
+      setVisitorOnFoot(false);
       await reloadData(date);
     } catch {
       setActionError("Failed to register visitor.");
@@ -460,15 +465,15 @@ export function ActivityClient({ user, data: initialData }: Props) {
             )}
             <div className="relative flex-1 sm:flex-none">
               <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
-              <input
-                type="date"
+              <DateField
                 value={date}
                 max={istDateString()}
                 onChange={(e) => handleDateChange(e.target.value)}
                 disabled={loading}
                 aria-label="Select date"
                 className="h-10 w-full sm:w-auto rounded-full border border-zinc-800 bg-zinc-900 pl-10 pr-4 text-sm font-medium text-zinc-200 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 disabled:opacity-50 [color-scheme:light] cursor-pointer"
-              />
+ showIcon={false}
+/>
             </div>
             {activeTab === "outsiders" && (
               <Button onClick={() => setShowAddModal(true)} className="h-10 flex-1 sm:flex-none">
@@ -480,6 +485,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
         </div>
 
         {/* Main Content Area with Loading State */}
+        <LoadingPill active={loading} />
         <div className={`space-y-6 lg:space-y-8 transition-opacity duration-200 ${loading ? "opacity-50 pointer-events-none grayscale-[0.2]" : "opacity-100"}`}>
           {/* Movement Operations Summary Cards */}
           <section className="space-y-3">
@@ -972,11 +978,33 @@ export function ActivityClient({ user, data: initialData }: Props) {
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
-              <label className="text-sm font-medium text-zinc-300">Vehicle Number</label>
-              <Input
-                name="vehicleNumber"
-                placeholder="e.g. KA-04-MA-1234 or leave blank for Pedestrian"
-              />
+              <label htmlFor="admin-visitor-vehicle" className="text-sm font-medium text-zinc-300">
+                Vehicle Number <span className="text-orange-400">*</span>
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  id="admin-visitor-vehicle"
+                  name="vehicleNumber"
+                  required={!visitorOnFoot}
+                  disabled={visitorOnFoot}
+                  autoCapitalize="characters"
+                  placeholder={visitorOnFoot ? "No vehicle" : "e.g. AP 05 AB 1234"}
+                  className="disabled:opacity-60"
+                />
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={visitorOnFoot}
+                  onClick={() => setVisitorOnFoot((v) => !v)}
+                  className={`h-12 shrink-0 rounded-2xl border px-4 text-sm font-medium transition-colors ${
+                    visitorOnFoot
+                      ? "border-orange-500/50 bg-orange-500/10 text-orange-400"
+                      : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+                  }`}
+                >
+                  {visitorOnFoot ? "✓ " : ""}No vehicle (on foot)
+                </button>
+              </div>
             </div>
           </div>
 

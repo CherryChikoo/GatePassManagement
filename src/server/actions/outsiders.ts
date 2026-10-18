@@ -50,6 +50,9 @@ export async function registerOutsider(data: Record<string, unknown>) {
   // Name, mobile number and a photo are mandatory; every other input is optional
   if (!input.name || input.name.trim().length < 2) return { success: false, error: "Visitor name is required" };
   if (!input.phone) return { success: false, error: "Mobile number is required" };
+  if (!input.vehicleNumber || !input.vehicleNumber.trim()) {
+    return { success: false, error: "Enter the vehicle number, or tap No vehicle" };
+  }
   if (!input.photoUrl) return { success: false, error: "Take the visitor's photo before registering" };
 
   try {

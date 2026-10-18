@@ -18,6 +18,8 @@ export function formatFieldValue(f: FieldDef, v: unknown): string {
       return typeof v === "string" ? formatClock(v) : "—";
     case "yesno":
       return v === true ? "Yes" : v === false ? "No" : "—";
+    case "photo":
+      return "Photo";
     case "staff": {
       const s = v as { name?: string; employeeId?: string | null };
       return s?.name ? `${s.name}${s.employeeId ? ` (${s.employeeId})` : ""}` : "—";

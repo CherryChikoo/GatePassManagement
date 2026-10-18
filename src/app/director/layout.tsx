@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { DashboardLayout } from "@/components/dashboard/layout";
-import { requireRole } from "@/lib/auth/helpers";
+import { requireRole, avatarUrlFor } from "@/lib/auth/helpers";
 import { logoutAction } from "@/server/actions/auth";
 import { StoreHydrator } from "@/components/providers/store-hydrator";
 import { getLeadershipTitle } from "@/lib/auth/titles";
@@ -19,6 +19,7 @@ export default async function DirectorLayout({ children }: { children: React.Rea
       userName={user.name}
       userEmail={user.email}
       onLogout={logoutAction}
+      avatarUrl={avatarUrlFor(user)}
       roleTitle={roleTitle}
     >
       <StoreHydrator user={{ name: user.name, email: user.email, role: user.role, profileId: user.profileId }} />

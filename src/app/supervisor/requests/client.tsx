@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Eye, Search, ClipboardCheck } from "lucide-react";
+import { Search, ClipboardCheck } from "lucide-react";
 import { EmptyState } from "@/components/ui/primitives";
 import { Card, CardContent } from "@/components/ui/card";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
@@ -69,9 +69,6 @@ export function SupervisorRequestsClient() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">Pass Requests</h1>
-            <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2.5 py-1 text-xs font-medium text-orange-400">
-              <Eye className="h-3 w-3" aria-hidden="true" /> View only
-            </span>
           </div>
           <p className="mt-1 text-sm text-zinc-500">
             Today&apos;s student and faculty requests, plus any still pending. Past requests are in the Activity tab.

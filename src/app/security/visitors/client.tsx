@@ -1,4 +1,5 @@
 "use client";
+import { DepartmentSelect } from "@/components/ui/department-select";
 import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
 
@@ -55,6 +56,10 @@ export function OutsidersClient({ user, inside, history }: Props) {
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   
+  // Visitor on foot: no vehicle number needed
+  const [onFoot, setOnFoot] = useState(false);
+  // Bumped after each registration so the department picker clears too
+  const [formNonce, setFormNonce] = useState(0);
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -144,6 +149,12 @@ export function OutsidersClient({ user, inside, history }: Props) {
 
     setLoading(true);
     try {
+      // Vehicle number is required unless the visitor came on foot
+      if (!onFoot && !formData.vehicleNumber.trim()) {
+        setError(t("Enter the vehicle number, or tap No vehicle")); setTimeout(() => setError(null), 4000);
+        setLoading(false);
+        return;
+      }
       // The visitor's photo is mandatory
       if (!photo) {
         setError(t("Take the visitor's photo before registering")); setTimeout(() => setError(null), 4000);
@@ -161,7 +172,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
         path = upload.path;
       }
 
-      const result = await registerOutsider({ ...formData, photoUrl: path });
+      const result = await registerOutsider({ ...formData, vehicleNumber: onFoot ? "On foot" : formData.vehicleNumber.trim(), photoUrl: path });
       
       if (result.success) {
         setSuccess(t("Visitor registered successfully!")); setTimeout(() => setSuccess(null), 4000);
@@ -170,6 +181,8 @@ export function OutsidersClient({ user, inside, history }: Props) {
           address: "", department: "", remarks: "",
         });
         setPhoto(null);
+        setOnFoot(false);
+        setFormNonce((n) => n + 1);
         // Stay on a fresh form: the next visitor in the queue can be registered straight away
         router.refresh();
       } else {
@@ -380,6 +393,39 @@ export function OutsidersClient({ user, inside, history }: Props) {
                     </label>
                     <Input id="visitor-phone" required type="tel" inputMode="tel" autoComplete="off" maxLength={15} placeholder={t("Enter phone")} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="text-base sm:text-sm" />
                   </div>
+
+                {/* Vehicle number: required ("No vehicle" for visitors on foot) */}
+                <div className="space-y-1.5">
+                  <label htmlFor="visitor-vehicle" className={labelCls}>
+                    {t("Vehicle Number")} <span className="text-orange-400">*</span>
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      id="visitor-vehicle"
+                      required={!onFoot}
+                      disabled={onFoot}
+                      autoComplete="off"
+                      autoCapitalize="characters"
+                      placeholder={onFoot ? t("No vehicle") : t("E.g., TS 09 EA 1234")}
+                      value={onFoot ? "" : formData.vehicleNumber}
+                      onChange={(e) => setFormData({ ...formData, vehicleNumber: e.target.value.toUpperCase() })}
+                      className="text-base sm:text-sm disabled:opacity-60"
+                    />
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={onFoot}
+                      onClick={() => setOnFoot((v) => !v)}
+                      className={`h-12 shrink-0 rounded-2xl border px-4 text-sm font-medium transition-colors ${
+                        onFoot
+                          ? "border-orange-500/50 bg-orange-500/10 text-orange-400"
+                          : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+                      }`}
+                    >
+                      {onFoot ? "✓ " : ""}{t("No vehicle (on foot)")}
+                    </button>
+                  </div>
+                </div>
                 </div>
 
                 {/* Category: one tap */}
@@ -446,11 +492,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                     </div>
                     <div className="space-y-1.5">
                       <label htmlFor="visitor-department" className={labelCls}>{t("Department")}</label>
-                      <Input id="visitor-department" placeholder={t("Department being visited")} value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} className="text-base sm:text-sm" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label htmlFor="visitor-vehicle" className={labelCls}>{t("Vehicle Number")}</label>
-                      <Input id="visitor-vehicle" placeholder={t("E.g., TS 09 EA 1234")} value={formData.vehicleNumber} onChange={e => setFormData({...formData, vehicleNumber: e.target.value})} className="text-base sm:text-sm" />
+                      <DepartmentSelect key={`dept-${formNonce}`} id="visitor-department" placeholder="Department being visited" value={formData.department} onChange={(v) => setFormData({ ...formData, department: v })} />
                     </div>
                     <div className="space-y-1.5">
                       <label htmlFor="visitor-address" className={labelCls}>{t("Address")}</label>

@@ -2,14 +2,19 @@
 import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { updateProfileSettings } from "@/server/actions/settings";
+import { removeMyAvatar, updateMyAvatar, updateProfileSettings } from "@/server/actions/settings";
+import { squareAvatar } from "@/lib/images/compress-photo";
 import { TopLoadingBar } from "@/components/ui/top-loading-bar";
+import { GoBackButton } from "@/components/ui/go-back-button";
 import {
+  Camera,
+  Loader2,
+  Trash2,
   User,
   Mail,
   Lock,
@@ -32,14 +37,71 @@ interface Props {
     designation?: string;
     employeeId?: string;
   };
+  /** Current profile photo (versioned URL), or null */
+  avatarUrl?: string | null;
 }
 
-export function SettingsClient({ user }: Props) {
+export function SettingsClient({ user, avatarUrl = null }: Props) {
   const t = useT();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Profile photo: shown at once from the picked file while it uploads
+  const photoInput = useRef<HTMLInputElement>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoRemoved, setPhotoRemoved] = useState(false);
+  const shownPhoto = photoPreview ?? (photoRemoved ? null : avatarUrl);
+
+  async function handlePhotoPicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(null);
+    setSuccess(null);
+    setPhotoBusy(true);
+    try {
+      const data = await squareAvatar(file);
+      setPhotoPreview(data);
+      const result = await updateMyAvatar(data);
+      if (result?.error) {
+        setPhotoPreview(null);
+        setError(t(result.error));
+      } else {
+        setPhotoRemoved(false);
+        setSuccess(t("Profile photo updated."));
+        router.refresh();
+      }
+    } catch (err: any) {
+      setPhotoPreview(null);
+      setError(actionErrorMessage(err, t("Could not save the photo. Please try again.")));
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function handlePhotoRemove() {
+    setError(null);
+    setSuccess(null);
+    setPhotoBusy(true);
+    try {
+      const result = await removeMyAvatar();
+      if (result?.error) {
+        setError(t(result.error));
+      } else {
+        setPhotoPreview(null);
+        setPhotoRemoved(true);
+        setSuccess(t("Profile photo removed."));
+        router.refresh();
+      }
+    } catch (err: any) {
+      setError(actionErrorMessage(err, t("Failed to update settings")));
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
 
   // Controlled form state
   const [name, setName] = useState(user.name || "");
@@ -62,6 +124,8 @@ export function SettingsClient({ user }: Props) {
   const isFacultyOrHod = ["FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN"].includes(user.role);
   // Security guards only keep their name and phone up to date here (login details are managed by the admin)
   const nameAndPhoneOnly = user.role === "SECURITY";
+  // Students' passwords are set by their HOD, warden or the admin
+  const canChangePassword = !nameAndPhoneOnly && user.role !== "STUDENT";
 
   const roleLabelMap: Record<string, { title: string; color: string }> = {
     DIRECTOR: {
@@ -146,6 +210,7 @@ export function SettingsClient({ user }: Props) {
       <TopLoadingBar active={loading} />
 
       <div className="max-w-3xl mx-auto space-y-6 pb-16">
+        {user.role === "STUDENT" && <GoBackButton href="/student" />}
         <div>
           <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">{t("Account Settings")}</h1>
           <p className="mt-1 text-sm text-zinc-500">
@@ -157,12 +222,50 @@ export function SettingsClient({ user }: Props) {
 
         {/* Who is signed in */}
         <div className="flex items-center gap-4 rounded-3xl border border-zinc-800/80 bg-zinc-900 p-5 sm:p-6 shadow-card">
-          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-xl font-semibold text-orange-400">
-            {(user.name || "?").charAt(0).toUpperCase()}
-          </span>
+          <button
+            type="button"
+            onClick={() => photoInput.current?.click()}
+            disabled={photoBusy}
+            aria-label={t("Change photo")}
+            className="group relative h-16 w-16 shrink-0 rounded-full disabled:cursor-wait"
+          >
+            {shownPhoto ? (
+               
+              <img src={shownPhoto} alt="" className="h-16 w-16 rounded-full object-cover ring-2 ring-orange-500/30" />
+            ) : (
+              <span className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-500/10 text-2xl font-semibold text-orange-400">
+                {(user.name || "?").charAt(0).toUpperCase()}
+              </span>
+            )}
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-zinc-900 bg-orange-500 text-white shadow">
+              {photoBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+            </span>
+          </button>
+          <input ref={photoInput} type="file" accept="image/*" className="hidden" onChange={handlePhotoPicked} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-lg font-medium text-zinc-100">{user.name}</p>
             <p className="truncate text-sm text-zinc-500">{user.email}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+              <button
+                type="button"
+                onClick={() => photoInput.current?.click()}
+                disabled={photoBusy}
+                className="text-xs font-medium text-orange-400 hover:text-orange-300 disabled:opacity-50"
+              >
+                {shownPhoto ? t("Change photo") : t("Add photo")}
+              </button>
+              {shownPhoto && (
+                <button
+                  type="button"
+                  onClick={handlePhotoRemove}
+                  disabled={photoBusy}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-red-400 disabled:opacity-50"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  {t("Remove photo")}
+                </button>
+              )}
+            </div>
           </div>
           <span className={`hidden sm:inline-flex shrink-0 text-xs font-medium px-3 py-1 rounded-full border ${currentRoleInfo.color}`}>
             {t(currentRoleInfo.title)}
@@ -308,7 +411,14 @@ export function SettingsClient({ user }: Props) {
                   </div>
                 )}
 
-                {!nameAndPhoneOnly && (
+                {user.role === "STUDENT" && (
+                  <p className="flex items-center gap-2 rounded-2xl border border-zinc-800/80 bg-zinc-950 px-4 py-3 text-xs text-zinc-500">
+                    <Lock className="h-4 w-4 shrink-0" />
+                    {t("To change your password, ask your HOD or warden.")}
+                  </p>
+                )}
+
+                {canChangePassword && (
                 <>
                 <div className="h-px w-full bg-zinc-800/80 my-2"></div>
 

@@ -1,4 +1,7 @@
 "use client";
+import { DateField } from "@/components/ui/date-field";
+import { usePendingNavigation } from "@/hooks/use-pending-navigation";
+import { LoadingPill } from "@/components/ui/loading-pill";
 import { useT } from "@/components/providers/language-provider";
 import { MovementDetails, VisitorDetails } from "@/components/registers/derived-views";
 
@@ -31,6 +34,8 @@ export function SecurityLogClient({
 }) {
   const t = useT();
   const router = useRouter();
+  // Date / tab changes reload the list from the server: show progress meanwhile
+  const { push: navigate, isPending: navigating } = usePendingNavigation();
   const [activeTab, setActiveTab] = useState<"ENTRIES" | "EXITS" | "OUTSIDERS">("ENTRIES");
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -46,7 +51,7 @@ export function SecurityLogClient({
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newDate = e.target.value;
     if (newDate) {
-      router.push(`/security/log?date=${newDate}`);
+      navigate(`/security/log?date=${newDate}`);
     }
   };
 
@@ -305,6 +310,7 @@ export function SecurityLogClient({
 
   return (
     <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
+      <LoadingPill active={navigating} />
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div className="min-w-0">
           <GoBackButton className="mb-3" />
@@ -317,8 +323,7 @@ export function SecurityLogClient({
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full lg:w-auto">
           <label className="relative flex h-12 sm:h-11 shrink-0 cursor-pointer items-center gap-2.5 rounded-full border border-zinc-800 bg-zinc-900 pl-4 pr-3 transition-colors hover:border-zinc-700 focus-within:border-orange-500/50 focus-within:ring-4 focus-within:ring-orange-500/10">
             <CalendarIcon className="h-4 w-4 shrink-0 text-orange-400" />
-            <input
-              type="date"
+            <DateField
               aria-label={t("Date")}
               value={selectedDate}
               onChange={handleDateChange}

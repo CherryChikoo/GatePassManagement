@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   ClipboardCheck,
   DoorOpen,
-  Eye,
   GraduationCap,
   History,
   Hourglass,
@@ -53,9 +52,6 @@ export function SupervisorDashboardClient({ user }: { user: { name: string } }) 
         </h1>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-zinc-500">
           <span className="font-medium text-zinc-300">Security Supervisor</span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2.5 py-0.5 text-xs font-medium text-orange-400">
-            <Eye className="h-3 w-3" aria-hidden="true" /> View only
-          </span>
         </div>
         <p className="mt-1 text-sm text-zinc-500">
           Campus-wide overview of student and faculty passes. Approvals are handled by HODs, wardens and the Dean.

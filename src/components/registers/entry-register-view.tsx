@@ -1,8 +1,10 @@
 "use client";
+import { getRegisterPhotoUrl } from "@/lib/storage/image-upload";
+import { LoadingPill } from "@/components/ui/loading-pill";
 import { useT } from "@/components/providers/language-provider";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, ChevronRight, Eye, FilePlus2, FileText, History, LogIn, LogOut, PencilLine, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronRight, Eye, FilePlus2, FileText, History, Loader2, LogIn, LogOut, PencilLine, Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Modal } from "@/components/ui/primitives";
 import { Card } from "@/components/ui/card";
@@ -20,7 +22,7 @@ import {
   listRegisterEntries,
 } from "@/server/actions/registers";
 import { actionErrorMessage } from "@/lib/deployment";
-import { AdminEditForm, MovementForm, RegisterForm, type StaffOption } from "./register-form";
+import { AdminEditForm, CloseRecordForm, MovementForm, RegisterForm, type StaffOption } from "./register-form";
 import { formatFieldValue, formatInstant, newClientToken } from "./format";
 import { displayValue } from "./localize";
 import type { Translate } from "@/lib/i18n";
@@ -79,28 +81,32 @@ export function EntryRegisterView({
   const [loading, setLoading] = useState(false);
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [selected, setSelected] = useState<Entry | null>(null);
-  const [mode, setMode] = useState<null | "new" | "record" | "edit">(null);
+  const [mode, setMode] = useState<null | "new" | "record" | "edit" | "close">(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  // Bumped on each failed save: the popup scrolls up to the error message
+  const [errorNo, setErrorNo] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [token, setToken] = useState(newClientToken);
   const [formKey, setFormKey] = useState(0);
 
   const needsStaff = def.fields.some((f) => f.type === "staff");
+  // Registers with a Shift choice (Security Daily Book, Attendance) get shift chips
+  const shiftField = def.fields.find((f) => f.key === "shift" && f.type === "select");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res: any = await listRegisterEntries({ register: def.key, date: filters.dateParam, q: filters.q, page: filters.page });
+      const res: any = await listRegisterEntries({ register: def.key, date: filters.dateParam, q: filters.q, page: filters.page, shift: filters.shift });
       if (res.error) setError(res.error);
       else setData({ entries: res.entries, total: res.total, pageSize: res.pageSize });
     } catch (err) {
       setError(actionErrorMessage(err, t("Could not load the register.")));
     }
     setLoading(false);
-  }, [def.key, filters.dateParam, filters.q, filters.page, t]);
+  }, [def.key, filters.dateParam, filters.q, filters.page, filters.shift, t]);
 
   useEffect(() => {
     load();
@@ -110,7 +116,7 @@ export function EntryRegisterView({
     if (needsStaff) getRegisterStaffOptions().then(setStaff).catch(() => setStaff([]));
   }, [needsStaff]);
 
-  function openMode(m: "new" | "record" | "edit", entry?: Entry | null) {
+  function openMode(m: "new" | "record" | "edit" | "close", entry?: Entry | null) {
     setFormError(null);
     setToken(newClientToken());
     setFormKey((k) => k + 1);
@@ -125,6 +131,7 @@ export function EntryRegisterView({
       const res = await action();
       if (res?.error) {
         setFormError(res.error);
+        setErrorNo((n) => n + 1);
       } else {
         setNotice(done);
         setTimeout(() => setNotice(null), 4000);
@@ -134,9 +141,62 @@ export function EntryRegisterView({
       }
     } catch (err) {
       setFormError(actionErrorMessage(err, t("Could not save. Please try again.")));
+      setErrorNo((n) => n + 1);
     }
     setBusy(false);
   }
+
+  // One tap on a row: record the missing side now (e.g. "Duty end"). A side
+  // that needs a reading (Car Book km) opens the small form instead.
+  const [quickId, setQuickId] = useState<string | null>(null);
+  async function quickRecord(e: Entry) {
+    const next = pendingActions(def, e.current).next;
+    if (!next || quickId) return;
+    if (next.readingKey) {
+      openMode("record", e);
+      return;
+    }
+    setQuickId(e.id);
+    setError(null);
+    try {
+      const res: any = await completeRegisterEntry(e.id, { markMovement: true }, newClientToken());
+      if (res?.error) {
+        setError(res.error);
+      } else {
+        setNotice(t("{side} recorded.", { side: next.label }));
+        setTimeout(() => setNotice(null), 4000);
+        await load();
+      }
+    } catch (err) {
+      setError(actionErrorMessage(err, t("Could not save. Please try again.")));
+    }
+    setQuickId(null);
+  }
+  const quickButton = (e: Entry, size: "lg" | "sm") => {
+    const next = canCreate ? pendingActions(def, e.current).next : null;
+    if (!next) return null;
+    const Icon = next.direction === "OUT" ? LogOut : LogIn;
+    const saving = quickId === e.id;
+    return (
+      <button
+        type="button"
+        onClick={(ev) => {
+          ev.stopPropagation();
+          quickRecord(e);
+        }}
+        disabled={!!quickId}
+        aria-label={t("Record {side}", { side: next.label })}
+        className={cn(
+          "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full font-semibold text-white transition-[background-color,transform] active:scale-[0.97] disabled:opacity-60",
+          next.direction === "OUT" ? "bg-sky-600 hover:bg-sky-700" : "bg-emerald-600 hover:bg-emerald-700",
+          size === "lg" ? "h-11 px-4 text-sm" : "h-8 px-3 text-xs"
+        )}
+      >
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Icon className="h-4 w-4" />}
+        <span className="whitespace-nowrap">{next.label}</span>
+      </button>
+    );
+  };
 
   const columns = def.listFields.map((k) => def.fields.find((f) => f.key === k)).filter((f): f is NonNullable<typeof f> => !!f);
 
@@ -174,6 +234,36 @@ export function EntryRegisterView({
         }
       />
 
+      {shiftField && (
+        <div role="radiogroup" aria-label={t("Shift")} className="flex items-center gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none]">
+          <span className="shrink-0 text-xs font-medium text-zinc-500">{t("Shift")}</span>
+          {[
+            { v: "", l: t("All") },
+            ...(shiftField.options ?? []).map((o) => ({ v: o, l: t(o) })),
+            ...(shiftField.allowOther ? [{ v: "OTHER", l: t("Other") }] : []),
+          ].map((o) => {
+            const active = filters.shift === o.v;
+            return (
+              <button
+                key={o.v || "all"}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => filters.setShift(o.v)}
+                className={cn(
+                  "h-10 min-w-10 shrink-0 rounded-full border px-4 text-sm font-medium transition-colors",
+                  active
+                    ? "border-orange-500/30 bg-orange-500/10 text-orange-400"
+                    : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+                )}
+              >
+                {o.l}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {notice && (
         <div role="status" className="flex items-center gap-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-400">
           <CheckCircle2 className="h-4 w-4 shrink-0" /> {notice}
@@ -181,6 +271,7 @@ export function EntryRegisterView({
       )}
       {error && <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>}
 
+      <LoadingPill active={loading} />
       <Card className={cn("overflow-hidden transition-opacity", loading && "opacity-60")}>
         {/* Phones: stacked rows */}
         {data && data.entries.length > 0 && (
@@ -193,11 +284,11 @@ export function EntryRegisterView({
                 .filter((v) => v && v !== "—")
                 .join(" · ");
               return (
-                <li key={e.id}>
+                <li key={e.id} className="flex items-center">
                   <button
                     type="button"
                     onClick={() => setSelected(e)}
-                    className="flex w-full min-h-[72px] items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-zinc-950 hover:bg-zinc-950/70"
+                    className="flex min-w-0 flex-1 min-h-[72px] items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-zinc-950 hover:bg-zinc-950/70"
                   >
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2 min-w-0">
@@ -214,8 +305,11 @@ export function EntryRegisterView({
                         <span className="truncate">{e.recordedByName}</span>
                       </span>
                     </span>
-                    <ChevronRight className="h-5 w-5 shrink-0 text-zinc-600" aria-hidden="true" />
+                    {!(canCreate && pendingActions(def, e.current).next) && (
+                      <ChevronRight className="h-5 w-5 shrink-0 text-zinc-600" aria-hidden="true" />
+                    )}
                   </button>
+                  {canCreate && pendingActions(def, e.current).next && <span className="pr-4">{quickButton(e, "lg")}</span>}
                 </li>
               );
             })}
@@ -259,6 +353,7 @@ export function EntryRegisterView({
                       <td className={cn(dt.tdMuted, "whitespace-nowrap")}>{e.recordedByName}</td>
                       <td className={dt.tdActions}>
                         <RowActions>
+                          {quickButton(e, "sm")}
                           <IconAction label={t("View details")} icon={<Eye />} onClick={() => setSelected(e)} />
                         </RowActions>
                       </td>
@@ -290,6 +385,7 @@ export function EntryRegisterView({
             def={def}
             entry={selected}
             onRecord={canCreate && pendingActions(def, selected.current).any ? () => openMode("record") : undefined}
+            onCloseRecord={canCreate && pendingActions(def, selected.current).next ? () => openMode("close") : undefined}
             onEdit={canAdminEdit ? () => openMode("edit") : undefined}
             onDelete={canAdminEdit ? () => setConfirmDelete(true) : undefined}
           />
@@ -305,11 +401,14 @@ export function EntryRegisterView({
             ? `${t("New entry")} — ${def.title}`
             : mode === "edit"
             ? `${t("Edit record")} — ${def.title}`
+            : mode === "close"
+            ? t("Close record")
             : selected
             ? nextActionLabel(def, selected.current, t) ?? def.title
             : def.title
         }
         className="max-w-2xl"
+        scrollTopKey={errorNo}
       >
         {formError && <div role="alert" className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{formError}</div>}
         {mode === "new" && (
@@ -329,6 +428,15 @@ export function EntryRegisterView({
             staff={staff}
             busy={busy}
             onSubmit={(payload) => run(() => adminUpdateRegisterEntry(selected.id, payload), "Record updated.")}
+          />
+        )}
+        {mode === "close" && selected && (
+          <CloseRecordForm
+            key={formKey}
+            def={def}
+            current={selected.current}
+            busy={busy}
+            onSubmit={(payload) => run(() => completeRegisterEntry(selected.id, payload, token), t("Record closed."))}
           />
         )}
         {mode === "record" && selected && (
@@ -361,6 +469,28 @@ export function EntryRegisterView({
   );
 }
 
+/** Photo saved with a register entry (signed, short-lived link). */
+function RegisterPhoto({ path }: { path: unknown }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const valid = typeof path === "string" && path.startsWith("registers/");
+  useEffect(() => {
+    if (!valid) return;
+    let cancelled = false;
+    getRegisterPhotoUrl(path as string)
+      .then((u) => !cancelled && setUrl(u))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [path, valid]);
+  if (!valid) return <span className="text-zinc-600">—</span>;
+  if (!url) return <span className="inline-block h-40 w-40 animate-pulse rounded-2xl bg-zinc-950" />;
+  return (
+     
+    <img src={url} alt="" className="h-40 w-40 rounded-2xl border border-zinc-800 object-cover" />
+  );
+}
+
 function ValuesGrid({ def, values }: { def: EntryRegister; values: Record<string, any> }) {
   const t = useT();
   const m = def.movement;
@@ -388,9 +518,11 @@ function ValuesGrid({ def, values }: { def: EntryRegister; values: Record<string
           </div>
         ))}
         {def.fields.map((f) => (
-          <div key={f.key} className={`min-w-0 ${f.type === "textarea" ? "sm:col-span-2" : ""}`}>
+          <div key={f.key} className={`min-w-0 ${f.type === "textarea" || f.type === "photo" ? "sm:col-span-2" : ""}`}>
             <dt className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{f.label}</dt>
-            <dd className="mt-0.5 text-sm text-zinc-200 break-words">{displayValue(f, values[f.key], t)}</dd>
+            <dd className="mt-0.5 text-sm text-zinc-200 break-words">
+              {f.type === "photo" ? <RegisterPhoto path={values[f.key]} /> : displayValue(f, values[f.key], t)}
+            </dd>
           </div>
         ))}
       </dl>
@@ -442,12 +574,15 @@ function EntryDetails({
   def,
   entry,
   onRecord,
+  onCloseRecord,
   onEdit,
   onDelete,
 }: {
   def: EntryRegister;
   entry: Entry;
   onRecord?: () => void;
+  /** Close without recording the other side */
+  onCloseRecord?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
 }) {
@@ -455,8 +590,23 @@ function EntryDetails({
   const label = nextActionLabel(def, entry.current, t);
   const p = pendingActions(def, entry.current);
   const Icon = p.next?.direction === "OUT" ? LogOut : LogIn;
+  // One-way record: "Out only" / "In only" (chosen when saved, or closed later)
+  const m = def.movement;
+  const startSide = m && entry.current.direction ? (entry.current.direction === "IN" ? m.in : m.out) : null;
+  const otherSide = m && entry.current.direction ? (entry.current.direction === "IN" ? m.out : m.in) : null;
+  const oneWay = entry.current.oneWay === true && startSide && otherSide && !entry.current[otherSide.timeKey];
   return (
     <div className="space-y-5">
+      {oneWay && (
+        <div className="flex items-start gap-3 rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+          <div className="min-w-0 text-sm">
+            <p className="font-medium text-zinc-100">{t("{side} only", { side: startSide.label })}</p>
+            <p className="text-zinc-500">{t("Closed — no {side} recorded.", { side: otherSide.label })}</p>
+            {entry.current.closeNote && <p className="mt-1 text-zinc-300">{t("Note")}: {String(entry.current.closeNote)}</p>}
+          </div>
+        </div>
+      )}
       <ValuesGrid def={def} values={entry.current} />
 
       <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-2.5">
@@ -467,7 +617,7 @@ function EntryDetails({
           </li>
           {entry.supplements.map((s) => (
             <li key={s.id}>
-              <span className="text-zinc-500">{formatInstant(s.createdAt)}</span> — {s.kind === "CORRECTION" ? t("Correction by") : t("Updated by")} {recorderLine(s, t)}
+              <span className="text-zinc-500">{formatInstant(s.createdAt)}</span> — {s.kind === "CORRECTION" ? t("Correction by") : s.data?.oneWay === true ? t("Closed by") : t("Updated by")} {recorderLine(s, t)}
               {s.reason && <span className="block text-zinc-400 pl-3">{t("Reason")}: {s.reason}</span>}
             </li>
           ))}
@@ -478,6 +628,11 @@ function EntryDetails({
         {onRecord && label && (
           <button onClick={onRecord} className="inline-flex w-full sm:w-auto items-center justify-center gap-2 h-14 sm:h-11 px-6 rounded-full bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white text-base sm:text-sm font-semibold transition-[background-color,transform]">
             <Icon className="h-5 w-5 sm:h-4 sm:w-4" /> {label}
+          </button>
+        )}
+        {onCloseRecord && (
+          <button onClick={onCloseRecord} className="inline-flex w-full sm:w-auto items-center justify-center gap-2 h-12 sm:h-11 px-5 rounded-full border border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-950 hover:border-zinc-700 text-sm font-medium transition-colors">
+            <CheckCircle2 className="h-4 w-4 text-orange-400" /> {t("Close record")}
           </button>
         )}
         {onEdit && (

@@ -1,5 +1,6 @@
 "use client";
 
+import { DateField } from "@/components/ui/date-field";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,6 +26,15 @@ import QRCode from "qrcode";
 /** Phone: 10–15 digits, optional +, spaces or dashes (same rule as the server). */
 const PHONE_RE = /^\+?[0-9][0-9\s-]{8,16}[0-9]$/;
 /** Keeps only characters that can appear in a phone number. */
+/** Which way a pass goes, in plain words (students mix up "exit" and "entry"). */
+/** Last expired pass whose "pass expired" note the student has already seen */
+const EXPIRY_ALERT_SEEN_KEY = "gatepass_expired_alert_seen";
+
+function passDirection(p: { type?: string; passKind?: string | null }): string {
+  if (p?.passKind === "HOSTEL") return "college → hostel";
+  return p?.type === "ENTRY" ? "coming into campus" : "going out of campus";
+}
+
 export function phoneOnly(value: string): string {
   return value.replace(/[^0-9+\s-]/g, "");
 }
@@ -33,6 +43,9 @@ import {
   Clock,
   QrCode,
   MapPin,
+  LogIn,
+  LogOut,
+  BedDouble,
   Calendar,
   Phone,
   FileText,
@@ -219,7 +232,7 @@ function RejectedView({ permission, onDone }: { permission: any; onDone: () => v
           <XCircle className="h-7 w-7" />
         </span>
         <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
-          {permission.type === "ENTRY" ? "Entry Request Rejected" : "Exit Request Rejected"}
+          Request rejected: {passDirection(permission)}
         </h1>
         <p className="mt-2 text-sm text-zinc-500 leading-relaxed">
           Your request was rejected by your {approverRole}
@@ -314,10 +327,19 @@ function QrCodeView({
     }
 
     refreshToken();
-    const interval = setInterval(refreshToken, 45_000);
+    // Only while the QR is on screen (a locked phone / hidden tab makes no
+    // requests); coming back refreshes at once so the code shown is current.
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") refreshToken();
+    }, 45_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshToken();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [permission.id]);
 
@@ -367,7 +389,7 @@ function QrCodeView({
             : "bg-orange-500/10 text-orange-400"
         }`}>
           <ShieldCheck className="h-3.5 w-3.5" />
-          <span>{isHostelPass ? "Active HOSTEL Pass" : isReturning ? "Return Pass" : permission.type === "ENTRY" ? "Active Campus ENTRY Pass" : "Active Campus EXIT Pass"}</span>
+          <span>{isHostelPass ? "Pass: college → hostel" : isReturning ? "Return pass: coming back" : permission.type === "ENTRY" ? "Pass: coming into campus" : "Pass: going out of campus"}</span>
         </span>
         <h1 className="mt-3 text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
           {isHostelPass ? "Show to Your Hostel Warden" : isReturning ? "Scan When You Return" : "Scan at Campus Gate"}
@@ -541,10 +563,10 @@ function PendingApprovalView({
           <StatusBadge status="PENDING" />
         </div>
         <h1 className="mt-4 text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
-          {permission.type === "ENTRY" ? "Entry Request Pending Approval" : "Exit Request Pending Approval"}
+          Waiting for approval: {passDirection(permission)}
         </h1>
         <p className="mt-2 text-sm text-zinc-300 leading-relaxed">
-          Your campus {permission.type === "ENTRY" ? "entry" : "exit"} pass request has been submitted and is currently awaiting approval from your{" "}
+          Your request ({passDirection(permission)}) has been sent and is waiting for approval from your{" "}
           <span className="text-zinc-100 font-medium">{approverLabel}</span>
           {permission.approverName ? ` (${permission.approverName})` : ""}.
         </p>
@@ -572,7 +594,7 @@ function PendingApprovalView({
       <Card>
         <CardContent className="p-5 sm:p-6 space-y-4">
           <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-            {permission.type === "ENTRY" ? "Entry Request Summary" : "Exit Request Summary"}
+            Request summary
           </h2>
 
           <dl className="grid grid-cols-2 gap-3">
@@ -589,7 +611,7 @@ function PendingApprovalView({
               </dd>
             </div>
             <div className="p-4 rounded-2xl bg-zinc-950 min-w-0">
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">{permission.type === "ENTRY" ? "Entry Date" : "Exit Date"}</dt>
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">Date</dt>
               <dd className="text-sm font-medium text-zinc-200">
                 {permission.exitDate ? formatDateTime(permission.exitDate).split(",")[0] : "Today"}
               </dd>
@@ -661,8 +683,6 @@ function PermissionFormView({
     }, 0);
   };
 
-  const [hideExpiryAlert, setHideExpiryAlert] = useState<boolean>(false);
-
   const wasExpired =
     latestPermission?.status === "EXPIRED" ||
     (latestPermission?.status === "APPROVED" &&
@@ -670,15 +690,41 @@ function PermissionFormView({
       !latestPermission.qr.usedForExit &&
       new Date(latestPermission.qr.expiresAt) <= new Date());
 
-  useEffect(() => {
-    if (wasExpired && !hideExpiryAlert) {
-      const timer = setTimeout(() => setHideExpiryAlert(true), 8000);
-      return () => clearTimeout(timer);
+  // The "pass expired" note is shown once per pass: after it is closed (or
+  // fades after 8 s) it doesn't come back on the next sign-in.
+  const expiredPassId: string | null = wasExpired ? latestPermission.id : null;
+  const [expiryAlertId, setExpiryAlertId] = useState<string | null>(null);
+  const closeExpiryAlert = () => {
+    if (expiredPassId) {
+      try {
+        localStorage.setItem(EXPIRY_ALERT_SEEN_KEY, expiredPassId);
+      } catch {}
     }
-  }, [wasExpired, hideExpiryAlert]);
+    setExpiryAlertId(null);
+  };
+  useEffect(() => {
+    if (!expiredPassId) return;
+    let seen = false;
+    try {
+      seen = localStorage.getItem(EXPIRY_ALERT_SEEN_KEY) === expiredPassId;
+    } catch {}
+    if (seen) return;
+    const show = setTimeout(() => setExpiryAlertId(expiredPassId), 0);
+    const hide = setTimeout(() => {
+      try {
+        localStorage.setItem(EXPIRY_ALERT_SEEN_KEY, expiredPassId);
+      } catch {}
+      setExpiryAlertId(null);
+    }, 8000);
+    return () => {
+      clearTimeout(show);
+      clearTimeout(hide);
+    };
+  }, [expiredPassId]);
+  const showExpiryAlert = !!expiredPassId && expiryAlertId === expiredPassId;
 
-  const isOutside = student?.status === "OUTSIDE";
-  const [requestType, setRequestType] = useState<"EXIT" | "ENTRY" | "HOSTEL">(() => isOutside ? "ENTRY" : "EXIT");
+  // Always opens on "Going out"; the student switches if they need another pass
+  const [requestType, setRequestType] = useState<"EXIT" | "ENTRY" | "HOSTEL">("EXIT");
   // Hostellers' exit requests are outing passes (date range + parent contact)
   const isOuting = isHosteller && requestType === "EXIT";
   const studentName = useAppStore((s) => s.user?.name) ?? "";
@@ -744,86 +790,96 @@ function PermissionFormView({
   }, []);
   return (
     <div className="space-y-5 sm:space-y-6 animate-scale-in">
-      {/* Title */}
+      {/* Title: says plainly which way the student is going */}
       <div className="min-w-0">
         <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
-          {requestType === "ENTRY" ? "Request Campus Entry Pass" : requestType === "HOSTEL" ? "Request Hostel Pass" : "Request Campus Exit Pass"}
+          {requestType === "ENTRY"
+            ? "Come into campus"
+            : requestType === "HOSTEL"
+            ? "Go to the hostel"
+            : "Go out of campus"}
         </h1>
         <p className="mt-1.5 text-sm text-zinc-500 leading-relaxed">
           {requestType === "ENTRY"
-            ? "Submit an entry request to obtain approval and an Entry QR code to enter campus."
+            ? isHosteller
+              ? "Only if you have no outing pass."
+              : "Show the QR at the gate."
             : requestType === "HOSTEL"
-            ? "Going from college to the hostel. Your HOD approves it and your hostel warden scans the QR when you arrive."
-            : "Submit an exit request to leave the campus."}
+            ? "The warden scans it at the hostel."
+            : isHosteller
+            ? "Use the same QR to come back."
+            : "Show the QR at the gate."}
         </p>
       </div>
 
-      {/* Request type: EXIT / ENTRY (/ HOSTEL for hostellers) */}
-      <div className={`grid ${isHosteller ? "grid-cols-3" : "grid-cols-2"} gap-1 rounded-[22px] bg-zinc-950 p-1 border border-zinc-800`}>
-        <button
-          type="button"
-          aria-pressed={requestType === "EXIT"}
-          onClick={() => setRequestType("EXIT")}
-          className={`min-w-0 rounded-[18px] px-2 sm:px-4 py-2.5 sm:py-3 transition-colors cursor-pointer ${
-            requestType === "EXIT"
-              ? "bg-zinc-900 shadow-card text-zinc-100"
-              : "text-zinc-500 hover:text-zinc-200"
-          }`}
-        >
-          <span className="flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium">
-            <MapPin className={`h-4 w-4 shrink-0 ${requestType === "EXIT" ? "text-orange-400" : ""}`} />
-            <span className="truncate">EXIT Pass</span>
-          </span>
-          <span className="block text-[11px] sm:text-xs text-zinc-500 text-center mt-0.5 truncate">Leave campus</span>
-        </button>
-
-        <button
-          type="button"
-          aria-pressed={requestType === "ENTRY"}
-          onClick={() => setRequestType("ENTRY")}
-          className={`min-w-0 rounded-[18px] px-2 sm:px-4 py-2.5 sm:py-3 transition-colors cursor-pointer ${
-            requestType === "ENTRY"
-              ? "bg-zinc-900 shadow-card text-zinc-100"
-              : "text-zinc-500 hover:text-zinc-200"
-          }`}
-        >
-          <span className="flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium">
-            <Sparkles className={`h-4 w-4 shrink-0 ${requestType === "ENTRY" ? "text-emerald-400" : ""}`} />
-            <span className="truncate">ENTRY Pass</span>
-          </span>
-          <span className="block text-[11px] sm:text-xs text-zinc-500 text-center mt-0.5 truncate">Enter campus</span>
-        </button>
-
-        {isHosteller && (
-          <button
-            type="button"
-            aria-pressed={requestType === "HOSTEL"}
-            onClick={() => {
-              setRequestType("HOSTEL");
-              setFieldErrors({});
-            }}
-            className={`min-w-0 rounded-[18px] px-2 sm:px-4 py-2.5 sm:py-3 transition-colors cursor-pointer ${
-              requestType === "HOSTEL"
-                ? "bg-zinc-900 shadow-card text-zinc-100"
-                : "text-zinc-500 hover:text-zinc-200"
-            }`}
-          >
-            <span className="flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium">
-              <Home className={`h-4 w-4 shrink-0 ${requestType === "HOSTEL" ? "text-sky-400" : ""}`} />
-              <span className="truncate">HOSTEL Pass</span>
-            </span>
-            <span className="block text-[11px] sm:text-xs text-zinc-500 text-center mt-0.5 truncate">Go to hostel</span>
-          </button>
-        )}
+      {/* Which way are you going? */}
+      <div
+        role="radiogroup"
+        aria-label="Which way are you going?"
+        className={`grid ${isHosteller ? "grid-cols-3" : "grid-cols-2"} gap-1 rounded-[22px] bg-zinc-950 p-1 border border-zinc-800`}
+      >
+        {(
+          [
+            {
+              type: "EXIT" as const,
+              icon: LogOut,
+              tone: "text-orange-400",
+              title: "Going out",
+              hint: "Leave campus",
+            },
+            {
+              type: "ENTRY" as const,
+              icon: LogIn,
+              tone: "text-emerald-400",
+              title: "Coming in",
+              hint: "Enter campus",
+            },
+            ...(isHosteller
+              ? [
+                  {
+                    type: "HOSTEL" as const,
+                    icon: BedDouble,
+                    tone: "text-sky-400",
+                    title: "To hostel",
+                    hint: "From college",
+                  },
+                ]
+              : []),
+          ]
+        ).map((opt) => {
+          const selected = requestType === opt.type;
+          const Icon = opt.icon;
+          return (
+            <button
+              key={opt.type}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => {
+                setRequestType(opt.type);
+                if (opt.type === "HOSTEL") setFieldErrors({});
+              }}
+              className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-[18px] px-1.5 sm:px-4 py-2.5 sm:py-3 text-center transition-colors ${
+                selected ? "bg-zinc-900 shadow-card text-zinc-100" : "text-zinc-500 hover:text-zinc-200"
+              }`}
+            >
+              <span className="flex items-center justify-center gap-1.5 text-[13px] sm:text-sm font-semibold leading-tight">
+                <Icon className={`h-4 w-4 shrink-0 ${selected ? opt.tone : ""}`} />
+                <span>{opt.title}</span>
+              </span>
+              <span className="text-[11px] sm:text-xs leading-snug text-zinc-500">{opt.hint}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Expiry Alert Banner */}
-      {wasExpired && !hideExpiryAlert && (
+      {showExpiryAlert && (
         <div className="relative rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 sm:p-5 animate-fade-in">
           <button
             type="button"
             aria-label="Dismiss"
-            onClick={() => setHideExpiryAlert(true)}
+            onClick={closeExpiryAlert}
             className="absolute top-2 right-2 flex h-10 w-10 items-center justify-center rounded-full text-amber-400/70 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
           >
             <X className="h-4 w-4" />
@@ -910,15 +966,7 @@ function PermissionFormView({
                   <Calendar className="h-4 w-4 text-zinc-500" />
                   {requestType === "ENTRY" ? "Entry Date" : "Exit Date"} <span className="text-orange-400">*</span>
                 </label>
-                <Input
-                  id="exitDate"
-                  type="date"
-                  name="exitDate"
-                  value={todayStr}
-                  readOnly
-                  required
-                  className="bg-zinc-950 text-zinc-400 text-sm cursor-not-allowed [color-scheme:light]"
-                />
+                <DateField id="exitDate" name="exitDate" value={todayStr} readOnly className="h-12 w-full rounded-2xl bg-zinc-950 text-zinc-400" />
               </div>
 
               <div className="space-y-2">
@@ -1043,36 +1091,35 @@ function HostelOutingFields({
           <label htmlFor="exitDate" className={label}>
             <Calendar className="h-4 w-4 text-zinc-500" /> Outing Date From <span className="text-orange-400">*</span>
           </label>
-          <Input
+          <DateField
             id="exitDate"
-            type="date"
             name="exitDate"
             value={outingFrom}
             min={todayStr}
             max={maxDate}
             onChange={(e) => {
+              if (!e.target.value) return;
               setOutingFrom(e.target.value);
               if (outingTo < e.target.value) setOutingTo(e.target.value);
             }}
             required
-            className={`${inputCls} [color-scheme:light]`}
+            className="h-12 w-full rounded-2xl"
           />
         </div>
         <div className="space-y-2">
           <label htmlFor="outingDateTo" className={label}>
             <Calendar className="h-4 w-4 text-zinc-500" /> Outing Date To <span className="text-orange-400">*</span>
           </label>
-          <Input
+          <DateField
             id="outingDateTo"
-            type="date"
             name="outingDateTo"
             value={outingTo}
             min={outingFrom}
-            onChange={(e) => setOutingTo(e.target.value)}
+            onChange={(e) => e.target.value && setOutingTo(e.target.value)}
             required
-            error={fieldErrors.outingDateTo}
-            className={`${inputCls} [color-scheme:light]`}
+            className={`h-12 w-full rounded-2xl ${fieldErrors.outingDateTo ? "border-red-500/50" : ""}`}
           />
+          {fieldErrors.outingDateTo && <p className="text-xs text-red-400">{fieldErrors.outingDateTo}</p>}
         </div>
         <div className="space-y-2">
           <label htmlFor="expectedExit" className={label}>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { LogOut, Loader2 } from "lucide-react";
 import { PAGE_FOOTER_SLOT_ID } from "@/components/ui/pager-bar";
 import { PasswordChangedNotice } from "@/components/users/password-changed-notice";
@@ -17,11 +18,14 @@ import { useT } from "@/components/providers/language-provider";
 export function StudentShell({
   userName,
   userEmail,
+  avatarUrl = null,
   onLogout,
   children,
 }: {
   userName: string;
   userEmail: string;
+  /** Profile photo address (null: show the initial) */
+  avatarUrl?: string | null;
   onLogout: () => Promise<unknown> | void;
   children: React.ReactNode;
 }) {
@@ -45,7 +49,7 @@ export function StudentShell({
     <div className="min-h-[100dvh] flex flex-col bg-zinc-950 text-zinc-100">
       <header className="sticky top-0 z-30 px-3 pt-3">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-[22px] glass shadow-card px-3 sm:px-4 py-2.5">
-          <div className="flex min-w-0 items-center gap-3">
+          <Link href="/student" className="flex min-w-0 items-center gap-3 rounded-2xl">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-zinc-900 border border-zinc-800 shadow-card">
               <Image src="/brand/logo-mark.webp" alt="Ramachandra College of Engineering" width={28} height={28} priority />
             </span>
@@ -55,8 +59,20 @@ export function StudentShell({
                 {userName}
               </p>
             </div>
-          </div>
+          </Link>
 
+          <div className="flex shrink-0 items-center gap-2">
+          {/* Photo / initial → profile settings (name, phone, photo) */}
+          <Link href="/settings" aria-label={t("Settings")} className="shrink-0 rounded-full focus-visible:ring-4 focus-visible:ring-orange-500/20">
+            {avatarUrl ? (
+               
+              <img src={avatarUrl} alt="" width={40} height={40} className="h-10 w-10 rounded-full border border-zinc-800 object-cover" />
+            ) : (
+              <span className="flex h-10 w-10 items-center justify-center rounded-full border border-orange-500/20 bg-orange-500/10 text-sm font-semibold text-orange-400">
+                {(userName || "?").charAt(0).toUpperCase()}
+              </span>
+            )}
+          </Link>
           <button
             type="button"
             onClick={handleLogout}
@@ -72,6 +88,7 @@ export function StudentShell({
             )}
             <span className="hidden sm:inline">{signingOut ? t("Signing out…") : t("Sign out")}</span>
           </button>
+          </div>
         </div>
       </header>
 

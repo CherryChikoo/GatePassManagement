@@ -1,4 +1,7 @@
 "use client";
+import { DateField } from "@/components/ui/date-field";
+import { usePendingNavigation } from "@/hooks/use-pending-navigation";
+import { LoadingPill } from "@/components/ui/loading-pill";
 import { istDateString } from "@/lib/time/ist";
 import { scheduledNote } from "@/lib/pass-dates";
 
@@ -45,6 +48,8 @@ export function HodActivityClient({
   department,
 }: HodActivityClientProps) {
   const router = useRouter();
+  // Date / tab changes reload the list from the server: show progress meanwhile
+  const { push: navigate, isPending: navigating } = usePendingNavigation();
   const [selectedPermission, setSelectedPermission] = useState<any>(null);
   const [selectedMovement, setSelectedMovement] = useState<any>(null);
   const [search, setSearch] = useState("");
@@ -196,7 +201,7 @@ export function HodActivityClient({
   );
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    router.push(`/faculty-admin/activity?date=${e.target.value}`);
+    navigate(`/faculty-admin/activity?date=${e.target.value}`);
   };
 
   const handleTabChange = (tab: Tab) => {
@@ -243,6 +248,7 @@ export function HodActivityClient({
 
   return (
     <>
+      <LoadingPill active={navigating} />
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Header */}
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
@@ -292,13 +298,13 @@ export function HodActivityClient({
             {/* Date picker */}
             <div className="relative flex items-center group w-full sm:w-auto">
               <Calendar className="absolute left-3.5 h-4 w-4 text-zinc-500 group-hover:text-zinc-300 transition-colors pointer-events-none z-10" />
-              <input
-                type="date"
+              <DateField
                 value={selectedDate}
                 max={istDateString()}
                 onChange={handleDateChange}
                 className="relative w-full sm:w-auto h-10 rounded-full border border-zinc-800 bg-zinc-900 pl-10 pr-4 text-sm font-medium text-zinc-200 outline-none focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 [color-scheme:light] cursor-pointer hover:border-zinc-700 transition-colors [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-              />
+ showIcon={false}
+/>
             </div>
           </div>
         </div>

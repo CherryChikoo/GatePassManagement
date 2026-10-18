@@ -17,3 +17,50 @@ export function deanTitle(area: string): string {
   const a = area.trim().replace(/^dean\s+of\s+/i, "");
   return `Dean of ${a}`;
 }
+
+/** Line under "Gate Pass" in the app frame, for roles without a stored title */
+const ROLE_LINE: Record<string, string> = {
+  ADMIN: "Administrator",
+  FACULTY: "Faculty",
+  FACULTY_ADMIN: "Head of Department",
+  DEAN: "Dean",
+  DIRECTOR: "Director",
+  WARDEN: "Warden",
+  SECURITY: "Security",
+  SECURITY_SUPERVISOR: "Security Supervisor",
+  STUDENT: "Student",
+};
+
+// Titles rarely change: keep them a minute per instance instead of a query per page
+const roleLineCache = new Map<string, { line: string; expiresAt: number }>();
+
+/**
+ * Who the signed-in person is, under "Gate Pass": their designation
+ * ("Assistant Professor", "Dean of Placements", "Managing Director"),
+ * "Head of Department · CSE", "Head Security"… — never "… Dashboard".
+ */
+export const getRoleLine = cache(async (profileId: string, role: string): Promise<string> => {
+  const hit = roleLineCache.get(profileId);
+  if (hit && hit.expiresAt > Date.now()) return hit.line;
+
+  let line = ROLE_LINE[role] ?? role;
+  if (role === "FACULTY" || role === "FACULTY_ADMIN" || role === "DEAN" || role === "DIRECTOR") {
+    const f = await prisma.faculty.findUnique({ where: { profileId }, select: { designation: true, department: true } });
+    const designation = f?.designation?.trim();
+    if (role === "FACULTY_ADMIN") line = f?.department ? `Head of Department · ${f.department}` : "Head of Department";
+    else if (designation) line = designation;
+  } else if (role === "SECURITY") {
+    const s = await prisma.securityStaff.findUnique({ where: { profileId }, select: { isHead: true } });
+    if (s?.isHead) line = "Head Security";
+  }
+
+  if (roleLineCache.size > 2000) roleLineCache.clear();
+  roleLineCache.set(profileId, { line, expiresAt: Date.now() + 60_000 });
+  return line;
+});
+
+/** After a designation / department / Head Security change, show the new line at once. */
+export function clearRoleLine(profileId?: string) {
+  if (profileId) roleLineCache.delete(profileId);
+  else roleLineCache.clear();
+}

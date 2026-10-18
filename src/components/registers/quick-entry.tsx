@@ -5,7 +5,7 @@ import { CheckCircle2 } from "lucide-react";
 import { Modal } from "@/components/ui/primitives";
 import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
-import { REGISTER_BY_KEY, isEntryRegister, type EntryRegister, type RegisterKey } from "@/lib/registers/definitions";
+import { REGISTER_BY_KEY, isEntryRegister, type EntryRegister, type RegisterDef, type RegisterKey } from "@/lib/registers/definitions";
 import { createRegisterEntry, getRegisterStaffOptions } from "@/server/actions/registers";
 import { RegisterForm, type StaffOption } from "./register-form";
 import { newClientToken } from "./format";
@@ -18,19 +18,22 @@ import { localizeRegister } from "./localize";
  */
 export function QuickEntryModal({
   registerKey,
+  def: givenDef,
   onClose,
   onSaved,
 }: {
-  registerKey: RegisterKey;
+  registerKey: string;
+  /** The definition when it isn't built in (portal-created registers) */
+  def?: RegisterDef;
   onClose: () => void;
   /** e.g. refresh the "N today" counts */
   onSaved?: () => void;
 }) {
   const t = useT();
   const def = useMemo(() => {
-    const d = REGISTER_BY_KEY[registerKey];
-    return isEntryRegister(d) ? (localizeRegister(d, t) as EntryRegister) : null;
-  }, [registerKey, t]);
+    const d = givenDef ?? REGISTER_BY_KEY[registerKey as RegisterKey];
+    return d && isEntryRegister(d) ? (localizeRegister(d, t) as EntryRegister) : null;
+  }, [givenDef, registerKey, t]);
 
   const needsStaff = !!def?.fields.some((f) => f.type === "staff");
   const [staff, setStaff] = useState<StaffOption[]>([]);
@@ -44,6 +47,8 @@ export function QuickEntryModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState(0);
+  // Bumped on every save result, so the popup scrolls up to the "Saved" / error message
+  const [resultNo, setResultNo] = useState(0);
 
   if (!def) return null;
 
@@ -65,10 +70,11 @@ export function QuickEntryModal({
       setError(actionErrorMessage(err, t("Could not save. Please try again.")));
     }
     setBusy(false);
+    setResultNo((n) => n + 1);
   }
 
   return (
-    <Modal open onClose={() => !busy && onClose()} title={`${t("New entry")} — ${def.title}`} className="max-w-2xl">
+    <Modal open onClose={() => !busy && onClose()} title={`${t("New entry")} — ${def.title}`} className="max-w-2xl" scrollTopKey={resultNo}>
       <div className="space-y-4">
         {savedCount > 0 && (
           <div role="status" className="flex items-center gap-2.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">

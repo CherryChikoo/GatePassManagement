@@ -2,6 +2,8 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import { T } from "@/components/providers/language-provider";
+import { createPortal } from "react-dom";
+import { lockPageScroll } from "@/lib/ui/scroll-lock";
 
 // ──────────────────────────────────────────────────────────────
 // Badge
@@ -256,31 +258,37 @@ export function Skeleton({ className }: { className?: string }) {
 // Modal / Dialog
 // ──────────────────────────────────────────────────────────────
 
+const noopSubscribe = () => () => {};
+
 interface ModalProps {
   open: boolean;
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
   className?: string;
+  /** When this changes (e.g. a form reset after saving), the popup scrolls back to the top */
+  scrollTopKey?: string | number;
 }
 
-export function Modal({ open, onClose, title, children, className }: ModalProps) {
+export function Modal({ open, onClose, title, children, className, scrollTopKey }: ModalProps) {
   // On Security screens the dialog closes with a labelled "Go Back" button
   const goBackStyle = (usePathname() ?? "").startsWith("/security");
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+  // The page is only reachable in the browser (server render: nothing)
+  const mounted = React.useSyncExternalStore(noopSubscribe, () => true, () => false);
   React.useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
+    if (!open) return;
+    return lockPageScroll();
   }, [open]);
+  React.useEffect(() => {
+    bodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [scrollTopKey]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  // Drawn over the whole page (not inside the page's scroll area), so only the
+  // popup scrolls while it is open and the page is free again once it closes.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
       {/* Backdrop */}
       <div
@@ -290,7 +298,8 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
       {/* Content */}
       <div
         className={cn(
-          "relative z-10 w-full max-w-lg rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-[0_24px_60px_-20px_rgba(16,24,40,0.35)] flex flex-col max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)]",
+          // dvh: the visible screen height on phones (100vh hides the bottom behind the browser bar)
+          "relative z-10 w-full max-w-lg rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-[0_24px_60px_-20px_rgba(16,24,40,0.35)] flex flex-col max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)]",
           "animate-in fade-in-0 zoom-in-95 duration-200",
           className
         )}
@@ -331,8 +340,9 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
             )}
           </div>
         )}
-        <div className="p-4 sm:p-6 overflow-y-auto min-w-0">{children}</div>
+        <div ref={bodyRef} className="min-h-0 flex-1 p-4 sm:p-6 overflow-y-auto overscroll-contain min-w-0 scroll-pb-32">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

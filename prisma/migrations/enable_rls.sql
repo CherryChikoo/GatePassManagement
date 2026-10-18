@@ -35,3 +35,7 @@ UPDATE storage.buckets SET public = false WHERE id = 'exit-photos';
 -- SELECT table_name, grantee, privilege_type FROM information_schema.role_table_grants
 --   WHERE table_schema = 'public' AND grantee IN ('anon', 'authenticated');
 -- SELECT id, public FROM storage.buckets;
+
+-- custom_registers (registers created in the portal, 2026-10-17)
+ALTER TABLE public.custom_registers ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.custom_registers FROM anon, authenticated;

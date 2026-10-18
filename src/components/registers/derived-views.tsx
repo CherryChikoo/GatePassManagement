@@ -1,9 +1,12 @@
 "use client";
+import { DateField } from "@/components/ui/date-field";
+import { LoadingPill } from "@/components/ui/loading-pill";
 import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, FileText, LogIn, UserPlus } from "lucide-react";
+import { ChevronRight, FileText, Info, Loader2, LogIn, Plus, Trash2, UserPlus } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Modal, StatusBadge } from "@/components/ui/primitives";
 import { Card } from "@/components/ui/card";
 import { dt, PersonCell } from "@/components/ui/data-table";
@@ -12,6 +15,9 @@ import { cn } from "@/lib/utils";
 import { actionErrorMessage } from "@/lib/deployment";
 import { istDateString } from "@/lib/time/ist";
 import {
+  addOutingNote,
+  deleteOutingNote,
+  listOutingNotes,
   getFacultyBook,
   getHomeOutingDay,
   getMovementDetails,
@@ -22,7 +28,7 @@ import {
   getVisitorsBook,
   markFacultyReturn,
 } from "@/server/actions/registers";
-import { formatDay, formatInstant } from "./format";
+import { formatDay, formatInstant, newClientToken } from "./format";
 import { formatTime } from "@/lib/utils";
 import { RegisterToolbar, useRegisterFilters } from "./toolbar";
 
@@ -76,6 +82,7 @@ function Shell({ loading, error, empty, children }: { loading: boolean; error: s
   const t = useT();
   return (
     <>
+      <LoadingPill active={loading} />
       {error && <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>}
       <Card className={cn("overflow-hidden transition-opacity", loading && "opacity-60")}>
         {children}
@@ -642,9 +649,19 @@ export function HomeOutingSummaryView() {
     setRangeKey(`${from}|${to}`);
     setPage(1);
   }
-  const days: any[] = data?.days ?? [];
-  const pageDays = days.slice((page - 1) * DAYS_PER_PAGE, page * DAYS_PER_PAGE);
   const [day, setDay] = useState<string | null>(null);
+
+  // Information notes for one date or a set of dates
+  const notesState = useLoader<any>(() => listOutingNotes({ from, to }), `${from}|${to}`);
+  const notes: OutingNote[] = notesState.data?.notes ?? [];
+  const notesOn = (date: string) => notes.filter((n) => n.from <= date && n.to >= date);
+  const [onlyWithInfo, setOnlyWithInfo] = useState(false);
+  const [addingNote, setAddingNote] = useState(false);
+  const [removeNote, setRemoveNote] = useState<OutingNote | null>(null);
+
+  const allDays: any[] = data?.days ?? [];
+  const days = onlyWithInfo ? allDays.filter((d) => notesOn(d.date).length > 0) : allDays;
+  const pageDays = days.slice((page - 1) * DAYS_PER_PAGE, page * DAYS_PER_PAGE);
 
   const cols = [
     ["boysPasses", "Boys passes"],
@@ -663,26 +680,82 @@ export function HomeOutingSummaryView() {
       <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
         <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500 sm:flex-row sm:items-center sm:gap-2 sm:text-sm min-w-0">
           {t("From")}
-          <input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} className={dateInputCls} />
+          <DateField value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} className={dateInputCls} />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500 sm:flex-row sm:items-center sm:gap-2 sm:text-sm min-w-0">
           {t("To")}
-          <input type="date" value={to} max={today} onChange={(e) => e.target.value && setTo(e.target.value)} className={dateInputCls} />
+          <DateField value={to} max={today} onChange={(e) => e.target.value && setTo(e.target.value)} className={dateInputCls} />
         </label>
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setAddingNote(true)}
+          className="inline-flex h-11 sm:h-10 items-center gap-2 rounded-full bg-orange-600 px-4 text-sm font-semibold text-white transition-[background-color,transform] hover:bg-orange-700 active:scale-[0.98]"
+        >
+          <Plus className="h-4 w-4" /> {t("Add info")}
+        </button>
+        <button
+          type="button"
+          aria-pressed={onlyWithInfo}
+          onClick={() => {
+            setOnlyWithInfo((v) => !v);
+            setPage(1);
+          }}
+          className={cn(
+            "inline-flex h-11 sm:h-10 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors",
+            onlyWithInfo ? "border-orange-500/30 bg-orange-500/10 text-orange-400" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+          )}
+        >
+          <Info className="h-4 w-4" /> {t("Only days with info")}
+          {notes.length > 0 && <span className="rounded-full bg-zinc-950 px-2 py-0.5 text-[11px] tabular-nums">{notes.length}</span>}
+        </button>
+      </div>
       <p className="text-xs leading-relaxed text-zinc-500">
-        {t("Totals are counted from approved passes (by pass date) and actual gate exits (by exit date). The Total row covers the whole selected range.")}
+        {t("Totals are counted from approved passes (by pass date) and actual gate exits (by exit date). Total covers the whole selected range.")}
       </p>
-      <Shell loading={loading} error={error} empty={!!data && data.days.length === 0}>
+      {/* Totals for the whole selected range: first thing under the dates */}
+      {data && data.days.length > 0 && (
+        <div className="rounded-3xl border border-zinc-800/80 bg-zinc-900 px-4 py-4 sm:px-5 shadow-card">
+          <p className="text-sm font-semibold text-zinc-100">{t("Total")}</p>
+          <div className="mt-3 grid grid-cols-3 gap-x-3 gap-y-3 sm:grid-cols-6">
+            {cols.map(([k, label]) => (
+              <div key={k} className="min-w-0 rounded-2xl bg-zinc-950 px-3 py-2.5">
+                <p className="truncate text-[11px] text-zinc-500">{t(label)}</p>
+                <p className={cn("text-xl font-semibold tabular-nums", data.totals[k] ? "text-orange-500" : "text-zinc-600")}>{data.totals[k]}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {notes.length > 0 && (
+        <div className="rounded-3xl border border-zinc-800/80 bg-zinc-900 px-4 py-4 sm:px-5 shadow-card">
+          <p className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+            <Info className="h-4 w-4 text-orange-400" /> {t("Information")}
+            <span className="font-normal text-zinc-500 tabular-nums">({notes.length})</span>
+          </p>
+          <ul className="mt-3 space-y-2">
+            {notes.map((n) => (
+              <NoteItem key={n.id} note={n} onRemove={n.canDelete ? () => setRemoveNote(n) : undefined} />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <Shell loading={loading} error={error} empty={!!data && days.length === 0}>
         {/* Phones */}
-        {data && data.days.length > 0 && (
+        {data && days.length > 0 && (
           <div className="sm:hidden">
             <ul className={dt.mobileList}>
               {pageDays.map((d: any) => (
                 <li key={d.date}>
                   <button type="button" onClick={() => setDay(d.date)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-zinc-950/70 active:bg-zinc-950">
                     <span className="min-w-0 flex-1">
-                      <span className="block text-base font-medium text-zinc-100 tabular-nums">{formatDay(`${d.date}T00:00:00+05:30`)}</span>
+                      <span className="flex items-center gap-2 text-base font-medium text-zinc-100 tabular-nums">
+                        {formatDay(`${d.date}T00:00:00+05:30`)}
+                        {notesOn(d.date).length > 0 && infoChip}
+                      </span>
                       <span className="mt-2 grid grid-cols-3 gap-x-3 gap-y-2">
                         {cols.map(([k, label]) => (
                           <span key={k} className="min-w-0">
@@ -697,22 +770,11 @@ export function HomeOutingSummaryView() {
                 </li>
               ))}
             </ul>
-            <div className="m-2 rounded-2xl bg-zinc-950 px-4 py-3.5">
-              <p className="text-sm font-semibold text-zinc-100">{t("Total")}</p>
-              <div className="mt-2 grid grid-cols-3 gap-x-3 gap-y-2">
-                {cols.map(([k, label]) => (
-                  <div key={k} className="min-w-0">
-                    <p className="truncate text-[11px] text-zinc-500">{t(label)}</p>
-                    <p className="text-base font-semibold text-zinc-100 tabular-nums">{data.totals[k]}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         )}
 
         {/* Larger screens */}
-        {data && data.days.length > 0 && (
+        {data && days.length > 0 && (
           <div className={cn(dt.wrap, "hidden sm:block")}>
             <table className={dt.table}>
               <thead>
@@ -726,21 +788,18 @@ export function HomeOutingSummaryView() {
               <tbody>
                 {pageDays.map((d: any) => (
                   <tr key={d.date} onClick={() => setDay(d.date)} className={dt.trClickable}>
-                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums font-medium text-zinc-100")}>{formatDay(`${d.date}T00:00:00+05:30`)}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums font-medium text-zinc-100")}>
+                      <span className="inline-flex items-center gap-2">
+                        {formatDay(`${d.date}T00:00:00+05:30`)}
+                        {notesOn(d.date).length > 0 && infoChip}
+                      </span>
+                    </td>
                     {cols.map(([k]) => (
                       <td key={k} className={cn(dt.td, "text-right tabular-nums", d[k] ? "text-zinc-100" : "text-zinc-600")}>{d[k]}</td>
                     ))}
                   </tr>
                 ))}
               </tbody>
-              <tfoot>
-                <tr>
-                  <td className="bg-zinc-950 px-4 py-3.5 font-semibold text-zinc-100 first:rounded-l-2xl last:rounded-r-2xl">{t("Total")}</td>
-                  {cols.map(([k]) => (
-                    <td key={k} className="bg-zinc-950 px-4 py-3.5 text-right font-semibold text-zinc-100 tabular-nums first:rounded-l-2xl last:rounded-r-2xl">{data.totals[k]}</td>
-                  ))}
-                </tr>
-              </tfoot>
             </table>
           </div>
         )}
@@ -749,9 +808,165 @@ export function HomeOutingSummaryView() {
       {data && <PagerBar page={page} pageSize={DAYS_PER_PAGE} total={days.length} onPageChange={setPage} itemLabel={t("days")} />}
 
       <Modal open={!!day} onClose={() => setDay(null)} title={day ? t("Passes on {date}", { date: formatDay(`${day}T00:00:00+05:30`) }) : ""} className="max-w-2xl">
-        {day && <DayDetails date={day} />}
+        {day && (
+          <div className="space-y-5">
+            {notesOn(day).length > 0 && (
+              <ul className="space-y-2">
+                {notesOn(day).map((n) => (
+                  <NoteItem key={n.id} note={n} />
+                ))}
+              </ul>
+            )}
+            <DayDetails date={day} />
+          </div>
+        )}
       </Modal>
+
+      <Modal open={addingNote} onClose={() => setAddingNote(false)} title={t("Add info")} className="max-w-lg">
+        {addingNote && (
+          <AddNoteForm
+            onSaved={() => {
+              setAddingNote(false);
+              notesState.reload();
+            }}
+          />
+        )}
+      </Modal>
+
+      <ConfirmDialog
+        open={!!removeNote}
+        onClose={() => setRemoveNote(null)}
+        title={t("Remove this info?")}
+        description={removeNote?.note ?? ""}
+        confirmText={t("Remove")}
+        cancelText={t("Go Back")}
+        variant="danger"
+        onConfirm={async () => {
+          const n = removeNote;
+          setRemoveNote(null);
+          if (!n) return;
+          const res: any = await deleteOutingNote(n.id).catch(() => ({ error: "Could not save. Please try again." }));
+          if (res?.error) window.alert(t(res.error));
+          notesState.reload();
+        }}
+      />
     </div>
+  );
+}
+
+type OutingNote = { id: string; from: string; to: string; note: string; by: string; createdAt: string; canDelete: boolean };
+
+function InfoChip() {
+  const t = useT();
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-semibold text-orange-400">
+      <Info className="h-3 w-3" /> {t("Info")}
+    </span>
+  );
+}
+const infoChip = <InfoChip />;
+
+/** One information note: its dates, the text and who wrote it. */
+function NoteItem({ note, onRemove }: { note: OutingNote; onRemove?: () => void }) {
+  const t = useT();
+  const day = (d: string) => formatDay(`${d}T00:00:00+05:30`);
+  return (
+    <li className="flex items-start gap-3 rounded-2xl border border-orange-500/15 bg-orange-500/5 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-semibold text-orange-400 tabular-nums">
+          {note.from === note.to ? day(note.from) : `${day(note.from)} – ${day(note.to)}`}
+        </p>
+        <p className="mt-1 whitespace-pre-wrap break-words text-sm text-zinc-100">{note.note}</p>
+        <p className="mt-1 text-[11px] text-zinc-500">
+          {note.by} · {formatInstant(note.createdAt)}
+        </p>
+      </div>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={t("Remove")}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
+    </li>
+  );
+}
+
+/** Information for one date, or a set of dates (From – To). */
+function AddNoteForm({ onSaved }: { onSaved: () => void }) {
+  const t = useT();
+  const today = istDateString();
+  const [from, setFrom] = useState(today);
+  const [to, setTo] = useState(today);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [token] = useState(newClientToken);
+  const inputCls =
+    "h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 [color-scheme:light] outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10";
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError(null);
+        try {
+          const res: any = await addOutingNote({ from, to, note }, token);
+          if (res?.error) setError(t(res.error));
+          else onSaved();
+        } catch (err) {
+          setError(actionErrorMessage(err, t("Could not save. Please try again.")));
+        }
+        setBusy(false);
+      }}
+      className="space-y-4"
+    >
+      {error && <p role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</p>}
+      <div className="grid grid-cols-2 gap-3">
+        <label className="space-y-1.5 text-sm font-medium text-zinc-200">
+          <span className="block">{t("From")}</span>
+          <DateField
+            required
+            value={from}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return;
+              setFrom(v);
+              if (to < v) setTo(v);
+            }}
+            className={inputCls}
+          />
+        </label>
+        <label className="space-y-1.5 text-sm font-medium text-zinc-200">
+          <span className="block">{t("To")}</span>
+          <DateField required value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} className={inputCls} />
+        </label>
+      </div>
+      <p className="-mt-2 text-xs text-zinc-500">{t("For one day, keep From and To the same.")}</p>
+      <label className="block space-y-1.5 text-sm font-medium text-zinc-200">
+        <span className="block">{t("Information")}</span>
+        <textarea
+          required
+          value={note}
+          maxLength={500}
+          rows={3}
+          placeholder={t("e.g. Dasara holidays — hostel closed")}
+          onChange={(e) => setNote(e.target.value)}
+          className="flex min-h-[96px] w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
+        />
+      </label>
+      <button
+        type="submit"
+        disabled={busy}
+        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-orange-600 text-sm font-semibold text-white transition-[background-color,transform] hover:bg-orange-700 active:scale-[0.98] disabled:opacity-60"
+      >
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+        {busy ? t("Saving…") : t("Save info")}
+      </button>
+    </form>
   );
 }
 

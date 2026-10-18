@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/auth/helpers";
+import { avatarUrlFor, requireAuth } from "@/lib/auth/helpers";
 import { prisma } from "@/lib/db/prisma";
 import { SettingsClient } from "./client";
 
@@ -29,5 +29,5 @@ export default async function SettingsPage() {
     extraData.phone = profile.phone;
   }
 
-  return <SettingsClient user={{ ...user, ...extraData }} />;
+  return <SettingsClient user={{ ...user, ...extraData }} avatarUrl={avatarUrlFor(user)} />;
 }

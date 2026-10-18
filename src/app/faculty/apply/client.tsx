@@ -1,5 +1,6 @@
 "use client";
 
+import { DateField } from "@/components/ui/date-field";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -194,10 +195,19 @@ export function FacultyApplyClient() {
       }
     }
     refreshToken();
-    const interval = setInterval(refreshToken, 45_000);
+    // Only while the QR is on screen (a locked phone / hidden tab makes no
+    // requests); coming back refreshes at once so the code shown is current.
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") refreshToken();
+    }, 45_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshToken();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [selectedQrPassId]);
 
@@ -470,9 +480,8 @@ export function FacultyApplyClient() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="min-w-0">
                   <label htmlFor="startDate" className="block text-sm font-medium text-zinc-300 mb-2">Start Date *</label>
-                  <input
+                  <DateField
                     id="startDate"
-                    type="date"
                     name="startDate"
                     value={startDate}
                     min={today}
@@ -485,9 +494,8 @@ export function FacultyApplyClient() {
                   <label htmlFor="endDate" className="block text-sm font-medium text-zinc-300 mb-2">
                     End Date {isMultiDay ? "*" : ""}
                   </label>
-                  <input
+                  <DateField
                     id="endDate"
-                    type="date"
                     name="endDate"
                     value={isMultiDay ? endDate : startDate}
                     min={startDate || today}
@@ -656,8 +664,7 @@ export function FacultyApplyClient() {
               <div className="flex items-center gap-2">
                 <div className="relative flex flex-1 sm:flex-none items-center group">
                   <CalendarIcon className="absolute left-3.5 h-4 w-4 text-zinc-500 group-hover:text-zinc-300 transition-colors pointer-events-none z-10" />
-                  <input
-                    type="date"
+                  <DateField
                     value={historyDate}
                     onChange={(e) => {
                       setHistoryDate(e.target.value);
@@ -665,7 +672,8 @@ export function FacultyApplyClient() {
                     }}
                     aria-label="Filter by date"
                     className="relative h-10 w-full sm:w-44 min-w-0 appearance-none rounded-full border border-zinc-800 bg-zinc-900 pl-10 pr-4 text-left text-sm text-zinc-200 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 [color-scheme:light] cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-                  />
+ showIcon={false}
+/>
                 </div>
 
                 {historyDate && (

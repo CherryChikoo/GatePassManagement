@@ -21,6 +21,9 @@ model Profile {
   email         String         @unique
   phone         String?
   active        Boolean        @default(true)
+  /// When the profile photo was last set (null = no photo). The photo lives in
+  /// Storage at avatars/<id>.jpg; this date versions its URL so browsers cache it.
+  avatarUpdatedAt DateTime?    @map("avatar_updated_at")
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
   faculty       Faculty?
@@ -284,6 +287,33 @@ model Outsider {
 /// Never updated or deleted (enforced by database triggers): a later return
 /// time is a COMPLETION record and a fix is a CORRECTION record, each pointing
 /// at the ORIGINAL through parentId.
+/// A register created in the portal (by Main Admin or Head Security) instead of in code.
+/// Its entries are ordinary RegisterEntry rows whose `register` is this `key`.
+model CustomRegister {
+  id            String   @id @default(uuid())
+  /// Stored on entries, e.g. "CUSTOM_7K2F9Q"
+  key           String   @unique
+  /// URL part, e.g. "custom-7k2f9q"
+  slug          String   @unique
+  title         String
+  description   String   @default("")
+  /// The form: [{ key, label, type, options? }] (see src/lib/registers/custom.ts)
+  fields        Json
+  /// Keys of fields that must be filled in
+  required      String[] @default([])
+  /// In & Out register: a record starts with In or Out; the other side is recorded later
+  hasInOut      Boolean  @default(false) @map("has_in_out")
+  /// Disabled registers are hidden everywhere (their records are kept)
+  active        Boolean  @default(true)
+  createdById   String   @map("created_by_id")
+  createdByName String   @map("created_by_name")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([active, createdAt])
+  @@map("custom_registers")
+}
+
 model RegisterEntry {
   id                   String          @id @default(uuid())
   /// Register key, e.g. "CAR_BOOK" (see src/lib/registers/definitions.ts)

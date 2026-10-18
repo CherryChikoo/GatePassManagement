@@ -31,7 +31,13 @@ export type FieldType =
   | "select"
   | "yesno"
   /** Picks a security staff member; the server stores their name and employee ID */
-  | "staff";
+  | "staff"
+  /** College department: dropdown, or "Other" to type a name */
+  | "department"
+  /** Photo taken with the device camera (stored in Supabase Storage) */
+  | "photo"
+  /** Faculty / staff picked from the portal's people (or typed when not listed); stored as text */
+  | "person";
 
 export type FieldDef = {
   key: string;
@@ -43,6 +49,10 @@ export type FieldDef = {
   completion?: boolean;
   /** Short helper text under the input */
   hint?: string;
+  /** Choice lists: add "Other", which opens a box to type a value */
+  allowOther?: boolean;
+  /** "person" fields: fill these fields from the picked person (e.g. their designation) */
+  fills?: { designation?: string; department?: string };
 };
 
 export type GroupDef = {
@@ -123,7 +133,8 @@ export const REGISTER_KEYS = [
 
 export type RegisterKey = (typeof REGISTER_KEYS)[number];
 
-const SHIFTS = ["Morning", "Afternoon", "Night", "General"] as const;
+/** Duty shifts; "Other" lets the guard type any other shift */
+const SHIFTS = ["A", "B", "C"] as const;
 const WORKER_TYPES = ["Peddamestri", "Chinnamestri", "Cooli"] as const;
 const WORK_TYPES = ["Sanitary", "Plumbing", "Carpenter", "Electrical", "Masonry", "Painting", "Other"] as const;
 const UNITS = ["Nos", "Kg", "Tons", "Litres", "Bags", "Boxes", "Metres", "Sq. ft", "Sets", "Other"] as const;
@@ -138,7 +149,7 @@ const labourFields: FieldDef[] = [
   { key: "workArea", label: "Work Area", type: "text" },
   { key: "mainWorker", label: "Main Worker Details", type: "text", placeholder: "Name, phone" },
   { key: "estate", label: "Estate", type: "text" },
-  { key: "authorizedBy", label: "Building Work Authorized By", type: "text" },
+  { key: "authorizedBy", label: "Building Work Authorized By", type: "person" },
 ];
 
 const stockFields: FieldDef[] = [
@@ -153,7 +164,7 @@ const stockFields: FieldDef[] = [
   { key: "billAmount", label: "Bill Amount (₹)", type: "number" },
   { key: "timeCame", label: "Time Came", type: "time" },
   { key: "vehicleNumber", label: "Vehicle Number", type: "text" },
-  { key: "billTakenBy", label: "Bill Taken By", type: "text" },
+  { key: "billTakenBy", label: "Bill Taken By", type: "person" },
   { key: "inventoryStored", label: "Inventory Stored Details", type: "text", placeholder: "Where it is stored" },
   { key: "managerDetails", label: "Manager (name & designation)", type: "text" },
   { key: "purposeDestination", label: "Purpose / Destination", type: "text" },
@@ -193,10 +204,10 @@ export const REGISTERS: RegisterDef[] = [
       { key: "studentMobile", label: "Student Mobile Number", type: "phone" },
       { key: "parentMobile", label: "Parent / Guardian Mobile Number", type: "phone" },
       { key: "programRequested", label: "Program Requested", type: "text", placeholder: "e.g. B.Tech" },
-      { key: "branch", label: "Branch / Specialization", type: "text" },
+      { key: "branch", label: "Branch / Specialization", type: "department" },
       { key: "admissionReporting", label: "Admission / Reporting", type: "select", options: ["Admission", "Reporting"] },
       { key: "referralType", label: "Direct / Any Staff Referral", type: "select", options: ["Direct", "Staff Referral"] },
-      { key: "referralName", label: "Referral Name", type: "text" },
+      { key: "referralName", label: "Referral Name", type: "person" },
       {
         key: "heardFrom",
         label: "How Heard About RCE",
@@ -224,13 +235,13 @@ export const REGISTERS: RegisterDef[] = [
     fields: [
       { key: "driverName", label: "Driver Name", type: "text" },
       { key: "vehicleNumber", label: "Vehicle Number", type: "text" },
-      { key: "usedBy", label: "Person / Department Using the Car", type: "text" },
+      { key: "usedBy", label: "Person / Department Using the Car", type: "person" },
       { key: "purpose", label: "Purpose", type: "text" },
       { key: "date", label: "Date", type: "date" },
       { key: "timeOut", label: "Time Out", type: "time" },
-      { key: "outReading", label: "Out Reading (km)", type: "number" },
+      { key: "outReading", label: "Out Reading (km)", type: "text" },
       { key: "timeIn", label: "Time In", type: "time" },
-      { key: "inReading", label: "In Reading (km)", type: "number" },
+      { key: "inReading", label: "In Reading (km)", type: "text" },
       { key: "remarks", label: "Remarks", type: "textarea" },
     ],
   },
@@ -252,9 +263,9 @@ export const REGISTERS: RegisterDef[] = [
       { key: "date", label: "Date", type: "date" },
       { key: "purpose", label: "Purpose / Trip Details", type: "text" },
       { key: "outTime", label: "Out Time", type: "time" },
-      { key: "outReading", label: "Out Reading", type: "number" },
+      { key: "outReading", label: "Out Reading", type: "text" },
       { key: "inTime", label: "In Time", type: "time" },
-      { key: "inReading", label: "In Reading", type: "number" },
+      { key: "inReading", label: "In Reading", type: "text" },
     ],
   },
   {
@@ -388,11 +399,12 @@ export const REGISTERS: RegisterDef[] = [
       out: { label: "Duty end", timeKey: "dutyEnd" },
       firstDirections: ["IN"],
     },
-    listFields: ["staff", "shift", "dutyStart", "dutyEnd"],
+    listFields: ["staff", "rank", "shift", "dutyStart", "dutyEnd"],
     fields: [
       { key: "date", label: "Date", type: "date" },
-      { key: "shift", label: "Shift", type: "select", options: SHIFTS },
+      { key: "shift", label: "Shift", type: "select", options: SHIFTS, allowOther: true },
       { key: "staff", label: "Security Staff", type: "staff" },
+      { key: "rank", label: "Rank", type: "text", placeholder: "e.g. Guard, Head Guard" },
       { key: "dutyStart", label: "Duty Start Time", type: "time" },
       { key: "dutyEnd", label: "Duty End Time", type: "time" },
       { key: "remarks", label: "Remarks", type: "textarea" },
@@ -403,7 +415,7 @@ export const REGISTERS: RegisterDef[] = [
     key: "SECURITY_ATTENDANCE",
     number: 15,
     title: "Security Attendance Register Book",
-    description: "Attendance of security staff.",
+    description: "Monthly attendance of security staff, with remarks for each day.",
     required: ["staff", "attendanceStatus"],
     movement: { in: { label: "In", timeKey: "inTime" }, out: { label: "Out", timeKey: "outTime" }, firstDirections: ["IN"] },
     listFields: ["staff", "shift", "attendanceStatus", "inTime", "outTime"],
@@ -411,8 +423,8 @@ export const REGISTERS: RegisterDef[] = [
       { key: "date", label: "Date", type: "date" },
       { key: "staff", label: "Security Staff (name & employee ID)", type: "staff" },
       { key: "rank", label: "Rank", type: "text", placeholder: "e.g. Guard, Head Guard" },
-      { key: "shift", label: "Shift", type: "select", options: SHIFTS },
-      { key: "attendanceStatus", label: "Attendance Status", type: "select", options: ["Present", "Absent", "Late", "Half Day", "On Leave"] },
+      { key: "shift", label: "Shift", type: "select", options: SHIFTS, allowOther: true },
+      { key: "attendanceStatus", label: "Attendance Status", type: "select", options: ["Present", "Absent", "Late", "Half Day", "On Leave", "Double Duty"] },
       { key: "inTime", label: "In-Time", type: "time" },
       { key: "outTime", label: "Out-Time", type: "time" },
       { key: "remarks", label: "Remarks", type: "textarea" },
@@ -455,16 +467,15 @@ export const REGISTERS: RegisterDef[] = [
       out: { label: "Key taken", timeKey: "keyTakenTime" },
       firstDirections: BOTH,
     },
-    listFields: ["keyName", "personName", "department", "keyTakenTime", "keyReturnedTime"],
+    listFields: ["keyName", "personName", "keyTakenTime", "keyReturnedTime"],
     fields: [
       { key: "date", label: "Date", type: "date" },
-      { key: "personName", label: "Person Name", type: "text" },
+      { key: "personName", label: "Person Name", type: "person" },
       { key: "phone", label: "Phone Number", type: "phone" },
-      { key: "department", label: "Department", type: "text" },
       { key: "keyName", label: "Key Name / Key Number", type: "text" },
       { key: "purpose", label: "Purpose", type: "text" },
       { key: "keyGivenBy", label: "Key Given By", type: "text" },
-      { key: "keyTakenBy", label: "Key Taken By", type: "text" },
+      { key: "keyTakenBy", label: "Key Taken By", type: "person" },
       { key: "keyTakenTime", label: "Key Taken Time", type: "time" },
       { key: "keyReturnedTime", label: "Key Returned Time", type: "time" },
       { key: "remarks", label: "Remarks", type: "textarea" },
@@ -484,15 +495,16 @@ export const REGISTERS: RegisterDef[] = [
       { label: "Institution", value: "Ramachandra College" },
     ],
     fields: [
-      { key: "fromName", label: "From — Name of Faculty / Staff", type: "text" },
+      { key: "fromName", label: "From — Name of Faculty / Staff", type: "person", fills: { designation: "fromDesignation", department: "fromDepartment" } },
       { key: "fromDesignation", label: "From — Designation", type: "text" },
-      { key: "fromDepartment", label: "From — Department", type: "text" },
+      { key: "fromDepartment", label: "From — Department", type: "department" },
+      { key: "allowingRepresentative", label: "Allowing — Company Representative Name", type: "text" },
+      { key: "phone", label: "Allowing — Representative Mobile Number", type: "phone" },
       { key: "allowingDesignation", label: "Allowing — Designation", type: "text" },
       { key: "allowingOrganization", label: "Allowing — Belonging Organization", type: "text" },
       { key: "allowingCity", label: "Allowing — City", type: "text" },
       { key: "purpose", label: "Taking Out Purpose", type: "text" },
       { key: "itemType", label: "Item Type", type: "select", options: ["Returnable", "Non-Returnable"] },
-      { key: "phone", label: "Phone Number", type: "phone" },
       { key: "outTime", label: "Out-Time", type: "time" },
       { key: "inTime", label: "In-Time", type: "time" },
     ],
@@ -555,7 +567,8 @@ export function pendingActions(def: EntryRegister, data: Record<string, unknown>
     if (first) {
       const other: Direction = first === "IN" ? "OUT" : "IN";
       const side = other === "IN" ? m.in : m.out;
-      if (isBlank(data[side.timeKey])) next = { ...side, direction: other };
+      // One-way records ("Out only" / "In only", or closed later) never wait for the other side
+      if (isBlank(data[side.timeKey]) && data.oneWay !== true) next = { ...side, direction: other };
     }
   }
   const groups = (def.groups ?? [])

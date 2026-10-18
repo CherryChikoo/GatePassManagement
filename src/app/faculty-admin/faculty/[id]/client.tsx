@@ -1,4 +1,5 @@
 "use client";
+import { DateField } from "@/components/ui/date-field";
 import { ResetPasswordButton } from "@/components/users/reset-password-button";
 import { istDateString } from "@/lib/time/ist";
 
@@ -232,8 +233,7 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
           <div className="flex items-center gap-2">
             <div className="relative flex-1 sm:flex-none">
               <Calendar className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-              <input
-                type="date"
+              <DateField
                 aria-label="Filter by date"
                 value={passDate}
                 max={istDateString()}
@@ -242,7 +242,8 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
                   setCurrentPage(1);
                 }}
                 className="h-10 w-full sm:w-auto rounded-full border border-zinc-800 bg-zinc-900 pl-10 pr-4 text-sm text-zinc-200 outline-none hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 [color-scheme:light] transition-colors"
-              />
+ showIcon={false}
+/>
             </div>
             {passDate && (
               <button

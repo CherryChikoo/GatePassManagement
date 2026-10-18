@@ -13,6 +13,8 @@ export type AuthUser = {
   name: string;
   email: string;
   profileId: string;
+  /** Profile photo version (ms) — null when there is no photo */
+  avatarVersion: number | null;
 };
 
 // In-memory profile cache with 20s TTL to prevent repeating DB profile queries across components & actions
@@ -68,12 +70,13 @@ export const getAuthUser = cache(async (): Promise<AuthUser | null> => {
       name: profile.name,
       email: profile.email || userEmail || "",
       profileId: profile.id,
+      avatarVersion: profile.avatarUpdatedAt ? new Date(profile.avatarUpdatedAt).getTime() : null,
     };
   }
 
   const profile = await prisma.profile.findUnique({
     where: { userId },
-    select: { id: true, userId: true, role: true, name: true, email: true, active: true },
+    select: { id: true, userId: true, role: true, name: true, email: true, active: true, avatarUpdatedAt: true },
   });
 
   if (!profile || !profile.active) return null;
@@ -90,6 +93,7 @@ export const getAuthUser = cache(async (): Promise<AuthUser | null> => {
     name: profile.name,
     email: profile.email || userEmail || "",
     profileId: profile.id,
+    avatarVersion: profile.avatarUpdatedAt ? new Date(profile.avatarUpdatedAt).getTime() : null,
   };
 });
 
@@ -140,4 +144,9 @@ export function getRoleDashboardPath(role: Role): string {
     default:
       return "/login";
   }
+}
+
+/** Address of a person's profile photo (versioned, so browsers keep it until it changes). */
+export function avatarUrlFor(user: { profileId: string; avatarVersion: number | null }): string | null {
+  return user.avatarVersion ? `/avatar/${user.profileId}?v=${user.avatarVersion}` : null;
 }

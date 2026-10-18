@@ -1,5 +1,7 @@
 "use client";
 
+import { DateField } from "@/components/ui/date-field";
+import { LoadingPill } from "@/components/ui/loading-pill";
 import { useEffect, useState } from "react";
 import { History, LogIn, LogOut } from "lucide-react";
 import { StatusBadge } from "@/components/ui/primitives";
@@ -60,8 +62,7 @@ export function PassHistoryPanel({ person }: { person: Person }) {
           Pass history
         </p>
         <div className="flex items-center gap-2">
-          <input
-            type="date"
+          <DateField
             aria-label="Filter by date"
             value={date}
             max={istDateString()}
@@ -113,6 +114,7 @@ export function PassHistoryPanel({ person }: { person: Person }) {
       {error && (
         <p className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs text-red-300">{error}</p>
       )}
+      <LoadingPill active={loading} />
       <div className={`space-y-2.5 transition-opacity ${loading ? "opacity-60" : ""}`}>
         {data?.passes?.length === 0 && (
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-zinc-800 px-4 py-10 text-center">

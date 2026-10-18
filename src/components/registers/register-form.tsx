@@ -1,8 +1,13 @@
 "use client";
+import { DateField } from "@/components/ui/date-field";
 import { useT } from "@/components/providers/language-provider";
 
-import { useEffect, useState } from "react";
-import { CalendarDays, CheckCircle2, Clock, LogIn, LogOut, Plus, Save, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CalendarDays, Camera, CheckCircle2, ChevronDown, Clock, Loader2, LogIn, LogOut, Plus, Save, Trash2, X } from "lucide-react";
+import { getRegisterPeopleOptions } from "@/server/actions/registers";
+import { DepartmentSelect } from "@/components/ui/department-select";
+import { compressPhoto } from "@/lib/images/compress-photo";
+import { uploadRegisterPhoto } from "@/lib/storage/image-upload";
 import type { Direction, EntryRegister, FieldDef, GroupDef } from "@/lib/registers/definitions";
 import { pendingActions } from "@/lib/registers/definitions";
 import { formatDate } from "@/lib/utils";
@@ -15,9 +20,227 @@ type Values = Record<string, any>;
 const inputCls =
   "flex h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 [color-scheme:light] outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 disabled:opacity-60";
 
+export type PersonOption = { name: string; employeeId: string | null; designation: string | null; department: string | null };
+
+// Faculty / staff list: fetched once and shared by every picker for 5 minutes
+let peopleCache: { at: number; list: Promise<PersonOption[]> } | null = null;
+function loadPeople(): Promise<PersonOption[]> {
+  if (!peopleCache || Date.now() - peopleCache.at > 5 * 60_000) {
+    peopleCache = {
+      at: Date.now(),
+      list: getRegisterPeopleOptions().catch(() => {
+        peopleCache = null;
+        return [];
+      }),
+    };
+  }
+  return peopleCache.list;
+}
+
+const personLabel = (p: PersonOption) => (p.employeeId ? `${p.name} (${p.employeeId})` : p.name);
+
+/**
+ * Faculty / staff picker: type to search the portal's faculty, HODs, Deans and
+ * Wardens and pick one, or just type a name that isn't listed.
+ */
+function PersonInput({
+  id,
+  value,
+  onChange,
+  onPick,
+  required,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  onPick?: (p: PersonOption) => void;
+  required?: boolean;
+}) {
+  const t = useT();
+  const [people, setPeople] = useState<PersonOption[] | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    loadPeople().then((list) => alive && setPeople(list));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // A picked name shows the whole list again (to change it); typing searches
+  const exact = (people ?? []).some((p) => personLabel(p) === value);
+  const q = exact ? "" : value.trim().toLowerCase();
+  const matches = (people ?? [])
+    .filter(
+      (p) =>
+        !q ||
+        personLabel(p).toLowerCase().includes(q) ||
+        (p.department ?? "").toLowerCase().includes(q) ||
+        (p.designation ?? "").toLowerCase().includes(q)
+    )
+    .slice(0, exact ? 50 : 8);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="relative">
+      <input
+        ref={inputRef}
+        id={id}
+        value={value}
+        required={required}
+        autoComplete="off"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={`${id}-list`}
+        placeholder={t("Search name, or type it")}
+        onFocus={() => setOpen(true)}
+        onClick={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+        className={`${inputCls} ${value ? "pr-20" : "pr-11"}`}
+      />
+      <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center">
+        {value && (
+          <button
+            type="button"
+            aria-label={t("Clear")}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onChange("");
+              setOpen(true);
+              inputRef.current?.focus();
+            }}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-950 hover:text-zinc-200"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={t("Show list")}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            setOpen((o) => !o);
+            inputRef.current?.focus();
+          }}
+          className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-950 hover:text-zinc-200"
+        >
+          <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+      {open && (
+        <ul id={`${id}-list`} role="listbox" className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-1 shadow-card">
+          {people === null ? (
+            <li className="flex items-center gap-2 px-3 py-2.5 text-sm text-zinc-500">
+              <Loader2 className="h-4 w-4 animate-spin" /> {t("Loading…")}
+            </li>
+          ) : matches.length === 0 ? (
+            <li className="px-3 py-2.5 text-xs text-zinc-500">{t("Not in the list: the typed name will be saved.")}</li>
+          ) : (
+            matches.map((p) => (
+              <li key={personLabel(p)} role="option" aria-selected={personLabel(p) === value}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    onChange(personLabel(p));
+                    onPick?.(p);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full min-h-11 flex-col items-start justify-center rounded-xl px-3 py-2 text-left transition-colors ${
+                    personLabel(p) === value ? "bg-orange-500/10" : "hover:bg-zinc-950"
+                  }`}
+                >
+                  <span className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+                    {personLabel(p)}
+                    {personLabel(p) === value && <CheckCircle2 className="h-4 w-4 text-orange-400" />}
+                  </span>
+                  {(p.designation || p.department) && (
+                    <span className="text-xs text-zinc-500">{[p.designation, p.department].filter(Boolean).join(" · ")}</span>
+                  )}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+const OTHER_CHOICE = "__other__";
+
+/** Choice list plus "Other", which opens a box to type any value (e.g. Shift: A / B / C / Other). */
+function ChoiceWithOther({
+  id,
+  options,
+  value,
+  onChange,
+  required,
+}: {
+  id: string;
+  options: readonly string[];
+  value: string;
+  onChange: (v: string) => void;
+  required?: boolean;
+}) {
+  const t = useT();
+  const [choice, setChoice] = useState(() => (value && !options.includes(value) ? OTHER_CHOICE : value));
+  const [custom, setCustom] = useState(() => (value && !options.includes(value) ? value : ""));
+  return (
+    <div className="space-y-2">
+      <select
+        id={id}
+        value={choice}
+        required={required}
+        onChange={(e) => {
+          setChoice(e.target.value);
+          onChange(e.target.value === OTHER_CHOICE ? custom.trim() : e.target.value);
+        }}
+        className={`${inputCls} [&>option]:bg-zinc-900`}
+      >
+        <option value="">{t("— Select —")}</option>
+        {options.map((o) => (
+          <option key={o} value={o}>{t(o)}</option>
+        ))}
+        <option value={OTHER_CHOICE}>{t("Other")}</option>
+      </select>
+      {choice === OTHER_CHOICE && (
+        <input
+          type="text"
+          value={custom}
+          maxLength={60}
+          required={required}
+          autoFocus
+          placeholder={t("Type here")}
+          aria-label={t("Type here")}
+          onChange={(e) => {
+            setCustom(e.target.value);
+            onChange(e.target.value.trim());
+          }}
+          className={inputCls}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Plain number box (no up / down arrows): keeps digits and one decimal point. */
+function numericOnly(v: string): string {
+  const cleaned = v.replace(/[^0-9.]/g, "");
+  const dot = cleaned.indexOf(".");
+  return dot === -1 ? cleaned : cleaned.slice(0, dot + 1) + cleaned.slice(dot + 1).replace(/\./g, "");
+}
+
 /** Large save button pinned to the bottom of the popup while the form scrolls. */
+// Docked Save bar: a soft shadow above it so fields scrolling underneath read as
+// "more above", and a gap before it so the last field is never tucked under it.
 const stickyFooterCls =
-  "sticky bottom-0 z-10 -mx-4 -mb-4 sm:-mx-6 sm:-mb-6 space-y-2 border-t border-zinc-800 bg-zinc-900 px-4 pt-3 pb-4 sm:px-6 sm:pb-6";
+  "sticky bottom-0 z-10 -mx-4 -mb-4 sm:-mx-6 sm:-mb-6 !mt-6 space-y-2 rounded-b-3xl border-t border-zinc-800 bg-zinc-900 px-4 pt-3 pb-4 sm:px-6 sm:pb-6 shadow-[0_-12px_24px_-14px_rgba(16,24,40,0.25)]";
 const saveBtnCls =
   "inline-flex w-full h-14 sm:h-12 items-center justify-center gap-2 rounded-full text-base sm:text-sm font-semibold text-white transition-[background-color,transform] active:scale-[0.98] disabled:opacity-60 disabled:active:scale-100";
 
@@ -52,6 +275,74 @@ function emptyRow(g: GroupDef): Values {
   return Object.fromEntries(g.fields.filter((f) => f.type !== "time").map((f) => [f.key, ""]));
 }
 
+/** Camera photo for a register entry: compressed in the browser, uploaded at once, the stored path is the value. */
+function PhotoInput({
+  id,
+  value,
+  onChange,
+  registerKey,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  registerKey: string;
+}) {
+  const t = useT();
+  const [preview, setPreview] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const b64 = await compressPhoto(file);
+      setPreview(b64);
+      const res = await uploadRegisterPhoto(b64, registerKey);
+      if (res.error || !res.path) {
+        setError(t("Photo upload failed:") + " " + (res.error || t("unknown error")));
+        onChange("");
+      } else {
+        onChange(res.path);
+      }
+    } catch (err: any) {
+      setError(err?.message || t("Photo upload failed:"));
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-3">
+        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
+          {preview ? (
+             
+            <img src={preview} alt="" className="h-full w-full object-cover" />
+          ) : value ? (
+            <CheckCircle2 className="h-7 w-7 text-emerald-400" />
+          ) : (
+            <Camera className="h-7 w-7 text-zinc-600" />
+          )}
+        </div>
+        <label
+          htmlFor={id}
+          className={`inline-flex h-12 items-center gap-2 rounded-full px-5 text-sm font-medium transition-colors ${
+            value ? "border border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-950" : "bg-orange-600 text-white hover:bg-orange-700"
+          } ${busy ? "pointer-events-none opacity-60" : "cursor-pointer"}`}
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+          {busy ? t("Uploading…") : value ? t("Retake Photo") : t("Take Photo")}
+        </label>
+        <input id={id} type="file" accept="image/*" capture="environment" className="hidden" onChange={pick} />
+      </div>
+      {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
+    </div>
+  );
+}
+
 function FieldInput({
   f,
   id,
@@ -59,6 +350,8 @@ function FieldInput({
   onChange,
   staff,
   required = false,
+  registerKey = "",
+  onPickPerson,
 }: {
   f: FieldDef;
   id: string;
@@ -66,9 +359,18 @@ function FieldInput({
   onChange: (v: any) => void;
   staff: StaffOption[];
   required?: boolean;
+  registerKey?: string;
+  /** "person" fields: the picked faculty / staff member (to fill designation etc.) */
+  onPickPerson?: (p: PersonOption) => void;
 }) {
   const t = useT();
   switch (f.type) {
+    case "person":
+      return <PersonInput id={id} value={value ?? ""} onChange={onChange} onPick={onPickPerson} required={required} />;
+    case "department":
+      return <DepartmentSelect id={id} value={value ?? ""} onChange={onChange} required={required} />;
+    case "photo":
+      return <PhotoInput id={id} value={value ?? ""} onChange={onChange} registerKey={registerKey} />;
     case "textarea":
       return (
         <textarea
@@ -85,6 +387,9 @@ function FieldInput({
     case "select":
     case "yesno":
     case "staff": {
+      if (f.type === "select" && f.allowOther) {
+        return <ChoiceWithOther id={id} options={f.options ?? []} value={value ?? ""} onChange={onChange} required={required} />;
+      }
       const options =
         f.type === "yesno"
           ? [{ v: "yes", l: t("Yes") }, { v: "no", l: t("No") }]
@@ -101,7 +406,7 @@ function FieldInput({
       );
     }
     case "number":
-      return <input id={id} type="number" inputMode="decimal" min={0} step="any" value={value} required={required} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
+      return <input id={id} type="text" inputMode="decimal" autoComplete="off" value={value} required={required} onChange={(e) => onChange(numericOnly(e.target.value))} className={inputCls} />;
     case "phone":
       return <input id={id} type="tel" maxLength={15} value={value} placeholder={f.placeholder} required={required} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
     default:
@@ -190,11 +495,18 @@ export function RegisterForm({
   def: EntryRegister;
   staff: StaffOption[];
   busy: boolean;
-  onSubmit: (payload: { fields: Values; groups: Record<string, Values[]>; direction?: Direction }) => void;
+  onSubmit: (payload: { fields: Values; groups: Record<string, Values[]>; direction?: Direction; oneWay?: boolean }) => void;
 }) {
   const t = useT();
   const m = def.movement;
   const [direction, setDirection] = useState<Direction | null>(m && m.firstDirections.length === 1 ? m.firstDirections[0] : null);
+  // "Out only" / "In only": nothing more will be recorded on this record
+  const [oneWay, setOneWay] = useState(false);
+  // Bumped when a picked person fills other boxes, so dropdowns show the new value
+  const [fillNo, setFillNo] = useState(0);
+  // What each box got from the last picked person (so a new pick can replace it)
+  const autoFilled = useRef<Record<string, string>>({});
+  const fillTargets = new Set(def.fields.flatMap((f) => (f.fills ? Object.values(f.fills) : [])) as string[]);
   const [values, setValues] = useState<Values>({});
   const [rows, setRows] = useState<Record<string, Values[]>>(() =>
     Object.fromEntries((def.groups ?? []).map((g) => [g.key, [emptyRow(g)]]))
@@ -220,13 +532,37 @@ export function RegisterForm({
           return;
         }
         setLocalError(null);
-        onSubmit({ fields: values, groups: rows, direction: direction ?? undefined });
+        onSubmit({ fields: values, groups: rows, direction: direction ?? undefined, oneWay: !!m && !m.single && oneWay });
       }}
       className="space-y-5"
     >
       <LiveDateTime />
 
       {m && <DirectionPicker def={def} value={direction} onChange={(d) => { setDirection(d); setLocalError(null); }} />}
+
+      {m && !m.single && side && (
+        <fieldset>
+          <legend className="sr-only">{t("Record type")}</legend>
+          <div className="grid grid-cols-2 gap-2 rounded-2xl border border-zinc-800 bg-zinc-950 p-1">
+            {[
+              { value: false, label: t("{side} now, {other} later", { side: side.label, other: (direction === "IN" ? m.out : m.in).label }) },
+              { value: true, label: t("{side} only", { side: side.label }) },
+            ].map((o) => (
+              <button
+                key={String(o.value)}
+                type="button"
+                aria-pressed={oneWay === o.value}
+                onClick={() => setOneWay(o.value)}
+                className={`min-h-11 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+                  oneWay === o.value ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       {def.fixed && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
@@ -249,12 +585,36 @@ export function RegisterForm({
         {visible.map((f) => (
           <FieldBlock key={f.key} f={f} id={`rf-${f.key}`} required={def.required.includes(f.key)}>
             <FieldInput
+              key={fillTargets.has(f.key) ? `${f.key}-${fillNo}` : f.key}
+              registerKey={def.key}
               f={f}
               id={`rf-${f.key}`}
               value={values[f.key] ?? ""}
               onChange={(v) => setValues((s) => ({ ...s, [f.key]: v }))}
               staff={staff}
               required={def.required.includes(f.key)}
+              onPickPerson={
+                f.fills
+                  ? (p) => {
+                      // Fill their designation / department. A box keeps what the guard
+                      // typed; one filled by an earlier pick follows the new person.
+                      const filled: Values = {};
+                      const pairs: [string | undefined, string | null][] = [
+                        [f.fills?.designation, p.designation],
+                        [f.fills?.department, p.department],
+                      ];
+                      for (const [target, val] of pairs) {
+                        if (!target) continue;
+                        const cur = String(values[target] ?? "").trim();
+                        if (cur && cur !== autoFilled.current[target]) continue;
+                        filled[target] = val ?? "";
+                        autoFilled.current[target] = val ?? "";
+                      }
+                      setValues((s) => ({ ...s, ...filled }));
+                      setFillNo((n) => n + 1);
+                    }
+                  : undefined
+              }
             />
           </FieldBlock>
         ))}
@@ -293,6 +653,7 @@ export function RegisterForm({
                   {typed.map((f) => (
                     <FieldBlock key={f.key} f={f} id={`rf-${g.key}-${i}-${f.key}`} required={!!g.required?.includes(f.key)}>
                       <FieldInput
+                        registerKey={def.key}
                         required={!!g.required?.includes(f.key) && rowStarted(row)}
                         f={f}
                         id={`rf-${g.key}-${i}-${f.key}`}
@@ -391,7 +752,7 @@ export function MovementForm({
               <label htmlFor="mv-reading" className="block text-sm font-medium text-zinc-200">
                 {def.fields.find((f) => f.key === next.readingKey)?.label ?? t("Reading")}
               </label>
-              <input id="mv-reading" type="number" inputMode="decimal" min={0} step="any" value={reading} onChange={(e) => setReading(e.target.value)} className={inputCls} />
+              <input id="mv-reading" type="text" autoComplete="off" maxLength={100} value={reading} onChange={(e) => setReading(e.target.value)} className={inputCls} />
             </div>
           )}
         </div>
@@ -443,6 +804,57 @@ export function MovementForm({
   );
 }
 
+/** Close an In / Out record when the other side will never happen (e.g. "Out only"). */
+export function CloseRecordForm({
+  def,
+  current,
+  busy,
+  onSubmit,
+}: {
+  def: EntryRegister;
+  current: Values;
+  busy: boolean;
+  onSubmit: (payload: { close: true; note: string }) => void;
+}) {
+  const t = useT();
+  const [note, setNote] = useState("");
+  const next = pendingActions(def, current).next;
+  if (!next) return <p className="text-sm text-zinc-500">{t("This record is already complete.")}</p>;
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit({ close: true, note });
+      }}
+      className="space-y-4"
+    >
+      <p className="text-sm leading-relaxed text-zinc-300">
+        {t("No {side} will be recorded. The record is kept as it is and marked closed.", { side: next.label })}
+      </p>
+      <div className="space-y-1.5">
+        <label htmlFor="close-note" className="block text-sm font-medium text-zinc-200">
+          {t("Note (optional)")}
+        </label>
+        <textarea
+          id="close-note"
+          value={note}
+          maxLength={200}
+          rows={2}
+          placeholder={t("e.g. Left by another gate")}
+          onChange={(e) => setNote(e.target.value)}
+          className="flex min-h-[80px] w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
+        />
+      </div>
+      <div className={stickyFooterCls}>
+        <button type="submit" disabled={busy} className={`${saveBtnCls} bg-orange-600 hover:bg-orange-700`}>
+          {!busy && <CheckCircle2 className="h-5 w-5 sm:h-4 sm:w-4" />}
+          {busy ? t("Saving…") : t("Close record")}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 /** Main Admin: correct every value of a saved record, including date and times. */
 export function AdminEditForm({
   def,
@@ -475,11 +887,11 @@ export function AdminEditForm({
 
   const input = (f: FieldDef, id: string, value: any, onChange: (v: any) => void, required: boolean) =>
     f.type === "date" ? (
-      <input id={id} type="date" value={value} onChange={(e) => onChange(e.target.value)} required={required} className={inputCls} />
+      <DateField id={id} value={value} onChange={(e) => onChange(e.target.value)} required={required} className={inputCls} />
     ) : f.type === "time" ? (
       <input id={id} type="time" step={60} value={value} onChange={(e) => onChange(e.target.value)} className={inputCls} />
     ) : (
-      <FieldInput f={f} id={id} value={value} onChange={onChange} staff={staff} required={required} />
+      <FieldInput f={f} id={id} value={value} onChange={onChange} staff={staff} required={required} registerKey={def.key} />
     );
 
   return (

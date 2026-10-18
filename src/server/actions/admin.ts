@@ -4,6 +4,7 @@ import { Role } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import type { Prisma } from "@prisma/client";
 import { checkRateLimit } from "@/lib/auth/rate-limiter";
+import { clearRoleLine } from "@/lib/auth/titles";
 import { requireRole, getAuthUser, invalidateProfileCache } from "@/lib/auth/helpers";
 import {
   createUserSchema,
@@ -269,10 +270,13 @@ export async function createUser(formData: FormData) {
 }
 
 /**
- * Admin toggles a user's active status
+ * Enables / disables a login.
+ * - Main Admin: any account except Admins.
+ * - HOD: students of their own department only.
  */
 export async function toggleUserActive(profileId: string) {
-  await requireRole("ADMIN");
+  const user = await requireRole("ADMIN", "FACULTY_ADMIN");
+  if (typeof profileId !== "string" || !profileId) return { error: "User not found" };
 
   const profile = await prisma.profile.findUnique({
     where: { id: profileId },
@@ -281,7 +285,13 @@ export async function toggleUserActive(profileId: string) {
 
   if (!profile) return { error: "User not found" };
 
-  if (profile.role === "ADMIN") return { error: "Cannot disable admin accounts" };
+  // Admins may disable other admins (never themselves); HODs only reach students (below)
+  if (profile.userId === user.userId) return { error: "You can't disable your own account" };
+  if (user.role === "FACULTY_ADMIN") {
+    if (profile.role !== "STUDENT") return { error: "You can enable or disable students only" };
+    const scope = await getStaffScope(user);
+    if (!(await canViewProfile(scope, profileId))) return { error: "This student is not in your department" };
+  }
 
   const nextActive = !profile.active;
 
@@ -299,6 +309,7 @@ export async function toggleUserActive(profileId: string) {
   invalidateProfileCache(profile.userId);
   clearAdminCaches();
   revalidatePath("/admin/users");
+  revalidatePath("/faculty-admin/students");
   return { success: true };
 }
 
@@ -524,6 +535,66 @@ export async function getAdminDashboard(dateString?: string) {
     prisma.gate.findMany({ select: { id: true, name: true, active: true } }),
   ]);
 
+  // Monitoring counts: grouped queries give many numbers per database trip
+  const now = new Date();
+  const { start: todayStart } = istDayRangeFromParam();
+  const returnPass = { OR: [{ facultyId: { not: null } }, { student: { studentType: "HOSTELLER" as const } }] };
+  const [studentGroups, profileGroups, facultyOut, overdue, visitorsInside, pending, approvedUnused, requestsToday, registerToday, attendanceToday, activeSecurity] =
+    await Promise.all([
+      prisma.student.groupBy({ by: ["studentType", "hostelType", "status"], _count: { _all: true } }),
+      prisma.profile.groupBy({ by: ["role", "active"], _count: { _all: true } }),
+      prisma.permission.count({ where: { facultyId: { not: null }, status: "EXITED" } }),
+      // Out past their return time (passes that expect a return)
+      prisma.permission.count({
+        where: {
+          status: "EXITED",
+          ...returnPass,
+          AND: [{ OR: [{ expectedReturn: { lt: now } }, { expectedReturn: null, endDate: { lt: todayStart } }] }],
+        },
+      }),
+      prisma.outsider.count({ where: { exitTime: null, entryTime: { gte: today, lt: endOfDay } } }),
+      prisma.permission.count({ where: { status: "PENDING" } }),
+      prisma.permission.count({ where: { status: "APPROVED", OR: [{ endDate: { gte: todayStart } }, { endDate: null, exitDate: { gte: todayStart } }] } }),
+      prisma.permission.count({ where: { createdAt: { gte: today, lt: endOfDay } } }),
+      prisma.registerEntry.count({
+        where: {
+          kind: "ORIGINAL",
+          entryDate: { gte: today, lt: endOfDay },
+          register: { notIn: ["SECURITY_ATTENDANCE", "ATTENDANCE_REMARK", "SECURITY_RANK", "OUTING_NOTE"] },
+        },
+      }),
+      prisma.registerEntry.count({ where: { register: "SECURITY_ATTENDANCE", kind: "ORIGINAL", entryDate: { gte: today, lt: endOfDay } } }),
+      prisma.securityStaff.count({ where: { profile: { active: true } } }),
+    ]);
+
+  const sumStudents = (pred: (g: (typeof studentGroups)[number]) => boolean) =>
+    studentGroups.filter(pred).reduce((n, g) => n + g._count._all, 0);
+  const sumProfiles = (pred: (g: (typeof profileGroups)[number]) => boolean) =>
+    profileGroups.filter(pred).reduce((n, g) => n + g._count._all, 0);
+
+  const monitor = {
+    studentsOut: sumStudents((g) => g.status === "OUTSIDE"),
+    hostellersOut: sumStudents((g) => g.status === "OUTSIDE" && g.studentType === "HOSTELLER"),
+    dayScholarsOut: sumStudents((g) => g.status === "OUTSIDE" && g.studentType !== "HOSTELLER"),
+    facultyOut,
+    overdue,
+    visitorsInside,
+    pending,
+    approvedUnused,
+    requestsToday,
+    registerToday,
+    attendanceMarked: attendanceToday,
+    activeSecurity,
+    boysHostellers: sumStudents((g) => g.studentType === "HOSTELLER" && g.hostelType === "BOYS"),
+    ladiesHostellers: sumStudents((g) => g.studentType === "HOSTELLER" && g.hostelType === "LADIES"),
+    dayScholars: sumStudents((g) => g.studentType !== "HOSTELLER"),
+    facultyOnly: sumProfiles((g) => g.role === "FACULTY"),
+    hods: sumProfiles((g) => g.role === "FACULTY_ADMIN"),
+    deansDirectors: sumProfiles((g) => g.role === "DEAN" || g.role === "DIRECTOR"),
+    supervisors: sumProfiles((g) => g.role === "SECURITY_SUPERVISOR"),
+    disabledAccounts: sumProfiles((g) => !g.active),
+  };
+
   const dashboardData = {
     stats: {
       totalStudents,
@@ -535,6 +606,7 @@ export async function getAdminDashboard(dateString?: string) {
       rejectedToday,
       entryToday,
       exitToday,
+      ...monitor,
     },
     recentMovements,
     gates,
@@ -573,9 +645,7 @@ export async function getUsers(
   if (cached && cached.expiresAt > Date.now()) {
     return cached.data;
   }
-  const where = roleFilter
-    ? { role: roleFilter as Role }
-    : { role: { not: Role.ADMIN } };
+  const where = roleFilter ? { role: roleFilter as Role } : {};
 
   const [users, total] = await Promise.all([
     prisma.profile.findMany({
@@ -923,6 +993,7 @@ export async function updateUserDetails(profileId: string, rawData: Record<strin
   }
 
   clearAdminCaches();
+  clearRoleLine(profileId);
   revalidatePath("/admin/users");
   return { success: true };
 }

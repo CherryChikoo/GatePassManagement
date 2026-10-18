@@ -1,4 +1,5 @@
 "use client";
+import { DepartmentSelect } from "@/components/ui/department-select";
 import { actionErrorMessage } from "@/lib/deployment";
 
 import React, { useState } from "react";
@@ -579,11 +580,7 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
 
               <div className="space-y-1.5">
                 <label className={fieldLabel}>Department</label>
-                <Input
-                  name="department"
-                  defaultValue={editingStudent.department || ""}
-                  placeholder="e.g. Computer Science"
-                />
+                <DepartmentSelect name="department" defaultValue={editingStudent.department || ""} />
               </div>
 
               <div className="space-y-1.5">

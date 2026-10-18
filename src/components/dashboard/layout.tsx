@@ -1,5 +1,6 @@
 "use client";
 
+import { lockPageScroll } from "@/lib/ui/scroll-lock";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -38,6 +39,19 @@ import {
   UsersRound,
 } from "lucide-react";
 
+/** Used when a layout doesn't pass the person's own title */
+const ROLE_FALLBACK: Record<string, string> = {
+  ADMIN: "Administrator",
+  FACULTY: "Faculty",
+  FACULTY_ADMIN: "Head of Department",
+  DEAN: "Dean",
+  DIRECTOR: "Director",
+  WARDEN: "Warden",
+  SECURITY: "Security",
+  SECURITY_SUPERVISOR: "Security Supervisor",
+  STUDENT: "Student",
+};
+
 export type NavItem = {
   label: string;
   href: string;
@@ -54,6 +68,8 @@ interface DashboardLayoutProps {
   defaultCollapsed?: boolean;
   /** Shown instead of "<ROLE> Dashboard", e.g. "Dean of Placements" */
   roleTitle?: string;
+  /** Profile photo address (null: show the initial) */
+  avatarUrl?: string | null;
 }
 
 /** College mark + "Gate Pass" + the role line (labels hide when the sidebar is collapsed). */
@@ -84,11 +100,11 @@ export function DashboardLayout({
   onLogout,
   defaultCollapsed = false,
   roleTitle,
+  avatarUrl = null,
 }: DashboardLayoutProps) {
   const t = useT();
-  const roleLine =
-    roleTitle ||
-    t(`${role === "FACULTY_ADMIN" ? "HOD" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : role === "SECURITY_SUPERVISOR" ? "SUPERVISOR" : role} Dashboard`);
+  // Who they are (designation / role), not "… Dashboard"
+  const roleLine = t(roleTitle || ROLE_FALLBACK[role] || role);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [desktopCollapsed, setDesktopCollapsed] = useState(defaultCollapsed);
   const pathname = usePathname();
@@ -116,7 +132,6 @@ export function DashboardLayout({
   else if (role === "FACULTY_ADMIN") navItems = facultyAdminNavItems;
   else if (role === "WARDEN") navItems = wardenNavItems;
   else if (role === "SECURITY") navItems = securityNavItems;
-  else if (role === "STUDENT") navItems = studentNavItems;
   else if (role === "DIRECTOR") navItems = directorNavItems;
   else if (role === "DEAN") navItems = deanNavItems;
   else if (role === "SECURITY_SUPERVISOR") navItems = supervisorNavItems;
@@ -142,14 +157,8 @@ export function DashboardLayout({
 
   // Lock body scroll when mobile drawer is open
   useEffect(() => {
-    if (sidebarOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
+    if (!sidebarOpen) return;
+    return lockPageScroll();
   }, [sidebarOpen]);
 
   // Auto-close sidebar on route change
@@ -329,12 +338,23 @@ export function DashboardLayout({
               <span className="text-sm font-medium text-zinc-100 truncate max-w-[220px]">{userName}</span>
               <span className="text-[11px] text-zinc-500 truncate max-w-[220px]">{userEmail}</span>
             </div>
-            <span
-              className="hidden sm:flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-orange-400 text-sm font-semibold border border-orange-500/20"
-              aria-hidden="true"
-            >
-              {initial}
-            </span>
+            {avatarUrl ? (
+               
+              <img
+                src={avatarUrl}
+                alt=""
+                width={40}
+                height={40}
+                className="hidden sm:block h-10 w-10 shrink-0 rounded-full border border-zinc-800 object-cover"
+              />
+            ) : (
+              <span
+                className="hidden sm:flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-orange-400 text-sm font-semibold border border-orange-500/20"
+                aria-hidden="true"
+              >
+                {initial}
+              </span>
+            )}
             {/* Sign out lives in the sidebar on desktop; keep it here for pages without a sidebar and on phones */}
             <button
               type="button"
@@ -446,12 +466,6 @@ export const adminNavItems: NavItem[] = [
   // { label: "Audit Log", href: "/admin/audit", icon: <FileText className="h-5 w-5" /> },
 ];
 
-export const studentNavItems: NavItem[] = [
-  { label: "Dashboard", href: "/student", icon: <LayoutDashboard className="h-5 w-5" /> },
-  { label: "Apply Pass", href: "/student/request", icon: <Ticket className="h-5 w-5" /> },
-  { label: "History", href: "/student/history", icon: <History className="h-5 w-5" /> },
-  { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
-];
 
 export const facultyNavItems: NavItem[] = [
   { label: "Dashboard", href: "/faculty", icon: <LayoutDashboard className="h-5 w-5" /> },

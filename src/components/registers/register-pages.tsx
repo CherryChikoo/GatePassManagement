@@ -12,8 +12,8 @@ import {
   CarTaxiFront,
   ChevronRight,
   ClipboardCheck,
+  ClipboardList,
   ContactRound,
-  Eye,
   FileSignature,
   HardHat,
   House,
@@ -31,10 +31,12 @@ import {
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import { GoBackButton } from "@/components/ui/go-back-button";
-import { REGISTERS, REGISTER_BY_KEY, isEntryRegister, registerSlug, type RegisterKey } from "@/lib/registers/definitions";
+import { REGISTERS, REGISTER_BY_KEY, isEntryRegister, type RegisterDef, type RegisterKey } from "@/lib/registers/definitions";
+import { slugForKey } from "@/lib/registers/custom";
 import { getRegisterCountsToday } from "@/server/actions/registers";
 import { EntryRegisterView } from "./entry-register-view";
 import { QuickEntryModal } from "./quick-entry";
+import { AttendanceSheetView } from "./attendance-sheet";
 import { localizeRegister } from "./localize";
 import { FacultyBookView, HomeOutingSummaryView, HostelOutingView, VisitorsBookView } from "./derived-views";
 
@@ -73,15 +75,22 @@ export function RegistersHub({
   viewer,
   hidden = [],
   creatable = [],
+  registers,
+  canBuild = false,
 }: {
   viewer: RegisterViewer;
   hidden?: string[];
   /** Registers this user may add to: they get a "+" that opens the form right here */
   creatable?: string[];
+  /** Built-in + portal-created registers (from the server); defaults to the built-in ones */
+  registers?: RegisterDef[];
+  /** Main Admin / Head Security: show "Create & manage registers" */
+  canBuild?: boolean;
 }) {
   const t = useT();
   const base = BASE[viewer];
   const isSecurity = viewer === "SECURITY";
+  const allRegisters = registers ?? REGISTERS;
   const [counts, setCounts] = useState<Record<string, number>>({});
   const loadCounts = () => {
     getRegisterCountsToday().then(setCounts).catch(() => setCounts({}));
@@ -89,9 +98,9 @@ export function RegistersHub({
   useEffect(loadCounts, []);
 
   const [query, setQuery] = useState("");
-  const [quickKey, setQuickKey] = useState<RegisterKey | null>(null);
+  const [quickKey, setQuickKey] = useState<string | null>(null);
 
-  const visible = REGISTERS.filter((r) => !hidden.includes(r.key));
+  const visible = allRegisters.filter((r) => !hidden.includes(r.key));
   const q = query.trim().toLowerCase();
   const list = q
     ? visible.filter((r) => `${r.title} ${t(r.title)} ${r.description} ${t(r.description)}`.toLowerCase().includes(q))
@@ -104,11 +113,6 @@ export function RegistersHub({
           {!isSecurity && <BackButton href={base} label={t("Back to Dashboard")} />}
           <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 flex flex-wrap items-center gap-2">
             {t(isSecurity ? "Registers" : "Security Registers")}
-            {!isSecurity && (
-              <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-0.5 rounded-full border border-zinc-800 bg-zinc-950 text-zinc-400">
-                <Eye className="h-3 w-3" /> {t("View only")}
-              </span>
-            )}
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
             {isSecurity
@@ -116,6 +120,16 @@ export function RegistersHub({
               : t("All gate registers. Security cannot change saved records; only Main Admin can edit or delete them.")}
           </p>
         </div>
+        {canBuild && (
+          <Link
+            href={`${base}/registers/manage`}
+            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-sm font-medium text-zinc-100 shadow-card hover:bg-zinc-950 transition-colors"
+          >
+            <Plus className="h-4 w-4 text-orange-400" />
+            <span className="hidden sm:inline">{t("Create & manage registers")}</span>
+            <span className="sm:hidden">{t("New register")}</span>
+          </Link>
+        )}
       </div>
 
       {/* Find a register quickly */}
@@ -133,11 +147,12 @@ export function RegistersHub({
 
       <ul className="overflow-hidden rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-card divide-y divide-zinc-800/70">
         {list.map((r) => {
-          const Icon = REGISTER_ICON[r.key];
-          const href = `${base}/registers/${registerSlug(r.key)}`;
+          const Icon = REGISTER_ICON[r.key as RegisterKey] ?? ClipboardList;
+          const href = `${base}/registers/${slugForKey(r.key)}`;
           const n = counts[r.key] ?? 0;
           // "+": entry registers open their form here; the visitors book opens visitor registration
-          const quickAdd = isEntryRegister(r) && creatable.includes(r.key);
+          // Attendance opens its monthly sheet instead of a form
+          const quickAdd = isEntryRegister(r) && creatable.includes(r.key) && r.key !== "SECURITY_ATTENDANCE";
           const visitorAdd = isSecurity && r.key === "VISITORS";
           return (
             <li key={r.key} className="flex items-center gap-2 pr-2 sm:pr-3">
@@ -185,7 +200,14 @@ export function RegistersHub({
         {list.length === 0 && <li className="px-4 py-10 text-center text-sm text-zinc-500">{t("No register matches your search.")}</li>}
       </ul>
 
-      {quickKey && <QuickEntryModal registerKey={quickKey} onClose={() => setQuickKey(null)} onSaved={loadCounts} />}
+      {quickKey && (
+        <QuickEntryModal
+          registerKey={quickKey}
+          def={allRegisters.find((r) => r.key === quickKey)}
+          onClose={() => setQuickKey(null)}
+          onSaved={loadCounts}
+        />
+      )}
     </div>
   );
 }
@@ -194,20 +216,29 @@ export function RegisterPage({
   registerKey,
   viewer,
   canCreate,
+  register,
 }: {
-  registerKey: RegisterKey;
+  registerKey: string;
   viewer: RegisterViewer;
   /** May add entries (decided on the server, e.g. attendance = Head Security / Admin) */
   canCreate: boolean;
+  /** The definition when it isn't built in (portal-created registers) */
+  register?: RegisterDef;
 }) {
   const t = useT();
   // Display copy in the reader's language (saved values and validation stay on the original)
-  const def = useMemo(() => localizeRegister(REGISTER_BY_KEY[registerKey], t), [registerKey, t]);
+  const def = useMemo(
+    () => localizeRegister(register ?? REGISTER_BY_KEY[registerKey as RegisterKey], t),
+    [register, registerKey, t]
+  );
   const base = BASE[viewer];
   const isSecurity = viewer === "SECURITY";
 
   let body: React.ReactNode;
-  if (isEntryRegister(def)) {
+  if (def.key === "SECURITY_ATTENDANCE") {
+    // Monthly sheet like the paper register (marks + day remarks)
+    body = <AttendanceSheetView />;
+  } else if (isEntryRegister(def)) {
     body = <EntryRegisterView def={def} canCreate={canCreate} canAdminEdit={viewer === "ADMIN"} />;
   } else if (def.key === "FACULTY_BOOK") {
     body = <FacultyBookView canMarkIn={isSecurity} />;

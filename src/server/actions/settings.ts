@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { deanTitle } from "@/lib/auth/titles";
+import { clearRoleLine, deanTitle } from "@/lib/auth/titles";
 import { checkRateLimit, resetRateLimit } from "@/lib/auth/rate-limiter";
 
 function getAdminSupabase() {
@@ -89,6 +89,10 @@ export async function updateProfileSettings(formData: FormData) {
   if (user.role === "SECURITY" && (password || newEmail)) {
     return { error: "Ask the administrator to change your email or password." };
   }
+  // Students' passwords are set by their HOD, warden or the admin
+  if (user.role === "STUDENT" && (password || newEmail)) {
+    return { error: "To change your password, ask your HOD or warden." };
+  }
   if (password && password.length < 8) return { error: "New password must be at least 8 characters" };
   if (password || newEmail) {
     if (!currentPassword) {
@@ -152,6 +156,7 @@ export async function updateProfileSettings(formData: FormData) {
     }
 
     invalidateProfileCache(user.userId);
+    clearRoleLine(user.id);
 
     revalidatePath("/settings");
     revalidatePath("/", "layout");
@@ -162,4 +167,35 @@ export async function updateProfileSettings(formData: FormData) {
     if (err?.code === "P2002") return { error: "That email or Employee ID is already in use" };
     return { error: "Failed to update profile settings" };
   }
+}
+
+/**
+ * Set your own profile photo (any role). The browser sends a 256×256 JPEG;
+ * it replaces the previous one (one file per person).
+ */
+export async function updateMyAvatar(base64Data: string) {
+  const user = await getAuthUser();
+  if (!user) return { error: "Please sign in again." };
+  if (typeof base64Data !== "string" || !base64Data.startsWith("data:image/jpeg;base64,")) {
+    return { error: "Invalid photo" };
+  }
+  const { uploadAvatarAdmin } = await import("@/lib/storage/storage-admin");
+  const res = await uploadAvatarAdmin(base64Data, user.profileId);
+  if (res.error) return { error: res.error };
+  await prisma.profile.update({ where: { id: user.profileId }, data: { avatarUpdatedAt: new Date() } });
+  invalidateProfileCache(user.userId);
+  revalidatePath("/", "layout");
+  return { success: true };
+}
+
+/** Remove your own profile photo. */
+export async function removeMyAvatar() {
+  const user = await getAuthUser();
+  if (!user) return { error: "Please sign in again." };
+  const { deleteAvatarAdmin } = await import("@/lib/storage/storage-admin");
+  await deleteAvatarAdmin(user.profileId).catch(() => {});
+  await prisma.profile.update({ where: { id: user.profileId }, data: { avatarUpdatedAt: null } });
+  invalidateProfileCache(user.userId);
+  revalidatePath("/", "layout");
+  return { success: true };
 }

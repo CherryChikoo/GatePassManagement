@@ -21,6 +21,29 @@ export const prisma =
     },
   });
 
+// Busy moments (1000+ people at once): a brief connection hiccup or a full pool
+// shouldn't reach the user as an error. Reads are retried once after a short
+// pause. Writes and anything inside a transaction are never retried here (a
+// retried write could be saved twice; they carry their own duplicate guards).
+const TRANSIENT_DB_ERRORS = new Set(["P1001", "P1002", "P1008", "P1017", "P2024"]);
+const READ_ACTIONS = new Set([
+  "findUnique", "findUniqueOrThrow", "findFirst", "findFirstOrThrow", "findMany", "count", "aggregate", "groupBy",
+]);
+const RETRY_FLAG = Symbol.for("gatepass.prisma.readRetry");
+const withFlag = prisma as unknown as Record<symbol, boolean>;
+if (!withFlag[RETRY_FLAG]) {
+  withFlag[RETRY_FLAG] = true;
+  prisma.$use(async (params, next) => {
+    try {
+      return await next(params);
+    } catch (err: any) {
+      if (params.runInTransaction || !READ_ACTIONS.has(params.action) || !TRANSIENT_DB_ERRORS.has(err?.code)) throw err;
+      await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
+      return next(params);
+    }
+  });
+}
+
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }

@@ -22,6 +22,15 @@ import {
   DoorClosed,
   ClipboardList,
   History,
+  LogOut,
+  Briefcase,
+  AlertTriangle,
+  Hourglass,
+  Ticket,
+  UserCheck,
+  UserX,
+  Home,
+  Building2,
 } from "lucide-react";
 
 interface Props {
@@ -38,6 +47,7 @@ export function AdminDashboardClient({ user }: Props) {
   }
 
   const { stats, recentMovements } = dashboardData || { stats: {}, recentMovements: [] };
+  const n = (v: unknown) => Number(v ?? 0) || 0;
 
   const firstName = (user.name || "").replace(/^(dr|prof|mr|mrs|ms)\.?\s+/i, "").split(" ")[0] || user.name || "Admin";
   const hour = Number(new Intl.DateTimeFormat("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date()));
@@ -56,30 +66,80 @@ export function AdminDashboardClient({ user }: Props) {
           <p className="mt-1.5 text-sm text-zinc-500">System-wide overview and management</p>
         </div>
 
-        {/* User demographics */}
+        {/* Right now: who is out, waiting or late */}
         <section className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-orange-400">User Demographics</h2>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <StatCard title="Total Students" value={stats.totalStudents} icon={<GraduationCap />} />
-            <StatCard title="Faculty" value={stats.totalFaculty} icon={<BookOpen />} />
-            <StatCard title="Wardens" value={stats.totalWardens} icon={<Users />} />
-            <StatCard title="Security Staff" value={stats.totalSecurity} icon={<Shield />} />
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-orange-400">Right now</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
+            <StatCard
+              title="Students out"
+              value={n(stats.studentsOut)}
+              icon={<LogOut />}
+              description={`${n(stats.hostellersOut)} hostellers · ${n(stats.dayScholarsOut)} day scholars`}
+            />
+            <StatCard title="Faculty out" value={n(stats.facultyOut)} icon={<Briefcase />} description="On an exit pass" />
+            <StatCard title="Visitors inside" value={n(stats.visitorsInside)} icon={<Users />} description="Not checked out today" />
+            <StatCard
+              title="Overdue"
+              value={n(stats.overdue)}
+              icon={<AlertTriangle />}
+              description="Past their return time"
+              className={n(stats.overdue) > 0 ? "border-red-500/40 bg-red-500/5" : undefined}
+            />
+            <StatCard
+              title="Pending requests"
+              value={n(stats.pending)}
+              icon={<Hourglass />}
+              description="Waiting for approval"
+              className={n(stats.pending) > 0 ? "border-amber-500/40" : undefined}
+            />
+            <StatCard title="Approved, not used" value={n(stats.approvedUnused)} icon={<Ticket />} description="Valid passes not scanned yet" />
           </div>
         </section>
 
-        {/* Daily operations */}
+        {/* Today */}
         <section className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-orange-400">Daily Operations</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
-            <StatCard title="Visitor Visits" value={stats.outsidersCount} icon={<Users />} />
-            <StatCard title="Approved Today" value={stats.approvedToday} icon={<CheckCircle2 />} />
-            <StatCard title="Rejected Today" value={stats.rejectedToday} icon={<XCircle />} />
-            <StatCard title="Entry Today" value={stats.entryToday} icon={<DoorClosed />} />
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-orange-400">Today</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            <StatCard title="Requests" value={n(stats.requestsToday)} icon={<ClipboardList />} description="Pass requests made" />
+            <StatCard title="Approved" value={n(stats.approvedToday)} icon={<CheckCircle2 />} />
+            <StatCard title="Rejected" value={n(stats.rejectedToday)} icon={<XCircle />} />
+            <StatCard title="Gate exits" value={n(stats.exitToday)} icon={<DoorOpen />} />
+            <StatCard title="Gate entries" value={n(stats.entryToday)} icon={<DoorClosed />} />
+            <StatCard title="Visitor visits" value={n(stats.outsidersCount)} icon={<Users />} />
+            <StatCard title="Register entries" value={n(stats.registerToday)} icon={<BookOpen />} description="In all gate registers" />
             <StatCard
-              title="Exit Today"
-              value={stats.exitToday}
-              icon={<DoorOpen />}
-              className="col-span-2 sm:col-span-1"
+              title="Security attendance"
+              value={`${n(stats.attendanceMarked)} / ${n(stats.activeSecurity)}`}
+              icon={<UserCheck />}
+              description={n(stats.attendanceMarked) < n(stats.activeSecurity) ? "Not everyone marked yet" : "All marked"}
+            />
+          </div>
+        </section>
+
+        {/* People */}
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-orange-400">People</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
+            <StatCard
+              title="Students"
+              value={n(stats.totalStudents)}
+              icon={<GraduationCap />}
+              description={`${n(stats.boysHostellers)} boys · ${n(stats.ladiesHostellers)} ladies hostel · ${n(stats.dayScholars)} day`}
+            />
+            <StatCard
+              title="Faculty"
+              value={n(stats.facultyOnly)}
+              icon={<BookOpen />}
+              description={`+ ${n(stats.hods)} HODs · ${n(stats.deansDirectors)} Dean / Director`}
+            />
+            <StatCard title="Wardens" value={n(stats.totalWardens)} icon={<Home />} />
+            <StatCard title="Security staff" value={n(stats.totalSecurity)} icon={<Shield />} description={`+ ${n(stats.supervisors)} supervisors`} />
+            <StatCard title="HODs" value={n(stats.hods)} icon={<Building2 />} />
+            <StatCard
+              title="Disabled accounts"
+              value={n(stats.disabledAccounts)}
+              icon={<UserX />}
+              description="Can't sign in"
             />
           </div>
         </section>

@@ -26,6 +26,7 @@ import {
 } from "@/lib/registers/validate";
 import { istDateString, istDateToInstant, istDayRangeFromParam, parseDateParam, parsePageParam } from "@/lib/time/ist";
 import { invalidateSecurityCache } from "./security";
+import { getEntryRegister } from "@/lib/registers/catalog";
 
 const PAGE_SIZE = 25;
 const VIEW_ROLES = ["SECURITY", "ADMIN", "SECURITY_SUPERVISOR"] as const;
@@ -35,11 +36,6 @@ const TOKEN_RE = /^[A-Za-z0-9-]{8,100}$/;
 // Helpers
 // ──────────────────────────────────────────────────────────────
 
-function entryRegister(key: unknown): EntryRegister | null {
-  if (typeof key !== "string") return null;
-  const def = (REGISTER_BY_KEY as Record<string, (typeof REGISTER_BY_KEY)[RegisterKey]>)[key];
-  return def && isEntryRegister(def) ? def : null;
-}
 
 /** Who is recording, taken from the signed-in session — never from the form. */
 async function recorderSnapshot(user: AuthUser) {
@@ -95,10 +91,49 @@ export async function getRegisterStaffOptions() {
   return staff.map((s) => ({ id: s.id, name: s.profile.name, employeeId: s.employeeId }));
 }
 
+const ROLE_DESIGNATION: Record<string, string> = {
+  FACULTY: "Faculty",
+  FACULTY_ADMIN: "Head of Department",
+  DEAN: "Dean",
+  DIRECTOR: "Director",
+};
+
+/**
+ * Faculty, HODs, Deans, Directors and Wardens for the "Faculty / Staff" pickers
+ * in register forms (name, employee ID, designation, department).
+ */
+export async function getRegisterPeopleOptions() {
+  await requireRole(...VIEW_ROLES);
+  const [faculty, wardens] = await Promise.all([
+    prisma.faculty.findMany({
+      where: { profile: { active: true } },
+      select: { employeeId: true, designation: true, department: true, profile: { select: { name: true, role: true } } },
+      orderBy: { profile: { name: "asc" } },
+      take: 2000,
+    }),
+    prisma.warden.findMany({
+      where: { profile: { active: true } },
+      select: { employeeId: true, profile: { select: { name: true } } },
+      orderBy: { profile: { name: "asc" } },
+      take: 300,
+    }),
+  ]);
+  return [
+    ...faculty.map((p) => ({
+      name: p.profile.name,
+      employeeId: p.employeeId,
+      // No designation saved (common for faculty accounts): use their role
+      designation: p.designation?.trim() || ROLE_DESIGNATION[p.profile.role] || "Faculty",
+      department: p.department,
+    })),
+    ...wardens.map((w) => ({ name: w.profile.name, employeeId: w.employeeId, designation: "Warden", department: null })),
+  ].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** Security records a new register entry. Saved records can never be edited or deleted. */
 export async function createRegisterEntry(registerKey: string, payload: RawPayload, clientToken: string) {
   const user = await requireRole("SECURITY", "ADMIN");
-  const def = entryRegister(registerKey);
+  const def = await getEntryRegister(registerKey);
   if (!def) return { error: "Unknown register" };
   if (!(await getRegisterAccess(user)).canCreate(def.key)) return { error: "You are not allowed to add to this register" };
   if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
@@ -149,7 +184,7 @@ export async function completeRegisterEntry(entryId: string, payload: Completion
         },
       });
       if (!original) return { error: "Record not found" };
-      const def = entryRegister(original.register);
+      const def = await getEntryRegister(original.register, tx);
       if (!def) return { error: "Unknown register" };
       if (!access.canCreate(def.key)) return { error: "You are not allowed to update this register" };
 
@@ -179,9 +214,12 @@ export async function completeRegisterEntry(entryId: string, payload: Completion
   }
 }
 
-export async function listRegisterEntries(params: { register: string; date?: string; q?: string; page?: number }) {
+/** Value of the "Shift" filter: one of the register's shifts, or "OTHER" (any typed shift). */
+const SHIFT_FILTER_OTHER = "OTHER";
+
+export async function listRegisterEntries(params: { register: string; date?: string; q?: string; page?: number; shift?: string }) {
   const user = await requireRole(...VIEW_ROLES);
-  const def = entryRegister(params?.register);
+  const def = await getEntryRegister(params?.register);
   if (!def) return { error: "Unknown register" };
   if (!(await getRegisterAccess(user)).canView(def.key)) return { error: "You do not have access to this register" };
 
@@ -189,10 +227,29 @@ export async function listRegisterEntries(params: { register: string; date?: str
   const range = dayFilter(params.date);
   const q = typeof params.q === "string" ? params.q.trim().toLowerCase().slice(0, 100) : "";
 
+  // Shift filter (registers with a Shift field): matches the saved value, or an admin correction of it
+  const shiftField = def.fields.find((f) => f.key === "shift" && f.type === "select");
+  const shiftOptions = (shiftField?.options ?? []) as readonly string[];
+  const shift = typeof params.shift === "string" ? params.shift : "";
+  const shiftIs = (v: string): Prisma.RegisterEntryWhereInput => ({
+    OR: [
+      { data: { path: ["shift"], equals: v } },
+      { supplements: { some: { kind: "CORRECTION", data: { path: ["shift"], equals: v } } } },
+    ],
+  });
+  const shiftWhere: Prisma.RegisterEntryWhereInput | null = !shiftField
+    ? null
+    : shiftOptions.includes(shift)
+    ? shiftIs(shift)
+    : shift === SHIFT_FILTER_OTHER
+    ? { AND: shiftOptions.map((o) => ({ NOT: { data: { path: ["shift"], equals: o } } })) }
+    : null;
+
   const where: Prisma.RegisterEntryWhereInput = {
     register: def.key,
     kind: "ORIGINAL",
     ...(range ? { entryDate: { gte: range.start, lt: range.end } } : {}),
+    ...(shiftWhere ? { AND: [shiftWhere] } : {}),
     ...(q
       ? {
           OR: [
@@ -669,6 +726,89 @@ export async function getHomeOutingSummary(params: { from?: string; to?: string 
   return { success: true, from, to, days: list, totals };
 }
 
+// Information notes on the home outing passbook ("Dasara holidays — hostel
+// closed", "Parents' meeting"): for one date or a set of dates. Stored as
+// register entries under their own key, with who wrote them and when.
+const OUTING_NOTE_KEY = "OUTING_NOTE";
+const MAX_NOTE_DAYS = 62;
+
+export async function addOutingNote(input: { from: string; to?: string; note: string }, clientToken: string) {
+  const user = await requireRole("SECURITY", "ADMIN");
+  if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
+  const from = parseDateParam(input?.from);
+  const to = parseDateParam(input?.to || input?.from);
+  if (!from || !to) return { error: "Choose the date" };
+  if (to < from) return { error: "The end date can't be before the start date" };
+  const days = Math.round((istDateToInstant(to).getTime() - istDateToInstant(from).getTime()) / 86_400_000) + 1;
+  if (days > MAX_NOTE_DAYS) return { error: "A note can cover at most 62 days" };
+  const note = typeof input?.note === "string" ? input.note.trim() : "";
+  if (!note) return { error: "Write the information" };
+  if (note.length > 500) return { error: "Keep the information under 500 characters" };
+
+  try {
+    await prisma.registerEntry.create({
+      data: {
+        register: OUTING_NOTE_KEY,
+        kind: "ORIGINAL",
+        entryDate: istDateToInstant(from),
+        data: { from, to, note },
+        searchText: note.toLowerCase().slice(0, 500),
+        clientToken,
+        ...(await recorderSnapshot(user)),
+      },
+    });
+    return { success: true };
+  } catch (err: any) {
+    if (err?.code === "P2002") return { success: true, duplicate: true };
+    console.error("[addOutingNote] failed:", err?.message);
+    return { error: "Could not save. Please try again." };
+  }
+}
+
+/** Notes touching the chosen dates (newest first). */
+export async function listOutingNotes(params: { from?: string; to?: string }) {
+  const user = await requireRole(...VIEW_ROLES);
+  const to = parseDateParam(params?.to) ?? istDateString();
+  const from = parseDateParam(params?.from) ?? to;
+  // A note starts at most MAX_NOTE_DAYS before the range and still covers it
+  const earliest = new Date(istDateToInstant(from).getTime() - MAX_NOTE_DAYS * 86_400_000);
+  const end = new Date(istDateToInstant(to).getTime() + 86_400_000);
+  const rows = await prisma.registerEntry.findMany({
+    where: { register: OUTING_NOTE_KEY, kind: "ORIGINAL", entryDate: { gte: earliest, lt: end } },
+    orderBy: [{ entryDate: "desc" }, { createdAt: "desc" }],
+    take: 300,
+    select: { id: true, data: true, recordedById: true, recordedByName: true, recordedByEmployeeId: true, recordedAtGate: true, createdAt: true },
+  });
+  return {
+    success: true,
+    notes: rows
+      .map((r) => {
+        const d = (r.data ?? {}) as { from?: string; to?: string; note?: string };
+        return {
+          id: r.id,
+          from: d.from ?? "",
+          to: d.to ?? d.from ?? "",
+          note: d.note ?? "",
+          by: [r.recordedByName, r.recordedByEmployeeId, r.recordedAtGate].filter(Boolean).join(" • "),
+          createdAt: r.createdAt.toISOString(),
+          canDelete: user.role === "ADMIN" || r.recordedById === user.profileId,
+        };
+      })
+      .filter((n) => n.from && n.to >= from && n.from <= to),
+  };
+}
+
+/** The writer, or the Main Admin, can remove a note. */
+export async function deleteOutingNote(id: string) {
+  const user = await requireRole("SECURITY", "ADMIN");
+  if (typeof id !== "string" || !id) return { error: "Note not found" };
+  const row = await prisma.registerEntry.findFirst({ where: { id, register: OUTING_NOTE_KEY }, select: { recordedById: true } });
+  if (!row) return { error: "Note not found" };
+  if (user.role !== "ADMIN" && row.recordedById !== user.profileId) return { error: "Only the person who wrote this note, or the Main Admin, can remove it" };
+  await prisma.registerEntry.delete({ where: { id } });
+  return { success: true };
+}
+
 // ──────────────────────────────────────────────────────────────
 // Overview counts for the registers hub
 // ──────────────────────────────────────────────────────────────
@@ -833,7 +973,7 @@ export async function adminUpdateRegisterEntry(entryId: string, payload: RawPayl
         select: { id: true, register: true, data: true, supplements: { select: { kind: true, data: true, createdAt: true } } },
       });
       if (!original) return { error: "Record not found" };
-      const def = entryRegister(original.register);
+      const def = await getEntryRegister(original.register, tx);
       if (!def) return { error: "Unknown register" };
 
       const current = effectiveData(def, original.data as RegisterData, original.supplements);

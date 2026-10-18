@@ -11,10 +11,16 @@ export type RawPayload = {
   groups?: Record<string, unknown>;
   /** In / Out registers: the side this record starts with */
   direction?: unknown;
+  /** In / Out registers: only that side happens (no return / no exit later) */
+  oneWay?: unknown;
 };
 
 /** What a guard records later on a saved record. */
 export type CompletionPayload = {
+  /** Close the record without recording the other side */
+  close?: unknown;
+  /** Optional note for closing */
+  note?: unknown;
   /** Record the other side (In or Out) now */
   markMovement?: unknown;
   /** Reading for that side (e.g. In Reading) */
@@ -32,6 +38,14 @@ export type RegisterData = Record<string, FieldValue | Record<string, FieldValue
 const PHONE_RE = /^\+?[0-9][0-9\s-]{8,16}[0-9]$/;
 /** Safety cap for unlimited groups (e.g. workers under one contractor) */
 const HARD_GROUP_LIMIT = 500;
+
+/** A reading as a number when it is just a number ("12450", "12,450", 12450), else null. */
+function readingNumber(v: unknown): number | null {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v !== "string") return null;
+  const s = v.trim().replace(/,/g, "");
+  return /^\d+(\.\d+)?$/.test(s) ? Number(s) : null;
+}
 
 function isBlank(v: unknown): boolean {
   return v === undefined || v === null || (typeof v === "string" && v.trim() === "");
@@ -60,6 +74,7 @@ async function cleanValue(
 
   switch (f.type) {
     case "text":
+    case "person":
       if (s.length > 200) return { error: `${f.label}: at most 200 characters` };
       return { value: s };
     case "textarea":
@@ -74,7 +89,18 @@ async function cleanValue(
       return { value: n };
     }
     case "select":
+      if (f.allowOther && !f.options?.includes(s)) {
+        if (s.length > 60) return { error: `${f.label}: at most 60 characters` };
+        return { value: s };
+      }
       if (!f.options?.includes(s)) return { error: `${f.label}: choose one of the listed options` };
+      return { value: s };
+    case "department":
+      if (s.length > 100) return { error: `${f.label}: at most 100 characters` };
+      return { value: s };
+    case "photo":
+      // Only a path our own upload produced (registers/<register>/…)
+      if (!/^registers\/[A-Za-z0-9_\-./]+$/.test(s) || s.includes("..")) return { error: `${f.label}: take the photo again` };
       return { value: s };
     case "staff": {
       const staff = await resolveStaff(s);
@@ -110,7 +136,7 @@ export function buildSearchText(def: EntryRegister, data: RegisterData): string 
     if (f.type === "staff" && typeof v === "object") {
       const s = v as StaffSnapshot;
       parts.push(s.name, s.employeeId ?? "");
-    } else if (f.type !== "time" && f.type !== "date" && f.type !== "yesno") {
+    } else if (f.type !== "time" && f.type !== "date" && f.type !== "yesno" && f.type !== "photo") {
       parts.push(String(v));
     }
   };
@@ -186,6 +212,7 @@ export async function validateNewRecord(
     if (otherSide.readingKey && otherSide.readingKey !== side.readingKey) data[otherSide.readingKey] = null;
     if (m.directionField) data[m.directionField] = direction === "IN" ? "In" : "Out";
     data.direction = direction;
+    if (payload?.oneWay === true && !m.single) data.oneWay = true;
   }
 
   for (const g of def.groups ?? []) {
@@ -246,21 +273,32 @@ export async function validateCompletion(
   const data: RegisterData = {};
   let provided = 0;
 
+  // Close: only one side happened (e.g. the car went out and won't be logged back in)
+  if (payload?.close === true) {
+    if (!pending.next) return { error: "This record is already complete" };
+    data.oneWay = true;
+    const note = typeof payload.note === "string" ? payload.note.trim().slice(0, 200) : "";
+    if (note) data.closeNote = note;
+    return { data };
+  }
+
   if (payload?.markMovement === true) {
     if (!pending.next) return { error: "This record has nothing more to record" };
     const side = pending.next;
     data[side.timeKey] = time;
     provided++;
     if (side.readingKey && !isBlank(payload.reading)) {
-      const n = Number(String(payload.reading).trim());
-      if (!Number.isFinite(n) || n < 0 || n > 1_000_000_000) return { error: "Enter a valid reading" };
+      // Readings are free text (e.g. "12,450 km", "Full tank"); compared only when both are plain numbers
+      const text = String(payload.reading).trim();
+      if (text.length > 100) return { error: "Reading: at most 100 characters" };
       const otherReadingKey = side.direction === "IN" ? def.movement!.out.readingKey : def.movement!.in.readingKey;
-      const other = otherReadingKey ? current[otherReadingKey] : null;
-      if (typeof other === "number") {
+      const n = readingNumber(text);
+      const other = readingNumber(otherReadingKey ? current[otherReadingKey] : null);
+      if (n !== null && other !== null) {
         if (side.direction === "IN" && n < other) return { error: "In reading cannot be less than the out reading" };
         if (side.direction === "OUT" && n > other) return { error: "Out reading cannot be more than the in reading" };
       }
-      data[side.readingKey] = n;
+      data[side.readingKey] = text;
     }
   }
 
@@ -368,9 +406,11 @@ export async function validateAdminEdit(
       data.direction = dir;
       if (m.directionField) data[m.directionField] = dir === "IN" ? "In" : "Out";
     }
-    const o = m.out.readingKey ? data[m.out.readingKey] : null;
-    const i = m.in.readingKey ? data[m.in.readingKey] : null;
-    if (typeof o === "number" && typeof i === "number" && i < o) return { error: "In reading cannot be less than the out reading" };
+    // An admin correction keeps the record one-way
+    if (current.oneWay === true) data.oneWay = true;
+    const o = readingNumber(m.out.readingKey ? data[m.out.readingKey] : null);
+    const i = readingNumber(m.in.readingKey ? data[m.in.readingKey] : null);
+    if (o !== null && i !== null && i < o) return { error: "In reading cannot be less than the out reading" };
   }
 
   for (const g of def.groups ?? []) {

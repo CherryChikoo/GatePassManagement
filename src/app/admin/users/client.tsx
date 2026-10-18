@@ -1,4 +1,5 @@
 "use client";
+import { DepartmentSelect } from "@/components/ui/department-select";
 import { actionErrorMessage } from "@/lib/deployment";
 
 import React, { useState, useEffect, useTransition } from "react";
@@ -276,10 +277,19 @@ export function UserManagementClient({
       ),
     }));
 
+    const undo = () =>
+      setUsersData((prev) => ({
+        ...prev,
+        users: prev.users.map((u) => (u.id === profileId ? { ...u, active: !u.active } : u)),
+      }));
     try {
       const res = await toggleUserActive(profileId);
-      if (res?.error) window.alert(res.error);
+      if (res?.error) {
+        undo();
+        window.alert(res.error);
+      }
     } catch {
+      undo();
       window.alert("Failed to update the account status.");
     }
     setToggling(null);
@@ -338,7 +348,7 @@ export function UserManagementClient({
     setAssigning(false);
   }
 
-  const ROLES = ["STUDENT", "FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "WARDEN", "SECURITY", "SECURITY_SUPERVISOR"];
+  const ROLES = ["STUDENT", "FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "WARDEN", "SECURITY", "SECURITY_SUPERVISOR", "ADMIN"];
 
   const filteredUsers = usersData.users.filter((u: any) => {
     const q = searchQuery.toLowerCase().trim();
@@ -427,6 +437,22 @@ export function UserManagementClient({
 
   // Row actions (All Data / Edit / Disable / Delete, + expand toggle in the table) as icon buttons with hover labels.
   // `isExpanded` undefined = no expand toggle (the phone row itself toggles).
+  // Other admins: only Disable / Enable (never delete or a password change); none on your own row
+  function renderAdminActions(u: any) {
+    if (u.email === user.email) return null;
+    return (
+      <RowActions>
+        <IconAction
+          label={u.active ? "Disable" : "Enable"}
+          icon={toggling === u.id ? <Loader2 className="animate-spin" /> : u.active ? <Ban /> : <CircleCheck />}
+          tone={u.active ? "danger" : "success"}
+          onClick={() => handleToggle(u.id)}
+          disabled={toggling === u.id}
+        />
+      </RowActions>
+    );
+  }
+
   function renderActions(u: any, isExpanded?: boolean) {
     return (
       <RowActions>
@@ -751,10 +777,12 @@ export function UserManagementClient({
                           <div className="mt-2 pl-14 text-xs">{renderAssignment(u, role)}</div>
                         )}
 
-                        {u.role !== "ADMIN" && (
+                        {u.role !== "ADMIN" ? (
                           <div className="mt-2 flex justify-end">
                             {renderActions(u)}
                           </div>
+                        ) : (
+                          u.email !== user.email && <div className="mt-2 flex justify-end">{renderAdminActions(u)}</div>
                         )}
 
                         {isExpanded && (
@@ -851,7 +879,7 @@ export function UserManagementClient({
 
                               {/* Actions */}
                               <td className={dt.tdActions}>
-                                {u.role !== "ADMIN" && renderActions(u, isExpanded)}
+                                {u.role !== "ADMIN" ? renderActions(u, isExpanded) : renderAdminActions(u)}
                               </td>
                             </tr>
 
@@ -955,7 +983,13 @@ export function UserManagementClient({
               <option value="SECURITY">Security</option>
               <option value="HEAD_SECURITY">Head Security (takes staff attendance)</option>
               <option value="SECURITY_SUPERVISOR">Security Supervisor (view only)</option>
+              <option value="ADMIN">Admin (full access)</option>
             </Select>
+            {selectedRole === "ADMIN" && (
+              <p className="mt-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-amber-400">
+                An admin can do everything you can: create and disable users, edit records and change settings. Give this only to people you trust.
+              </p>
+            )}
           </section>
 
           {/* Student-specific fields */}
@@ -1128,7 +1162,10 @@ export function UserManagementClient({
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input name="employeeId" label="Employee ID *" required id="create-dir-emp" defaultValue={`DIR-${Date.now().toString().slice(-4)}`} />
-                <Input name="department" label="Department" defaultValue="All Departments" id="create-dir-dept" />
+                <div className="space-y-1.5">
+                  <label htmlFor="create-dir-dept" className="block text-sm font-medium text-zinc-300">Department</label>
+                  <DepartmentSelect name="department" id="create-dir-dept" defaultValue="All Departments" extraOptions={["All Departments"]} />
+                </div>
               </div>
               <Input
                 name="designation"
@@ -1150,7 +1187,10 @@ export function UserManagementClient({
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input name="employeeId" label="Employee ID *" required id="create-dean-emp" defaultValue={`DEAN-${Date.now().toString().slice(-4)}`} />
-                <Input name="department" label="Department" defaultValue="All Departments" id="create-dean-dept" />
+                <div className="space-y-1.5">
+                  <label htmlFor="create-dean-dept" className="block text-sm font-medium text-zinc-300">Department</label>
+                  <DepartmentSelect name="department" id="create-dean-dept" defaultValue="All Departments" extraOptions={["All Departments"]} />
+                </div>
               </div>
               <div className="flex flex-col gap-1">
                 <label htmlFor="create-dean-of" className={fieldLabelCls}>Dean of *</label>

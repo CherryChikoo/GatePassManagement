@@ -1,4 +1,5 @@
 "use client";
+import { DateField } from "@/components/ui/date-field";
 import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useState } from "react";
@@ -14,6 +15,8 @@ export function useRegisterFilters() {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  /** Registers with a Shift field: "" = all shifts */
+  const [shift, setShiftState] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -40,6 +43,11 @@ export function useRegisterFilters() {
     q,
     page,
     setPage,
+    shift,
+    setShift: (v: string) => {
+      setShiftState(v);
+      setPage(1);
+    },
   };
 }
 
@@ -50,8 +58,7 @@ export function RegisterToolbar({ filters, action, searchPlaceholder = "Searchâ€
       {/* Primary action first on phones (full width), at the end of the row on larger screens */}
       {action && <div className="order-first sm:order-last sm:ml-auto [&>*]:w-full sm:[&>*]:w-auto">{action}</div>}
       <div className="flex items-center gap-2 min-w-0">
-        <input
-          type="date"
+        <DateField
           aria-label={t("Date")}
           value={filters.date}
           max={istDateString()}

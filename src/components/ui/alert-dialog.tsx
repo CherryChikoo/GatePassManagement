@@ -1,5 +1,6 @@
 "use client";
 
+import { lockPageScroll } from "@/lib/ui/scroll-lock";
 import { useEffect } from "react";
 import { AlertCircle, CheckCircle2, XCircle, Info, X } from "lucide-react";
 
@@ -29,14 +30,8 @@ export function AlertDialog({
   showCancel = false,
 }: AlertDialogProps) {
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "unset";
-    }
-    return () => {
-      document.body.style.overflow = "unset";
-    };
+    if (!open) return;
+    return lockPageScroll();
   }, [open]);
 
   if (!open) return null;

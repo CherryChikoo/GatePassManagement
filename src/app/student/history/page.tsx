@@ -1,20 +1,6 @@
-import { requireRole } from "@/lib/auth/helpers";
-import { getStudentHistory } from "@/server/actions/permissions";
-import { HistoryClient } from "./client";
+import { redirect } from "next/navigation";
 
-export default async function StudentHistoryPage(props: {
-  searchParams: Promise<{ page?: string }>;
-}) {
-  const searchParams = await props.searchParams;
-  const user = await requireRole("STUDENT");
-  const currentPage = Number(searchParams.page) || 1;
-  const initialData = await getStudentHistory(currentPage);
-
-  return (
-    <HistoryClient
-      user={user}
-      initialData={initialData}
-      currentPage={currentPage}
-    />
-  );
+// Students have a single screen (the pass form); there is no separate history page.
+export default function StudentHistoryPage() {
+  redirect("/student");
 }

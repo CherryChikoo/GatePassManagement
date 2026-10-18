@@ -20,7 +20,7 @@ function adminStorage() {
 
 /** Storage object paths we generate: "<folder>/<safe segments>". */
 export function isSafeStoragePath(path: string): boolean {
-  return /^(students|outsiders)\/[A-Za-z0-9_\-./]+$/.test(path) && !path.includes("..");
+  return /^(students|outsiders|registers)\/[A-Za-z0-9_\-./]+$/.test(path) && !path.includes("..");
 }
 
 function decodeImage(base64Data: string): { mimeType: string; buffer: Buffer } | { error: string } {
@@ -71,6 +71,11 @@ export function uploadExitPhotoAdmin(base64Data: string, ownerId: string, permis
 /** Storage folder holding one person’s gate photos. */
 export function gatePhotoFolder(ownerId: string): string {
   return `students/${safeSegment(ownerId)}`;
+}
+
+/** Photo taken with a register entry (registers with "Take a photo" switched on). */
+export function uploadRegisterPhotoAdmin(base64Data: string, registerKey: string) {
+  return uploadImage(base64Data, `registers/${safeSegment(registerKey.toLowerCase())}`, "entry");
 }
 
 export function uploadOutsiderPhotoAdmin(base64Data: string, outsiderName: string) {
@@ -127,4 +132,43 @@ export async function deleteOldPhotos(daysOld: number = 90): Promise<{ deleted: 
     console.error("[storage] cleanup error:", err?.message);
     return { deleted: 0, error: err?.message || "Cleanup failed" };
   }
+}
+
+// ─── Profile photos ─────────────────────────────────────────────────────────
+// One small JPEG per person at avatars/<profileId>.jpg, overwritten on change,
+// so storage never grows with re-uploads (free-tier friendly).
+
+/** Profile photos are tiny (256×256 JPEG from the browser): reject anything big. */
+const MAX_AVATAR_BASE64 = 200_000;
+
+const avatarPath = (profileId: string) => `avatars/${safeSegment(profileId)}.jpg`;
+
+export async function uploadAvatarAdmin(base64Data: string, profileId: string): Promise<{ error: string | null }> {
+  if (typeof base64Data !== "string" || base64Data.length > MAX_AVATAR_BASE64) {
+    return { error: "Photo too large. Please choose another picture." };
+  }
+  const decoded = decodeImage(base64Data);
+  if ("error" in decoded) return { error: decoded.error };
+  if (decoded.mimeType !== "image/jpeg") return { error: "Invalid photo" };
+  const { error } = await adminStorage().from(BUCKET_NAME).upload(avatarPath(profileId), decoded.buffer, {
+    contentType: "image/jpeg",
+    cacheControl: "31536000",
+    upsert: true,
+  });
+  if (error) {
+    console.error("[storage] avatar upload failed:", error.message);
+    return { error: "Could not save the photo. Please try again." };
+  }
+  return { error: null };
+}
+
+export async function deleteAvatarAdmin(profileId: string): Promise<void> {
+  await adminStorage().from(BUCKET_NAME).remove([avatarPath(profileId)]);
+}
+
+/** The photo bytes, or null if there is none. */
+export async function downloadAvatarAdmin(profileId: string): Promise<ArrayBuffer | null> {
+  const { data, error } = await adminStorage().from(BUCKET_NAME).download(avatarPath(profileId));
+  if (error || !data) return null;
+  return data.arrayBuffer();
 }

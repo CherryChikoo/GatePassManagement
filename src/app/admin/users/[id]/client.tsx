@@ -1,4 +1,6 @@
 "use client";
+import { DateField } from "@/components/ui/date-field";
+import { DepartmentSelect } from "@/components/ui/department-select";
 import { ResetPasswordButton } from "@/components/users/reset-password-button";
 import { PagerBar } from "@/components/ui/pager-bar";
 import { dt } from "@/components/ui/data-table";
@@ -91,6 +93,7 @@ export function UserDetailClient({
   const [editError, setEditError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [toggling, setToggling] = useState(false);
+  const [toggleError, setToggleError] = useState<string | null>(null);
   const [editLoading, setEditLoading] = useState(false);
   const [dateFilter, setDateFilter] = useState("ALL"); // ALL, TODAY, WEEK, MONTH, DATE
   const [specificDate, setSpecificDate] = useState(() => istDateString());
@@ -197,11 +200,24 @@ export function UserDetailClient({
 
   // Handle active status toggle
   async function handleToggleStatus() {
+    const wasActive = user.active;
     setToggling(true);
-    setUser((prev: any) => ({ ...prev, active: !prev.active }));
-    await toggleUserActive(user.id);
-    setToggling(false);
-    router.refresh();
+    setToggleError(null);
+    setSuccess(null);
+    try {
+      const res = await toggleUserActive(user.id);
+      if (res?.error) {
+        setToggleError(res.error);
+      } else {
+        setUser((prev: any) => ({ ...prev, active: !wasActive }));
+        setSuccess(wasActive ? `${user.name} is disabled and can no longer sign in.` : `${user.name} can sign in again.`);
+        router.refresh();
+      }
+    } catch (err: any) {
+      setToggleError(actionErrorMessage(err, "Could not change the account status. Please try again."));
+    } finally {
+      setToggling(false);
+    }
   }
 
   // Handle save edit details
@@ -315,8 +331,7 @@ export function UserDetailClient({
               <option value="DATE">Pick a date…</option>
             </select>
             {dateFilter === "DATE" && (
-              <input
-                type="date"
+              <DateField
                 aria-label="Date"
                 value={specificDate}
                 max={istDateString()}
@@ -335,6 +350,11 @@ export function UserDetailClient({
           <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300 animate-scale-in">
             <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
             <span>{success}</span>
+          </div>
+        )}
+        {toggleError && (
+          <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400 animate-scale-in">
+            {toggleError}
           </div>
         )}
 
@@ -411,7 +431,7 @@ export function UserDetailClient({
                   <Pencil className={`h-3.5 w-3.5 ${activeTab === "edit" ? "" : "text-orange-400"}`} />
                   {activeTab === "edit" ? "View Details" : "Edit Profile"}
                 </Button>
-                {currentUser.role === "ADMIN" && (
+                {(currentUser.role === "ADMIN" || (currentUser.role === "FACULTY_ADMIN" && user.role === "STUDENT")) && (
                   <Button
                     onClick={handleToggleStatus}
                     loading={toggling}
@@ -1263,11 +1283,7 @@ export function UserDetailClient({
                         <label className={fieldLabelCls}>
                           Department
                         </label>
-                        <Input
-                          name="department"
-                          defaultValue={student?.department || ""}
-                          placeholder="e.g. Computer Science"
-                        />
+                        <DepartmentSelect name="department" defaultValue={student?.department || ""} />
                       </div>
 
                       <div className="space-y-1.5">
@@ -1390,9 +1406,10 @@ export function UserDetailClient({
                         <label className={fieldLabelCls}>
                           Department
                         </label>
-                        <Input
+                        <DepartmentSelect
                           name="department"
                           defaultValue={user.faculty?.department || ""}
+                          extraOptions={["All Departments"]}
                         />
                       </div>
                       <div className="space-y-1.5 sm:col-span-2">
