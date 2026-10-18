@@ -120,7 +120,7 @@ export async function verifyQrScan(token: string) {
           status: true,
           studentType: true,
           profile: {
-            select: { name: true, email: true, phone: true },
+            select: { id: true, name: true, email: true, phone: true, avatarUpdatedAt: true },
           },
         },
       },
@@ -129,9 +129,19 @@ export async function verifyQrScan(token: string) {
           id: true,
           employeeId: true,
           department: true,
+          designation: true,
           profile: {
-            select: { name: true, email: true, phone: true },
+            select: { id: true, name: true, email: true, phone: true, avatarUpdatedAt: true },
           },
+        },
+      },
+      // Who approved it (shown to the guard)
+      approval: {
+        select: {
+          approverType: true,
+          createdAt: true,
+          faculty: { select: { designation: true, profile: { select: { name: true } } } },
+          warden: { select: { profile: { select: { name: true } } } },
         },
       },
       qr: {
@@ -229,10 +239,18 @@ export async function verifyQrScan(token: string) {
     };
   }
 
+  const approvedBy = await approversOf(permission);
+  const holder = permission.student?.profile ?? permission.faculty?.profile ?? null;
+  const photoUrl = holder?.avatarUpdatedAt ? `/avatar/${holder.id}?v=${new Date(holder.avatarUpdatedAt).getTime()}` : null;
+
   return {
     valid: true,
     allowedAction,
     manualOverride,
+    /** Who approved the pass: name + role (HOD and Dean both, for two-step passes) */
+    approvedBy,
+    /** The holder's profile photo, to compare with the person at the gate */
+    photoUrl,
     /** Faculty passes: security only verifies and marks the movement (no photo). */
     isFaculty: !!permission.facultyId && !permission.studentId,
     photoRequired: !!permission.studentId,
@@ -265,9 +283,58 @@ export async function verifyQrScan(token: string) {
       section: null,
       status: "ACTIVE" as any,
       studentType: "FACULTY" as any,
+      designation: permission.faculty.designation,
       profile: permission.faculty.profile,
     } : null),
   };
+}
+
+const APPROVER_ROLE: Record<string, string> = {
+  FACULTY: "Faculty mentor",
+  FACULTY_ADMIN: "HOD",
+  WARDEN: "Warden",
+  DEAN: "Dean",
+  DIRECTOR: "Director",
+};
+
+/** Names and roles of the people who approved a pass. */
+async function approversOf(p: {
+  approvalMode: string;
+  approverType: string;
+  approvedAt: Date | null;
+  hodApproverId: string | null;
+  hodApprovedAt: Date | null;
+  deanApproverId: string | null;
+  deanApprovedAt: Date | null;
+  approval: {
+    approverType: string;
+    createdAt: Date;
+    faculty: { designation: string | null; profile: { name: string } } | null;
+    warden: { profile: { name: string } } | null;
+  } | null;
+}): Promise<{ role: string; name: string; at: string | null }[]> {
+  const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
+  // HOD + Dean passes: both people
+  if (p.approvalMode === "BOTH" && (p.hodApproverId || p.deanApproverId)) {
+    const ids = [p.hodApproverId, p.deanApproverId].filter((x): x is string => !!x);
+    const people = await prisma.profile.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
+    const nameOf = (id: string | null) => people.find((x) => x.id === id)?.name ?? "";
+    return [
+      ...(p.hodApproverId ? [{ role: "HOD", name: nameOf(p.hodApproverId), at: iso(p.hodApprovedAt) }] : []),
+      ...(p.deanApproverId ? [{ role: "Dean", name: nameOf(p.deanApproverId), at: iso(p.deanApprovedAt) }] : []),
+    ];
+  }
+  const a = p.approval;
+  if (a) {
+    const name = a.faculty?.profile.name ?? a.warden?.profile.name ?? "";
+    // Deans / Directors: their own title (e.g. "Dean of Academics")
+    const role =
+      (a.approverType === "DEAN" || a.approverType === "DIRECTOR") && a.faculty?.designation
+        ? a.faculty.designation
+        : APPROVER_ROLE[a.approverType] ?? a.approverType;
+    return [{ role, name, at: iso(p.approvedAt ?? a.createdAt) }];
+  }
+  return [{ role: APPROVER_ROLE[p.approverType] ?? p.approverType, name: "", at: iso(p.approvedAt) }];
 }
 
 /** Throws if the pass is outside its valid window (scheduled IST day / QR expiry). */

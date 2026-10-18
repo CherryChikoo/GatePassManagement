@@ -758,6 +758,27 @@ export const te: Record<string, string> = {
   "Allowing — Representative Mobile Number": "అనుమతి — ప్రతినిధి మొబైల్ నంబర్",
   "Not in the list: the typed name will be saved.": "జాబితాలో లేరు: టైప్ చేసిన పేరు సేవ్ అవుతుంది.",
 
+  // Scan result
+  "Valid pass": "చెల్లుబాటు అయ్యే పాస్",
+  "Allow EXIT": "బయటకు అనుమతించండి",
+  "Allow ENTRY": "లోపలికి అనుమతించండి",
+  Call: "కాల్",
+  "Approved by": "ఆమోదించినవారు",
+  "Return Time": "తిరిగి వచ్చే సమయం",
+  "Faculty pass — no photo needed. Check the details above and register.": "ఫ్యాకల్టీ పాస్ — ఫోటో అవసరం లేదు. పై వివరాలు చూసి నమోదు చేయండి.",
+  "Take a photo for the exit": "బయటకు వెళ్ళడానికి ఫోటో తీయండి",
+  "Take a photo for the entry": "లోపలికి రావడానికి ఫోటో తీయండి",
+  "Add a note": "గమనిక జోడించండి",
+  "Allow & Register EXIT": "అనుమతించి బయటకు నమోదు చేయండి",
+  "Allow & Register ENTRY": "అనుమతించి లోపలికి నమోదు చేయండి",
+  "Take the photo first.": "ముందు ఫోటో తీయండి.",
+  HOD: "హెచ్‌ఓడీ",
+  Dean: "డీన్",
+  Director: "డైరెక్టర్",
+  "Faculty mentor": "ఫ్యాకల్టీ మెంటార్",
+  "Day scholar": "డే స్కాలర్",
+  Hosteller: "హాస్టలర్",
+
   // Security attendance sheet
   "Monthly attendance of security staff, with remarks for each day.": "సెక్యూరిటీ సిబ్బంది నెలవారీ హాజరు, ప్రతి రోజు వ్యాఖ్యలతో.",
   "Previous month": "గత నెల",
