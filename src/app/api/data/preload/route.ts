@@ -6,6 +6,7 @@ import { autoExpireOutdatedPermissions } from "@/lib/permissions/auto-expire";
 import { resolveStudentApprover, getFacultyApproverOptions } from "@/lib/permissions/approver";
 import { istDateString, istStartOfDay } from "@/lib/time/ist";
 import { fillMovementPeople } from "@/lib/people";
+import { getAdminMonitorCounts } from "@/lib/dashboard/admin-monitor";
 import { canScanReturn } from "@/lib/passes/return-scan";
 
 /**
@@ -825,6 +826,11 @@ async function preloadAdmin() {
 
   const endOfDay = new Date(today);
   endOfDay.setDate(endOfDay.getDate() + 1);
+  // Monitoring counts run alongside the queries below
+  const monitorPromise = getAdminMonitorCounts(today, endOfDay).catch((err) => {
+    console.error("[preload] admin counts failed:", err?.message);
+    return {};
+  });
 
   const [
     totalStudents, totalFaculty, totalWardens, totalSecurity,
@@ -918,6 +924,7 @@ async function preloadAdmin() {
       stats: {
         totalStudents, totalFaculty, totalWardens, totalSecurity,
         outsidersCount, approvedToday, rejectedToday, entryToday, exitToday,
+        ...(await monitorPromise),
       },
       recentMovements,
       gates: gatesList,

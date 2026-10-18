@@ -43,6 +43,18 @@ const nextConfig: NextConfig = {
     ],
   },
 
+  // Old student pages (removed: students have one screen, the pass form).
+  // Bookmarked links still land on the form.
+  async redirects() {
+    return [
+      {
+        source: "/student/:old(history|request|qr|entry)",
+        destination: "/student",
+        permanent: false,
+      },
+    ];
+  },
+
   // Security headers
   async headers() {
     return [

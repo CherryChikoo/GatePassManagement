@@ -77,7 +77,7 @@ export function AdminDashboardClient({ user }: Props) {
               description={`${n(stats.hostellersOut)} hostellers · ${n(stats.dayScholarsOut)} day scholars`}
             />
             <StatCard title="Faculty out" value={n(stats.facultyOut)} icon={<Briefcase />} description="On an exit pass" />
-            <StatCard title="Visitors inside" value={n(stats.visitorsInside)} icon={<Users />} description="Not checked out today" />
+            <StatCard title="Visitors inside" value={n(stats.visitorsInside)} icon={<Users />} description="Not checked out" />
             <StatCard
               title="Overdue"
               value={n(stats.overdue)}
@@ -92,7 +92,7 @@ export function AdminDashboardClient({ user }: Props) {
               description="Waiting for approval"
               className={n(stats.pending) > 0 ? "border-amber-500/40" : undefined}
             />
-            <StatCard title="Approved, not used" value={n(stats.approvedUnused)} icon={<Ticket />} description="Valid passes not scanned yet" />
+            <StatCard title="Unused passes" value={n(stats.approvedUnused)} icon={<Ticket />} description="Approved, not scanned" />
           </div>
         </section>
 
@@ -101,17 +101,17 @@ export function AdminDashboardClient({ user }: Props) {
           <h2 className="text-xs font-semibold uppercase tracking-wider text-orange-400">Today</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
             <StatCard title="Requests" value={n(stats.requestsToday)} icon={<ClipboardList />} description="Pass requests made" />
-            <StatCard title="Approved" value={n(stats.approvedToday)} icon={<CheckCircle2 />} />
-            <StatCard title="Rejected" value={n(stats.rejectedToday)} icon={<XCircle />} />
-            <StatCard title="Gate exits" value={n(stats.exitToday)} icon={<DoorOpen />} />
-            <StatCard title="Gate entries" value={n(stats.entryToday)} icon={<DoorClosed />} />
-            <StatCard title="Visitor visits" value={n(stats.outsidersCount)} icon={<Users />} />
-            <StatCard title="Register entries" value={n(stats.registerToday)} icon={<BookOpen />} description="In all gate registers" />
+            <StatCard title="Approved" value={n(stats.approvedToday)} icon={<CheckCircle2 />} description="Passes approved" />
+            <StatCard title="Rejected" value={n(stats.rejectedToday)} icon={<XCircle />} description="Requests rejected" />
+            <StatCard title="Gate exits" value={n(stats.exitToday)} icon={<DoorOpen />} description="Scanned out" />
+            <StatCard title="Gate entries" value={n(stats.entryToday)} icon={<DoorClosed />} description="Scanned in" />
+            <StatCard title="Visitor visits" value={n(stats.outsidersCount)} icon={<Users />} description="Registered today" />
+            <StatCard title="Register entries" value={n(stats.registerToday)} icon={<BookOpen />} description="All gate registers" />
             <StatCard
-              title="Security attendance"
+              title="Attendance"
               value={`${n(stats.attendanceMarked)} / ${n(stats.activeSecurity)}`}
               icon={<UserCheck />}
-              description={n(stats.attendanceMarked) < n(stats.activeSecurity) ? "Not everyone marked yet" : "All marked"}
+              description={n(stats.attendanceMarked) < n(stats.activeSecurity) ? "Security · not all marked" : "Security · all marked"}
             />
           </div>
         </section>
@@ -124,19 +124,19 @@ export function AdminDashboardClient({ user }: Props) {
               title="Students"
               value={n(stats.totalStudents)}
               icon={<GraduationCap />}
-              description={`${n(stats.boysHostellers)} boys · ${n(stats.ladiesHostellers)} ladies hostel · ${n(stats.dayScholars)} day`}
+              description={`${n(stats.boysHostellers)} boys · ${n(stats.ladiesHostellers)} girls · ${n(stats.dayScholars)} day`}
             />
             <StatCard
               title="Faculty"
               value={n(stats.facultyOnly)}
               icon={<BookOpen />}
-              description={`+ ${n(stats.hods)} HODs · ${n(stats.deansDirectors)} Dean / Director`}
+              description="Teaching staff"
             />
-            <StatCard title="Wardens" value={n(stats.totalWardens)} icon={<Home />} />
-            <StatCard title="Security staff" value={n(stats.totalSecurity)} icon={<Shield />} description={`+ ${n(stats.supervisors)} supervisors`} />
-            <StatCard title="HODs" value={n(stats.hods)} icon={<Building2 />} />
+            <StatCard title="Wardens" value={n(stats.totalWardens)} icon={<Home />} description="Hostel wardens" />
+            <StatCard title="Security" value={n(stats.totalSecurity)} icon={<Shield />} description={`+ ${n(stats.supervisors)} supervisor${n(stats.supervisors) === 1 ? "" : "s"}`} />
+            <StatCard title="HODs" value={n(stats.hods)} icon={<Building2 />} description={`+ ${n(stats.deansDirectors)} Dean / Director`} />
             <StatCard
-              title="Disabled accounts"
+              title="Disabled"
               value={n(stats.disabledAccounts)}
               icon={<UserX />}
               description="Can't sign in"

@@ -200,7 +200,6 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
     });
 
     revalidatePath("/student");
-    revalidatePath("/student/history");
     revalidatePath("/faculty-admin");
     revalidatePath("/faculty-admin/requests");
     revalidatePath("/warden");
@@ -255,51 +254,7 @@ export async function cancelPermissionRequest(permissionId: string) {
   }
 
   revalidatePath("/student");
-  revalidatePath("/student/history");
   return { success: true };
-}
-
-/**
- * Student's own pass history (paginated)
- */
-export async function getStudentHistory(page = 1, limit = 25) {
-  const user = await requireRole("STUDENT");
-
-  const student = await prisma.student.findUnique({
-    where: { profileId: user.profileId },
-    select: { id: true },
-  });
-  if (!student) return { permissions: [], total: 0 };
-
-  const safePage = Number.isInteger(page) && page >= 1 ? page : 1;
-  const safeLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
-
-  const [permissions, total] = await Promise.all([
-    prisma.permission.findMany({
-      where: { studentId: student.id },
-      orderBy: { createdAt: "desc" },
-      skip: (safePage - 1) * safeLimit,
-      take: safeLimit,
-      include: {
-        approval: {
-          select: {
-            approved: true,
-            reason: true,
-            approverType: true,
-            createdAt: true,
-            faculty: { select: { profile: { select: { name: true } } } },
-            warden: { select: { profile: { select: { name: true } } } },
-          },
-        },
-        movements: {
-          select: { id: true, type: true, createdAt: true, gate: { select: { name: true } } },
-        },
-      },
-    }),
-    prisma.permission.count({ where: { studentId: student.id } }),
-  ]);
-
-  return { permissions, total };
 }
 
 /**

@@ -1,6 +1,7 @@
 "use server";
 
 import { Role } from "@prisma/client";
+import { getAdminMonitorCounts } from "@/lib/dashboard/admin-monitor";
 import { prisma } from "@/lib/db/prisma";
 import type { Prisma } from "@prisma/client";
 import { checkRateLimit } from "@/lib/auth/rate-limiter";
@@ -535,65 +536,8 @@ export async function getAdminDashboard(dateString?: string) {
     prisma.gate.findMany({ select: { id: true, name: true, active: true } }),
   ]);
 
-  // Monitoring counts: grouped queries give many numbers per database trip
-  const now = new Date();
-  const { start: todayStart } = istDayRangeFromParam();
-  const returnPass = { OR: [{ facultyId: { not: null } }, { student: { studentType: "HOSTELLER" as const } }] };
-  const [studentGroups, profileGroups, facultyOut, overdue, visitorsInside, pending, approvedUnused, requestsToday, registerToday, attendanceToday, activeSecurity] =
-    await Promise.all([
-      prisma.student.groupBy({ by: ["studentType", "hostelType", "status"], _count: { _all: true } }),
-      prisma.profile.groupBy({ by: ["role", "active"], _count: { _all: true } }),
-      prisma.permission.count({ where: { facultyId: { not: null }, status: "EXITED" } }),
-      // Out past their return time (passes that expect a return)
-      prisma.permission.count({
-        where: {
-          status: "EXITED",
-          ...returnPass,
-          AND: [{ OR: [{ expectedReturn: { lt: now } }, { expectedReturn: null, endDate: { lt: todayStart } }] }],
-        },
-      }),
-      prisma.outsider.count({ where: { exitTime: null, entryTime: { gte: today, lt: endOfDay } } }),
-      prisma.permission.count({ where: { status: "PENDING" } }),
-      prisma.permission.count({ where: { status: "APPROVED", OR: [{ endDate: { gte: todayStart } }, { endDate: null, exitDate: { gte: todayStart } }] } }),
-      prisma.permission.count({ where: { createdAt: { gte: today, lt: endOfDay } } }),
-      prisma.registerEntry.count({
-        where: {
-          kind: "ORIGINAL",
-          entryDate: { gte: today, lt: endOfDay },
-          register: { notIn: ["SECURITY_ATTENDANCE", "ATTENDANCE_REMARK", "SECURITY_RANK", "OUTING_NOTE"] },
-        },
-      }),
-      prisma.registerEntry.count({ where: { register: "SECURITY_ATTENDANCE", kind: "ORIGINAL", entryDate: { gte: today, lt: endOfDay } } }),
-      prisma.securityStaff.count({ where: { profile: { active: true } } }),
-    ]);
-
-  const sumStudents = (pred: (g: (typeof studentGroups)[number]) => boolean) =>
-    studentGroups.filter(pred).reduce((n, g) => n + g._count._all, 0);
-  const sumProfiles = (pred: (g: (typeof profileGroups)[number]) => boolean) =>
-    profileGroups.filter(pred).reduce((n, g) => n + g._count._all, 0);
-
-  const monitor = {
-    studentsOut: sumStudents((g) => g.status === "OUTSIDE"),
-    hostellersOut: sumStudents((g) => g.status === "OUTSIDE" && g.studentType === "HOSTELLER"),
-    dayScholarsOut: sumStudents((g) => g.status === "OUTSIDE" && g.studentType !== "HOSTELLER"),
-    facultyOut,
-    overdue,
-    visitorsInside,
-    pending,
-    approvedUnused,
-    requestsToday,
-    registerToday,
-    attendanceMarked: attendanceToday,
-    activeSecurity,
-    boysHostellers: sumStudents((g) => g.studentType === "HOSTELLER" && g.hostelType === "BOYS"),
-    ladiesHostellers: sumStudents((g) => g.studentType === "HOSTELLER" && g.hostelType === "LADIES"),
-    dayScholars: sumStudents((g) => g.studentType !== "HOSTELLER"),
-    facultyOnly: sumProfiles((g) => g.role === "FACULTY"),
-    hods: sumProfiles((g) => g.role === "FACULTY_ADMIN"),
-    deansDirectors: sumProfiles((g) => g.role === "DEAN" || g.role === "DIRECTOR"),
-    supervisors: sumProfiles((g) => g.role === "SECURITY_SUPERVISOR"),
-    disabledAccounts: sumProfiles((g) => !g.active),
-  };
+  // Right now / today / people counts (same helper as the preload)
+  const monitor = await getAdminMonitorCounts(today, endOfDay);
 
   const dashboardData = {
     stats: {
