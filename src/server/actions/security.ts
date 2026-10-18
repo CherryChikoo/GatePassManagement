@@ -342,7 +342,7 @@ function assertPassWindow(exitDate: Date, qrExpiresAt: Date) {
   const now = new Date();
   if (qrExpiresAt < now) throw new Error("This gate pass has expired");
   if (istStartOfDay(exitDate) > now) {
-    throw new Error(`This pass is valid only from ${istDateString(exitDate)}`);
+    throw new Error(`This pass is valid only from ${istDateString(exitDate)}.`);
   }
 }
 
@@ -365,7 +365,7 @@ async function resolveGatePhoto(
 
   if (!imagePath) {
     return owner.studentId
-      ? { error: `Photo capture is mandatory for student ${movement} registration` }
+      ? { error: movement === "exit" ? "Take the student's photo before registering the exit" : "Take the student's photo before registering the entry" }
       : { path: null };
   }
   if (typeof imagePath !== "string") return { error: "Invalid photo" };
@@ -460,7 +460,7 @@ export async function registerExit(
       if (!permission) throw new Error("Permission not found");
       if (permission.passKind === "HOSTEL") throw new Error("Hostel passes are scanned by the hostel warden, not at the gate");
       if (permission.status !== "APPROVED") {
-        throw new Error(`Cannot register exit — permission status is ${permission.status}`);
+        throw new Error("This pass can't be used for an exit now");
       }
       if (permission.type === "ENTRY") {
         throw new Error("Cannot register exit with an ENTRY pass. This pass is only for entering campus.");
@@ -583,7 +583,7 @@ export async function registerEntry(
         // (No pass-window check: a late return is still a return)
       } else {
         if (permission.status !== "APPROVED") {
-          throw new Error(`Cannot register entry — permission status is ${permission.status}`);
+          throw new Error("This pass can't be used for an entry now");
         }
         if (!permission.qr || !permission.qr.active) {
           throw new Error("QR credential is not active or has expired");

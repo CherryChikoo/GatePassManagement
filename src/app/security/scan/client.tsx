@@ -219,7 +219,7 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
     // Photo is required for students only; faculty passes are verified and marked
     const photoRequired = verifyResult.photoRequired !== false;
     if (photoRequired && !capturedImage) {
-      setError(`Photo is mandatory for ${action === "EXIT" ? "exit" : "entry"} registration`);
+      setError(action === "EXIT" ? "Take the student's photo before registering the exit" : "Take the student's photo before registering the entry");
       return;
     }
 
@@ -275,6 +275,23 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
     startQrScanner();
   }
 
+  // The bottom bar's Scan button while already on this page: fresh camera at once
+  const scanNextRef = useRef(scanNext);
+  useEffect(() => {
+    scanNextRef.current = scanNext;
+  });
+  useEffect(() => {
+    const open = () => scanNextRef.current();
+    window.addEventListener("gatepass:open-scanner", open);
+    return () => window.removeEventListener("gatepass:open-scanner", open);
+  }, []);
+
+  // Server messages in the reader's language (the dated one keeps its date)
+  const tError = (msg: string) => {
+    const m = /^This pass is valid only from (\d{4}-\d{2}-\d{2})\.$/.exec(msg);
+    return m ? t("This pass is valid only from {date}.", { date: m[1] }) : t(msg);
+  };
+
   const isExit = verifyResult?.allowedAction === "EXIT";
   const needsPhoto = verifyResult?.photoRequired !== false;
   const passLabel = !verifyResult
@@ -289,7 +306,7 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
 
   return (
     <>
-      <div className="max-w-2xl mx-auto space-y-5 sm:space-y-6 pb-24 sm:pb-8">
+      <div className="max-w-2xl mx-auto space-y-5 sm:space-y-6 pb-2">
         <div className="min-w-0">
           <GoBackButton className="mb-3" />
           <div className="flex items-center gap-3">
@@ -332,7 +349,7 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
                 <AlertTriangle className="h-8 w-8" />
               </div>
               <h2 className="text-xl font-medium text-zinc-100">{t("Verification Failed")}</h2>
-              <p role="alert" className="mt-2 text-base text-red-400 break-words">{error && t(error)}</p>
+              <p role="alert" className="mt-2 text-base text-red-400 break-words">{error && tError(error)}</p>
               <Button onClick={resetScan} size="lg" className="mt-6 h-14 w-full text-base">
                 <RotateCcw className="h-5 w-5" />
                 {t("Try Again")}
@@ -630,7 +647,7 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
             {error && (
               <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-400">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                {t(error)}
+                {tError(error)}
               </div>
             )}
 
@@ -697,7 +714,7 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
             >
               {error && (
                 <p role="alert" className="rounded-2xl bg-red-600 px-4 py-2.5 text-center text-sm font-medium text-white">
-                  {t(error)}
+                  {tError(error)}
                 </p>
               )}
               <Button onClick={capturePhoto} size="lg" className="h-16 w-full text-base">

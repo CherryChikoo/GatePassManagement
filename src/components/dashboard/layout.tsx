@@ -432,6 +432,14 @@ export function DashboardLayout({
                 <Link
                   href="/security/scan?scan=1"
                   aria-label={t("Scan QR")}
+                  onClick={(e) => {
+                    // Already on the scan page (e.g. after a scan or Cancel): the
+                    // address wouldn't change, so ask the page to open the camera now
+                    if (pathname === "/security/scan") {
+                      e.preventDefault();
+                      window.dispatchEvent(new Event("gatepass:open-scanner"));
+                    }
+                  }}
                   className="relative -mt-8 flex w-full flex-col items-center gap-1"
                 >
                   <span className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-600 text-white ring-4 ring-zinc-950 shadow-[0_14px_28px_-10px_rgba(207,62,37,0.75)] active:scale-95 transition-transform">
