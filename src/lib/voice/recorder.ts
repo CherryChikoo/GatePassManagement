@@ -10,7 +10,7 @@
  * - A clip ends at a natural pause (or at 25 s, the speech service's limit for
  *   a quick request) and is handed over at once, so it is converted while the
  *   guard is still speaking.
- * - Auto-stop after 4 s of quiet once something was said, after 8 s if nothing
+ * - Auto-stop after 3.5 s of quiet once something was said, after 8 s if nothing
  *   was said at all, and at 2 minutes in total.
  * Clips are 16 kHz mono 16-bit WAV — what speech recognition works on, and small.
  */
@@ -30,13 +30,14 @@ const RATE = 16_000;
 const FRAME = 320; // 20 ms
 const PRE_ROLL_FRAMES = 15; // 300 ms kept before speech starts
 const START_FRAMES = 3; // 60 ms of speech starts a clip
-const SOFT_END_FRAMES = 35; // 700 ms pause ends a clip that is already 6 s long
-const HARD_END_FRAMES = 60; // 1.2 s pause always ends a clip
-const SOFT_MIN_FRAMES = 300; // 6 s
+// Short clips reach speech-to-text sooner, so the form starts filling while the guard talks
+const SOFT_END_FRAMES = 30; // 600 ms pause ends a clip that is already 2 s long
+const HARD_END_FRAMES = 50; // 1 s pause always ends a clip
+const SOFT_MIN_FRAMES = 100; // 2 s
 const MAX_CLIP_FRAMES = 1_250; // 25 s
 const KEEP_TAIL_FRAMES = 12; // 240 ms of quiet kept after the last word
 const MIN_SPEECH_FRAMES = 15; // a clip needs 300 ms of speech (skips coughs, clicks)
-const AUTO_STOP_FRAMES = 200; // 4 s of quiet after speech
+const AUTO_STOP_FRAMES = 175; // 3.5 s of quiet after speech (a guard pausing to think is not cut off; filling has already started from the last clip)
 const NOTHING_FRAMES = 400; // 8 s with no speech at all
 const MAX_FRAMES = 6_000; // 2 minutes
 

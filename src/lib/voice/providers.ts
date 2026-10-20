@@ -61,7 +61,9 @@ export async function transcribeClip(audio: Blob, language: string, keyterms: st
   return typeof body?.transcript === "string" ? body.transcript.trim() : "";
 }
 
-const DEFAULT_GEMINI_MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash"];
+// Measured 2026-10-21 (scripts/voice-model-speed.ts): 3.6-flash answers in ~2 s and
+// correctly; 3.5-flash-lite took 14-17 s on the free tier. Later ones are fallbacks.
+const DEFAULT_GEMINI_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"];
 
 function geminiModels(): string[] {
   const fromEnv = (process.env.GEMINI_MODELS ?? "").split(",").map((m) => m.trim()).filter(Boolean);
@@ -94,8 +96,8 @@ export async function fillWithGemini(req: { system: string; user: string; schema
               ...(thinking ? { thinkingConfig: thinking } : {}),
             },
           }),
-          // 3 models x 18 s stays inside the 60 s limit for API routes (vercel.json)
-          signal: AbortSignal.timeout(18_000),
+          // A slow model hands over to the next sooner; 3 x 12 s stays inside the 60 s API limit (vercel.json)
+          signal: AbortSignal.timeout(12_000),
         });
       } catch {
         lastKind = "busy";

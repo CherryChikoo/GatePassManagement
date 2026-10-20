@@ -22,10 +22,11 @@ Rules:
 1. Use only details the guard actually said. If a field was not mentioned, or what was said is unclear, leave that field out. Never guess or invent.
 2. The guard may say things in any order and skip fields. Put each detail only in the field it belongs to; never put it in a different field just to use it.
 3. Write everything in English: translate ordinary Telugu words (పని -> work, బ్యాంకు పని -> bank work), and spell names and places in English letters (రమేష్ -> Ramesh). Keep it short, as said.
-4. Vehicle numbers in capitals like "AP 39 AB 1234" (a bike, car, auto or lorry number is the vehicle number). Phone numbers as digits only. Counts and readings as numbers.
+4. Vehicle numbers in capitals like "AP 39 AB 1234" (a bike, car, auto or lorry number is the vehicle number). Phone numbers as digits only. Roll numbers and IDs without spaces, e.g. "23ME1A0507". Counts and readings as numbers.
 5. For a field with fixed options, answer with exactly one of the listed options, or leave it out.
-6. For a list (e.g. workers), add one item per person or thing mentioned, each with its own details. "Same" means the same value as the previous item.
-7. Dates and times are recorded automatically: ignore them.`;
+6. Remarks / notes fields: only what the guard said as a remark or note. Never put leftover details there (a vehicle number goes in the vehicle field, a roll number in its own field).
+7. For a list (e.g. workers), add one item per person or thing mentioned, each with its own details. "Same" means the same value as the previous item.
+8. Dates and times are recorded automatically: ignore them.`;
 
 /** JSON schema for one field, or null when it is not filled from speech. */
 function fieldSchema(f: FieldDef, staff: StaffName[]): Record<string, unknown> | null {

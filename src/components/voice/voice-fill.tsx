@@ -12,7 +12,7 @@
  *
  * The form decides how results are merged (never over what the guard typed).
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Loader2, Mic, RotateCcw, Square, TriangleAlert } from "lucide-react";
 import { useLang, useT } from "@/components/providers/language-provider";
 import { cn } from "@/lib/utils";
@@ -56,8 +56,10 @@ function friendly(err: unknown, fallback: string): string {
 
 type SessionUi = {
   setStatus: (s: VoiceStatus) => void;
-  setLevel: (n: number) => void;
-  setSeconds: (n: number) => void;
+  /** Loudness 0..1, ~50 times a second: goes straight to the level bar, never through React state */
+  level: (n: number) => void;
+  /** When listening began (the timer counts by itself), or null */
+  setStartedAt: (t: number | null) => void;
   setTranscript: (t: string) => void;
   setMessage: (m: string | null) => void;
   setFilled: (n: number) => void;
@@ -86,7 +88,6 @@ class VoiceSession {
   private clipFailed = false;
   /** Bumped on every new recording / reset: late answers of older ones are ignored */
   private run = 0;
-  private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private ui: SessionUi) {}
 
@@ -96,8 +97,7 @@ class VoiceSession {
   }
 
   private stopTimer() {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+    this.ui.setStartedAt(null);
   }
 
   async start() {
@@ -115,11 +115,10 @@ class VoiceSession {
     this.fillFailed = "";
     this.clipFailed = false;
     this.ui.setCanRetry(false);
-    this.ui.setSeconds(0);
     this.ui.setStatus("listening");
 
     const recorder = new VoiceRecorder({
-      onLevel: this.ui.setLevel,
+      onLevel: this.ui.level,
       onClip: (clip, i) => {
         if (run !== this.run) return;
         this.pending++;
@@ -158,8 +157,7 @@ class VoiceSession {
     this.recorder = recorder;
     try {
       await recorder.start();
-      const began = Date.now();
-      this.timer = setInterval(() => this.ui.setSeconds(Math.floor((Date.now() - began) / 1000)), 500);
+      this.ui.setStartedAt(Date.now());
     } catch (err) {
       this.stopped = true;
       this.recorder = null;
@@ -273,8 +271,9 @@ class VoiceSession {
 export function useVoiceFill({ form, onFill }: { form: string; onFill: (fill: VoiceFill) => void }) {
   const { lang } = useLang();
   const [status, setStatus] = useState<VoiceStatus>("idle");
-  const [level, setLevel] = useState(0);
-  const [seconds, setSeconds] = useState(0);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  // Level bar listeners (the bar updates its own width; the form is not re-drawn)
+  const levelListeners = useRef(new Set<(n: number) => void>());
   const [transcript, setTranscript] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [filled, setFilled] = useState(0);
@@ -285,13 +284,21 @@ export function useVoiceFill({ form, onFill }: { form: string; onFill: (fill: Vo
     latest.current = { form, lang, onFill };
   });
 
+  const onLevel = useCallback((l: (n: number) => void) => {
+    const listeners = levelListeners.current;
+    listeners.add(l);
+    return () => {
+      listeners.delete(l);
+    };
+  }, []);
+
   // Created on first use (outside render), so it always reads the latest form / language / handler
   const sessionRef = useRef<VoiceSession | null>(null);
   const session = () =>
     (sessionRef.current ??= new VoiceSession({
       setStatus,
-      setLevel,
-      setSeconds,
+      level: (n) => levelListeners.current.forEach((l) => l(n)),
+      setStartedAt,
       setTranscript,
       setMessage,
       setFilled,
@@ -306,8 +313,9 @@ export function useVoiceFill({ form, onFill }: { form: string; onFill: (fill: Vo
 
   return {
     status,
-    level,
-    seconds,
+    startedAt,
+    /** Follow the microphone loudness (for the level bar) */
+    onLevel,
     transcript,
     message,
     filled,
@@ -322,6 +330,30 @@ export function useVoiceFill({ form, onFill }: { form: string; onFill: (fill: Vo
 export type VoiceFillState = ReturnType<typeof useVoiceFill>;
 
 const clock = (n: number) => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
+
+/** Seconds since listening began; re-draws only itself. */
+function Timer({ since }: { since: number | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!since) return;
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [since]);
+  return <span className="tabular-nums text-zinc-500">{clock(since ? Math.max(0, Math.floor((now - since) / 1000)) : 0)}</span>;
+}
+
+/** Microphone loudness bar: its width is set directly, ~50 times a second, without React re-renders. */
+function LevelBar({ onLevel }: { onLevel: (l: (n: number) => void) => () => void }) {
+  const bar = useRef<HTMLDivElement>(null);
+  useEffect(
+    () =>
+      onLevel((n) => {
+        if (bar.current) bar.current.style.width = `${Math.round(n * 100)}%`;
+      }),
+    [onLevel]
+  );
+  return <div ref={bar} className="h-full w-0 rounded-full bg-red-500 transition-[width] duration-75" />;
+}
 
 /** The voice card at the top of a form. */
 export function VoicePanel({ voice, onUndo }: { voice: VoiceFillState; onUndo?: () => void }) {
@@ -362,10 +394,10 @@ export function VoicePanel({ voice, onUndo }: { voice: VoiceFillState; onUndo?: 
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-base font-semibold text-zinc-100">
-              {t("Listening…")} <span className="tabular-nums text-zinc-500">{clock(voice.seconds)}</span>
+              {t("Listening…")} <Timer since={voice.startedAt} />
             </p>
             <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-zinc-800" aria-hidden="true">
-              <div className="h-full rounded-full bg-red-500 transition-[width] duration-75" style={{ width: `${Math.round(voice.level * 100)}%` }} />
+              <LevelBar onLevel={voice.onLevel} />
             </div>
           </div>
           <button
