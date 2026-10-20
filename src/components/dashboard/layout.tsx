@@ -3,6 +3,7 @@
 import { lockPageScroll } from "@/lib/ui/scroll-lock";
 import React, { useState, useEffect, useRef } from "react";
 import { useKeepHeightOnFilter } from "@/lib/ui/keep-height";
+import { useBarSpace, useGlassSupport } from "@/lib/ui/bar-space";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -113,6 +114,13 @@ export function DashboardLayout({
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   useKeepHeightOnFilter(scrollRef, contentRef, pathname);
+  // The page scrolls under the floating glass bars; keep their space measured
+  const mainRef = useRef<HTMLElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const footerSlotRef = useRef<HTMLDivElement>(null);
+  useBarSpace(mainRef, headerRef, navRef, footerSlotRef);
+  useGlassSupport();
 
   // Clear all cached client data before ending the server session
   const [signingOut, setSigningOut] = useState(false);
@@ -200,7 +208,8 @@ export function DashboardLayout({
       {hasSidebar && (
         <aside
           className={cn(
-            "fixed inset-y-0 left-0 z-50 flex flex-col glass transition-[transform,width] duration-300",
+            // Solid (not frosted): it slides over the page, where a blur would cost the most
+            "fixed inset-y-0 left-0 z-50 flex flex-col glass-solid transition-[translate,width] duration-300",
             "lg:static lg:translate-x-0 lg:my-3 lg:ml-3 lg:rounded-[28px] lg:shadow-card",
             sidebarOpen ? "translate-x-0" : "-translate-x-full",
             desktopCollapsed ? "lg:w-[84px]" : "lg:w-64",
@@ -301,21 +310,14 @@ export function DashboardLayout({
         </aside>
       )}
 
-      {/* Main */}
-      {/* Room for the floating bottom bar (Security: plus the raised Scan button)
-          and the phone's gesture area, so page controls and cards are never under it */}
-      <main
-        className={cn(
-          "flex-1 flex flex-col min-w-0 max-w-full overflow-hidden relative",
-          role === "SECURITY"
-            ? "pb-[calc(8.5rem+env(safe-area-inset-bottom))]"
-            : isMobileNavRole
-            ? "pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-0"
-            : ""
-        )}
-      >
+      {/* Main: the page scrolls under the floating glass bars (top bar, page
+          controls, bottom bar); useBarSpace keeps the space they cover measured */}
+      <main ref={mainRef} className="flex-1 flex flex-col min-w-0 max-w-full overflow-hidden relative">
         {/* Top bar: glass */}
-        <header className="sticky top-0 z-30 mx-3 mt-3 sm:mx-4 lg:mx-6 flex items-center gap-3 rounded-[22px] glass shadow-card px-3 sm:px-4 py-2.5 shrink-0">
+        <header
+          ref={headerRef}
+          className="absolute top-3 inset-x-3 sm:inset-x-4 lg:inset-x-6 z-30 flex items-center gap-3 rounded-[22px] glass shadow-card px-3 sm:px-4 py-2.5"
+        >
           {hasSidebar ? (
             <button
               onClick={() => setSidebarOpen(true)}
@@ -390,15 +392,28 @@ export function DashboardLayout({
         </header>
 
         {/* Page content */}
-        <div ref={scrollRef} className="scrollbar-none flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden px-3 pt-5 pb-6 sm:px-4 lg:px-6 lg:pt-6 lg:pb-8">
+        <div
+          ref={scrollRef}
+          className="scrollbar-none flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden px-3 sm:px-4 lg:px-6"
+          style={{
+            // Before the first measurement: the usual bar sizes
+            paddingTop: "calc(var(--bar-top, 4.75rem) + 1.25rem)",
+            paddingBottom: `calc(var(--bar-bottom, ${role === "SECURITY" ? "8.5rem" : isMobileNavRole ? "6rem" : "0px"}) + 1.5rem)`,
+          }}
+        >
           <div ref={contentRef}>
             <PasswordChangedNotice />
             {children}
           </div>
         </div>
 
-        {/* Pagination bars (PagerBar) dock here: always at the bottom of the screen */}
-        <div id={PAGE_FOOTER_SLOT_ID} className="shrink-0 px-3 sm:px-4 lg:px-6 pb-3 empty:hidden" />
+        {/* Pagination bars (PagerBar) dock here: floating just above the bottom bar */}
+        <div
+          ref={footerSlotRef}
+          id={PAGE_FOOTER_SLOT_ID}
+          className="absolute inset-x-0 z-30 px-3 sm:px-4 lg:px-6 empty:hidden"
+          style={{ bottom: "calc(var(--nav-space, 0px) + 0.75rem)" }}
+        />
       </main>
 
       {signingOut && <SigningOutOverlay />}
@@ -406,6 +421,7 @@ export function DashboardLayout({
       {/* Mobile bottom navigation: floating glass bar */}
       {isMobileNavRole && navItems.length > 0 && (
         <nav
+          ref={navRef}
           className={cn(
             "fixed bottom-3 z-40 flex items-center justify-around rounded-[26px] glass shadow-card px-1 h-16",
             // Security has no sidebar: the bar is their navigation on every screen size

@@ -9,6 +9,7 @@ import { PasswordChangedNotice } from "@/components/users/password-changed-notic
 import { logoutAndClear } from "@/stores/app-store";
 import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
 import { useT } from "@/components/providers/language-provider";
+import { useGlassSupport } from "@/lib/ui/bar-space";
 
 /**
  * Minimal student layout: a slim top bar (brand, student, sign out) and the
@@ -30,6 +31,8 @@ export function StudentShell({
   children: React.ReactNode;
 }) {
   const t = useT();
+  // Frosted header only where the phone keeps scrolling smooth
+  useGlassSupport();
   const [signingOut, setSigningOut] = useState(false);
 
   const handleLogout = async () => {

@@ -3,7 +3,9 @@ import { DateField } from "@/components/ui/date-field";
 import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, Camera, CheckCircle2, ChevronDown, Clock, Info, Loader2, LogIn, LogOut, Plus, Save, Trash2, X } from "lucide-react";
+import { VoicePanel, useVoiceFill } from "@/components/voice/voice-fill";
+import type { VoiceFill } from "@/lib/voice/spec";
+import { CalendarDays, Camera, CheckCircle2, ChevronDown, Clock, Info, Loader2, LogIn, LogOut, Mic, Plus, Save, Trash2, X } from "lucide-react";
 import { getRegisterPeopleOptions } from "@/server/actions/registers";
 import { DepartmentSelect } from "@/components/ui/department-select";
 import { compressPhoto } from "@/lib/images/compress-photo";
@@ -414,18 +416,41 @@ function FieldInput({
   }
 }
 
-function FieldBlock({ f, id, required = false, children }: { f: FieldDef; id: string; required?: boolean; children: React.ReactNode }) {
+function FieldBlock({
+  f,
+  id,
+  required = false,
+  voice = false,
+  missing = false,
+  children,
+}: {
+  f: FieldDef;
+  id: string;
+  required?: boolean;
+  /** Filled from the guard's voice: highlighted until they check / edit it */
+  voice?: boolean;
+  /** Required, but not heard in what the guard said */
+  missing?: boolean;
+  children: React.ReactNode;
+}) {
+  const t = useT();
   return (
     <div className={`space-y-1.5 min-w-0 ${f.type === "textarea" ? "sm:col-span-2" : ""}`}>
-      <label htmlFor={id} className="field-label flex items-baseline gap-1 text-sm font-medium text-zinc-200">
+      <label htmlFor={id} className="field-label flex flex-wrap items-baseline gap-1 text-sm font-medium text-zinc-200">
         <span className="min-w-0">{f.label}</span>
         {required && (
           <span className="text-base leading-none font-semibold text-orange-500" aria-hidden="true">
             *
           </span>
         )}
+        {voice && (
+          <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
+            <Mic className="h-3 w-3" aria-hidden="true" /> {t("Check")}
+          </span>
+        )}
+        {missing && <span className="ml-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-500">{t("Not heard — fill in")}</span>}
       </label>
-      {children}
+      <div className={voice ? "rounded-2xl ring-2 ring-amber-400/60" : missing ? "rounded-2xl ring-2 ring-red-400/60" : undefined}>{children}</div>
       {f.hint && <p className="text-xs text-zinc-500">{f.hint}</p>}
     </div>
   );
@@ -513,6 +538,97 @@ export function RegisterForm({
   );
   const [localError, setLocalError] = useState<string | null>(null);
 
+  // ── Voice filling ──────────────────────────────────────────
+  // What voice put in each box: a box is only (re)filled by voice while it is
+  // empty or still holds voice's value — never over what the guard typed.
+  const latestForm = useRef({ values, rows, direction });
+  useEffect(() => {
+    latestForm.current = { values, rows, direction };
+  });
+  const voiceSet = useRef<Record<string, string>>({});
+  const voiceRows = useRef<Record<string, string>>({});
+  const voiceDir = useRef<Direction | null>(null);
+  const beforeVoice = useRef<{ values: Values; rows: Record<string, Values[]>; direction: Direction | null } | null>(null);
+  const [voiceKeys, setVoiceKeys] = useState<string[]>([]);
+  const [voiceGroups, setVoiceGroups] = useState<string[]>([]);
+  // Re-mounts boxes voice changed (pickers keep their own copy of the value)
+  const [voiceVer, setVoiceVer] = useState<Record<string, number>>({});
+  const [rowsVer, setRowsVer] = useState(0);
+
+  const applyVoice = (fill: VoiceFill) => {
+    const cur = latestForm.current;
+    if (!beforeVoice.current) beforeVoice.current = { ...cur };
+    const next = { ...cur.values };
+    const changed: string[] = [];
+    for (const [k, v] of Object.entries(fill.fields ?? {})) {
+      const now = String(cur.values[k] ?? "");
+      if ((now !== "" && now !== voiceSet.current[k]) || now === v) continue;
+      next[k] = v;
+      voiceSet.current[k] = v;
+      changed.push(k);
+    }
+    if (changed.length) {
+      latestForm.current = { ...latestForm.current, values: next };
+      setValues(next);
+      setVoiceKeys((ks) => [...new Set([...ks, ...changed])]);
+      setVoiceVer((vv) => Object.fromEntries([...Object.entries(vv), ...changed.map((k) => [k, (vv[k] ?? 0) + 1])]));
+    }
+    // Lists (e.g. coolies): filled while the guard has not edited them; afterwards only extra items are added
+    const nextRows = { ...latestForm.current.rows };
+    const changedGroups: string[] = [];
+    for (const g of def.groups ?? []) {
+      const spoken = fill.groups?.[g.key];
+      if (!spoken?.length) continue;
+      const have = nextRows[g.key] ?? [];
+      const blank = have.every((r) => Object.values(r).every((v) => String(v ?? "").trim() === ""));
+      const untouched = blank || JSON.stringify(have) === voiceRows.current[g.key];
+      let list = untouched
+        ? spoken.map((r) => ({ ...emptyRow(g), ...r }))
+        : spoken.length > have.length
+        ? [...have, ...spoken.slice(have.length).map((r) => ({ ...emptyRow(g), ...r }))]
+        : null;
+      if (!list) continue;
+      if (g.max !== null) list = list.slice(0, g.max);
+      if (JSON.stringify(list) === JSON.stringify(have)) continue;
+      nextRows[g.key] = list;
+      voiceRows.current[g.key] = JSON.stringify(list);
+      changedGroups.push(g.key);
+    }
+    if (changedGroups.length) {
+      latestForm.current = { ...latestForm.current, rows: nextRows };
+      setRows(nextRows);
+      setVoiceGroups((gs) => [...new Set([...gs, ...changedGroups])]);
+      setRowsVer((n) => n + 1);
+    }
+    // In / Out, unless the guard already chose
+    const dirNow = latestForm.current.direction;
+    if (fill.direction && m && (dirNow === null || dirNow === voiceDir.current) && dirNow !== fill.direction) {
+      voiceDir.current = fill.direction;
+      latestForm.current = { ...latestForm.current, direction: fill.direction };
+      setDirection(fill.direction);
+      setLocalError(null);
+    }
+  };
+  const voice = useVoiceFill({ form: def.key, onFill: applyVoice });
+  const undoVoice = () => {
+    const b = beforeVoice.current;
+    if (b) {
+      setValues(b.values);
+      setRows(b.rows);
+      setDirection(b.direction);
+    }
+    setVoiceVer((vv) => Object.fromEntries([...Object.entries(vv), ...voiceKeys.map((k) => [k, (vv[k] ?? 0) + 1])]));
+    setRowsVer((n) => n + 1);
+    voiceSet.current = {};
+    voiceRows.current = {};
+    voiceDir.current = null;
+    beforeVoice.current = null;
+    setVoiceKeys([]);
+    setVoiceGroups([]);
+    voice.reset();
+  };
+  const voiceDone = voice.status === "done";
+
   const side = m && direction ? (direction === "IN" ? m.in : m.out) : null;
   const readingKeys = new Set([m?.in.readingKey, m?.out.readingKey].filter(Boolean) as string[]);
   const visible = def.fields.filter(
@@ -537,6 +653,9 @@ export function RegisterForm({
       className="space-y-5"
     >
       <LiveDateTime />
+
+      {/* Speak everything once: the form fills itself (checked before saving) */}
+      <VoicePanel voice={voice} onUndo={undoVoice} />
 
       {m && <DirectionPicker def={def} value={direction} onChange={(d) => { setDirection(d); setLocalError(null); }} />}
 
@@ -592,14 +711,25 @@ export function RegisterForm({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {visible.map((f) => (
-          <FieldBlock key={f.key} f={f} id={`rf-${f.key}`} required={def.required.includes(f.key)}>
+          <FieldBlock
+            key={f.key}
+            f={f}
+            id={`rf-${f.key}`}
+            required={def.required.includes(f.key)}
+            voice={voiceKeys.includes(f.key)}
+            missing={voiceDone && def.required.includes(f.key) && String(values[f.key] ?? "").trim() === ""}
+          >
             <FieldInput
-              key={fillTargets.has(f.key) ? `${f.key}-${fillNo}` : f.key}
+              key={`${f.key}-${fillTargets.has(f.key) ? fillNo : 0}-${voiceVer[f.key] ?? 0}`}
               registerKey={def.key}
               f={f}
               id={`rf-${f.key}`}
               value={values[f.key] ?? ""}
-              onChange={(v) => setValues((s) => ({ ...s, [f.key]: v }))}
+              onChange={(v) => {
+                setValues((s) => ({ ...s, [f.key]: v }));
+                // The guard checked / changed it: no longer marked as voice
+                if (voiceKeys.includes(f.key)) setVoiceKeys((ks) => ks.filter((k) => k !== f.key));
+              }}
               staff={staff}
               required={def.required.includes(f.key)}
               onPickPerson={
@@ -636,15 +766,23 @@ export function RegisterForm({
         // A row's required details apply once anything in that row is filled
         const rowStarted = (row: Values) => typed.some((f) => String(row[f.key] ?? "").trim() !== "");
         return (
-          <fieldset key={g.key} className="space-y-3 rounded-2xl border border-zinc-800 p-3 sm:p-4">
+          <fieldset
+            key={g.key}
+            className={`space-y-3 rounded-2xl border p-3 sm:p-4 ${voiceGroups.includes(g.key) ? "border-amber-400/60 ring-2 ring-amber-400/30" : "border-zinc-800"}`}
+          >
             <legend className="px-1.5 text-sm font-medium text-zinc-100">
               {g.label} <span className="text-xs font-normal text-zinc-500 tabular-nums">({list.length}{g.max !== null ? ` / ${g.max}` : ""})</span>
             </legend>
+            {voiceGroups.includes(g.key) && (
+              <p className="flex items-center gap-1.5 text-xs font-medium text-amber-600">
+                <Mic className="h-3.5 w-3.5" aria-hidden="true" /> {t("Filled from your voice — check each one.")}
+              </p>
+            )}
             {g.fields.some((f) => f.type === "time") && (
               <p className="text-xs text-zinc-500">{t("In-time is recorded now; out-times are marked later from the record.")}</p>
             )}
             {list.map((row, i) => (
-              <div key={i} className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3 sm:p-4 space-y-3">
+              <div key={`${rowsVer}-${i}`} className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3 sm:p-4 space-y-3">
                 <div className="flex min-h-10 items-center justify-between gap-2">
                   <p className="text-sm font-medium text-zinc-300">{g.itemLabel} {i + 1}</p>
                   {list.length > 1 && (

@@ -3,7 +3,9 @@ import { DepartmentSelect } from "@/components/ui/department-select";
 import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { VoicePanel, useVoiceFill } from "@/components/voice/voice-fill";
+import { VISITOR_SPEC_KEY, type VoiceFill } from "@/lib/voice/spec";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,6 +82,60 @@ export function OutsidersClient({ user, inside, history }: Props) {
     department: "",
     remarks: "",
   });
+
+  // ── Voice filling ──────────────────────────────────────────
+  // Fills empty boxes (or ones voice filled before) — never what the guard typed.
+  const [voiceVals, setVoiceVals] = useState<Record<string, string>>({});
+  const [deptVoiceNo, setDeptVoiceNo] = useState(0);
+  const categoryTapped = useRef(false);
+  const latestVisitor = useRef({ formData, onFoot, voiceVals });
+  useEffect(() => {
+    latestVisitor.current = { formData, onFoot, voiceVals };
+  });
+  const beforeVoice = useRef<{ formData: typeof formData; onFoot: boolean } | null>(null);
+  const applyVoice = (fill: VoiceFill) => {
+    const cur = latestVisitor.current;
+    if (!beforeVoice.current) beforeVoice.current = { formData: cur.formData, onFoot: cur.onFoot };
+    const next: Record<string, string> = { ...cur.formData };
+    const set: Record<string, string> = {};
+    for (const [k, raw] of Object.entries(fill.fields ?? {})) {
+      if (k === "onFoot" || !(k in next)) continue;
+      const v = k === "vehicleNumber" ? raw.toUpperCase() : raw;
+      const now = String(next[k] ?? "");
+      // "Guest" is only the starting choice: voice may change it until the guard taps a category
+      const startingCategory = k === "category" && now === "GUEST" && !categoryTapped.current;
+      if ((now !== "" && now !== cur.voiceVals[k] && !startingCategory) || now === v) continue;
+      next[k] = v;
+      set[k] = v;
+    }
+    if (Object.keys(set).length) {
+      const vals = { ...cur.voiceVals, ...set };
+      latestVisitor.current = { ...cur, formData: next as typeof formData, voiceVals: vals };
+      setFormData(next as typeof formData);
+      setVoiceVals(vals);
+      if ("department" in set) setDeptVoiceNo((n) => n + 1);
+    }
+    if (fill.fields?.onFoot === "yes" && !cur.onFoot && !next.vehicleNumber) setOnFoot(true);
+  };
+  const voice = useVoiceFill({ form: VISITOR_SPEC_KEY, onFill: applyVoice });
+  const resetVoice = () => {
+    setVoiceVals({});
+    beforeVoice.current = null;
+    categoryTapped.current = false;
+    voice.reset();
+  };
+  const undoVoice = () => {
+    const b = beforeVoice.current;
+    if (b) {
+      setFormData(b.formData);
+      setOnFoot(b.onFoot);
+    }
+    setDeptVoiceNo((n) => n + 1);
+    resetVoice();
+  };
+  /** Highlight for a box filled by voice and not yet changed by the guard */
+  const voiceRing = (k: keyof typeof formData) =>
+    voiceVals[k] !== undefined && formData[k] === voiceVals[k] ? " ring-2 ring-amber-400/60" : "";
   const [photo, setPhoto] = useState<string | null>(null);
 
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -190,6 +246,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
         setPhoto(null);
         setOnFoot(false);
         setFormNonce((n) => n + 1);
+        resetVoice();
         // Stay on a fresh form: the next visitor in the queue can be registered straight away
         router.refresh();
       } else {
@@ -376,6 +433,9 @@ export function OutsidersClient({ user, inside, history }: Props) {
                   <p className="mt-0.5 text-sm text-zinc-500">{t("Register a new visitor.")}</p>
                 </div>
 
+                {/* Speak the visitor's details once: the boxes fill themselves (photo still needed) */}
+                <VoicePanel voice={voice} onUndo={undoVoice} />
+
                 {/* Photo Capture (mandatory) */}
                 <div className="space-y-2">
                   <p className={labelCls}>
@@ -428,13 +488,13 @@ export function OutsidersClient({ user, inside, history }: Props) {
                     <label htmlFor="visitor-name" className={labelCls}>
                       {t("Full Name")} <span className="text-orange-400">*</span>
                     </label>
-                    <Input id="visitor-name" required autoComplete="off" autoCapitalize="words" placeholder={t("Enter full name")} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="text-base sm:text-sm" />
+                    <Input id="visitor-name" required autoComplete="off" autoCapitalize="words" placeholder={t("Enter full name")} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className={`text-base sm:text-sm${voiceRing("name")}`} />
                   </div>
                   <div className="space-y-1.5">
                     <label htmlFor="visitor-phone" className={labelCls}>
                       {t("Phone Number")} <span className="text-orange-400">*</span>
                     </label>
-                    <Input id="visitor-phone" required type="tel" inputMode="tel" autoComplete="off" maxLength={15} placeholder={t("Enter phone")} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="text-base sm:text-sm" />
+                    <Input id="visitor-phone" required type="tel" inputMode="tel" autoComplete="off" maxLength={15} placeholder={t("Enter phone")} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className={`text-base sm:text-sm${voiceRing("phone")}`} />
                   </div>
 
                 {/* Vehicle number: required ("No vehicle" for visitors on foot) */}
@@ -452,7 +512,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                       placeholder={onFoot ? t("No vehicle") : t("E.g., TS 09 EA 1234")}
                       value={onFoot ? "" : formData.vehicleNumber}
                       onChange={(e) => setFormData({ ...formData, vehicleNumber: e.target.value.toUpperCase() })}
-                      className="text-base sm:text-sm disabled:opacity-60"
+                      className={`text-base sm:text-sm disabled:opacity-60${voiceRing("vehicleNumber")}`}
                     />
                     <button
                       type="button"
@@ -490,7 +550,10 @@ export function OutsidersClient({ user, inside, history }: Props) {
                           type="button"
                           role="radio"
                           aria-checked={selected}
-                          onClick={() => setFormData({...formData, category: value})}
+                          onClick={() => {
+                            categoryTapped.current = true;
+                            setFormData({ ...formData, category: value });
+                          }}
                           className={`flex min-h-14 items-center justify-center rounded-2xl border px-3 py-2 text-center text-sm font-medium leading-snug transition-colors ${
                             selected
                               ? "border-orange-500/50 bg-orange-500/10 text-orange-400"
@@ -531,19 +594,19 @@ export function OutsidersClient({ user, inside, history }: Props) {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label htmlFor="visitor-visiting" className={labelCls}>{t("Person to Visit")}</label>
-                      <Input id="visitor-visiting" placeholder={t("Name or Roll No of the person")} value={formData.visitingStudent} onChange={e => setFormData({...formData, visitingStudent: e.target.value})} className="text-base sm:text-sm" />
+                      <Input id="visitor-visiting" placeholder={t("Name or Roll No of the person")} value={formData.visitingStudent} onChange={e => setFormData({...formData, visitingStudent: e.target.value})} className={`text-base sm:text-sm${voiceRing("visitingStudent")}`} />
                     </div>
                     <div className="space-y-1.5">
                       <label htmlFor="visitor-department" className={labelCls}>{t("Department")}</label>
-                      <DepartmentSelect key={`dept-${formNonce}`} allowOther id="visitor-department" placeholder="Department being visited" value={formData.department} onChange={(v) => setFormData({ ...formData, department: v })} />
+                      <DepartmentSelect key={`dept-${formNonce}-${deptVoiceNo}`} allowOther id="visitor-department" placeholder="Department being visited" value={formData.department} onChange={(v) => setFormData({ ...formData, department: v })} />
                     </div>
                     <div className="space-y-1.5">
                       <label htmlFor="visitor-address" className={labelCls}>{t("Address")}</label>
-                      <Input id="visitor-address" placeholder={t("Visitor's address")} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="text-base sm:text-sm" />
+                      <Input id="visitor-address" placeholder={t("Visitor's address")} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className={`text-base sm:text-sm${voiceRing("address")}`} />
                     </div>
                     <div className="space-y-1.5 sm:col-span-2">
                       <label htmlFor="visitor-remarks" className={labelCls}>{t("Remarks")}</label>
-                      <Input id="visitor-remarks" placeholder={t("Any notes")} value={formData.remarks} onChange={e => setFormData({...formData, remarks: e.target.value})} className="text-base sm:text-sm" />
+                      <Input id="visitor-remarks" placeholder={t("Any notes")} value={formData.remarks} onChange={e => setFormData({...formData, remarks: e.target.value})} className={`text-base sm:text-sm${voiceRing("remarks")}`} />
                     </div>
                   </div>
                 </div>
