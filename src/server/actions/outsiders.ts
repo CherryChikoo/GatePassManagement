@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
+import { notifyLive } from "@/lib/realtime/notify";
 import { requireRole } from "@/lib/auth/helpers";
 import { revalidatePath } from "next/cache";
 import { invalidateSecurityCache } from "./security";
@@ -28,6 +29,7 @@ async function afterOutsiderChange() {
   revalidatePath("/security");
   revalidatePath("/security/visitors");
   revalidatePath("/admin/activity");
+  notifyLive("visitors");
 }
 
 export async function registerOutsider(data: Record<string, unknown>) {
@@ -147,4 +149,65 @@ export async function getOutsiders() {
     console.error("Failed to fetch outsiders:", error?.message);
     return { success: false, error: "Failed to fetch outsiders." };
   }
+}
+
+// ─── Main Admin: correct or remove any visitor record, any day ───────────────
+
+const VISITOR_CATEGORIES = ["GUEST", "PARENT", "VENDOR", "WORKER"] as const;
+const DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+/** "2026-10-19T10:51" (India time, from the edit form) → Date */
+const istDateTime = (v: string) => new Date(`${v}:00+05:30`);
+
+export async function adminUpdateVisitor(id: string, input: Record<string, unknown>) {
+  await requireRole("ADMIN");
+  if (typeof id !== "string" || !id) return { error: "Visitor not found" };
+  const text = (k: string, max: number) => (typeof input?.[k] === "string" ? (input[k] as string).trim().slice(0, max) : "");
+
+  const name = text("name", 100);
+  const phone = text("phone", 20);
+  const purpose = text("purpose", 500);
+  const category = text("category", 20);
+  const entry = text("entryTime", 16);
+  const exit = text("exitTime", 16);
+  if (!name) return { error: "Enter the visitor's name" };
+  if (!/^\+?[0-9][0-9\s-]{8,16}[0-9]$/.test(phone)) return { error: "Enter a valid phone number" };
+  if (!purpose) return { error: "Enter the purpose of the visit" };
+  if (!(VISITOR_CATEGORIES as readonly string[]).includes(category)) return { error: "Choose a category" };
+  if (!DATETIME_RE.test(entry)) return { error: "Enter the entry date and time" };
+  if (exit && !DATETIME_RE.test(exit)) return { error: "Enter a valid exit date and time" };
+  const entryTime = istDateTime(entry);
+  const exitTime = exit ? istDateTime(exit) : null;
+  if (exitTime && exitTime < entryTime) return { error: "Exit time can't be before the entry time" };
+
+  const updated = await prisma.outsider.updateMany({
+    where: { id },
+    data: {
+      name,
+      phone,
+      purpose,
+      category,
+      visitingStudent: text("visitingStudent", 100) || null,
+      department: text("department", 100) || null,
+      address: text("address", 300) || null,
+      vehicleNumber: text("vehicleNumber", 30) || null,
+      gate: text("gate", 100) || null,
+      remarks: text("remarks", 500) || null,
+      entryTime,
+      exitTime,
+      // Exit time decides whether they are still inside
+      status: exitTime ? "EXITED" : "INSIDE",
+    },
+  });
+  if (updated.count !== 1) return { error: "Visitor not found" };
+  await afterOutsiderChange();
+  return { success: true };
+}
+
+export async function adminDeleteVisitor(id: string) {
+  await requireRole("ADMIN");
+  if (typeof id !== "string" || !id) return { error: "Visitor not found" };
+  const deleted = await prisma.outsider.deleteMany({ where: { id } });
+  if (deleted.count !== 1) return { error: "Visitor not found" };
+  await afterOutsiderChange();
+  return { success: true };
 }

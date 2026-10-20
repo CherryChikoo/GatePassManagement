@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { StatCard, StatusBadge, Modal } from "@/components/ui/primitives";
+import { StatGroup, StatCard, StatusBadge, Modal } from "@/components/ui/primitives";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/utils";
@@ -159,11 +159,8 @@ export function DeanDashboardClient({ user, title }: Props & { title?: string })
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
           {/* Left: stats + recent passes */}
           <div className="xl:col-span-2 space-y-4 lg:space-y-6 min-w-0">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              <StatCard title="Total Faculty" value={stats.totalFaculty} icon={<Briefcase />} description="Active teaching faculty" />
-              <StatCard title="Total HODs" value={stats.totalHODs} icon={<Shield />} description="Department heads" />
-              <StatCard title="Total Students" value={stats.totalStudents} icon={<GraduationCap />} description="Campus enrolled" />
-              <StatCard title="Pending Passes" value={stats.pendingFacultyPasses} icon={<ClipboardCheck />} description="Awaiting Dean review" />
+            <StatGroup title="Faculty passes" gridClassName="sm:grid-cols-3">
+              <StatCard title="Pending" value={stats.pendingFacultyPasses} icon={<ClipboardCheck />} description="Awaiting Dean review" />
               <StatCard
                 title="Approved Today"
                 value={stats.approvedToday}
@@ -176,8 +173,17 @@ export function DeanDashboardClient({ user, title }: Props & { title?: string })
                 icon={<XCircle />}
                 description="Your faculty passes rejected today"
               />
-              <StatCard title="Faculty Exits" value={stats.exitsToday} icon={<DoorOpen />} description="Exits on passes sent to you" />
-              <StatCard title="Faculty Entries" value={stats.entriesToday} icon={<MapPin />} description="Returns on passes sent to you" />
+            </StatGroup>
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-4">
+              <StatGroup title="Gate today" className="lg:col-span-2">
+                <StatCard title="Faculty Exits" value={stats.exitsToday} icon={<DoorOpen />} description="Exits on passes sent to you" />
+                <StatCard title="Faculty Entries" value={stats.entriesToday} icon={<MapPin />} description="Returns on passes sent to you" />
+              </StatGroup>
+              <StatGroup title="People" className="lg:col-span-3" gridClassName="sm:grid-cols-3">
+                <StatCard title="Faculty" value={stats.totalFaculty} icon={<Briefcase />} description="Active teaching faculty" />
+                <StatCard title="HODs" value={stats.totalHODs} icon={<Shield />} description="Department heads" />
+                <StatCard title="Students" value={stats.totalStudents} icon={<GraduationCap />} description="Campus enrolled" />
+              </StatGroup>
             </div>
 
             {/* Recent gate passes */}

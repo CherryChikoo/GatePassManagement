@@ -24,6 +24,7 @@ import {
   Plus,
   School,
   Search,
+  Shovel,
   ShieldCheck,
   Undo2,
   UsersRound,
@@ -31,10 +32,12 @@ import {
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import { GoBackButton } from "@/components/ui/go-back-button";
-import { REGISTERS, REGISTER_BY_KEY, isEntryRegister, type RegisterDef, type RegisterKey } from "@/lib/registers/definitions";
+import { REGISTERS, REGISTER_BY_KEY, SECURITY_EDITABLE_REGISTERS, isEntryRegister, type RegisterDef, type RegisterKey } from "@/lib/registers/definitions";
 import { slugForKey } from "@/lib/registers/custom";
 import { getRegisterCountsToday } from "@/server/actions/registers";
 import { EntryRegisterView } from "./entry-register-view";
+import { markEntryListsStale, prefetchEntryList } from "./entry-list-cache";
+import { useLiveTopics } from "@/lib/realtime/live";
 import { QuickEntryModal } from "./quick-entry";
 import { AttendanceSheetView } from "./attendance-sheet";
 import { localizeRegister } from "./localize";
@@ -60,6 +63,8 @@ const REGISTER_ICON: Record<RegisterKey, LucideIcon> = {
   SIROS_STOCK: Package,
   COLLEGE_STOCK: PackageOpen,
   SIROS_LABOUR_CONTRACT: UsersRound,
+  SIROS_DAILY_LABOUR: HardHat,
+  COOLI_BOOK: Shovel,
   COLLEGE_DAILY: NotebookPen,
   BOYS_HOSTEL_OUTING: BedDouble,
   LADIES_HOSTEL_OUTING: BedSingle,
@@ -70,6 +75,9 @@ const REGISTER_ICON: Record<RegisterKey, LucideIcon> = {
   KEYS: KeyRound,
   RETURNABLE: Undo2,
 };
+
+/** Today's counts from the last visit to the registers list (this tab only) */
+let lastCounts: Record<string, number> = {};
 
 export function RegistersHub({
   viewer,
@@ -84,18 +92,29 @@ export function RegistersHub({
   creatable?: string[];
   /** Built-in + portal-created registers (from the server); defaults to the built-in ones */
   registers?: RegisterDef[];
-  /** Main Admin / Head Security: show "Create & manage registers" */
+  /** Main Admin / Security Supervisor: show "Create & manage registers" */
   canBuild?: boolean;
 }) {
   const t = useT();
   const base = BASE[viewer];
   const isSecurity = viewer === "SECURITY";
   const allRegisters = registers ?? REGISTERS;
-  const [counts, setCounts] = useState<Record<string, number>>({});
+  // Last counts show at once when coming back to this list; fresh ones follow
+  const [counts, setCounts] = useState<Record<string, number>>(() => lastCounts);
   const loadCounts = () => {
-    getRegisterCountsToday().then(setCounts).catch(() => setCounts({}));
+    getRegisterCountsToday()
+      .then((c) => {
+        lastCounts = c;
+        setCounts(c);
+      })
+      .catch(() => {});
   };
   useEffect(loadCounts, []);
+  // Live: a register changed — fresh counts, and its list reloads when opened
+  useLiveTopics(["reg:"], (changed) => {
+    markEntryListsStale(changed.includes("*") ? "*" : changed.map((c) => c.slice(4)));
+    loadCounts();
+  });
 
   const [query, setQuery] = useState("");
   const [quickKey, setQuickKey] = useState<string | null>(null);
@@ -154,22 +173,38 @@ export function RegistersHub({
           // Attendance opens its monthly sheet instead of a form
           const quickAdd = isEntryRegister(r) && creatable.includes(r.key) && r.key !== "SECURITY_ATTENDANCE";
           const visitorAdd = isSecurity && r.key === "VISITORS";
+          const prefetch = isEntryRegister(r) && r.key !== "SECURITY_ATTENDANCE" ? () => prefetchEntryList(r.key) : undefined;
           return (
             <li key={r.key} className="flex items-center gap-2 pr-2 sm:pr-3">
-              <Link href={href} className="group flex min-w-0 flex-1 items-center gap-3 px-3 sm:px-4 py-3.5 hover:bg-zinc-950/70 transition-colors">
+              <Link
+                href={href}
+                // Start loading the list on tap, while the page opens
+                onPointerDown={prefetch}
+                onFocus={prefetch}
+                className="group flex min-w-0 flex-1 items-center gap-3 px-3 sm:px-4 py-3.5 hover:bg-zinc-950/70 transition-colors"
+              >
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
                   <Icon className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2 min-w-0">
-                    <span className="truncate text-[15px] font-medium text-zinc-100">{t(r.title)}</span>
+                    {/* Security: just the name, large (wraps to a second line instead of cutting off) */}
+                    <span
+                      className={
+                        isSecurity
+                          ? "line-clamp-2 text-lg font-semibold leading-snug text-zinc-100"
+                          : "truncate text-[15px] font-medium text-zinc-100"
+                      }
+                    >
+                      {t(r.title)}
+                    </span>
                     {n > 0 && (
                       <span className="shrink-0 rounded-full bg-zinc-950 border border-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-400 tabular-nums">
                         {t("{n} today", { n })}
                       </span>
                     )}
                   </span>
-                  <span className="mt-0.5 block truncate text-xs text-zinc-500">{t(r.description)}</span>
+                  {!isSecurity && <span className="mt-0.5 block truncate text-xs text-zinc-500">{t(r.description)}</span>}
                 </span>
               </Link>
               {quickAdd ? (
@@ -239,11 +274,18 @@ export function RegisterPage({
     // Monthly sheet like the paper register (marks + day remarks)
     body = <AttendanceSheetView />;
   } else if (isEntryRegister(def)) {
-    body = <EntryRegisterView def={def} canCreate={canCreate} canAdminEdit={viewer === "ADMIN"} />;
+    body = (
+      <EntryRegisterView
+        def={def}
+        canCreate={canCreate}
+        canAdminEdit={viewer === "ADMIN"}
+        canEdit={isSecurity && SECURITY_EDITABLE_REGISTERS.includes(def.key)}
+      />
+    );
   } else if (def.key === "FACULTY_BOOK") {
     body = <FacultyBookView canMarkIn={isSecurity} />;
   } else if (def.key === "VISITORS") {
-    body = <VisitorsBookView canRegister={isSecurity} />;
+    body = <VisitorsBookView canRegister={isSecurity} canAdminEdit={viewer === "ADMIN"} />;
   } else if (def.key === "BOYS_HOSTEL_OUTING") {
     body = <HostelOutingView hostel="BOYS" />;
   } else if (def.key === "LADIES_HOSTEL_OUTING") {

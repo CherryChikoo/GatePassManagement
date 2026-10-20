@@ -362,14 +362,9 @@ async function preloadFaculty(profileId: string) {
         qr: { select: { usedForExit: true, usedForEntry: true, expiresAt: true } },
       },
     }),
-    // Students list
+    // Students list: only the students assigned to this faculty member
     prisma.student.findMany({
-      where: {
-        OR: [
-          { facultyId: faculty.id },
-          ...(faculty.department ? [{ department: { in: getDepartmentVariants(faculty.department) } }] : []),
-        ],
-      },
+      where: { facultyId: faculty.id },
       orderBy: { studentRoll: "asc" },
       include: {
         profile: {
@@ -713,108 +708,12 @@ async function preloadStudent(profileId: string) {
 // SECURITY PRELOAD
 // ──────────────────────────────────────────────────────────────
 
+// Security screens (registers, scan, visitors, log) load their own data when
+// opened and do not read the store. The store still calls this endpoint every
+// 45 s to confirm the session, so Security gets an empty payload instead of
+// 11 queries (up to ~1,400 rows) that nothing uses.
 async function preloadSecurity() {
-  const today = istStartOfDay();
-
-  const endOfDay = new Date(today);
-  endOfDay.setDate(endOfDay.getDate() + 1);
-
-  const [
-    outsiderVisitsToday,
-    studentExitsToday,
-    studentEntriesToday,
-    outsidersInside,
-    recentMovements,
-    gates,
-    logEntries,
-    logExits,
-    logOutsiders,
-    outsidersInsideList,
-    outsidersHistory,
-  ] = await Promise.all([
-    prisma.outsider.count({ where: { entryTime: { gte: today } } }),
-    prisma.movement.count({ where: { type: "EXIT", createdAt: { gte: today } } }),
-    prisma.movement.count({ where: { type: "ENTRY", createdAt: { gte: today } } }),
-    prisma.outsider.count({ where: { status: "INSIDE" } }),
-    prisma.movement.findMany({
-      where: { createdAt: { gte: today } },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-      select: {
-        id: true, type: true, createdAt: true, notes: true,
-        student: { select: { studentRoll: true, profile: { select: { name: true } } } },
-        faculty: { select: { employeeId: true, profile: { select: { name: true } } } },
-        gate: { select: { name: true } },
-        permission: { select: { purpose: true, destination: true } },
-      },
-    }),
-    prisma.gate.findMany({
-      where: { active: true },
-      select: { id: true, name: true, location: true },
-    }),
-    // Security log data (today)
-    prisma.movement.findMany({
-      where: { type: "ENTRY", createdAt: { gte: today, lt: endOfDay } },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-      select: {
-        id: true, type: true, createdAt: true, notes: true,
-        student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
-        faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } } },
-        gate: { select: { name: true } },
-        permission: { select: { purpose: true, destination: true } },
-      },
-    }),
-    prisma.movement.findMany({
-      where: { type: "EXIT", createdAt: { gte: today, lt: endOfDay } },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-      select: {
-        id: true, type: true, createdAt: true, notes: true,
-        student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
-        faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } } },
-        gate: { select: { name: true } },
-        permission: { select: { purpose: true, destination: true } },
-      },
-    }),
-    prisma.outsider.findMany({
-      where: { entryTime: { gte: today, lt: endOfDay } },
-      orderBy: { entryTime: "desc" },
-    }),
-    // Outsiders management data — everyone still inside, including earlier days
-    prisma.outsider.findMany({
-      where: { status: "INSIDE" },
-      orderBy: { entryTime: "desc" },
-      take: 500,
-    }),
-    prisma.outsider.findMany({
-      where: { status: "EXITED", exitTime: { gte: today } },
-      orderBy: { exitTime: "desc" },
-      take: 500,
-    }),
-  ]);
-
-  const todayStr = istDateString();
-
-  return {
-    dashboard: {
-      stats: { outsiderVisitsToday, studentExitsToday, studentEntriesToday, outsidersInside },
-      recentMovements,
-      gates,
-    },
-    log: {
-      studentEntries: logEntries,
-      studentExits: logExits,
-      outsiderVisits: logOutsiders,
-      selectedDate: todayStr,
-    },
-    outsiders: {
-      success: true,
-      inside: outsidersInsideList,
-      history: outsidersHistory,
-    },
-    gates,
-  };
+  return {};
 }
 
 // ──────────────────────────────────────────────────────────────

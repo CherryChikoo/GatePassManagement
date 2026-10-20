@@ -91,3 +91,27 @@ export function truncate(str: string, maxLength: number): string {
   if (str.length <= maxLength) return str;
   return str.slice(0, maxLength) + "...";
 }
+
+/**
+ * Gives up on a request that hasn't answered within `ms` (a dropped connection
+ * shouldn't leave a screen loading forever). Rejects with a TimeoutError.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms = 20_000): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const err = new Error("Taking too long. Check the connection and try again.");
+      err.name = "TimeoutError";
+      reject(err);
+    }, ms);
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      }
+    );
+  });
+}

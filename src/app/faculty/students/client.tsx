@@ -191,31 +191,13 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
     <div className="space-y-4">
       {/* Top Info Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-zinc-800/70">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="hidden sm:flex h-10 w-10 shrink-0 rounded-full bg-zinc-900 border border-zinc-800 items-center justify-center text-zinc-500">
-            <GraduationCap className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h4 className="font-medium text-zinc-100 text-base break-words">{s.profile.name}</h4>
-              {s.studentRoll && (
-                <span className="px-2.5 py-0.5 rounded-full bg-orange-500/10 font-mono text-xs font-medium text-orange-400">
-                  {s.studentRoll}
-                </span>
-              )}
-              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium ${
-                s.studentType === "HOSTELLER"
-                  ? "bg-amber-500/10 text-amber-400"
-                  : "bg-blue-500/10 text-blue-400"
-              }`}>
-                {s.studentType === "HOSTELLER" ? "Hosteller" : "Day Scholar"}
-              </span>
-            </div>
-            <p className="text-xs text-zinc-500 mt-1 break-all">
-              {s.profile.email} {s.profile.phone ? `• ${s.profile.phone}` : ""}
-            </p>
-          </div>
-        </div>
+        <span
+          className={`self-start rounded-full px-3 py-1 text-xs font-medium ${
+            s.studentType === "HOSTELLER" ? "bg-amber-500/10 text-amber-400" : "bg-blue-500/10 text-blue-400"
+          }`}
+        >
+          {s.studentType === "HOSTELLER" ? "Hosteller" : "Day Scholar"}
+        </span>
         <div className="flex flex-col sm:flex-row gap-2 shrink-0">
           <Link
             href={`${detailBasePath}/${s.profile.id}`}
@@ -414,7 +396,7 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
                       </RowActions>
                     </div>
                     {isExpanded && (
-                      <div className="mx-3 mb-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 animate-fade-in">
+                      <div className="mb-3 rounded-b-2xl bg-zinc-950/70 px-4 pb-4 pt-1 animate-fade-in">
                         {renderDetails(s)}
                       </div>
                     )}
@@ -443,7 +425,11 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
                       <React.Fragment key={s.id}>
                         <tr
                           onClick={toggle}
-                          className={`${dt.trClickable} select-none ${isExpanded ? "[&>td]:bg-zinc-950/70" : ""}`}
+                          className={`${dt.trClickable} select-none ${
+                            isExpanded
+                              ? "[&>td]:bg-zinc-950/70 [&>td]:border-b-0 [&>td:first-child]:rounded-bl-none [&>td:last-child]:rounded-br-none"
+                              : ""
+                          }`}
                           title="Click row to view full details"
                         >
                           {/* Column 1: Student Name & Roll */}
@@ -499,8 +485,8 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
                         {/* Expanded Details Row */}
                         {isExpanded && (
                           <tr className="animate-fade-in">
-                            <td colSpan={4} className="px-2 pb-3">
-                              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 sm:p-5">
+                            <td colSpan={4} className="px-0 pt-0 pb-3">
+                              <div className="rounded-b-2xl bg-zinc-950/70 px-4 pb-5 pt-1 sm:px-5">
                                 {renderDetails(s)}
                               </div>
                             </td>
@@ -549,114 +535,134 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className={fieldLabel}>Full Name</label>
-                <Input
-                  name="name"
-                  defaultValue={editingStudent.profile.name}
-                  required
-                />
-              </div>
+            <fieldset className="space-y-4 rounded-2xl border border-zinc-800 p-4">
+              <legend className="px-1.5 text-xs font-semibold uppercase tracking-wider text-orange-500">Personal</legend>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className={fieldLabel}>Full Name</label>
+                  <Input
+                    name="name"
+                    defaultValue={editingStudent.profile.name}
+                    required
+                  />
+                </div>
 
-              <div className="space-y-1.5">
-                <label className={fieldLabel}>Phone Number</label>
-                <Input
-                  name="phone"
-                  defaultValue={editingStudent.profile.phone || ""}
-                  placeholder="+91-9876543210"
-                />
+                <div className="space-y-1.5">
+                  <label className={fieldLabel}>Phone Number</label>
+                  <Input
+                    name="phone"
+                    defaultValue={editingStudent.profile.phone || ""}
+                    placeholder="+91-9876543210"
+                  />
+                </div>
               </div>
+            </fieldset>
 
-              <div className="space-y-1.5">
-                <label className={fieldLabel}>Roll Number</label>
-                <Input
-                  name="studentRoll"
-                  defaultValue={editingStudent.studentRoll}
-                  required
-                  className="font-mono"
-                />
-              </div>
+            <fieldset className="space-y-4 rounded-2xl border border-zinc-800 p-4">
+              <legend className="px-1.5 text-xs font-semibold uppercase tracking-wider text-orange-500">Academic</legend>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className={fieldLabel}>Roll Number</label>
+                  <Input
+                    name="studentRoll"
+                    defaultValue={editingStudent.studentRoll}
+                    required
+                    className="font-mono"
+                  />
+                </div>
 
-              <div className="space-y-1.5">
-                <label className={fieldLabel}>Department</label>
-                <DepartmentSelect name="department" defaultValue={editingStudent.department || ""} />
-              </div>
+                <div className="space-y-1.5">
+                  <label className={fieldLabel}>Department</label>
+                  <DepartmentSelect name="department" defaultValue={editingStudent.department || ""} />
+                </div>
 
-              <div className="space-y-1.5">
-                <label className={fieldLabel}>Year</label>
-                <Input
-                  name="year"
-                  type="number"
-                  min={1}
-                  max={5}
-                  defaultValue={editingStudent.year ?? ""}
-                />
-              </div>
+                <div className="space-y-1.5">
+                  <label className={fieldLabel}>Year</label>
+                  <Input
+                    name="year"
+                    type="number"
+                    min={1}
+                    max={5}
+                    defaultValue={editingStudent.year ?? ""}
+                  />
+                </div>
 
-              <div className="space-y-1.5">
-                <label className={fieldLabel}>Section</label>
-                <Input
-                  name="section"
-                  defaultValue={editingStudent.section ?? ""}
-                />
+                <div className="space-y-1.5">
+                  <label className={fieldLabel}>Section</label>
+                  <Input
+                    name="section"
+                    defaultValue={editingStudent.section ?? ""}
+                  />
+                </div>
               </div>
+            </fieldset>
 
-              <div className="space-y-1.5">
-                <label className={fieldLabel}>Student Type</label>
-                <Select
-                  name="studentType"
-                  value={editType}
-                  onChange={(e) => setEditType(e.target.value)}
-                  className="h-12"
-                >
-                  <option value="DAY_SCHOLAR">Day Scholar</option>
-                  <option value="HOSTELLER">Hosteller</option>
-                </Select>
+            <fieldset className="space-y-4 rounded-2xl border border-zinc-800 p-4">
+              <legend className="px-1.5 text-xs font-semibold uppercase tracking-wider text-orange-500">Hostel</legend>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className={fieldLabel}>Student Type</label>
+                  <Select
+                    name="studentType"
+                    value={editType}
+                    onChange={(e) => setEditType(e.target.value)}
+                    className="h-12"
+                  >
+                    <option value="DAY_SCHOLAR">Day Scholar</option>
+                    <option value="HOSTELLER">Hosteller</option>
+                  </Select>
+                </div>
               </div>
-
-              <div className="space-y-1.5">
-                <label className={fieldLabel}>Assigned Warden (Hostellers)</label>
-                <Select
-                  key={`warden-${editType}`}
-                  name="wardenId"
-                  defaultValue={isHostellerEdit ? editingStudent.wardenId || "" : ""}
-                  disabled={!isHostellerEdit}
-                  className="h-12 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="">-- None --</option>
-                  {wardens.map((w: any) => (
-                    <option key={w.id} value={w.id}>
-                      {w.profile?.name} (Block {w.hostelBlock || "N/A"})
-                    </option>
-                  ))}
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className={fieldLabel}>Hostel Block</label>
-                <Input
-                  key={`block-${editType}`}
-                  name="hostelBlock"
-                  defaultValue={isHostellerEdit ? editingStudent.hostelBlock || "" : ""}
-                  disabled={!isHostellerEdit}
-                  placeholder={isHostellerEdit ? "e.g. Block A" : "Hostellers only"}
-                  className="disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className={fieldLabel}>Room Number</label>
-                <Input
-                  key={`room-${editType}`}
-                  name="roomNumber"
-                  defaultValue={isHostellerEdit ? editingStudent.roomNumber || "" : ""}
-                  disabled={!isHostellerEdit}
-                  placeholder={isHostellerEdit ? "e.g. 204" : "Hostellers only"}
-                  className="disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-              </div>
-            </div>
+              {isHostellerEdit ? (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className={fieldLabel}>Assigned Warden (Hostellers)</label>
+                    <Select
+                      key={`warden-${editType}`}
+                      name="wardenId"
+                      defaultValue={isHostellerEdit ? editingStudent.wardenId || "" : ""}
+                      disabled={!isHostellerEdit}
+                      className="h-12 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <option value="">-- None --</option>
+                      {wardens.map((w: any) => (
+                        <option key={w.id} value={w.id}>
+                          {w.profile?.name} (Block {w.hostelBlock || "N/A"})
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+  
+                  <div className="space-y-1.5">
+                    <label className={fieldLabel}>Hostel Block</label>
+                    <Input
+                      key={`block-${editType}`}
+                      name="hostelBlock"
+                      defaultValue={isHostellerEdit ? editingStudent.hostelBlock || "" : ""}
+                      disabled={!isHostellerEdit}
+                      placeholder={isHostellerEdit ? "e.g. Block A" : "Hostellers only"}
+                      className="disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                  </div>
+  
+                  <div className="space-y-1.5">
+                    <label className={fieldLabel}>Room Number</label>
+                    <Input
+                      key={`room-${editType}`}
+                      name="roomNumber"
+                      defaultValue={isHostellerEdit ? editingStudent.roomNumber || "" : ""}
+                      disabled={!isHostellerEdit}
+                      placeholder={isHostellerEdit ? "e.g. 204" : "Hostellers only"}
+                      className="disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <p className="rounded-2xl bg-zinc-950 px-4 py-3 text-xs text-zinc-500">
+                  Day scholars have no hostel details. Choose Hosteller to set the warden, block and room.
+                </p>
+              )}
+            </fieldset>
 
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5 pt-4 border-t border-zinc-800">
               <Button

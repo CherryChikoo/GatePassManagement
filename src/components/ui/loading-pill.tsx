@@ -19,7 +19,12 @@ export function LoadingPill({ active }: { active: boolean }) {
       return;
     }
     const timer = setTimeout(() => setVisible(true), 150);
-    return () => clearTimeout(timer);
+    // Safety net: never left spinning (requests time out well before this)
+    const cap = setTimeout(() => setVisible(false), 30_000);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(cap);
+    };
   }, [active]);
 
   if (!visible || typeof document === "undefined") return null;
@@ -27,7 +32,7 @@ export function LoadingPill({ active }: { active: boolean }) {
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none fixed left-1/2 top-20 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-full glass shadow-card px-4 py-2 text-sm font-medium text-zinc-100 animate-fade-in"
+      className="loading-pill pointer-events-none fixed left-1/2 top-20 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-full glass shadow-card px-4 py-2 text-sm font-medium text-zinc-100 animate-fade-in"
     >
       <Loader2 className="h-4 w-4 animate-spin text-orange-400" />
       {t("Loading…")}

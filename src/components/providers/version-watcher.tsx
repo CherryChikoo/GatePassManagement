@@ -42,7 +42,8 @@ export function VersionWatcher() {
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", check);
     window.addEventListener("unhandledrejection", onRejection);
-    const interval = setInterval(check, 5 * 60_000);
+    // Also checked on focus / tab return, so a slow timer is enough
+    const interval = setInterval(check, 15 * 60_000);
     check();
 
     return () => {

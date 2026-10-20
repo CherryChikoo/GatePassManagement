@@ -49,7 +49,7 @@ import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/ui/back-button";
 import { PagerBar } from "@/components/ui/pager-bar";
 import { dt, PersonCell, RowActions, IconAction } from "@/components/ui/data-table";
-import { DEPARTMENTS, getDepartmentCode, getDepartmentFullName } from "@/lib/constants";
+import { DEPARTMENTS, departmentLabel, getDepartmentCode, getDepartmentFullName } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -113,7 +113,6 @@ export function UserManagementClient({
   const [createStudentType, setCreateStudentType] = useState("DAY_SCHOLAR");
   const [editStudentType, setEditStudentType] = useState("DAY_SCHOLAR");
   const [createDept, setCreateDept] = useState("CSE");
-  const [createCustomDept, setCreateCustomDept] = useState("");
   const [editDept, setEditDept] = useState("CSE");
   const [editCustomDept, setEditCustomDept] = useState("");
 
@@ -239,9 +238,9 @@ export function UserManagementClient({
     setPendingRole(role);
     startRoleTransition(() => {
       if (role === "ALL") {
-        router.push(`/admin/users?page=1`);
+        router.push(`/admin/users?page=1`, { scroll: false });
       } else {
-        router.push(`/admin/users?role=${role}&page=1`);
+        router.push(`/admin/users?role=${role}&page=1`, { scroll: false });
       }
     });
   }
@@ -249,10 +248,6 @@ export function UserManagementClient({
   async function handleCreateUser(formData: FormData) {
     setLoading(true);
     setError(null);
-    if (formData.get("department") === "OTHER") {
-      const custom = ((formData.get("customDepartment") as string) || createCustomDept).trim();
-      if (custom) formData.set("department", custom);
-    }
     const result = await createUser(formData);
     if (result.error) {
       setError(result.error);
@@ -260,7 +255,6 @@ export function UserManagementClient({
       setSuccess("User created successfully!");
       setShowCreateModal(false);
       setCreateDept("CSE");
-      setCreateCustomDept("");
       router.refresh();
     }
     setLoading(false);
@@ -486,40 +480,9 @@ export function UserManagementClient({
 
   // Expanded "full details" panel, shared by the table and the stacked list
   function renderExpanded(u: any, role: string) {
-    const allDataButton = allDataAction(u);
-
     if (role === "STUDENT") {
       return (
         <div className="space-y-4">
-          {/* Top info bar */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-zinc-800/70">
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
-                <GraduationCap className="h-5 w-5" />
-              </span>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h4 className="text-base font-medium text-zinc-100 break-words">{u.name}</h4>
-                  {u.student?.studentRoll && (
-                    <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-2 py-0.5 font-mono text-[11px] font-medium text-orange-400">
-                      {u.student.studentRoll}
-                    </span>
-                  )}
-                  <Badge variant={u.student?.studentType === "HOSTELLER" ? "info" : "default"}>
-                    {u.student?.studentType === "HOSTELLER" ? "Hosteller" : "Day Scholar"}
-                  </Badge>
-                </div>
-                <p className="text-xs text-zinc-500 mt-0.5 break-all">
-                  {u.email} {u.phone ? `• ${u.phone}` : ""}
-                </p>
-              </div>
-            </div>
-            <RowActions className="self-end md:self-auto">
-              {allDataButton}
-              <IconAction label="Edit Student Details" icon={<PencilLine />} tone="coral" onClick={() => handleOpenEdit(u)} />
-            </RowActions>
-          </div>
-
           {/* Detail tiles */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3.5 space-y-1.5 min-w-0">
@@ -600,18 +563,7 @@ export function UserManagementClient({
     }
 
     return (
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="space-y-1 min-w-0">
-          <h4 className="text-sm font-medium text-zinc-100 flex flex-wrap items-center gap-x-2">
-            {u.name}
-            <span className="text-xs font-mono font-normal text-zinc-500">
-              ({u.faculty?.employeeId || u.warden?.employeeId || u.securityStaff?.employeeId || "No Employee ID"})
-            </span>
-          </h4>
-          <p className="text-xs text-zinc-500 break-all">
-            Email: <span className="text-zinc-200">{u.email}</span>
-            {u.phone ? ` • Phone: ${u.phone}` : ""}
-          </p>
+      <div className="space-y-1 min-w-0">
           {(role === "FACULTY" || role === "FACULTY_ADMIN") && u.faculty && (
             <p className="text-xs text-zinc-400">
               {u.faculty.department ? `Department: ${getDepartmentFullName(u.faculty.department)} (${getDepartmentCode(u.faculty.department)})` : "No Department"} • {u.faculty.designation || (role === "FACULTY_ADMIN" ? "Head of Department" : "Faculty Member")} {role === "FACULTY" ? `• ${u.faculty._count?.assignedStudents || 0} Assigned Students` : ""}
@@ -628,11 +580,6 @@ export function UserManagementClient({
               {u.securityStaff.gate?.name ? `Gate: ${u.securityStaff.gate.name}` : "Unassigned Gate"}
             </p>
           )}
-        </div>
-        <RowActions className="self-end md:self-auto shrink-0">
-          {allDataButton}
-          <IconAction label="Edit Details" icon={<PencilLine />} tone="coral" onClick={() => handleOpenEdit(u)} />
-        </RowActions>
       </div>
     );
   }
@@ -826,7 +773,11 @@ export function UserManagementClient({
                           <React.Fragment key={u.id}>
                             <tr
                               onClick={() => setExpandedUserId(isExpanded ? null : u.id)}
-                              className={`${dt.trClickable} select-none`}
+                              className={`${dt.trClickable} select-none ${
+                                isExpanded
+                                  ? "[&>td]:bg-zinc-950/70 [&>td]:border-b-0 [&>td:first-child]:rounded-bl-none [&>td:last-child]:rounded-br-none"
+                                  : ""
+                              }`}
                               title="Click row to view full details"
                             >
                               {role === "STUDENT" ? (
@@ -885,8 +836,8 @@ export function UserManagementClient({
 
                             {isExpanded && (
                               <tr className="animate-fade-in">
-                                <td colSpan={role === "STUDENT" ? 4 : 5} className="px-2 pb-3">
-                                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+                                <td colSpan={role === "STUDENT" ? 4 : 5} className="px-0 pt-0 pb-3">
+                                  <div className="rounded-b-2xl bg-zinc-950/70 px-4 pb-5 pt-1 sm:px-5">
                                     {renderExpanded(u, role)}
                                   </div>
                                 </td>
@@ -1010,22 +961,11 @@ export function UserManagementClient({
                 >
                   {DEPARTMENTS.map((dept) => (
                     <option key={dept.code} value={dept.code}>
-                      {dept.code} - {dept.name}
+                      {departmentLabel(dept)}
                     </option>
                   ))}
-                  <option value="OTHER">Other / Custom Department</option>
                 </Select>
               </div>
-              {createDept === "OTHER" && (
-                <Input
-                  name="customDepartment"
-                  label="Custom Department Name"
-                  id="create-student-custom-dept"
-                  placeholder="e.g. Biomedical Engineering"
-                  value={createCustomDept}
-                  onChange={(e) => setCreateCustomDept(e.target.value)}
-                />
-              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input name="year" type="number" min={1} max={6} label="Year" id="create-year" />
                 <Input name="semester" type="number" min={1} max={12} label="Semester" id="create-semester" />
@@ -1093,22 +1033,11 @@ export function UserManagementClient({
                 >
                   {DEPARTMENTS.map((dept) => (
                     <option key={dept.code} value={dept.code}>
-                      {dept.code} - {dept.name}
+                      {departmentLabel(dept)}
                     </option>
                   ))}
-                  <option value="OTHER">Other / Custom Department</option>
                 </Select>
               </div>
-              {createDept === "OTHER" && (
-                <Input
-                  name="customDepartment"
-                  label="Custom Department Name"
-                  id="create-fac-custom-dept"
-                  placeholder="e.g. Biomedical Engineering"
-                  value={createCustomDept}
-                  onChange={(e) => setCreateCustomDept(e.target.value)}
-                />
-              )}
               <Input name="designation" label="Designation" defaultValue="Assistant Professor" id="create-designation" />
             </section>
           )}
@@ -1132,23 +1061,11 @@ export function UserManagementClient({
                 >
                   {DEPARTMENTS.map((dept) => (
                     <option key={dept.code} value={dept.code}>
-                      {dept.code} - {dept.name}
+                      {departmentLabel(dept)}
                     </option>
                   ))}
-                  <option value="OTHER">Other / Custom Department</option>
                 </Select>
               </div>
-              {createDept === "OTHER" && (
-                <Input
-                  name="customDepartment"
-                  label="Custom Department Name *"
-                  required
-                  id="create-hod-custom-dept"
-                  placeholder="e.g. Biomedical Engineering"
-                  value={createCustomDept}
-                  onChange={(e) => setCreateCustomDept(e.target.value)}
-                />
-              )}
               <Input name="designation" label="Designation" defaultValue="Head of Department" id="create-hod-designation" />
             </section>
           )}
@@ -1376,23 +1293,12 @@ export function UserManagementClient({
                     >
                       {DEPARTMENTS.map((d) => (
                         <option key={d.code} value={d.code}>
-                          {d.code} - {d.name}
+                          {departmentLabel(d)}
                         </option>
                       ))}
-                      <option value="OTHER">Other / Custom Department</option>
+                      {editDept === "OTHER" && editCustomDept && <option value="OTHER">{editCustomDept} (current)</option>}
                     </Select>
                   </div>
-                  {editDept === "OTHER" && (
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <label className={fieldLabelCls}>Custom Department</label>
-                      <Input
-                        name="customDepartment"
-                        value={editCustomDept}
-                        onChange={(e) => setEditCustomDept(e.target.value)}
-                        placeholder="Enter department name"
-                      />
-                    </div>
-                  )}
 
                   <div className="space-y-1.5">
                     <label className={fieldLabelCls}>Year</label>
@@ -1526,23 +1432,12 @@ export function UserManagementClient({
                     >
                       {DEPARTMENTS.map((d) => (
                         <option key={d.code} value={d.code}>
-                          {d.code} - {d.name}
+                          {departmentLabel(d)}
                         </option>
                       ))}
-                      <option value="OTHER">Other / Custom Department</option>
+                      {editDept === "OTHER" && editCustomDept && <option value="OTHER">{editCustomDept} (current)</option>}
                     </Select>
                   </div>
-                  {editDept === "OTHER" && (
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <label className={fieldLabelCls}>Custom Department</label>
-                      <Input
-                        name="customDepartment"
-                        value={editCustomDept}
-                        onChange={(e) => setEditCustomDept(e.target.value)}
-                        placeholder="Enter department name"
-                      />
-                    </div>
-                  )}
                   {editingUser.role === "DEAN" ? (
                     <div className="space-y-1.5 sm:col-span-2">
                       <label htmlFor="edit-dean-of" className={fieldLabelCls}>Dean of *</label>

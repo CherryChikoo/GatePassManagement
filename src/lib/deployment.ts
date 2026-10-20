@@ -16,6 +16,7 @@ export function isStaleDeploymentError(err: unknown): boolean {
  * if the failure is caused by a newer deployment; never shows raw internals.
  */
 export function actionErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.name === "TimeoutError") return err.message;
   if (isStaleDeploymentError(err)) {
     reloadForNewDeployment();
     return "A new version of Gate Pass is available. Reloading…";

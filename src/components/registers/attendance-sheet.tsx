@@ -6,7 +6,8 @@ import { Modal } from "@/components/ui/primitives";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
-import { cn } from "@/lib/utils";
+import { cn, withTimeout } from "@/lib/utils";
+import { useLiveTopics } from "@/lib/realtime/live";
 import { istDateString } from "@/lib/time/ist";
 import { getAttendanceMonth, markAllPresent, saveAttendanceRemark, setAttendanceMark, setStaffRank } from "@/server/actions/attendance";
 import { formatInstant } from "./format";
@@ -16,6 +17,8 @@ type Sheet = {
   month: string;
   daysInMonth: number;
   today: string;
+  /** Head Security can change marks and remarks from this day (yesterday) */
+  editableFrom: string;
   rows: { id: string; name: string; employeeId: string | null; rank: string }[];
   cells: Record<string, Record<number, Cell>>;
   remarks: Record<number, { text: string; by: string; at: string }>;
@@ -63,21 +66,29 @@ export function AttendanceSheetView() {
   const [dayOpen, setDayOpen] = useState<number | null>(null);
   const [rankFor, setRankFor] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  /** silent: changed elsewhere (live update) — keep the sheet on screen while it reloads */
+  const load = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
-      const res: any = await getAttendanceMonth(month);
-      if (res?.error) setError(res.error);
-      else setData(res);
+      const res: any = await withTimeout(getAttendanceMonth(month));
+      if (res?.error) {
+        if (!silent) setError(res.error);
+      } else setData(res);
     } catch (err) {
-      setError(actionErrorMessage(err, t("Could not load the register.")));
+      if (!silent) setError(actionErrorMessage(err, t("Could not load the register.")));
     }
     setLoading(false);
   }, [month, t]);
   useEffect(() => {
     load();
   }, [load]);
+  // Live: marks or remarks saved on another device (not while a mark is being saved here)
+  useLiveTopics(["attendance"], () => {
+    if (!busy) load(true);
+  });
 
   const flash = (msg: string) => {
     setNotice(msg);
@@ -150,10 +161,10 @@ export function AttendanceSheetView() {
   const canEditDay = (day: number) => {
     if (!data?.canMark) return false;
     const d = dateOf(day);
-    return d === today || (data.isAdmin && d < today);
+    return (d >= data.editableFrom && d <= today) || (data.isAdmin && d < today);
   };
-  const canEditCell = (staffId: string, day: number) =>
-    canEditDay(day) && (!!data?.isAdmin || !data?.cells[staffId]?.[day]?.mark);
+  // Inside the 2-day window a saved mark can still be changed
+  const canEditCell = (_staffId: string, day: number) => canEditDay(day);
   const shiftMonth = (by: number) => {
     const [y, m] = month.split("-").map(Number);
     const next = new Date(Date.UTC(y, m - 1 + by, 1)).toISOString().slice(0, 7);
@@ -220,14 +231,21 @@ export function AttendanceSheetView() {
       <p className="flex items-start gap-1.5 text-xs leading-relaxed text-zinc-500">
         <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         {data?.isAdmin
-          ? t("Tap a cell to mark. As Main Admin you can also correct past days. Day remarks can only be written on the day.")
-          : t("Only today's column can be marked, and a saved mark can't be changed. Past days and their remarks are locked. Tap a date to see that day and its remarks.")}
+          ? t("Tap a cell to mark. As Main Admin you can correct any day, including its remarks.")
+          : t("Attendance and day remarks can be marked or changed for 2 days: today and yesterday. Older days are locked. Tap a date to see that day and its remarks.")}
       </p>
 
       {notice && (
         <div role="status" className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-400">{notice}</div>
       )}
-      {error && <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>}
+      {error && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <span>{t(error)}</span>
+          <button type="button" onClick={() => load()} className="h-10 rounded-full bg-red-500/10 px-4 text-sm font-semibold text-red-500 hover:bg-red-500/20">
+            {t("Try again")}
+          </button>
+        </div>
+      )}
 
       {/* The sheet */}
       {data && (
@@ -256,7 +274,7 @@ export function AttendanceSheetView() {
                       >
                         {d}
                         {data.remarks[d] && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-orange-500" aria-hidden="true" />}
-                        {data.canMark && !future && !isToday && !data.isAdmin && <Lock className="absolute bottom-0.5 h-2.5 w-2.5 text-zinc-600" aria-hidden="true" />}
+                        {data.canMark && !future && dateOf(d) < data.editableFrom && !data.isAdmin && <Lock className="absolute bottom-0.5 h-2.5 w-2.5 text-zinc-600" aria-hidden="true" />}
                       </button>
                     </th>
                   );
@@ -335,7 +353,7 @@ export function AttendanceSheetView() {
               current={selectedCell}
               editable={canEditCell(cell.staffId, cell.day)}
               isAdmin={!!data?.isAdmin}
-              pastDay={dateOf(cell.day) < today}
+              pastDay={!!data && dateOf(cell.day) < data.editableFrom}
               onSave={(status) => markCell(cell.staffId, cell.day, status)}
             />
           </div>
@@ -349,7 +367,7 @@ export function AttendanceSheetView() {
             key={`${month}-${dayOpen}`}
             rows={data.rows.map((r) => ({ name: r.name, rank: r.rank, mark: data.cells[r.id]?.[dayOpen]?.mark ?? null }))}
             remark={data.remarks[dayOpen]}
-            canWrite={data.canMark && dateOf(dayOpen) === today}
+            canWrite={data.canMark && dateOf(dayOpen) <= today && (data.isAdmin || dateOf(dayOpen) >= data.editableFrom)}
             busy={busy}
             onSave={(text) => run(() => saveAttendanceRemark(dateOf(dayOpen), text), t("Remarks saved."))}
           />
@@ -418,7 +436,7 @@ function CellPicker({
               );
             })}
           </div>
-          {!isAdmin && <p className="text-xs text-zinc-500">{t("Once saved, the mark can't be changed.")}</p>}
+          {!isAdmin && <p className="text-xs text-zinc-500">{t("You can change a mark for 2 days (today and yesterday).")}</p>}
           <button
             type="button"
             disabled={!choice || !changed}
@@ -439,7 +457,7 @@ function CellPicker({
         </>
       ) : (
         <p className="flex items-center gap-2 rounded-2xl bg-zinc-950 px-4 py-3 text-sm text-zinc-400">
-          <Lock className="h-4 w-4 shrink-0" /> {current?.mark ? t("Already marked. It can't be changed.") : t("This day is locked.")}
+          <Lock className="h-4 w-4 shrink-0" /> {current?.mark ? t("This day is locked. Only the Main Admin can correct it.") : t("This day is locked.")}
         </p>
       )}
       {current && (
@@ -497,7 +515,7 @@ function DayPanel({
               placeholder={t("e.g. K. Prakash on leave (family function); G. Eswara Rao double duty")}
               className="flex min-h-[110px] w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
             />
-            <p className="text-xs text-zinc-500">{t("Remarks can be changed until the end of today. After that they are locked.")}</p>
+            <p className="text-xs text-zinc-500">{t("Remarks can be written or changed for 2 days (today and yesterday). After that they are locked.")}</p>
             <button
               type="button"
               disabled={busy || text.trim() === (remark?.text ?? "")}

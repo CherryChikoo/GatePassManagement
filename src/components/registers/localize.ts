@@ -23,7 +23,7 @@ export function localizeRegister<T extends RegisterDef>(def: T, t: Translate): T
       in: { ...def.movement.in, label: t(def.movement.in.label) },
       out: { ...def.movement.out, label: t(def.movement.out.label) },
     };
-    out.fixed = def.fixed?.map((x) => ({ label: t(x.label), value: t(x.value) }));
+    out.fixed = def.fixed?.map((x) => ({ ...x, label: t(x.label), value: t(x.value) }));
   }
   return out;
 }

@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, ClipboardList, Eye, EyeOff, Loader2, PencilLine, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ClipboardList, Eye, EyeOff, ListPlus, Loader2, MessageSquareText, PencilLine, PenLine, Plus, ToggleRight, Trash2 } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/primitives";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { actionErrorMessage } from "@/lib/deployment";
-import { BUILDER_FIELD_TYPES, slugForKey, type BuilderFieldType } from "@/lib/registers/custom";
+import { BUILDER_FIELD_TYPES, LIST_FIELD_TYPES, isSignatureField, parseLists, slugForKey, type BuilderFieldType } from "@/lib/registers/custom";
 import {
   createCustomRegister,
   deleteCustomRegister,
@@ -28,6 +28,18 @@ type DraftField = {
   required: boolean;
 };
 
+/** A repeating list, like "Workers" */
+type DraftList = {
+  key?: string;
+  label: string;
+  itemLabel: string;
+  timed: boolean;
+  maxText: string;
+  fields: DraftField[];
+};
+
+type DraftStatus = { key?: string; label: string; yes: string; no: string };
+
 type Draft = {
   id?: string;
   title: string;
@@ -36,18 +48,31 @@ type Draft = {
   /** "Take a photo with each entry" / must it be taken */
   hasPhoto: boolean;
   photoRequired: boolean;
+  /** Signatures: one required photo per named person */
+  signatures: { key?: string; label: string }[];
+  /** Status buttons on the saved record, in the register's own words (Paid / Not paid…) */
+  statuses: DraftStatus[];
+  /** A Remarks section on the saved record, written or changed later */
+  hasRemarks: boolean;
+  remarksKey?: string;
   fields: DraftField[];
+  lists: DraftList[];
   locked: boolean;
 };
 
 const emptyField = (): DraftField => ({ label: "", type: "text", optionsText: "", required: false });
+const emptyList = (): DraftList => ({ label: "", itemLabel: "", timed: true, maxText: "", fields: [{ ...emptyField(), required: true }] });
 const emptyDraft = (): Draft => ({
   title: "",
   description: "",
   hasInOut: false,
   hasPhoto: false,
   photoRequired: false,
+  signatures: [],
+  statuses: [],
+  hasRemarks: false,
   fields: [emptyField()],
+  lists: [],
   locked: false,
 });
 
@@ -55,7 +80,7 @@ const inputCls =
   "h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10";
 
 /**
- * Main Admin / Head Security: create a register with the inputs they need,
+ * Main Admin / Security Supervisor: create a register with the inputs they need,
  * then edit, disable or delete it. Saved registers appear straight away for
  * Security (to fill in), the Supervisor and Admin.
  */
@@ -90,12 +115,39 @@ export function RegisterManager({ base }: { base: string }) {
       title: row.title,
       description: row.description,
       hasInOut: row.hasInOut,
-      hasPhoto: fields.some((f) => f.type === "photo"),
+      hasPhoto: fields.some((f) => f.type === "photo" && !isSignatureField(f)),
       photoRequired: row.required.includes("photo"),
+      signatures: fields
+        .filter((f) => isSignatureField(f))
+        .map((f) => ({ key: f.key, label: String(f.label ?? "").replace(/ — signature photo$/, "").replace(/^Signature \(photo of the person\)$/, "Signature") })),
+      statuses: fields
+        .filter((f) => f.type === "status")
+        .map((f) => ({
+          key: f.key,
+          label: String(f.label ?? ""),
+          yes: String(f.options?.[0] ?? "Yes"),
+          no: String(f.options?.[1] ?? "No"),
+        })),
+      hasRemarks: fields.some((f) => f.type === "remarks"),
+      remarksKey: fields.find((f) => f.type === "remarks")?.key,
+      lists: parseLists(row.fields).map((l) => ({
+        key: l.key,
+        label: l.label,
+        itemLabel: l.itemLabel,
+        timed: l.timed,
+        maxText: l.max ? String(l.max) : "",
+        fields: l.fields.map((lf) => ({
+          key: lf.key,
+          label: lf.label,
+          type: lf.type as BuilderFieldType,
+          optionsText: Array.isArray(lf.options) ? lf.options.join("\n") : "",
+          required: l.required.includes(lf.key),
+        })),
+      })),
       // In & Out can't change once entries exist
       locked: row.entries > 0,
       // The photo has its own switch, not a row in the field list
-      fields: fields.filter((f) => f.type !== "photo").map((f) => ({
+      fields: fields.filter((f) => !["photo", "group", "status", "remarks"].includes(f.type)).map((f) => ({
         key: f.key,
         label: f.label,
         type: f.type,
@@ -107,6 +159,21 @@ export function RegisterManager({ base }: { base: string }) {
 
   function updateField(i: number, patch: Partial<DraftField>) {
     setDraft((d) => (d ? { ...d, fields: d.fields.map((f, idx) => (idx === i ? { ...f, ...patch } : f)) } : d));
+  }
+  function updateList(i: number, patch: Partial<DraftList>) {
+    setDraft((d) => (d ? { ...d, lists: d.lists.map((l, idx) => (idx === i ? { ...l, ...patch } : l)) } : d));
+  }
+  function updateListField(li: number, fi: number, patch: Partial<DraftField>) {
+    setDraft((d) =>
+      d
+        ? {
+            ...d,
+            lists: d.lists.map((l, idx) =>
+              idx === li ? { ...l, fields: l.fields.map((lf, j) => (j === fi ? { ...lf, ...patch } : lf)) } : l
+            ),
+          }
+        : d
+    );
   }
   function moveField(i: number, dir: -1 | 1) {
     setDraft((d) => {
@@ -129,6 +196,24 @@ export function RegisterManager({ base }: { base: string }) {
       hasInOut: draft.hasInOut,
       hasPhoto: draft.hasPhoto,
       photoRequired: draft.hasPhoto && draft.photoRequired,
+      signatures: draft.signatures.map((sg) => ({ ...(sg.key ? { key: sg.key } : {}), label: sg.label })),
+      statuses: draft.statuses.map((st) => ({ ...(st.key ? { key: st.key } : {}), label: st.label, yes: st.yes, no: st.no })),
+      remarks: draft.hasRemarks,
+      ...(draft.remarksKey ? { remarksKey: draft.remarksKey } : {}),
+      lists: draft.lists.map((l) => ({
+        ...(l.key ? { key: l.key } : {}),
+        label: l.label,
+        itemLabel: l.itemLabel,
+        timed: l.timed,
+        max: Number(l.maxText) > 0 ? Math.floor(Number(l.maxText)) : null,
+        fields: l.fields.map((lf) => ({
+          ...(lf.key ? { key: lf.key } : {}),
+          label: lf.label,
+          type: lf.type,
+          required: lf.required,
+          ...(lf.type === "select" ? { options: lf.optionsText.split(/\r?\n|,/).map((o) => o.trim()).filter(Boolean) } : {}),
+        })),
+      })),
       fields: draft.fields.map((f) => ({
         ...(f.key ? { key: f.key } : {}),
         label: f.label,
@@ -351,6 +436,134 @@ export function RegisterManager({ base }: { base: string }) {
               )}
             </div>
 
+            {/* Signatures: a photo of each named person instead */}
+            <div className="space-y-3 rounded-2xl border border-zinc-800 p-4">
+              <div>
+                <p className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+                  <PenLine className="h-4 w-4 text-orange-400" /> {t("Signatures (photo of each person)")}
+                </p>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  {t("Where signatures are needed, Security takes a photo of each person. The entry can't be saved without them.")}
+                </p>
+              </div>
+              {draft.signatures.map((sg, si) => (
+                <div key={si} className="flex items-center gap-2">
+                  <input
+                    value={sg.label}
+                    maxLength={60}
+                    onChange={(e) =>
+                      setDraft({ ...draft, signatures: draft.signatures.map((x, j) => (j === si ? { ...x, label: e.target.value } : x)) })
+                    }
+                    placeholder={t("Who signs, e.g. Contractor")}
+                    aria-label={t("Who signs")}
+                    className={inputCls}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setDraft({ ...draft, signatures: draft.signatures.filter((_, j) => j !== si) })}
+                    aria-label={t("Remove signature")}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-red-400 hover:bg-red-500/10"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                disabled={draft.signatures.length >= 10}
+                onClick={() => setDraft({ ...draft, signatures: [...draft.signatures, { label: "" }] })}
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-700 text-sm font-medium text-zinc-300 hover:bg-zinc-900 disabled:opacity-40"
+              >
+                <Plus className="h-4 w-4" /> {t("Add a signature")}
+              </button>
+            </div>
+
+            {/* Status buttons: e.g. Payment completed — Paid / Not paid */}
+            <div className="space-y-3 rounded-2xl border border-zinc-800 p-4">
+              <div>
+                <p className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+                  <ToggleRight className="h-4 w-4 text-orange-400" /> {t("Status buttons")}
+                </p>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  {t("Two buttons on each saved entry that Security can change later, e.g. Payment completed: Yes / No. Name the status and its two buttons.")}
+                </p>
+              </div>
+              {draft.statuses.map((st, si) => {
+                const setStatus = (patch: Partial<DraftStatus>) =>
+                  setDraft({ ...draft, statuses: draft.statuses.map((x, j) => (j === si ? { ...x, ...patch } : x)) });
+                return (
+                  <div key={si} className="space-y-2 rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={st.label}
+                        maxLength={60}
+                        onChange={(e) => setStatus({ label: e.target.value })}
+                        placeholder={t("Status name, e.g. Payment completed")}
+                        aria-label={t("Status name")}
+                        className={inputCls}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setDraft({ ...draft, statuses: draft.statuses.filter((_, j) => j !== si) })}
+                        aria-label={t("Remove status")}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-red-400 hover:bg-red-500/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pr-12">
+                      <label className="space-y-1">
+                        <span className="block text-[11px] font-medium text-emerald-500">{t("Done button")}</span>
+                        <input
+                          value={st.yes}
+                          maxLength={30}
+                          onChange={(e) => setStatus({ yes: e.target.value })}
+                          placeholder={t("Yes")}
+                          className={inputCls}
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="block text-[11px] font-medium text-amber-500">{t("Not done button")}</span>
+                        <input
+                          value={st.no}
+                          maxLength={30}
+                          onChange={(e) => setStatus({ no: e.target.value })}
+                          placeholder={t("No")}
+                          className={inputCls}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                disabled={draft.statuses.length >= 5}
+                onClick={() => setDraft({ ...draft, statuses: [...draft.statuses, { label: "", yes: "Yes", no: "No" }] })}
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-700 text-sm font-medium text-zinc-300 hover:bg-zinc-900 disabled:opacity-40"
+              >
+                <Plus className="h-4 w-4" /> {t("Add a status")}
+              </button>
+            </div>
+
+            {/* Remarks section */}
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-zinc-800 p-4 hover:bg-zinc-950">
+              <input
+                type="checkbox"
+                checked={draft.hasRemarks}
+                onChange={(e) => setDraft({ ...draft, hasRemarks: e.target.checked })}
+                className="mt-0.5 h-5 w-5 accent-orange-500"
+              />
+              <span className="min-w-0">
+                <span className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+                  <MessageSquareText className="h-4 w-4 text-orange-400" /> {t("Remarks section")}
+                </span>
+                <span className="mt-0.5 block text-xs text-zinc-500">
+                  {t("A Remarks box on each saved entry. Security can write or change it later; every change is kept in the history.")}
+                </span>
+              </span>
+            </label>
+
             {/* Fields */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -429,6 +642,132 @@ export function RegisterManager({ base }: { base: string }) {
                 className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-orange-500/40 text-sm font-medium text-orange-400 hover:bg-orange-500/5 disabled:opacity-40"
               >
                 <Plus className="h-4 w-4" /> {t("Add field")}
+              </button>
+            </div>
+
+            {/* Lists (like Workers) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wider text-orange-400">{t("Lists")}</p>
+                <p className="text-[11px] text-zinc-500">{t("Many rows in one entry, like Workers.")}</p>
+              </div>
+              {draft.lists.map((l, li) => (
+                <div key={li} className="space-y-3 rounded-2xl border border-orange-500/20 bg-orange-500/5 p-3 sm:p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-zinc-500">{t("List {n}", { n: li + 1 })}</span>
+                    <button
+                      type="button"
+                      onClick={() => setDraft({ ...draft, lists: draft.lists.filter((_, idx) => idx !== li) })}
+                      aria-label={t("Remove list")}
+                      className="flex h-9 w-9 items-center justify-center rounded-full text-red-400 hover:bg-red-500/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input
+                      value={l.label}
+                      maxLength={60}
+                      onChange={(e) => updateList(li, { label: e.target.value })}
+                      placeholder={t("List name, e.g. Workers")}
+                      aria-label={t("List name")}
+                      className={inputCls}
+                    />
+                    <input
+                      value={l.itemLabel}
+                      maxLength={40}
+                      onChange={(e) => updateList(li, { itemLabel: e.target.value })}
+                      placeholder={t("One item, e.g. Worker")}
+                      aria-label={t("One item")}
+                      className={inputCls}
+                    />
+                  </div>
+                  <label className="flex items-start gap-2.5 text-sm text-zinc-300">
+                    <input type="checkbox" checked={l.timed} onChange={(e) => updateList(li, { timed: e.target.checked })} className="mt-0.5 h-5 w-5 accent-orange-500" />
+                    <span>
+                      {t("In-time and Out-time for each row")}
+                      <span className="block text-xs text-zinc-500">{t("In-time is recorded now; out-times are marked later from the record.")}</span>
+                    </span>
+                  </label>
+                  <input
+                    value={l.maxText}
+                    inputMode="numeric"
+                    onChange={(e) => updateList(li, { maxText: e.target.value.replace(/[^0-9]/g, "").slice(0, 3) })}
+                    placeholder={t("Most rows per entry (empty: no limit)")}
+                    aria-label={t("Most rows per entry")}
+                    className={inputCls}
+                  />
+                  {l.fields.map((lf, fi) => (
+                    <div key={fi} className="space-y-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={lf.label}
+                          maxLength={60}
+                          onChange={(e) => updateListField(li, fi, { label: e.target.value })}
+                          placeholder={t("Field name, e.g. Worker Name")}
+                          aria-label={t("Field name")}
+                          className={inputCls}
+                        />
+                        <button
+                          type="button"
+                          disabled={l.fields.length === 1}
+                          onClick={() => updateList(li, { fields: l.fields.filter((_, j) => j !== fi) })}
+                          aria-label={t("Remove field")}
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-red-400 hover:bg-red-500/10 disabled:opacity-30"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <select
+                        value={lf.type}
+                        onChange={(e) => updateListField(li, fi, { type: e.target.value as BuilderFieldType })}
+                        aria-label={t("Field type")}
+                        className={inputCls}
+                      >
+                        {LIST_FIELD_TYPES.map((ft) => (
+                          <option key={ft.value} value={ft.value}>
+                            {t(ft.label)}
+                          </option>
+                        ))}
+                      </select>
+                      {lf.type === "select" && (
+                        <textarea
+                          value={lf.optionsText}
+                          onChange={(e) => updateListField(li, fi, { optionsText: e.target.value })}
+                          rows={2}
+                          placeholder={t("Choices, one per line (at least 2)")}
+                          aria-label={t("Choices")}
+                          className={`${inputCls} h-auto py-3`}
+                        />
+                      )}
+                      <label className="flex items-center gap-2.5 text-sm text-zinc-300">
+                        <input
+                          type="checkbox"
+                          checked={lf.required}
+                          onChange={(e) => updateListField(li, fi, { required: e.target.checked })}
+                          className="h-5 w-5 accent-orange-500"
+                        />
+                        {t("Required (must be filled in)")}
+                      </label>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    disabled={l.fields.length >= 10}
+                    onClick={() => updateList(li, { fields: [...l.fields, emptyField()] })}
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-700 text-sm font-medium text-zinc-300 hover:bg-zinc-900 disabled:opacity-40"
+                  >
+                    <Plus className="h-4 w-4" /> {t("Add field to this list")}
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                disabled={draft.lists.length >= 5}
+                onClick={() => setDraft({ ...draft, lists: [...draft.lists, emptyList()] })}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-orange-500/40 text-sm font-medium text-orange-400 hover:bg-orange-500/5 disabled:opacity-40"
+              >
+                <ListPlus className="h-4 w-4" /> {t("Add a list (like Workers)")}
               </button>
             </div>
 

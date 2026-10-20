@@ -1,4 +1,5 @@
 "use client";
+import { PassFullDetails, prefetchPassDetails } from "@/components/passes/pass-full-details";
 import { DateField } from "@/components/ui/date-field";
 import { usePendingNavigation } from "@/hooks/use-pending-navigation";
 import { LoadingPill } from "@/components/ui/loading-pill";
@@ -144,7 +145,7 @@ export function WardenActivityClient({
                     <li key={perm.id}>
                       <button
                         type="button"
-                        onClick={() => setSelectedPermission(perm)}
+                        onPointerDown={() => prefetchPassDetails(perm.id)} onClick={() => setSelectedPermission(perm)}
                         className="w-full flex items-center gap-3 sm:gap-4 px-4 sm:px-6 py-3.5 text-left hover:bg-zinc-950/70 transition-colors cursor-pointer"
                       >
                         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400 font-semibold">
@@ -197,69 +198,10 @@ export function WardenActivityClient({
       <Modal
         open={!!selectedPermission}
         onClose={() => setSelectedPermission(null)}
+        className="max-w-2xl"
         title="Permission Details"
       >
-        {selectedPermission && (
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            <div className="min-w-0">
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Student</dt>
-              <dd className="mt-1 text-sm text-zinc-200 break-words">{selectedPermission.student?.profile?.name}</dd>
-              <dd className="text-xs text-zinc-500">{selectedPermission.student?.studentRoll}</dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Pass Status</dt>
-              <dd className="mt-1"><StatusBadge status={selectedPermission.status} /></dd>
-              <dd className="text-xs text-zinc-500 mt-1">Requested: {formatDateTime(selectedPermission.createdAt)}{scheduledNote(selectedPermission)}</dd>
-            </div>
-
-            <div className="min-w-0 sm:col-span-2">
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Purpose</dt>
-              <dd className="mt-1 text-sm text-zinc-200 break-words">{selectedPermission.purpose}</dd>
-            </div>
-            {selectedPermission.destination && (
-              <div className="min-w-0 sm:col-span-2">
-                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Destination</dt>
-                <dd className="mt-1 text-sm text-zinc-200 break-words">{selectedPermission.destination}</dd>
-              </div>
-            )}
-            <div className="min-w-0">
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Expected Exit</dt>
-              <dd className="mt-1 text-sm text-zinc-200">
-                {selectedPermission.expectedExit ? formatDateTime(selectedPermission.expectedExit) : "None"}
-              </dd>
-            </div>
-            {selectedPermission.type !== 'EXIT' && (
-              <div className="min-w-0">
-                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Expected Return</dt>
-                <dd className="mt-1 text-sm text-zinc-200">
-                  {selectedPermission.expectedReturn ? formatDateTime(selectedPermission.expectedReturn) : "None"}
-                </dd>
-              </div>
-            )}
-
-            <div className="min-w-0 sm:col-span-2 space-y-2 pt-2">
-              <dt className="text-xs font-medium uppercase tracking-wider text-zinc-500">Gate Scans</dt>
-              {selectedPermission.movements?.length > 0 ? (
-                selectedPermission.movements.map((mov: any, idx: number) => (
-                  <dd key={idx} className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-800 p-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-950">
-                        {mov.type === "EXIT" ? <DoorOpen className="h-4 w-4 text-orange-400" /> : <DoorClosed className="h-4 w-4 text-emerald-400" />}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-sm text-zinc-100 font-medium truncate">{mov.type === "EXIT" ? "Exited" : "Returned"} via {mov.gate?.name}</p>
-                        <p className="text-xs text-zinc-500">{formatDateTime(mov.createdAt)}</p>
-                      </div>
-                    </div>
-                    <StatusBadge status={mov.type} />
-                  </dd>
-                ))
-              ) : (
-                <dd className="text-sm text-zinc-500">No gate scans recorded yet.</dd>
-              )}
-            </div>
-          </dl>
-        )}
+        {selectedPermission && <PassFullDetails permissionId={selectedPermission.id} preview={selectedPermission} />}
       </Modal>
     </>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { DEPARTMENTS, getDepartmentCode } from "@/lib/constants";
+import { DEPARTMENTS, departmentLabel, getDepartmentCode } from "@/lib/constants";
 import { useT } from "@/components/providers/language-provider";
 import { cn } from "@/lib/utils";
 
@@ -21,9 +21,13 @@ const fieldCls =
   "h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10";
 
 /**
- * Department picker used in every form: the college departments, plus
- * "Other" which opens a box to type the name. The value is the department
- * code ("CSE") or the typed name — the same format Admin's forms already store.
+ * Department picker used in every form: the college departments, shown as
+ * "CSE (Computer Science & Engineering)". The value is the department code.
+ *
+ * - People (students, faculty…): the list only. A saved department that is
+ *   not in the list (older records) stays selectable as "(current)".
+ * - `allowOther`: also "Other", which opens a box to type a name (gate
+ *   registers, e.g. a visitor going to an office).
  *
  * - With `name`: works inside a plain <form> (a hidden input carries the value).
  * - With `value` + `onChange`: controlled.
@@ -37,6 +41,7 @@ export function DepartmentSelect({
   required = false,
   placeholder = "Select department",
   extraOptions = [],
+  allowOther = false,
   className,
 }: {
   name?: string;
@@ -48,6 +53,8 @@ export function DepartmentSelect({
   placeholder?: string;
   /** e.g. ["All Departments"] for the Dean / Director */
   extraOptions?: string[];
+  /** Offer "Other" with a box to type a name */
+  allowOther?: boolean;
   className?: string;
 }) {
   const t = useT();
@@ -55,6 +62,8 @@ export function DepartmentSelect({
   const [choice, setChoice] = useState(start.choice);
   const [custom, setCustom] = useState(start.custom);
   const resolved = choice === OTHER ? custom.trim() : choice;
+  // Without "Other": an older saved name outside the list stays as it is
+  const legacy = !allowOther && start.choice === OTHER ? start.custom : "";
 
   const emit = (nextChoice: string, nextCustom: string) => {
     onChange?.(nextChoice === OTHER ? nextCustom.trim() : nextChoice);
@@ -80,12 +89,16 @@ export function DepartmentSelect({
         ))}
         {DEPARTMENTS.map((d) => (
           <option key={d.code} value={d.code}>
-            {d.code} – {d.name}
+            {departmentLabel(d)}
           </option>
         ))}
-        <option value={OTHER}>{t("Other (type the name)")}</option>
+        {allowOther ? (
+          <option value={OTHER}>{t("Other (type the name)")}</option>
+        ) : (
+          legacy && <option value={OTHER}>{legacy} ({t("current")})</option>
+        )}
       </select>
-      {choice === OTHER && (
+      {allowOther && choice === OTHER && (
         <input
           value={custom}
           onChange={(e) => {

@@ -3,13 +3,13 @@ import { DateField } from "@/components/ui/date-field";
 import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, Camera, CheckCircle2, ChevronDown, Clock, Loader2, LogIn, LogOut, Plus, Save, Trash2, X } from "lucide-react";
+import { CalendarDays, Camera, CheckCircle2, ChevronDown, Clock, Info, Loader2, LogIn, LogOut, Plus, Save, Trash2, X } from "lucide-react";
 import { getRegisterPeopleOptions } from "@/server/actions/registers";
 import { DepartmentSelect } from "@/components/ui/department-select";
 import { compressPhoto } from "@/lib/images/compress-photo";
 import { uploadRegisterPhoto } from "@/lib/storage/image-upload";
 import type { Direction, EntryRegister, FieldDef, GroupDef } from "@/lib/registers/definitions";
-import { pendingActions } from "@/lib/registers/definitions";
+import { pendingActions, yesNoWords } from "@/lib/registers/definitions";
 import { formatDate } from "@/lib/utils";
 import { displayValue } from "./localize";
 
@@ -368,7 +368,7 @@ function FieldInput({
     case "person":
       return <PersonInput id={id} value={value ?? ""} onChange={onChange} onPick={onPickPerson} required={required} />;
     case "department":
-      return <DepartmentSelect id={id} value={value ?? ""} onChange={onChange} required={required} />;
+      return <DepartmentSelect id={id} value={value ?? ""} onChange={onChange} required={required} allowOther />;
     case "photo":
       return <PhotoInput id={id} value={value ?? ""} onChange={onChange} registerKey={registerKey} />;
     case "textarea":
@@ -392,7 +392,7 @@ function FieldInput({
       }
       const options =
         f.type === "yesno"
-          ? [{ v: "yes", l: t("Yes") }, { v: "no", l: t("No") }]
+          ? yesNoWords(f).map((w, i) => ({ v: i === 0 ? "yes" : "no", l: t(w) }))
           : f.type === "staff"
           ? staff.map((s) => ({ v: s.id, l: `${s.name}${s.employeeId ? ` (${s.employeeId})` : ""}` }))
           : (f.options ?? []).map((o) => ({ v: o, l: t(o) }));
@@ -417,7 +417,7 @@ function FieldInput({
 function FieldBlock({ f, id, required = false, children }: { f: FieldDef; id: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div className={`space-y-1.5 min-w-0 ${f.type === "textarea" ? "sm:col-span-2" : ""}`}>
-      <label htmlFor={id} className="flex items-baseline gap-1 text-sm font-medium text-zinc-200">
+      <label htmlFor={id} className="field-label flex items-baseline gap-1 text-sm font-medium text-zinc-200">
         <span className="min-w-0">{f.label}</span>
         {required && (
           <span className="text-base leading-none font-semibold text-orange-500" aria-hidden="true">
@@ -564,9 +564,18 @@ export function RegisterForm({
         </fieldset>
       )}
 
-      {def.fixed && (
+      {/* Notes: one full-width line */}
+      {def.fixed?.filter((x) => x.note).map((x) => (
+        <p key={x.label} className="flex items-start gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-600">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>
+            <span className="font-semibold">{x.label}:</span> {x.value}
+          </span>
+        </p>
+      ))}
+      {def.fixed?.some((x) => !x.note) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-          {def.fixed.map((x) => (
+          {def.fixed.filter((x) => !x.note).map((x) => (
             <div key={x.label}>
               <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{x.label}</p>
               <p className="mt-0.5 text-sm font-medium text-zinc-200">{x.value}</p>
@@ -749,7 +758,7 @@ export function MovementForm({
           </label>
           {next.readingKey && mark && (
             <div className="space-y-1.5">
-              <label htmlFor="mv-reading" className="block text-sm font-medium text-zinc-200">
+              <label htmlFor="mv-reading" className="field-label block text-sm font-medium text-zinc-200">
                 {def.fields.find((f) => f.key === next.readingKey)?.label ?? t("Reading")}
               </label>
               <input id="mv-reading" type="text" autoComplete="off" maxLength={100} value={reading} onChange={(e) => setReading(e.target.value)} className={inputCls} />
@@ -832,7 +841,7 @@ export function CloseRecordForm({
         {t("No {side} will be recorded. The record is kept as it is and marked closed.", { side: next.label })}
       </p>
       <div className="space-y-1.5">
-        <label htmlFor="close-note" className="block text-sm font-medium text-zinc-200">
+        <label htmlFor="close-note" className="field-label block text-sm font-medium text-zinc-200">
           {t("Note (optional)")}
         </label>
         <textarea
@@ -862,13 +871,17 @@ export function AdminEditForm({
   staff,
   busy,
   onSubmit,
+  keepsHistory = false,
 }: {
   def: EntryRegister;
   current: Record<string, any>;
   staff: StaffOption[];
   busy: boolean;
   onSubmit: (payload: { fields: Values; groups: Record<string, Values[]>; direction?: Direction }) => void;
+  /** Security edit: saved as a correction (the earlier values stay in the history) */
+  keepsHistory?: boolean;
 }) {
+  const t = useT();
   const m = def.movement;
   const toText = (f: FieldDef, v: any) =>
     v === null || v === undefined ? "" : f.type === "staff" ? v.id ?? "" : f.type === "yesno" ? (v ? "yes" : "no") : String(v);
@@ -903,7 +916,9 @@ export function AdminEditForm({
       className="space-y-5"
     >
       <p className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
-        Saving overwrites this record. The previous values are not kept.
+        {keepsHistory
+          ? t("Your changes are saved with your name. The earlier values stay in the record history.")
+          : "Saving overwrites this record. The previous values are not kept."}
       </p>
       {m && !m.single && <DirectionPicker def={{ ...def, movement: { ...m, firstDirections: ["IN", "OUT"] } }} value={direction} onChange={setDirection} />}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -967,7 +982,7 @@ export function AdminEditForm({
       <div className={stickyFooterCls}>
         <button type="submit" disabled={busy} className={`${saveBtnCls} bg-orange-600 hover:bg-orange-700 shadow-[0_6px_16px_-8px_rgba(207,62,37,0.55)]`}>
           {!busy && <Save className="h-5 w-5 sm:h-4 sm:w-4" />}
-          {busy ? "Saving…" : "Save changes"}
+          {busy ? t("Saving…") : t("Save changes")}
         </button>
       </div>
     </form>

@@ -21,12 +21,23 @@ export type RegisterAccess = {
   canCreate: (key: string) => boolean;
 };
 
+// Head Security is set in the database, not from the portal, so it changes
+// rarely: remembering it for a minute saves one query on every register request.
+const HEAD_TTL_MS = 60_000;
+const headCache = new Map<string, { isHead: boolean; expiresAt: number }>();
+
+async function isHeadSecurityStaff(profileId: string): Promise<boolean> {
+  const hit = headCache.get(profileId);
+  if (hit && hit.expiresAt > Date.now()) return hit.isHead;
+  const staff = await prisma.securityStaff.findUnique({ where: { profileId }, select: { isHead: true } });
+  const isHead = !!staff?.isHead;
+  if (headCache.size > 500) headCache.clear();
+  headCache.set(profileId, { isHead, expiresAt: Date.now() + HEAD_TTL_MS });
+  return isHead;
+}
+
 export async function getRegisterAccess(user: AuthUser): Promise<RegisterAccess> {
-  let isHeadSecurity = false;
-  if (user.role === "SECURITY") {
-    const staff = await prisma.securityStaff.findUnique({ where: { profileId: user.profileId }, select: { isHead: true } });
-    isHeadSecurity = !!staff?.isHead;
-  }
+  const isHeadSecurity = user.role === "SECURITY" ? await isHeadSecurityStaff(user.profileId) : false;
   const viewer = user.role === "SECURITY" || user.role === "ADMIN" || user.role === "SECURITY_SUPERVISOR";
   const hidden: RegisterKey[] = user.role === "SECURITY" && !isHeadSecurity ? [ATTENDANCE] : [];
 

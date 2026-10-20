@@ -60,7 +60,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         {label && (
           <label
             htmlFor={selectId}
-            className="block text-xs sm:text-sm font-medium text-zinc-300"
+            className="field-label block text-xs sm:text-sm font-medium text-zinc-300"
           >
             {label}
           </label>
@@ -109,7 +109,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
         {label && (
           <label
             htmlFor={textareaId}
-            className="block text-xs sm:text-sm font-medium text-zinc-300"
+            className="field-label block text-xs sm:text-sm font-medium text-zinc-300"
           >
             {label}
           </label>
@@ -176,6 +176,27 @@ interface StatCardProps {
   className?: string;
 }
 
+/** A titled group of StatCards, so a dashboard's counts read in sections (Today, Gate, People…). */
+export function StatGroup({
+  title,
+  children,
+  className,
+  gridClassName,
+}: {
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+  /** Column classes for the cards (default: 2 per row) */
+  gridClassName?: string;
+}) {
+  return (
+    <section aria-label={title} className={cn("min-w-0 space-y-3", className)}>
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-orange-400">{title}</h2>
+      <div className={cn("grid grid-cols-2 gap-3 sm:gap-4", gridClassName)}>{children}</div>
+    </section>
+  );
+}
+
 export function StatCard({
   title,
   value,
@@ -207,7 +228,10 @@ export function StatCard({
             {trendUp ? "+" : "−"} {trend}
           </p>
         )}
-        {description && <p className="mt-2 text-xs text-zinc-500 truncate">{description}</p>}
+        {/* The line is kept even when empty, so every card in a row has the same height */}
+        <p className="mt-2 text-xs text-zinc-500 truncate" aria-hidden={!description || undefined}>
+          {description || " "}
+        </p>
       </div>
     </div>
   );
@@ -292,7 +316,7 @@ export function Modal({ open, onClose, title, children, className, scrollTopKey 
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/30 backdrop-blur-[3px]"
+        className="absolute inset-0 bg-black/40"
         onClick={onClose}
       />
       {/* Content */}

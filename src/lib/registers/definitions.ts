@@ -43,6 +43,7 @@ export type FieldDef = {
   key: string;
   label: string;
   type: FieldType;
+  /** Choices of a "select"; for "yesno": the two button words [yes, no] (default Yes / No) */
   options?: readonly string[];
   placeholder?: string;
   /** Group rows only: a time stamped later, when the row is marked out */
@@ -53,7 +54,26 @@ export type FieldDef = {
   allowOther?: boolean;
   /** "person" fields: fill these fields from the picked person (e.g. their designation) */
   fills?: { designation?: string; department?: string };
+  /**
+   * Shown as its own section on a saved record, with a button to change it
+   * later (Yes / No status such as "Payment completed", or Remarks). Every
+   * change is kept in the record history. Only "yesno", "text" and "textarea".
+   */
+  updatable?: boolean;
 };
+
+/** Field types that can be updatable (changed later from the record) */
+export const UPDATABLE_TYPES: readonly FieldType[] = ["yesno", "text", "textarea"];
+
+/** Words for a Yes / No field's two answers, e.g. ["Paid", "Not paid"] (default Yes / No). */
+export function yesNoWords(f: Pick<FieldDef, "options">): [string, string] {
+  return [f.options?.[0] || "Yes", f.options?.[1] || "No"];
+}
+
+/** Fields of a register that can be changed later from a saved record. */
+export function updatableFields(def: { fields: FieldDef[] }): FieldDef[] {
+  return def.fields.filter((f) => f.updatable && UPDATABLE_TYPES.includes(f.type));
+}
 
 export type GroupDef = {
   key: string;
@@ -94,7 +114,8 @@ export type EntryRegister = {
   /** The important details that must be filled in; every other input is optional */
   required: string[];
   /** Fixed values printed on the form (e.g. the "To" block of Form 19) */
-  fixed?: { label: string; value: string }[];
+  /** Shown above the form: fixed details, or a one-line note (note: true) */
+  fixed?: { label: string; value: string; note?: boolean }[];
   /** Fields shown in the list table (first is the headline) */
   listFields: string[];
 };
@@ -117,9 +138,11 @@ export const REGISTER_KEYS = [
   "AUTO_BOOK",
   "DAILY_LABOUR",
   "LABOUR_CONTRACT",
+  "COOLI_BOOK",
   "SIROS_STOCK",
   "COLLEGE_STOCK",
   "SIROS_LABOUR_CONTRACT",
+  "SIROS_DAILY_LABOUR",
   "COLLEGE_DAILY",
   "BOYS_HOSTEL_OUTING",
   "LADIES_HOSTEL_OUTING",
@@ -173,6 +196,53 @@ const stockFields: FieldDef[] = [
 
 const hostelOutingDescription =
   "Hostel outing passes approved in the portal, with the actual out and return times marked at the gate.";
+
+/** Same inputs for the Siros Venture Daily Labour Book and Labour Contract Book */
+const SIROS_LABOUR_INPUTS: Pick<EntryRegister, "required" | "movement" | "listFields" | "fields" | "groups"> = {
+  required: ["contractorName", "phone"],
+  movement: {
+    in: { label: "In", timeKey: "contractorIn" },
+    out: { label: "Out", timeKey: "contractorOut" },
+    firstDirections: ["IN"],
+  },
+  listFields: ["contractorName", "totalWorkers", "contractorIn", "contractorOut"],
+  fields: [
+    { key: "date", label: "Date", type: "date" },
+    { key: "contractorName", label: "Contractor Name", type: "text" },
+    { key: "workDetails", label: "Work Details", type: "textarea" },
+    { key: "phone", label: "Phone Number", type: "phone" },
+    { key: "totalWorkers", label: "Total Workers Under Contractor", type: "number" },
+    { key: "contractorIn", label: "Contractor In-Time", type: "time" },
+    { key: "contractorOut", label: "Contractor Out-Time", type: "time" },
+    { key: "supervisorDetails", label: "Supervisor (name & details)", type: "text" },
+    { key: "civilEngineerDetails", label: "Civil Engineer (name & details)", type: "text" },
+    { key: "remarks", label: "Remarks", type: "textarea" },
+  ],
+  groups: [
+    {
+      key: "workers",
+      label: "Workers",
+      itemLabel: "Worker",
+      max: null,
+      required: ["name"],
+      fields: [
+        { key: "name", label: "Worker Name", type: "text" },
+        { key: "gender", label: "Gender", type: "select", options: ["Male", "Female"] },
+        { key: "inTime", label: "In-Time", type: "time" },
+        { key: "outTime", label: "Out-Time", type: "time", completion: true },
+        { key: "assignedBy", label: "Work Assigned By", type: "select", options: ["Supervisor", "Engineer"] },
+      ],
+    },
+  ],
+};
+
+/** Both Siros Venture labour books (same inputs and rules) */
+/** Registers whose saved records Security may edit (every edit is kept as a correction) */
+export const SECURITY_EDITABLE_REGISTERS: readonly string[] = ["COOLI_BOOK"];
+
+export function isSirosLabour(key: string): boolean {
+  return key === "SIROS_LABOUR_CONTRACT" || key === "SIROS_DAILY_LABOUR";
+}
 
 export const REGISTERS: RegisterDef[] = [
   {
@@ -289,6 +359,51 @@ export const REGISTERS: RegisterDef[] = [
     fields: [...labourFields, { key: "remarks", label: "Remarks", type: "textarea" }],
   },
   {
+    // One entry with a list of coolies; each cooli has the inputs of the pink
+    // "Contract Worker / Daily Labour Pass" slip. Nothing is required, the two
+    // signature photos are optional, and Security can edit these entries
+    // (every edit is kept in the history).
+    kind: "entry",
+    key: "COOLI_BOOK",
+    number: 21,
+    title: "Cooli Book",
+    description: "Coolies working on campus: each cooli's slip details, with in and out times.",
+    required: [],
+    listFields: ["workDetails", "remarks"],
+    fixed: [
+      {
+        label: "Note",
+        value: "Kindly ensure that all tools belonging to laborers or contractors are recorded in the Security entry Register.",
+        note: true,
+      },
+    ],
+    fields: [
+      { key: "date", label: "Date", type: "date" },
+      { key: "workDetails", label: "Work / Location", type: "text", placeholder: "e.g. A Block 1st floor plastering" },
+      { key: "remarks", label: "Remarks", type: "textarea", updatable: true },
+      { key: "paymentCompleted", label: "Payment completed", type: "yesno", updatable: true },
+      { key: "securitySignature", label: "Security — signature photo", type: "photo" },
+      { key: "estateManagerSignature", label: "Estate Manager — signature photo", type: "photo" },
+    ],
+    groups: [
+      {
+        key: "coolies",
+        label: "Coolies",
+        itemLabel: "Cooli",
+        max: null,
+        fields: [
+          { key: "name", label: "Name", type: "text" },
+          { key: "gender", label: "Gender", type: "select", options: ["Male", "Female"] },
+          { key: "contractorName", label: "Contractor Name", type: "text" },
+          { key: "tools", label: "Tools (Personal) Particulars", type: "text", placeholder: "e.g. trowel, bucket" },
+          { key: "personConcerned", label: "Person Concerned & Designation", type: "text" },
+          { key: "inTime", label: "In Time", type: "time" },
+          { key: "outTime", label: "Out Time", type: "time", completion: true },
+        ],
+      },
+    ],
+  },
+  {
     kind: "entry",
     key: "SIROS_STOCK",
     number: 8,
@@ -310,45 +425,19 @@ export const REGISTERS: RegisterDef[] = [
   },
   {
     kind: "entry",
+    key: "SIROS_DAILY_LABOUR",
+    number: 20,
+    title: "Siros Venture Daily Labour Book",
+    description: "Daily labour: contractors and every worker under them, with in and out times.",
+    ...SIROS_LABOUR_INPUTS,
+  },
+  {
+    kind: "entry",
     key: "SIROS_LABOUR_CONTRACT",
     number: 10,
-    title: "Siros Venture Daily Labour & Contract Book",
-    description: "Contractors and every worker under them, with in and out times.",
-    required: ["contractorName", "phone"],
-    movement: {
-      in: { label: "In", timeKey: "contractorIn" },
-      out: { label: "Out", timeKey: "contractorOut" },
-      firstDirections: ["IN"],
-    },
-    listFields: ["contractorName", "totalWorkers", "contractorIn", "contractorOut"],
-    fields: [
-      { key: "date", label: "Date", type: "date" },
-      { key: "contractorName", label: "Contractor Name", type: "text" },
-      { key: "workDetails", label: "Work Details", type: "textarea" },
-      { key: "phone", label: "Phone Number", type: "phone" },
-      { key: "totalWorkers", label: "Total Workers Under Contractor", type: "number" },
-      { key: "contractorIn", label: "Contractor In-Time", type: "time" },
-      { key: "contractorOut", label: "Contractor Out-Time", type: "time" },
-      { key: "supervisorDetails", label: "Supervisor (name & details)", type: "text" },
-      { key: "civilEngineerDetails", label: "Civil Engineer (name & details)", type: "text" },
-      { key: "remarks", label: "Remarks", type: "textarea" },
-    ],
-    groups: [
-      {
-        key: "workers",
-        label: "Workers",
-        itemLabel: "Worker",
-        max: null,
-        required: ["name"],
-        fields: [
-          { key: "name", label: "Worker Name", type: "text" },
-          { key: "gender", label: "Gender", type: "select", options: ["Male", "Female"] },
-          { key: "inTime", label: "In-Time", type: "time" },
-          { key: "outTime", label: "Out-Time", type: "time", completion: true },
-          { key: "assignedBy", label: "Work Assigned By", type: "select", options: ["Supervisor", "Engineer"] },
-        ],
-      },
-    ],
+    title: "Siros Venture Labour Contract Book",
+    description: "Contract labour: contractors and every worker under them, with in and out times.",
+    ...SIROS_LABOUR_INPUTS,
   },
   {
     kind: "entry",

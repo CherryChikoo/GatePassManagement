@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { StatCard, StatusBadge, Modal } from "@/components/ui/primitives";
+import { StatGroup, StatCard, StatusBadge, Modal } from "@/components/ui/primitives";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/utils";
@@ -159,31 +159,29 @@ export function DirectorDashboardClient({ user, title }: Props & { title?: strin
         </div>
 
         {/* Stats */}
-        <div className="space-y-3 sm:space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-            <StatCard title="Total Faculty" value={stats.totalFaculty} icon={<Briefcase />} description="Active teaching staff" />
-            <StatCard title="Total HODs" value={stats.totalHODs} icon={<Shield />} description="Department heads" />
-            <StatCard title="Total Students" value={stats.totalStudents} icon={<GraduationCap />} description="Campus enrolled" />
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-4">
+            <StatGroup title="Faculty passes" className="lg:col-span-3" gridClassName="sm:grid-cols-3">
+              <StatCard title="Pending" value={stats.pendingFacultyPasses} icon={<ClipboardCheck />} description="Awaiting HOD / Dean" />
+              <StatCard title="Approved Today" value={stats.approvedToday} icon={<CheckCircle2 />} description="Passes granted today" />
+              <StatCard title="Rejected Today" value={stats.rejectedToday} icon={<XCircle />} description="Passes denied today" />
+            </StatGroup>
+            <StatGroup title="Gate today" className="lg:col-span-2">
+              <StatCard title="Exits" value={stats.exitsToday} icon={<DoorOpen />} description="Scanned gate exits" />
+              <StatCard title="Entries" value={stats.entriesToday} icon={<MapPin />} description="Scanned gate returns" />
+            </StatGroup>
+          </div>
+          <StatGroup title="People" gridClassName="lg:grid-cols-4">
+            <StatCard title="Faculty" value={stats.totalFaculty} icon={<Briefcase />} description="Active teaching staff" />
+            <StatCard title="HODs" value={stats.totalHODs} icon={<Shield />} description="Department heads" />
+            <StatCard title="Students" value={stats.totalStudents} icon={<GraduationCap />} description="Campus enrolled" />
             <StatCard
               title="Wardens & Security"
               value={stats.totalWardens + stats.totalSecurity}
               icon={<Building2 />}
               description={`${stats.totalWardens} Wardens • ${stats.totalSecurity} Security`}
             />
-            <StatCard
-              title="Pending Faculty Passes"
-              value={stats.pendingFacultyPasses}
-              icon={<ClipboardCheck />}
-              description="Awaiting HOD / Dean"
-              className="col-span-2 sm:col-span-2 lg:col-span-1"
-            />
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <StatCard title="Approved Today" value={stats.approvedToday} icon={<CheckCircle2 />} description="Passes granted today" />
-            <StatCard title="Rejected Today" value={stats.rejectedToday} icon={<XCircle />} description="Passes denied today" />
-            <StatCard title="Exits Today" value={stats.exitsToday} icon={<DoorOpen />} description="Scanned gate exits" />
-            <StatCard title="Entries Today" value={stats.entriesToday} icon={<MapPin />} description="Scanned gate returns" />
-          </div>
+          </StatGroup>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">

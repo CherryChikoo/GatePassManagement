@@ -6,7 +6,7 @@ import type { AuthUser } from "@/lib/auth/helpers";
 /**
  * Data-scope rules for staff, enforced server-side:
  * - ADMIN: everything
- * - FACULTY: their assigned students and students of their department
+ * - FACULTY: only the students assigned to them (never the whole department)
  * - FACULTY_ADMIN (HOD): students and faculty of their department
  * - WARDEN: their assigned hostellers
  * Department is admin-managed (users cannot edit it themselves).
@@ -43,6 +43,7 @@ export function studentWhereForScope(scope: StaffScope): Prisma.StudentWhereInpu
     case "ADMIN":
       return {};
     case "FACULTY":
+      return { facultyId: scope.facultyId };
     case "FACULTY_ADMIN":
       return {
         OR: [

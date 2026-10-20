@@ -1,6 +1,7 @@
 "use server";
 
 import type { ApproverType, Prisma } from "@prisma/client";
+import { notifyLive, notifyPassHolder } from "@/lib/realtime/notify";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole, type AuthUser } from "@/lib/auth/helpers";
 import { generateQrToken } from "@/lib/qr/token";
@@ -161,6 +162,7 @@ export async function handleApproval(
 
     invalidateApprovalsCache();
     revalidateApprovalPaths();
+    notifyPassHolder(permissionId);
     return { success: true, action: "REJECTED" };
   }
 
@@ -242,6 +244,7 @@ export async function handleApproval(
 
   invalidateApprovalsCache();
   revalidateApprovalPaths();
+  notifyPassHolder(permissionId);
   if (!finalized) {
     return {
       success: true,
@@ -264,6 +267,8 @@ function revalidateApprovalPaths() {
   ]) {
     revalidatePath(p);
   }
+  // Faculty / outing books on the gate screens
+  notifyLive("gate");
 }
 
 /**

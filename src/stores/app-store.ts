@@ -50,13 +50,15 @@ export type AppStore = AppState & AppActions;
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 // Background sync while the tab is visible. Data is also refreshed immediately
-// after every action and whenever the user returns to the tab, so a longer
-// interval keeps serverless/database usage within free-tier limits without
-// making the UI feel stale.
-const SYNC_INTERVAL_MS = 45_000;
+// after every action and whenever the user returns to the tab, and the screens
+// that wait on something (pass approval, gate scan, gate registers) get live
+// pings — so this slow sync is only a safety net. Every request counts against
+// Vercel Hobby's monthly function allowance (1M): at 45 s, 500 open tabs alone
+// would use it up in under a month.
+const SYNC_INTERVAL_MS = 5 * 60_000;
 const LEGACY_STORE_NAME = "gatepass-store";
 const STALE_THRESHOLD_MS = 5 * 60_000; // 5 minutes — force re-fetch if older
-const THROTTLE_MS = 10_000; // 10 seconds — prevent tab-switch spam but allow frequent syncs
+const THROTTLE_MS = 30_000; // 30 seconds — switching tabs back and forth reloads at most this often
 
 // Data is kept in memory only. Older versions persisted every dashboard's
 // data (names, phones, QR tokens) to localStorage; wipe any leftover copy.

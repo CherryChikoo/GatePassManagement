@@ -583,6 +583,10 @@ export const te: Record<string, string> = {
   "College Main Gate Stock Entry Register": "కాలేజీ మెయిన్ గేట్ స్టాక్ ఎంట్రీ రిజిస్టర్",
   "Material coming in or going out at the college main gate.": "కాలేజీ మెయిన్ గేట్ వద్ద లోపలికి వచ్చే లేదా బయటకు వెళ్ళే సామగ్రి.",
   "Siros Venture Daily Labour & Contract Book": "సిరోస్ వెంచర్ రోజువారీ లేబర్ & కాంట్రాక్ట్ బుక్",
+  "Siros Venture Daily Labour Book": "సిరోస్ వెంచర్ రోజువారీ లేబర్ బుక్",
+  "Siros Venture Labour Contract Book": "సిరోస్ వెంచర్ లేబర్ కాంట్రాక్ట్ బుక్",
+  "Daily labour: contractors and every worker under them, with in and out times.": "రోజువారీ లేబర్: కాంట్రాక్టర్లు మరియు వారి కింద ఉన్న ప్రతి కార్మికుడు, లోపలికి/బయటకు సమయాలతో.",
+  "Contract labour: contractors and every worker under them, with in and out times.": "కాంట్రాక్ట్ లేబర్: కాంట్రాక్టర్లు మరియు వారి కింద ఉన్న ప్రతి కార్మికుడు, లోపలికి/బయటకు సమయాలతో.",
   "Contractors and every worker under them, with in and out times.": "కాంట్రాక్టర్లు మరియు వారి కింద ఉన్న ప్రతి కార్మికుడు, లోపలికి/బయటకు సమయాలతో.",
   "College Daily Book": "కాలేజీ డైలీ బుక్",
   "General daily in / out entries.": "సాధారణ రోజువారీ లోపలికి / బయటకు నమోదులు.",
@@ -779,6 +783,50 @@ export const te: Record<string, string> = {
   "Day scholar": "డే స్కాలర్",
   Hosteller: "హాస్టలర్",
 
+  // Register / visitor messages Security can see
+  Today: "ఈరోజు",
+  "Could not save the record. Please try again.": "రికార్డ్ సేవ్ కాలేదు. మళ్ళీ ప్రయత్నించండి.",
+  "Could not save the changes. Please try again.": "మార్పులు సేవ్ కాలేదు. మళ్ళీ ప్రయత్నించండి.",
+  "Could not delete the record. Please try again.": "రికార్డ్ తొలగించలేకపోయాము. మళ్ళీ ప్రయత్నించండి.",
+  "Invalid form. Reload the page.": "ఫారం సరైనది కాదు. పేజీని రీలోడ్ చేయండి.",
+  "No active gate is set up": "పనిచేసే గేట్ ఏదీ సెట్ చేయలేదు",
+  "Pass not found": "పాస్ కనబడలేదు",
+  "Record not found": "రికార్డ్ కనబడలేదు",
+  "Record not found or already deleted": "రికార్డ్ కనబడలేదు లేదా ఇప్పటికే తొలగించబడింది",
+  "Return already recorded": "తిరిగి రావడం ఇప్పటికే నమోదు అయింది",
+  "Unknown register": "తెలియని రిజిస్టర్",
+  "You are not allowed to add to this register": "ఈ రిజిస్టర్‌లో నమోదు చేసే అనుమతి మీకు లేదు",
+  "You are not allowed to update this register": "ఈ రిజిస్టర్‌ను మార్చే అనుమతి మీకు లేదు",
+  "Choose a range of at most 62 days": "గరిష్టంగా 62 రోజుల పరిధిని ఎంచుకోండి",
+  "Invalid date": "తేదీ సరైనది కాదు",
+  "Visitor not found": "సందర్శకుడు కనబడలేదు",
+  "Enter a valid phone number": "సరైన ఫోన్ నంబర్ నమోదు చేయండి",
+
+  // Cooli Book
+  "Cooli Book": "కూలీ బుక్",
+  "One slip per cooli working on campus, with in and out times.": "క్యాంపస్‌లో పని చేసే ప్రతి కూలీకి ఒక స్లిప్, లోపలికి/బయటకు సమయాలతో.",
+  "e.g. A Block — trowel, bucket": "ఉదా. A బ్లాక్ — కర్ణి, బకెట్",
+  "Record updated.": "రికార్డ్ మార్చబడింది.",
+  "Mark out": "బయటకు గుర్తించండి",
+  "Try again": "మళ్ళీ ప్రయత్నించండి",
+  "Taking too long. Check the connection and try again.": "చాలా సమయం పడుతోంది. ఇంటర్నెట్ చూసి మళ్ళీ ప్రయత్నించండి.",
+  "Coolies working on campus: each cooli's slip details, with in and out times.": "క్యాంపస్‌లో పని చేసే కూలీలు: ప్రతి కూలీ స్లిప్ వివరాలు, లోపలికి/బయటకు సమయాలతో.",
+  "e.g. trowel, bucket": "ఉదా. కర్ణి, బకెట్",
+  "Your changes are saved with your name. The earlier values stay in the record history.":
+    "మీ మార్పులు మీ పేరుతో సేవ్ అవుతాయి. పాత వివరాలు రికార్డ్ చరిత్రలో ఉంటాయి.",
+  "Kindly ensure that all tools belonging to laborers or contractors are recorded in the Security entry Register.":
+    "కూలీలు లేదా కాంట్రాక్టర్లకు చెందిన అన్ని పనిముట్లను సెక్యూరిటీ ఎంట్రీ రిజిస్టర్‌లో నమోదు చేశారని నిర్ధారించుకోండి.",
+  "Work / Location": "పని / ప్రదేశం",
+  "e.g. A Block 1st floor plastering": "ఉదా. A బ్లాక్ 1వ అంతస్తు ప్లాస్టరింగ్",
+  "Person Concerned & Designation": "సంబంధిత వ్యక్తి & హోదా",
+  "Estate Manager — signature photo": "ఎస్టేట్ మేనేజర్ — సంతకం ఫోటో",
+  "Security — signature photo": "సెక్యూరిటీ — సంతకం ఫోటో",
+  Coolies: "కూలీలు",
+  "Cooli Name": "కూలీ పేరు",
+  "Tools (Personal) Particulars": "పనిముట్లు (వ్యక్తిగత) వివరాలు",
+  "Saved coolies": "సేవ్ చేసిన కూలీలు",
+  "In since {time}": "{time} నుండి లోపల",
+
   // Gate scan messages
   "Cannot register entry with an EXIT pass. A separate Entry Request is required to enter campus.":
     "బయటకు వెళ్ళే పాస్‌తో లోపలికి నమోదు చేయలేరు. లోపలికి రావడానికి వేరే ఎంట్రీ అభ్యర్థన అవసరం.",
@@ -825,6 +873,19 @@ export const te: Record<string, string> = {
   "QR code has expired. Ask the pass holder to refresh their screen.": "QR కోడ్ గడువు ముగిసింది. పాస్ ఉన్నవారిని స్క్రీన్ రిఫ్రెష్ చేయమని చెప్పండి.",
   "Invalid or tampered QR code": "QR కోడ్ సరైనది కాదు లేదా మార్చబడింది",
   "Not a Gate Pass QR code": "ఇది గేట్ పాస్ QR కోడ్ కాదు",
+
+  // Attendance: 2-day edit window
+  "Tap a cell to mark. As Main Admin you can also correct older days. Day remarks can be written for today and yesterday.":
+    "గుర్తించడానికి గడిని నొక్కండి. మెయిన్ అడ్మిన్‌గా మీరు పాత రోజులను కూడా సరిచేయవచ్చు. రోజు వ్యాఖ్యలు ఈరోజు మరియు నిన్నటికి రాయవచ్చు.",
+  "Attendance and day remarks can be marked or changed for 2 days: today and yesterday. Older days are locked. Tap a date to see that day and its remarks.":
+    "హాజరు మరియు రోజు వ్యాఖ్యలను 2 రోజుల వరకు — ఈరోజు మరియు నిన్న — గుర్తించవచ్చు లేదా మార్చవచ్చు. పాత రోజులు లాక్ అయ్యాయి. ఆ రోజు వివరాల కోసం తేదీని నొక్కండి.",
+  "You can change a mark for 2 days (today and yesterday).": "గుర్తును 2 రోజుల వరకు (ఈరోజు మరియు నిన్న) మార్చవచ్చు.",
+  "This day is locked. Only the Main Admin can correct it.": "ఈ రోజు లాక్ అయింది. మెయిన్ అడ్మిన్ మాత్రమే సరిచేయగలరు.",
+  "Remarks can be written or changed for 2 days (today and yesterday). After that they are locked.":
+    "వ్యాఖ్యలను 2 రోజుల వరకు (ఈరోజు మరియు నిన్న) రాయవచ్చు లేదా మార్చవచ్చు. ఆ తర్వాత లాక్ అవుతాయి.",
+  "Remarks can be written only for today and yesterday. Older days are locked.": "వ్యాఖ్యలు ఈరోజు మరియు నిన్నటికి మాత్రమే రాయవచ్చు. పాత రోజులు లాక్ అయ్యాయి.",
+  "Only today and yesterday can be changed. Older days are locked; only the Main Admin can correct them.":
+    "ఈరోజు మరియు నిన్న మాత్రమే మార్చవచ్చు. పాత రోజులు లాక్ అయ్యాయి; మెయిన్ అడ్మిన్ మాత్రమే సరిచేయగలరు.",
 
   // Security attendance sheet
   "Monthly attendance of security staff, with remarks for each day.": "సెక్యూరిటీ సిబ్బంది నెలవారీ హాజరు, ప్రతి రోజు వ్యాఖ్యలతో.",
@@ -920,4 +981,15 @@ export const te: Record<string, string> = {
   "Photo too large. Please choose another picture.": "ఫోటో చాలా పెద్దది. వేరే ఫోటో ఎంచుకోండి.",
   "Invalid photo": "ఫోటో సరైనది కాదు",
   "Please sign in again.": "దయచేసి మళ్ళీ సైన్ ఇన్ చేయండి.",
+  // Status / remarks sections on register records
+  "Payment completed": "చెల్లింపు పూర్తయింది",
+  "Payment completed: Yes": "చెల్లింపు పూర్తయింది: అవును",
+  "Payment completed: No": "చెల్లింపు పూర్తయింది: కాదు",
+  "Remarks updated": "వ్యాఖ్యలు మార్చబడ్డాయి",
+  "Edited by Security": "సెక్యూరిటీ మార్చింది",
+  "Nothing added yet.": "ఇంకా ఏమీ జోడించలేదు.",
+  "Edit {field}": "{field} మార్చండి",
+  "Add {field}": "{field} జోడించండి",
+  "Unknown field": "తెలియని వివరం",
+  "This field cannot be changed": "దీనిని మార్చలేరు",
 };

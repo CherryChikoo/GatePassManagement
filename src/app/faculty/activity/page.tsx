@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/auth/helpers";
 import { prisma } from "@/lib/db/prisma";
 import { istDayRangeFromParam, parsePageParam } from "@/lib/time/ist";
 import { FacultyActivityClient } from "./client";
+import { getStaffScope, studentWhereForScope } from "@/lib/auth/scope";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -9,7 +10,7 @@ export const revalidate = 0;
 export default async function FacultyActivityPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; date?: string; q?: string; tab?: string }>;
+  searchParams: Promise<{ page?: string; date?: string; q?: string; tab?: string; view?: string }>;
 }) {
   const resolvedParams = await searchParams;
   const page = parsePageParam(resolvedParams.page);
@@ -17,6 +18,8 @@ export default async function FacultyActivityPage({
   // Search and the Entries / Exits tab are applied on the server, so they cover every page
   const q = typeof resolvedParams.q === "string" ? resolvedParams.q.trim().slice(0, 100) : "";
   const tab = resolvedParams.tab === "ENTRIES" || resolvedParams.tab === "EXITS" ? resolvedParams.tab : "ALL";
+  // Which list: the students' passes (default) or the faculty member's own
+  const view = resolvedParams.view === "mine" ? "mine" : "students";
 
   // IST calendar day; invalid ?date falls back to today
   const { start: startDate, end: dayEnd, dateStr } = istDayRangeFromParam(resolvedParams.date);
@@ -33,16 +36,22 @@ export default async function FacultyActivityPage({
     return <p className="mx-auto max-w-5xl py-12 text-center text-sm text-zinc-500">Faculty not found</p>;
   }
 
-  const dateCondition = {
-    OR: [
-      { createdAt: { gte: startDate, lte: endDate } },
-      { exitDate: { gte: startDate, lte: endDate } },
-    ],
-  };
+  // ?date=all: every date (newest first); otherwise the chosen IST day
+  const allDates = resolvedParams.date === "all";
+  const dateCondition = allDates
+    ? {}
+    : {
+        OR: [
+          { createdAt: { gte: startDate, lte: endDate } },
+          { exitDate: { gte: startDate, lte: endDate } },
+        ],
+      };
 
+  // Same rule as "My Students": only the students assigned to this faculty member
+  const scopeWhere = studentWhereForScope(await getStaffScope(user)) ?? { facultyId: faculty.id };
   const studentsWhere = {
     AND: [
-      { student: { facultyId: faculty.id } },
+      { student: scopeWhere },
       dateCondition,
       ...(tab === "ENTRIES" ? [{ type: "ENTRY" as const }] : tab === "EXITS" ? [{ type: "EXIT" as const }] : []),
       ...(q
@@ -58,8 +67,26 @@ export default async function FacultyActivityPage({
     ],
   };
 
-  const [permissions, total, ownPasses] = await Promise.all([
-    prisma.permission.findMany({
+  const typeFilter = tab === "ENTRIES" ? [{ type: "ENTRY" as const }] : tab === "EXITS" ? [{ type: "EXIT" as const }] : [];
+  const mineWhere = {
+    AND: [
+      { facultyId: faculty.id },
+      dateCondition,
+      ...typeFilter,
+      ...(q
+        ? [{
+            OR: [
+              { purpose: { contains: q, mode: "insensitive" as const } },
+              { destination: { contains: q, mode: "insensitive" as const } },
+            ],
+          }]
+        : []),
+    ],
+  };
+
+  // Only the open tab's list is loaded; the other tab just gets its count
+  const [permissions, studentsTotal, ownPasses, mineTotal] = await Promise.all([
+    view !== "students" ? Promise.resolve([]) : prisma.permission.findMany({
       where: studentsWhere,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
@@ -74,11 +101,12 @@ export default async function FacultyActivityPage({
       },
     }),
     prisma.permission.count({ where: studentsWhere }),
-    // The faculty member's own passes on this date (My Passes shows only today)
-    prisma.permission.findMany({
-      where: { facultyId: faculty.id, ...dateCondition },
+    // The faculty member's own passes on this date, paged like the students' list
+    view !== "mine" ? Promise.resolve([]) : prisma.permission.findMany({
+      where: mineWhere,
       orderBy: { createdAt: "desc" },
-      take: 50,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
       select: {
         id: true, type: true, purpose: true, destination: true, status: true, createdAt: true, exitDate: true,
         expectedExit: true, approvedAt: true, rejectedAt: true, rejectionReason: true,
@@ -89,6 +117,7 @@ export default async function FacultyActivityPage({
         },
       },
     }),
+    prisma.permission.count({ where: mineWhere }),
   ]);
 
   return (
@@ -96,10 +125,14 @@ export default async function FacultyActivityPage({
       user={user}
       permissions={permissions}
       ownPasses={ownPasses}
-      total={total}
+      total={view === "mine" ? mineTotal : studentsTotal}
+      studentsTotal={studentsTotal}
+      mineTotal={mineTotal}
+      view={view}
       currentPage={page}
       pageSize={pageSize}
       selectedDate={dateStr}
+      allDates={allDates}
       search={q}
       tab={tab}
     />

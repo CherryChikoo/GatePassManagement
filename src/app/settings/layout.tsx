@@ -5,6 +5,7 @@ import { DashboardLayout } from "@/components/dashboard/layout";
 import { StudentShell } from "@/components/dashboard/student-shell";
 import { logoutAction } from "@/server/actions/auth";
 import { LanguageProvider } from "@/components/providers/language-provider";
+import { SecurityText } from "@/components/providers/security-text";
 import { LANG_COOKIE, normalizeLang } from "@/lib/i18n";
 
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
@@ -28,8 +29,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
     );
   }
 
-  return (
-    <LanguageProvider initialLang={lang}>
+  const page = (
     <DashboardLayout
       defaultCollapsed={isCollapsed}
       role={user.role}
@@ -41,6 +41,11 @@ export default async function SettingsLayout({ children }: { children: React.Rea
     >
       {children}
     </DashboardLayout>
+  );
+  // Security: larger text, like their other screens
+  return (
+    <LanguageProvider initialLang={lang}>
+      {user.role === "SECURITY" ? <SecurityText>{page}</SecurityText> : page}
     </LanguageProvider>
   );
 }

@@ -3,24 +3,27 @@ import { getRegisterPhotoUrl } from "@/lib/storage/image-upload";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { useT } from "@/components/providers/language-provider";
 
-import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, ChevronRight, Eye, FilePlus2, FileText, History, Loader2, LogIn, LogOut, PencilLine, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CheckCircle2, ChevronRight, Clock, Eye, FilePlus2, FileText, History, Loader2, LogIn, LogOut, PencilLine, Trash2, XCircle } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Modal } from "@/components/ui/primitives";
 import { Card } from "@/components/ui/card";
 import { dt, IconAction, RowActions } from "@/components/ui/data-table";
 import { PagerBar } from "@/components/ui/pager-bar";
-import { cn } from "@/lib/utils";
-import type { EntryRegister } from "@/lib/registers/definitions";
-import { pendingActions } from "@/lib/registers/definitions";
+import { cn, withTimeout } from "@/lib/utils";
+import type { EntryRegister, FieldDef } from "@/lib/registers/definitions";
+import { isSirosLabour, pendingActions, updatableFields, yesNoWords } from "@/lib/registers/definitions";
 import {
   adminDeleteRegisterEntry,
   adminUpdateRegisterEntry,
+  securityEditRegisterEntry,
   completeRegisterEntry,
   createRegisterEntry,
   getRegisterStaffOptions,
-  listRegisterEntries,
+  updateRegisterField,
 } from "@/server/actions/registers";
+import { fetchEntryList, invalidateEntryLists, markEntryListsStale, peekEntryList } from "./entry-list-cache";
+import { useLiveTopics } from "@/lib/realtime/live";
 import { actionErrorMessage } from "@/lib/deployment";
 import { AdminEditForm, CloseRecordForm, MovementForm, RegisterForm, type StaffOption } from "./register-form";
 import { formatFieldValue, formatInstant, newClientToken } from "./format";
@@ -68,11 +71,14 @@ export function EntryRegisterView({
   def,
   canCreate,
   canAdminEdit = false,
+  canEdit = false,
 }: {
   def: EntryRegister;
   canCreate: boolean;
   /** Main Admin: edit and delete saved records */
   canAdminEdit?: boolean;
+  /** Security on registers they may edit (e.g. Cooli Book): edit, saved as a correction */
+  canEdit?: boolean;
 }) {
   const t = useT();
   const filters = useRegisterFilters();
@@ -95,18 +101,48 @@ export function EntryRegisterView({
   // Registers with a Shift choice (Security Daily Book, Attendance) get shift chips
   const shiftField = def.fields.find((f) => f.key === "shift" && f.type === "select");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res: any = await listRegisterEntries({ register: def.key, date: filters.dateParam, q: filters.q, page: filters.page, shift: filters.shift });
-      if (res.error) setError(res.error);
-      else setData({ entries: res.entries, total: res.total, pageSize: res.pageSize });
-    } catch (err) {
-      setError(actionErrorMessage(err, t("Could not load the register.")));
+  // Only the newest load may update the list or clear the loading state
+  const loadNo = useRef(0);
+  /**
+   * fresh: the register just changed here — skip the cached copy.
+   * silent: changed elsewhere (live update) — keep the list on screen, no
+   * loading state, and swap in the new list when it arrives.
+   */
+  const load = useCallback(async (fresh = false, silent = false) => {
+    const no = ++loadNo.current;
+    const params = { register: def.key, date: filters.dateParam, q: filters.q, page: filters.page, shift: filters.shift };
+    if (fresh) invalidateEntryLists(def.key);
+    // A list seen before shows at once; the fresh copy replaces it quietly
+    const cached = fresh || silent ? null : peekEntryList(params);
+    if (cached) setData(cached);
+    if (!silent) {
+      setLoading(!cached);
+      setError(null);
     }
-    setLoading(false);
+    try {
+      const res = await withTimeout(fetchEntryList(params, fresh || silent ? 0 : 10_000));
+      if (no !== loadNo.current) return;
+      setData(res);
+      if (silent) setError(null);
+      return res.entries as Entry[];
+    } catch (err) {
+      if (no === loadNo.current && !silent) setError(actionErrorMessage(err, t("Could not load the register.")));
+    } finally {
+      if (no === loadNo.current) setLoading(false);
+    }
   }, [def.key, filters.dateParam, filters.q, filters.page, filters.shift, t]);
+
+  // Live: another guard (or the admin) changed a register
+  useLiveTopics(["reg:"], (changed) => {
+    const all = changed.includes("*");
+    const regs = changed.filter((c) => c.startsWith("reg:")).map((c) => c.slice(4));
+    markEntryListsStale(all ? "*" : regs);
+    if (!all && !regs.includes(def.key)) return;
+    load(false, true).then((entries) => {
+      // An open record shows its newest state (e.g. Out just recorded at another gate)
+      if (entries) setSelected((cur) => (cur ? entries.find((e) => e.id === cur.id) ?? cur : cur));
+    });
+  });
 
   useEffect(() => {
     load();
@@ -137,7 +173,12 @@ export function EntryRegisterView({
         setTimeout(() => setNotice(null), 4000);
         setMode(null);
         setSelected(null);
-        await load();
+        const entries = await load(true);
+        // Registers with a list (e.g. coolies): show the saved record and its list
+        if (res?.id && def.groups?.length) {
+          const saved = entries?.find((e) => e.id === res.id);
+          if (saved) setSelected(saved);
+        }
       }
     } catch (err) {
       setFormError(actionErrorMessage(err, t("Could not save. Please try again.")));
@@ -165,15 +206,40 @@ export function EntryRegisterView({
       } else {
         setNotice(t("{side} recorded.", { side: next.label }));
         setTimeout(() => setNotice(null), 4000);
-        await load();
+        await load(true);
       }
     } catch (err) {
       setError(actionErrorMessage(err, t("Could not save. Please try again.")));
     }
     setQuickId(null);
   }
+  // Lists with people still in (e.g. coolies): "Mark out" opens the tick-list
+  const hasQuick = (e: Entry) => {
+    if (!canCreate) return false;
+    const p = pendingActions(def, e.current);
+    return !!p.next || p.groups.length > 0;
+  };
   const quickButton = (e: Entry, size: "lg" | "sm") => {
-    const next = canCreate ? pendingActions(def, e.current).next : null;
+    const pend = canCreate ? pendingActions(def, e.current) : null;
+    const next = pend?.next ?? null;
+    if (!next && pend?.groups.length) {
+      return (
+        <button
+          type="button"
+          onClick={(ev) => {
+            ev.stopPropagation();
+            openMode("record", e);
+          }}
+          className={cn(
+            "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full bg-sky-600 font-semibold text-white transition-[background-color,transform] hover:bg-sky-700 active:scale-[0.97]",
+            size === "lg" ? "h-11 px-4 text-sm" : "h-8 px-3 text-xs"
+          )}
+        >
+          <LogOut className="h-4 w-4" />
+          <span className="whitespace-nowrap">{t("Mark out")}</span>
+        </button>
+      );
+    }
     if (!next) return null;
     const Icon = next.direction === "OUT" ? LogOut : LogIn;
     const saving = quickId === e.id;
@@ -199,6 +265,29 @@ export function EntryRegisterView({
   };
 
   const columns = def.listFields.map((k) => def.fields.find((f) => f.key === k)).filter((f): f is NonNullable<typeof f> => !!f);
+  // Yes / No statuses (e.g. Payment completed): their own column in the list
+  const statusCols = updatableFields(def).filter((f) => f.type === "yesno" && !def.listFields.includes(f.key));
+  // Security (on registers they record in) and Main Admin change status / remarks from the record
+  const canUpdate = canCreate || canAdminEdit;
+
+  /** Saves one status / remarks change; returns an error message, or null when saved. */
+  async function updateField(key: string, value: unknown): Promise<string | null> {
+    const entry = selected;
+    if (!entry) return null;
+    try {
+      const res: any = await updateRegisterField(entry.id, key, value, newClientToken());
+      if (res?.error) return t(res.error);
+      // Show the change at once; the reload adds the history line
+      const shown = typeof value === "string" ? value.trim() || null : value;
+      setSelected((cur) => (cur && cur.id === entry.id ? { ...cur, current: { ...cur.current, [key]: shown } } : cur));
+      const entries = await load(true);
+      const fresh = entries?.find((x) => x.id === entry.id);
+      if (fresh) setSelected((cur) => (cur && cur.id === fresh.id ? fresh : cur));
+      return null;
+    } catch (err) {
+      return actionErrorMessage(err, t("Could not save. Please try again."));
+    }
+  }
 
   const hasStarted = !!def.movement && !def.movement.single;
   const directionChip = (dir: unknown) =>
@@ -269,7 +358,14 @@ export function EntryRegisterView({
           <CheckCircle2 className="h-4 w-4 shrink-0" /> {notice}
         </div>
       )}
-      {error && <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>}
+      {error && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <span>{t(error)}</span>
+          <button type="button" onClick={() => load(true)} className="h-10 rounded-full bg-red-500/10 px-4 text-sm font-semibold text-red-500 hover:bg-red-500/20">
+            {t("Try again")}
+          </button>
+        </div>
+      )}
 
       <LoadingPill active={loading} />
       <Card className={cn("overflow-hidden transition-opacity", loading && "opacity-60")}>
@@ -299,17 +395,20 @@ export function EntryRegisterView({
                       </span>
                       {meta && <span className="mt-0.5 block truncate text-sm text-zinc-400">{meta}</span>}
                       <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-500">
+                        {statusCols.map((c) => (
+                          <StatusChip key={c.key} field={c} withLabel value={e.current[c.key]} />
+                        ))}
                         {hasStarted && directionChip(e.current.direction)}
                         <span className="tabular-nums">{formatFieldValue({ key: "d", label: "", type: "date" }, e.entryDate)}</span>
                         <span aria-hidden="true">·</span>
                         <span className="truncate">{e.recordedByName}</span>
                       </span>
                     </span>
-                    {!(canCreate && pendingActions(def, e.current).next) && (
+                    {!hasQuick(e) && (
                       <ChevronRight className="h-5 w-5 shrink-0 text-zinc-600" aria-hidden="true" />
                     )}
                   </button>
-                  {canCreate && pendingActions(def, e.current).next && <span className="pr-4">{quickButton(e, "lg")}</span>}
+                  {hasQuick(e) && <span className="pr-4">{quickButton(e, "lg")}</span>}
                 </li>
               );
             })}
@@ -325,6 +424,9 @@ export function EntryRegisterView({
                   <th className={dt.th}>{t("Date")}</th>
                   {hasStarted && <th className={dt.th}>{t("Started")}</th>}
                   {columns.map((c) => (
+                    <th key={c.key} className={dt.th}>{c.label}</th>
+                  ))}
+                  {statusCols.map((c) => (
                     <th key={c.key} className={dt.th}>{c.label}</th>
                   ))}
                   <th className={dt.th}>{t("Recorded by")}</th>
@@ -348,6 +450,11 @@ export function EntryRegisterView({
                       {columns.map((c, i) => (
                         <td key={c.key} className={cn(dt.td, "whitespace-nowrap max-w-[220px] truncate", i === 0 ? "font-medium text-zinc-100" : "text-zinc-400")}>
                           {displayValue(c, e.current[c.key], t)}
+                        </td>
+                      ))}
+                      {statusCols.map((c) => (
+                        <td key={c.key} className={cn(dt.td, "whitespace-nowrap")}>
+                          <StatusChip field={c} value={e.current[c.key]} />
                         </td>
                       ))}
                       <td className={cn(dt.tdMuted, "whitespace-nowrap")}>{e.recordedByName}</td>
@@ -386,8 +493,9 @@ export function EntryRegisterView({
             entry={selected}
             onRecord={canCreate && pendingActions(def, selected.current).any ? () => openMode("record") : undefined}
             onCloseRecord={canCreate && pendingActions(def, selected.current).next ? () => openMode("close") : undefined}
-            onEdit={canAdminEdit ? () => openMode("edit") : undefined}
+            onEdit={canAdminEdit || canEdit ? () => openMode("edit") : undefined}
             onDelete={canAdminEdit ? () => setConfirmDelete(true) : undefined}
+            onUpdateField={canUpdate ? updateField : undefined}
           />
         )}
       </Modal>
@@ -423,11 +531,17 @@ export function EntryRegisterView({
         {mode === "edit" && selected && (
           <AdminEditForm
             key={formKey}
+            keepsHistory={!canAdminEdit}
             def={def}
             current={selected.current}
             staff={staff}
             busy={busy}
-            onSubmit={(payload) => run(() => adminUpdateRegisterEntry(selected.id, payload), "Record updated.")}
+            onSubmit={(payload) =>
+              run(
+                () => (canAdminEdit ? adminUpdateRegisterEntry(selected.id, payload) : securityEditRegisterEntry(selected.id, payload, token)),
+                t("Record updated.")
+              )
+            }
           />
         )}
         {mode === "close" && selected && (
@@ -517,7 +631,8 @@ function ValuesGrid({ def, values }: { def: EntryRegister; values: Record<string
             <dd className="mt-0.5 text-sm text-zinc-200">{x.value}</dd>
           </div>
         ))}
-        {def.fields.map((f) => (
+        {/* Status / remarks have their own sections below */}
+        {def.fields.filter((f) => !f.updatable).map((f) => (
           <div key={f.key} className={`min-w-0 ${f.type === "textarea" || f.type === "photo" ? "sm:col-span-2" : ""}`}>
             <dt className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{f.label}</dt>
             <dd className="mt-0.5 text-sm text-zinc-200 break-words">
@@ -528,7 +643,7 @@ function ValuesGrid({ def, values }: { def: EntryRegister; values: Record<string
       </dl>
       {(def.groups ?? []).map((g) => {
         const rows = Array.isArray(values[g.key]) ? (values[g.key] as Record<string, any>[]) : [];
-        const total = def.key === "SIROS_LABOUR_CONTRACT" && typeof values.totalWorkers === "number" ? values.totalWorkers : null;
+        const total = isSirosLabour(def.key) && typeof values.totalWorkers === "number" ? values.totalWorkers : null;
         return (
           <div key={g.key}>
             <p className="text-sm font-medium text-zinc-100 mb-2">
@@ -570,6 +685,161 @@ function ValuesGrid({ def, values }: { def: EntryRegister; values: Record<string
   );
 }
 
+/** "Yes" (green) / "No" (amber) chip — in the status's own words — for a Yes / No status; not set counts as No. */
+function StatusChip({ field, value, withLabel = false }: { field: FieldDef; value: unknown; withLabel?: boolean }) {
+  const t = useT();
+  const yes = value === true;
+  const [yesWord, noWord] = yesNoWords(field);
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap",
+        yes ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"
+      )}
+    >
+      {yes ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+      {withLabel ? `${field.label}: ` : ""}
+      {yes ? t(yesWord) : t(noWord)}
+    </span>
+  );
+}
+
+/** A status (Yes / No buttons) or remarks (text with Add / Edit) section on a saved record. */
+function UpdatableSection({
+  field,
+  value,
+  onSave,
+}: {
+  field: FieldDef;
+  value: unknown;
+  onSave?: (value: unknown) => Promise<string | null>;
+}) {
+  const t = useT();
+  const [saving, setSaving] = useState<unknown>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState("");
+  const busy = saving !== undefined;
+
+  async function save(v: unknown) {
+    if (!onSave || busy) return;
+    setSaving(v);
+    setError(null);
+    const err = await onSave(v);
+    setSaving(undefined);
+    if (err) setError(err);
+    else setEditing(false);
+  }
+
+  const yes = value === true;
+  const shown = typeof value === "string" ? value.trim() : "";
+  return (
+    <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">{field.label}</h3>
+        {field.type === "yesno" && <StatusChip field={field} value={value} />}
+      </div>
+
+      {field.type === "yesno" ? (
+        onSave && (
+          <div role="radiogroup" aria-label={field.label} className="grid grid-cols-2 gap-2">
+            {[true, false].map((opt) => {
+              const active = yes === opt;
+              return (
+                <button
+                  key={String(opt)}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  disabled={busy}
+                  onClick={() => !active && save(opt)}
+                  className={cn(
+                    "inline-flex h-12 items-center justify-center gap-2 rounded-full border text-base font-semibold transition-[background-color,transform] active:scale-[0.98] disabled:opacity-70",
+                    active
+                      ? opt
+                        ? "border-emerald-600 bg-emerald-600 text-white"
+                        : "border-amber-500 bg-amber-500 text-white"
+                      : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+                  )}
+                >
+                  {saving === opt ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : opt ? (
+                    <CheckCircle2 className="h-5 w-5" />
+                  ) : (
+                    <XCircle className="h-5 w-5" />
+                  )}
+                  {t(yesNoWords(field)[opt ? 0 : 1])}
+                </button>
+              );
+            })}
+          </div>
+        )
+      ) : editing ? (
+        <form
+          className="space-y-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save(text);
+          }}
+        >
+          <textarea
+            value={text}
+            maxLength={field.type === "textarea" ? 1000 : 200}
+            rows={3}
+            autoFocus
+            aria-label={field.label}
+            onChange={(e) => setText(e.target.value)}
+            className="flex min-h-[96px] w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
+          />
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setEditing(false);
+                setError(null);
+              }}
+              className="h-12 sm:h-11 rounded-full border border-zinc-800 bg-zinc-900 px-5 text-sm font-medium text-zinc-200 hover:bg-zinc-950 disabled:opacity-60"
+            >
+              {t("Cancel")}
+            </button>
+            <button
+              type="submit"
+              disabled={busy}
+              className="inline-flex h-12 sm:h-11 items-center justify-center gap-2 rounded-full bg-orange-600 px-6 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              {busy ? t("Saving…") : t("Save")}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <p className={cn("whitespace-pre-wrap break-words text-sm", shown ? "text-zinc-200" : "text-zinc-500")}>
+            {shown || t("Nothing added yet.")}
+          </p>
+          {onSave && (
+            <button
+              type="button"
+              onClick={() => {
+                setText(shown);
+                setError(null);
+                setEditing(true);
+              }}
+              className="inline-flex w-full sm:w-auto h-12 sm:h-11 items-center justify-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-5 text-sm font-medium text-zinc-200 hover:bg-zinc-950 hover:border-zinc-700 transition-colors"
+            >
+              <PencilLine className="h-4 w-4 text-orange-400" />
+              {shown ? t("Edit {field}", { field: field.label }) : t("Add {field}", { field: field.label })}
+            </button>
+          )}
+        </>
+      )}
+      {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+    </section>
+  );
+}
+
 function EntryDetails({
   def,
   entry,
@@ -577,6 +847,7 @@ function EntryDetails({
   onCloseRecord,
   onEdit,
   onDelete,
+  onUpdateField,
 }: {
   def: EntryRegister;
   entry: Entry;
@@ -585,6 +856,8 @@ function EntryDetails({
   onCloseRecord?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  /** Change a status / remarks section (returns an error message, or null) */
+  onUpdateField?: (key: string, value: unknown) => Promise<string | null>;
 }) {
   const t = useT();
   const label = nextActionLabel(def, entry.current, t);
@@ -609,6 +882,15 @@ function EntryDetails({
       )}
       <ValuesGrid def={def} values={entry.current} />
 
+      {updatableFields(def).map((f) => (
+        <UpdatableSection
+          key={f.key}
+          field={f}
+          value={entry.current[f.key]}
+          onSave={onUpdateField ? (v) => onUpdateField(f.key, v) : undefined}
+        />
+      ))}
+
       <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-2.5">
         <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 flex items-center gap-1.5"><History className="h-3.5 w-3.5" /> {t("Record history")}</p>
         <ul className="space-y-2 text-sm text-zinc-300">
@@ -618,7 +900,7 @@ function EntryDetails({
           {entry.supplements.map((s) => (
             <li key={s.id}>
               <span className="text-zinc-500">{formatInstant(s.createdAt)}</span> — {s.kind === "CORRECTION" ? t("Correction by") : s.data?.oneWay === true ? t("Closed by") : t("Updated by")} {recorderLine(s, t)}
-              {s.reason && <span className="block text-zinc-400 pl-3">{t("Reason")}: {s.reason}</span>}
+              {s.reason && <span className="block text-zinc-400 pl-3">{t("Reason")}: {t(s.reason)}</span>}
             </li>
           ))}
         </ul>

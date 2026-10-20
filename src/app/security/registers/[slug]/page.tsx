@@ -8,8 +8,7 @@ export default async function RegisterDetailPage({ params }: { params: Promise<{
   const user = await requireRole("SECURITY");
   const { slug } = await params;
   // Built-in or portal-created register
-  const def = await getRegisterBySlug(slug);
-  const access = await getRegisterAccess(user);
+  const [def, access] = await Promise.all([getRegisterBySlug(slug), getRegisterAccess(user)]);
   if (!def || !access.canView(def.key)) notFound();
   return <RegisterPage registerKey={def.key} register={def} viewer="SECURITY" canCreate={access.canCreate(def.key)} />;
 }

@@ -1,6 +1,8 @@
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+  // relationJoins: related rows come back in ONE query (joins) instead of a
+  // chain of queries, one per relation
+  previewFeatures = ["fullTextSearch", "fullTextIndex", "relationJoins"]
   // native = local dev; rhel-openssl-3.0.x = Vercel (Amazon Linux 2023). Only ship what is used.
   binaryTargets   = ["native", "rhel-openssl-3.0.x"]
 }

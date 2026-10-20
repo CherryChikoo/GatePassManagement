@@ -1,4 +1,4 @@
-import type { FieldDef } from "@/lib/registers/definitions";
+import { yesNoWords, type FieldDef } from "@/lib/registers/definitions";
 import { formatDate, formatDateTime } from "@/lib/utils";
 
 /** "14:05" → "2:05 PM" */
@@ -17,7 +17,7 @@ export function formatFieldValue(f: FieldDef, v: unknown): string {
     case "time":
       return typeof v === "string" ? formatClock(v) : "—";
     case "yesno":
-      return v === true ? "Yes" : v === false ? "No" : "—";
+      return v === true ? yesNoWords(f)[0] : v === false ? yesNoWords(f)[1] : "—";
     case "photo":
       return "Photo";
     case "staff": {

@@ -7,11 +7,11 @@
  * Rules
  * - Head Security (and the Main Admin) take attendance; the Security
  *   Supervisor and Main Admin can view; other Security accounts can't see it.
- * - Head Security marks only today's column, and a saved mark is final.
- *   Past days and saved marks can be corrected only by the Main Admin.
- *   Future days can't be marked.
- * - A day's remarks can be written / changed only on that day, by anyone who
- *   takes attendance. After the day they are read-only for everyone.
+ * - Head Security marks and changes attendance for 2 days: today and
+ *   yesterday. Older days are locked (only the Main Admin can correct
+ *   them). Future days can't be marked.
+ * - A day's remarks can be written / changed for the same 2 days, by anyone
+ *   who takes attendance. After that they are read-only for everyone.
  * - Nothing is overwritten: a change is saved as a correction on the day's
  *   record, so the history of who marked what stays.
  *
@@ -20,6 +20,7 @@
  */
 
 import { randomUUID } from "crypto";
+import { notifyLive } from "@/lib/realtime/notify";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole, type AuthUser } from "@/lib/auth/helpers";
@@ -74,10 +75,18 @@ async function access() {
 // registers pages on the server after every tap would only slow marking down.
 
 /** Can this user change marks on `date`? (today only; past days for the Main Admin) */
+/** First day Head Security may still change: yesterday (a 2-day window) */
+function editableFrom(): string {
+  return istDateString(new Date(Date.now() - DAY_MS));
+}
+
+/** Can this user change marks on `date`? (today and yesterday; any past day for the Main Admin) */
 function markableDay(user: AuthUser, date: string): string | null {
   const today = istDateString();
   if (date > today) return "Future days can't be marked";
-  if (date < today && user.role !== "ADMIN") return "Past days are locked. Only the Main Admin can correct them.";
+  if (date < editableFrom() && user.role !== "ADMIN") {
+    return "Only today and yesterday can be changed. Older days are locked; only the Main Admin can correct them.";
+  }
   return null;
 }
 
@@ -180,6 +189,8 @@ export async function getAttendanceMonth(month?: string) {
     month: `${m[1]}-${m[2]}`,
     daysInMonth,
     today,
+    /** Head Security can change marks and remarks from this day (yesterday) */
+    editableFrom: editableFrom(),
     rows,
     cells,
     remarks: dayRemarks,
@@ -234,12 +245,6 @@ export async function setAttendanceMark(staffId: string, date: string, status: s
   const def = attendanceDef();
   const saved = { mark: status, by: user.name, at: new Date().toISOString() };
 
-  // A mark is final once saved: only the Main Admin can correct it
-  const FINAL = "Attendance is already marked and can't be changed. Only the Main Admin can correct it.";
-  if (existing && user.role !== "ADMIN") {
-    const cur = effectiveData(def, existing.data as RegisterData, existing.supplements).attendanceStatus;
-    if (cur) return { error: FINAL };
-  }
 
   const addCorrection = async (entry: NonNullable<Awaited<ReturnType<typeof findExisting>>>) => {
     const current = effectiveData(def, entry.data as RegisterData, entry.supplements);
@@ -253,7 +258,7 @@ export async function setAttendanceMark(staffId: string, date: string, status: s
         entryDate: dayStart,
         data: data as Prisma.InputJsonValue,
         searchText: buildSearchText(def, data),
-        reason: date === istDateString() ? "Changed on the day" : "Corrected by the Main Admin",
+        reason: date >= editableFrom() ? "Changed within 2 days" : "Corrected by the Main Admin",
         clientToken: randomUUID(),
         ...who,
       },
@@ -263,9 +268,13 @@ export async function setAttendanceMark(staffId: string, date: string, status: s
   try {
     if (existing) {
       await addCorrection(existing);
+      notifyLive("attendance");
       return { success: true, cell: saved };
     }
-    if (status === null) return { success: true, cell: saved };
+    if (status === null) {
+      notifyLive("attendance");
+      return { success: true, cell: saved };
+    }
     const data: RegisterData = {
       date,
       staff: { id: staff.id, name: staff.profile.name, employeeId: staff.employeeId },
@@ -286,11 +295,11 @@ export async function setAttendanceMark(staffId: string, date: string, status: s
       });
     } catch (err: any) {
       if (err?.code !== "P2002") throw err;
-      // Someone marked this person a moment ago
-      if (user.role !== "ADMIN") return { error: FINAL };
+      // Someone marked this person a moment ago: record this as a change
       const now = await findExisting();
       if (now) await addCorrection(now);
     }
+    notifyLive("attendance");
     return { success: true, cell: saved };
   } catch (err: any) {
     console.error("[setAttendanceMark] failed:", err?.message);
@@ -338,6 +347,7 @@ export async function markAllPresent(date: string) {
     }),
     skipDuplicates: true,
   });
+  notifyLive("attendance");
   return { success: true, marked: todo.length };
 }
 
@@ -345,10 +355,14 @@ export async function markAllPresent(date: string) {
 
 /** Remarks for a day: written or changed only on that day; read-only afterwards. */
 export async function saveAttendanceRemark(date: string, remarks: string) {
-  const { canMark, who } = await access();
+  const { user, canMark, who } = await access();
   if (!canMark) return { error: "Only Head Security or the Main Admin can write remarks" };
   if (typeof date !== "string" || !DATE_RE.test(date)) return { error: "Choose a valid date" };
-  if (date !== istDateString()) return { error: "Remarks can only be written on the day. Past days are locked." };
+  if (date > istDateString()) return { error: "Future days can't be marked" };
+  // Head Security: today and yesterday. The Main Admin: any day.
+  if (date < editableFrom() && user.role !== "ADMIN") {
+    return { error: "Remarks can be written only for today and yesterday. Older days are locked." };
+  }
   const text = typeof remarks === "string" ? remarks.trim().slice(0, 1000) : "";
 
   const dayStart = istDateToInstant(date);
@@ -373,6 +387,7 @@ export async function saveAttendanceRemark(date: string, remarks: string) {
       });
     }
   });
+  notifyLive("attendance");
   return { success: true };
 }
 
@@ -398,5 +413,6 @@ export async function setStaffRank(staffId: string, rank: string) {
       ...who,
     },
   });
+  notifyLive("attendance");
   return { success: true };
 }

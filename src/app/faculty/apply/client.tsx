@@ -1,5 +1,6 @@
 "use client";
 
+import { usePassWatch } from "@/hooks/use-pass-watch";
 import { DateField } from "@/components/ui/date-field";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -148,16 +149,17 @@ export function FacultyApplyClient() {
   const [selectedQrPass, setSelectedQrPass] = useState<any | null>(null);
   const [qrImage, setQrImage] = useState<string | null>(null);
 
-  // Auto-poll when there is a pending pass
-  const hasPending = (myPasses || []).some((p: any) => p.status === "PENDING");
-  useEffect(() => {
-    if (!hasPending) return;
-    // Every 15 s while the screen is visible (returning to the tab refreshes at once)
-    const interval = setInterval(() => {
-      if (document.visibilityState === "visible") useAppStore.getState().refresh();
-    }, 15_000);
-    return () => clearInterval(interval);
-  }, [hasPending]);
+  // Waiting for approval: reloads the moment the pass is approved or rejected
+  // (live ping, or a tiny status check every 4 s while there is no live connection)
+  const firstPendingId: string | null = (myPasses || []).find((p: any) => p.status === "PENDING")?.id ?? null;
+  const hasPending = !!firstPendingId;
+  usePassWatch(firstPendingId, hasPending, () => useAppStore.getState().refresh(true), 4000);
+
+  // QR shown: the moment the gate scans it, close the QR and show the updated pass
+  usePassWatch(selectedQrPass?.id ?? null, !!selectedQrPass, () => {
+    setSelectedQrPass(null);
+    useAppStore.getState().refresh(true);
+  });
 
   // Rotating QR while the modal is open: a fresh 60-second signed token every 45 seconds
   const [qrError, setQrError] = useState<string | null>(null);

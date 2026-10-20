@@ -1,7 +1,8 @@
 "use client";
 
 import { lockPageScroll } from "@/lib/ui/scroll-lock";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { useKeepHeightOnFilter } from "@/lib/ui/keep-height";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -108,6 +109,10 @@ export function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [desktopCollapsed, setDesktopCollapsed] = useState(defaultCollapsed);
   const pathname = usePathname();
+  // Changing a filter never makes the page jump up or down
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useKeepHeightOnFilter(scrollRef, contentRef, pathname);
 
   // Clear all cached client data before ending the server session
   const [signingOut, setSigningOut] = useState(false);
@@ -182,11 +187,11 @@ export function DashboardLayout({
     });
 
   return (
-    <div className="flex h-screen bg-zinc-950 overflow-hidden">
+    <div className="flex h-[100dvh] bg-zinc-950 overflow-hidden">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[2px] lg:hidden animate-fade-in"
+          className="fixed inset-0 z-40 bg-black/30 lg:hidden animate-fade-in"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -213,7 +218,7 @@ export function DashboardLayout({
             </button>
           </div>
 
-          <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-1" aria-label="Main">
+          <nav className="scrollbar-none flex-1 overflow-y-auto px-3 py-2 space-y-1" aria-label="Main">
             {navItems.map((item) => {
               const isActive = isActivePath(item.href);
               return (
@@ -297,7 +302,18 @@ export function DashboardLayout({
       )}
 
       {/* Main */}
-      <main className={cn("flex-1 flex flex-col min-w-0 max-w-full overflow-hidden relative", role === "SECURITY" ? "pb-28" : isMobileNavRole ? "pb-24 lg:pb-0" : "")}>
+      {/* Room for the floating bottom bar (Security: plus the raised Scan button)
+          and the phone's gesture area, so page controls and cards are never under it */}
+      <main
+        className={cn(
+          "flex-1 flex flex-col min-w-0 max-w-full overflow-hidden relative",
+          role === "SECURITY"
+            ? "pb-[calc(8.5rem+env(safe-area-inset-bottom))]"
+            : isMobileNavRole
+            ? "pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-0"
+            : ""
+        )}
+      >
         {/* Top bar: glass */}
         <header className="sticky top-0 z-30 mx-3 mt-3 sm:mx-4 lg:mx-6 flex items-center gap-3 rounded-[22px] glass shadow-card px-3 sm:px-4 py-2.5 shrink-0">
           {hasSidebar ? (
@@ -374,9 +390,11 @@ export function DashboardLayout({
         </header>
 
         {/* Page content */}
-        <div className="flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden px-3 pt-5 pb-6 sm:px-4 lg:px-6 lg:pt-6 lg:pb-8">
-          <PasswordChangedNotice />
-          {children}
+        <div ref={scrollRef} className="scrollbar-none flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden px-3 pt-5 pb-6 sm:px-4 lg:px-6 lg:pt-6 lg:pb-8">
+          <div ref={contentRef}>
+            <PasswordChangedNotice />
+            {children}
+          </div>
         </div>
 
         {/* Pagination bars (PagerBar) dock here: always at the bottom of the screen */}
@@ -404,7 +422,7 @@ export function DashboardLayout({
                 href={item.href}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "relative flex flex-col items-center justify-center w-full h-full gap-0.5 transition-colors",
+                  "relative flex min-w-0 flex-col items-center justify-center w-full h-full gap-0.5 px-0.5 transition-colors",
                   isActive ? "text-orange-400" : "text-zinc-500 hover:text-zinc-300"
                 )}
               >
@@ -416,7 +434,7 @@ export function DashboardLayout({
                 >
                   {item.icon}
                 </span>
-                <span className="text-[10px] font-medium tracking-tight truncate max-w-[64px] text-center">{t(item.label)}</span>
+                <span className="nav-label text-[10px] font-medium tracking-tight truncate max-w-full text-center">{t(item.label)}</span>
                 {item.badge !== undefined && item.badge > 0 && (
                   <span className="absolute top-1 right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-600 text-[9px] font-semibold text-white px-1">
                     {item.badge}

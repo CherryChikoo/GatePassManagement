@@ -8,8 +8,11 @@ import { createSignedPhotoUrl } from "@/lib/storage/storage-admin";
 import { getRegisterAccess } from "@/lib/registers/access";
 import {
   REGISTER_BY_KEY,
+  SECURITY_EDITABLE_REGISTERS,
   facultyRequestTypeLabel,
   isEntryRegister,
+  updatableFields,
+  yesNoWords,
   type EntryRegister,
   type RegisterKey,
 } from "@/lib/registers/definitions";
@@ -19,6 +22,7 @@ import {
   validateCompletion,
   validateAdminEdit,
   validateNewRecord,
+  validateFieldUpdate,
   type CompletionPayload,
   type RawPayload,
   type RegisterData,
@@ -27,9 +31,17 @@ import {
 import { istDateString, istDateToInstant, istDayRangeFromParam, parseDateParam, parsePageParam } from "@/lib/time/ist";
 import { invalidateSecurityCache } from "./security";
 import { getEntryRegister } from "@/lib/registers/catalog";
+import { notifyLive, notifyPassHolder } from "@/lib/realtime/notify";
+import {
+  REGISTER_PAGE_SIZE,
+  REGISTER_VIEW_ROLES,
+  queryRegisterEntries,
+  registerDayFilter,
+  type RegisterListParams,
+} from "@/lib/registers/list-entries";
 
-const PAGE_SIZE = 25;
-const VIEW_ROLES = ["SECURITY", "ADMIN", "SECURITY_SUPERVISOR"] as const;
+const PAGE_SIZE = REGISTER_PAGE_SIZE;
+const VIEW_ROLES = REGISTER_VIEW_ROLES;
 const TOKEN_RE = /^[A-Za-z0-9-]{8,100}$/;
 
 // ──────────────────────────────────────────────────────────────
@@ -62,16 +74,14 @@ const resolveStaff: StaffResolver = async (id) => {
 };
 
 /** Optional "YYYY-MM-DD" filter; "" or "all" = every date. */
-function dayFilter(date?: string | null) {
-  if (!date || date === "all") return null;
-  const d = parseDateParam(date);
-  return d ? istDayRangeFromParam(d) : istDayRangeFromParam(istDateString());
-}
+const dayFilter = registerDayFilter;
 
-function revalidateRegisters() {
+/** After a register change: refresh the pages, and tell open screens of that register (live). */
+function revalidateRegisters(register?: string) {
   revalidatePath("/security/registers", "layout");
   revalidatePath("/admin/registers", "layout");
   revalidatePath("/supervisor/registers", "layout");
+  if (register) notifyLive(`reg:${register}`);
 }
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
@@ -154,7 +164,7 @@ export async function createRegisterEntry(registerKey: string, payload: RawPaylo
       },
       select: { id: true },
     });
-    revalidateRegisters();
+    revalidateRegisters(def.key);
     return { success: true, id: entry.id };
   } catch (err: any) {
     if (err?.code === "P2002") return { success: true, duplicate: true }; // double submit: already saved
@@ -203,9 +213,9 @@ export async function completeRegisterEntry(entryId: string, payload: Completion
           ...(await recorderSnapshot(user)),
         },
       });
-      return { success: true as const };
+      return { success: true as const, register: def.key };
     });
-    if ("success" in res) revalidateRegisters();
+    if ("success" in res) revalidateRegisters(res.register);
     return res;
   } catch (err: any) {
     if (err?.code === "P2002") return { success: true, duplicate: true };
@@ -214,102 +224,9 @@ export async function completeRegisterEntry(entryId: string, payload: Completion
   }
 }
 
-/** Value of the "Shift" filter: one of the register's shifts, or "OTHER" (any typed shift). */
-const SHIFT_FILTER_OTHER = "OTHER";
-
-export async function listRegisterEntries(params: { register: string; date?: string; q?: string; page?: number; shift?: string }) {
-  const user = await requireRole(...VIEW_ROLES);
-  const def = await getEntryRegister(params?.register);
-  if (!def) return { error: "Unknown register" };
-  if (!(await getRegisterAccess(user)).canView(def.key)) return { error: "You do not have access to this register" };
-
-  const page = parsePageParam(String(params.page ?? 1));
-  const range = dayFilter(params.date);
-  const q = typeof params.q === "string" ? params.q.trim().toLowerCase().slice(0, 100) : "";
-
-  // Shift filter (registers with a Shift field): matches the saved value, or an admin correction of it
-  const shiftField = def.fields.find((f) => f.key === "shift" && f.type === "select");
-  const shiftOptions = (shiftField?.options ?? []) as readonly string[];
-  const shift = typeof params.shift === "string" ? params.shift : "";
-  const shiftIs = (v: string): Prisma.RegisterEntryWhereInput => ({
-    OR: [
-      { data: { path: ["shift"], equals: v } },
-      { supplements: { some: { kind: "CORRECTION", data: { path: ["shift"], equals: v } } } },
-    ],
-  });
-  const shiftWhere: Prisma.RegisterEntryWhereInput | null = !shiftField
-    ? null
-    : shiftOptions.includes(shift)
-    ? shiftIs(shift)
-    : shift === SHIFT_FILTER_OTHER
-    ? { AND: shiftOptions.map((o) => ({ NOT: { data: { path: ["shift"], equals: o } } })) }
-    : null;
-
-  const where: Prisma.RegisterEntryWhereInput = {
-    register: def.key,
-    kind: "ORIGINAL",
-    ...(range ? { entryDate: { gte: range.start, lt: range.end } } : {}),
-    ...(shiftWhere ? { AND: [shiftWhere] } : {}),
-    ...(q
-      ? {
-          OR: [
-            { searchText: { contains: q } },
-            { recordedByName: { contains: q, mode: "insensitive" } },
-            { supplements: { some: { kind: "CORRECTION", searchText: { contains: q } } } },
-          ],
-        }
-      : {}),
-  };
-
-  const recorder = {
-    recordedByName: true, recordedByRole: true, recordedByEmployeeId: true, recordedAtGate: true, createdAt: true,
-  } as const;
-
-  const [rows, total] = await Promise.all([
-    prisma.registerEntry.findMany({
-      where,
-      orderBy: [{ entryDate: "desc" }, { createdAt: "desc" }],
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      select: {
-        id: true, data: true, entryDate: true, ...recorder,
-        supplements: {
-          orderBy: { createdAt: "asc" },
-          select: { id: true, kind: true, data: true, reason: true, ...recorder },
-        },
-      },
-    }),
-    prisma.registerEntry.count({ where }),
-  ]);
-
-  return {
-    success: true,
-    page,
-    pageSize: PAGE_SIZE,
-    total,
-    entries: rows.map((r) => ({
-      id: r.id,
-      entryDate: istDateString(r.entryDate),
-      createdAt: r.createdAt.toISOString(),
-      recordedByName: r.recordedByName,
-      recordedByRole: r.recordedByRole,
-      recordedByEmployeeId: r.recordedByEmployeeId,
-      recordedAtGate: r.recordedAtGate,
-      original: r.data as RegisterData,
-      current: effectiveData(def, r.data as RegisterData, r.supplements),
-      supplements: r.supplements.map((s) => ({
-        id: s.id,
-        kind: s.kind,
-        data: s.data as RegisterData,
-        reason: s.reason,
-        createdAt: s.createdAt.toISOString(),
-        recordedByName: s.recordedByName,
-        recordedByRole: s.recordedByRole,
-        recordedByEmployeeId: s.recordedByEmployeeId,
-        recordedAtGate: s.recordedAtGate,
-      })),
-    })),
-  };
+export async function listRegisterEntries(params: RegisterListParams) {
+  const user = await requireRole(...REGISTER_VIEW_ROLES);
+  return queryRegisterEntries(user, params);
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -482,6 +399,8 @@ export async function markFacultyReturn(permissionId: string, gateId?: string) {
   // The gate log shows this return straight away (not after its 15 s cache)
   await invalidateSecurityCache();
   revalidateRegisters();
+  notifyLive("gate");
+  notifyPassHolder(permissionId);
   revalidatePath("/security");
   revalidatePath("/security/log");
   return { success: true };
@@ -537,6 +456,7 @@ export async function getVisitorsBook(params: { date?: string; q?: string; page?
       status: o.status,
       remarks: o.remarks,
       recordedByName: o.recordedByName,
+      photoUrl: o.photoUrl,
     })),
   };
 }
@@ -989,12 +909,122 @@ export async function adminUpdateRegisterEntry(entryId: string, payload: RawPayl
           ...(checked.entryDateStr ? { entryDate: istDateToInstant(checked.entryDateStr) } : {}),
         },
       });
-      return { success: true as const };
+      return { success: true as const, register: def.key };
     });
-    if ("success" in res) revalidateRegisters();
+    if ("success" in res) revalidateRegisters(res.register);
     return res;
   } catch (err: any) {
     console.error("[adminUpdateRegisterEntry] failed:", err?.message);
+    return { error: "Could not save the changes. Please try again." };
+  }
+}
+
+/**
+ * Security edits a record of a register they may edit (the Cooli Book). The
+ * change is saved as a correction on top of the original, so the history of
+ * what was first written, and who changed it, stays.
+ */
+export async function securityEditRegisterEntry(entryId: string, payload: RawPayload, clientToken: string) {
+  const user = await requireRole("SECURITY");
+  if (typeof entryId !== "string" || !entryId) return { error: "Record not found" };
+  if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
+
+  try {
+    const res = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"register-entry:" + entryId}))`;
+      const original = await tx.registerEntry.findFirst({
+        where: { id: entryId, kind: "ORIGINAL" },
+        select: { id: true, register: true, entryDate: true, data: true, supplements: { select: { kind: true, data: true, createdAt: true } } },
+      });
+      if (!original) return { error: "Record not found" };
+      if (!SECURITY_EDITABLE_REGISTERS.includes(original.register)) return { error: "You are not allowed to update this register" };
+      const def = await getEntryRegister(original.register, tx);
+      if (!def) return { error: "Unknown register" };
+
+      const current = effectiveData(def, original.data as RegisterData, original.supplements);
+      const checked = await validateAdminEdit(def, current, payload, resolveStaff);
+      if ("error" in checked) return { error: checked.error };
+
+      await tx.registerEntry.create({
+        data: {
+          register: def.key,
+          kind: "CORRECTION",
+          parentId: original.id,
+          entryDate: checked.entryDateStr ? istDateToInstant(checked.entryDateStr) : original.entryDate,
+          data: checked.data as Prisma.InputJsonValue,
+          searchText: buildSearchText(def, checked.data),
+          reason: "Edited by Security",
+          clientToken,
+          ...(await recorderSnapshot(user)),
+        },
+      });
+      return { success: true as const, register: def.key };
+    });
+    if ("success" in res) revalidateRegisters(res.register);
+    return res;
+  } catch (err: any) {
+    if (err?.code === "P2002") return { success: true, duplicate: true };
+    console.error("[securityEditRegisterEntry] failed:", err?.message);
+    return { error: "Could not save the changes. Please try again." };
+  }
+}
+
+/**
+ * Changes one updatable field of a saved record — a Yes / No status such as
+ * "Payment completed", or Remarks — from the record's own section. Saved as a
+ * correction, so the history shows who changed it and when.
+ * Security (on registers they record in) and Main Admin.
+ */
+export async function updateRegisterField(entryId: string, fieldKey: string, value: unknown, clientToken: string) {
+  const user = await requireRole("SECURITY", "ADMIN");
+  if (typeof entryId !== "string" || !entryId) return { error: "Record not found" };
+  if (typeof fieldKey !== "string" || !fieldKey) return { error: "Unknown field" };
+  if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
+
+  try {
+    const access = await getRegisterAccess(user);
+    const res = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"register-entry:" + entryId}))`;
+      const original = await tx.registerEntry.findFirst({
+        where: { id: entryId, kind: "ORIGINAL" },
+        select: { id: true, register: true, entryDate: true, data: true, supplements: { select: { kind: true, data: true, createdAt: true } } },
+      });
+      if (!original) return { error: "Record not found" };
+      const def = await getEntryRegister(original.register, tx);
+      if (!def) return { error: "Unknown register" };
+      if (user.role === "SECURITY" && !access.canCreate(def.key)) return { error: "You are not allowed to update this register" };
+      const field = updatableFields(def).find((f) => f.key === fieldKey);
+      if (!field) return { error: "This field cannot be changed" };
+
+      const checked = await validateFieldUpdate(field, value);
+      if ("error" in checked) return { error: checked.error };
+      const next = field.type === "yesno" ? checked.value === true : checked.value;
+
+      const current = effectiveData(def, original.data as RegisterData, original.supplements);
+      const before = field.type === "yesno" ? current[field.key] === true : current[field.key] ?? null;
+      if (before === next) return { success: true as const, register: "" };
+
+      const data: RegisterData = { ...current, [field.key]: next };
+      await tx.registerEntry.create({
+        data: {
+          register: def.key,
+          kind: "CORRECTION",
+          parentId: original.id,
+          entryDate: original.entryDate,
+          data: data as Prisma.InputJsonValue,
+          searchText: buildSearchText(def, data),
+          reason: field.type === "yesno" ? `${field.label}: ${yesNoWords(field)[next ? 0 : 1]}` : `${field.label} updated`,
+          clientToken,
+          ...(await recorderSnapshot(user)),
+        },
+      });
+      return { success: true as const, register: def.key };
+    });
+    if ("success" in res) revalidateRegisters(res.register);
+    return res;
+  } catch (err: any) {
+    if (err?.code === "P2002") return { success: true };
+    console.error("[updateRegisterField] failed:", err?.message);
     return { error: "Could not save the changes. Please try again." };
   }
 }
@@ -1005,19 +1035,19 @@ export async function adminDeleteRegisterEntry(entryId: string) {
   if (typeof entryId !== "string" || !entryId) return { error: "Record not found" };
   try {
     const deleted = await prisma.$transaction(async (tx) => {
-      const original = await tx.registerEntry.findFirst({ where: { id: entryId, kind: "ORIGINAL" }, select: { id: true } });
-      if (!original) return 0;
+      const original = await tx.registerEntry.findFirst({ where: { id: entryId, kind: "ORIGINAL" }, select: { id: true, register: true } });
+      if (!original) return null;
       await tx.registerEntry.deleteMany({ where: { parentId: original.id } });
       await tx.registerEntry.delete({ where: { id: original.id } });
-      return 1;
+      return original.register;
     });
     if (!deleted) return { error: "Record not found or already deleted" };
+    revalidateRegisters(deleted);
+    return { success: true };
   } catch (err: any) {
     console.error("[adminDeleteRegisterEntry] failed:", err?.message);
     return { error: "Could not delete the record. Please try again." };
   }
-  revalidateRegisters();
-  return { success: true };
 }
 
 /** Full details of one gate movement (exit / entry) for the details popup. */

@@ -1,5 +1,6 @@
 "use client";
 
+import { PassFullDetails, prefetchPassDetails } from "@/components/passes/pass-full-details";
 import { DateField } from "@/components/ui/date-field";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import React, { useState, useEffect } from "react";
@@ -319,7 +320,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
 
   // Stacked row-card for phones (same data as the table row)
   const renderMovementCard = (m: any, kind: "entry" | "exit") => (
-    <li key={m.id} className="px-4 py-3.5 hover:bg-zinc-950/70 transition-colors cursor-pointer" onClick={() => setSelectedRecord(m)}>
+    <li key={m.id} className="px-4 py-3.5 hover:bg-zinc-950/70 transition-colors cursor-pointer" onPointerDown={() => prefetchPassDetails(m.permissionId)} onClick={() => setSelectedRecord(m)}>
       <div className="flex gap-3">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400 text-sm font-semibold">
           {initials(m)}
@@ -359,7 +360,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
 
   // Desktop/tablet table row
   const renderMovementRow = (m: any, kind: "entry" | "exit") => (
-    <tr key={m.id} className={dt.trClickable} onClick={() => setSelectedRecord(m)}>
+    <tr key={m.id} className={dt.trClickable} onPointerDown={() => prefetchPassDetails(m.permissionId)} onClick={() => setSelectedRecord(m)}>
       {/* Student (same look as PersonCell, with the name linking to the profile) */}
       <td className={dt.td}>
         <div className="flex items-center gap-3 min-w-0">
@@ -1027,10 +1028,12 @@ export function ActivityClient({ user, data: initialData }: Props) {
       {/* Record Details Modal */}
       <Modal
         open={!!selectedRecord}
+        className="max-w-2xl"
         onClose={() => setSelectedRecord(null)}
         title="Record Details"
       >
-        {selectedRecord && (
+        {selectedRecord?.permissionId && <PassFullDetails permissionId={selectedRecord.permissionId} preview={selectedRecord} />}
+        {selectedRecord && !selectedRecord.permissionId && (
           <div className="space-y-5">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-lg font-medium text-zinc-100 min-w-0 break-words">

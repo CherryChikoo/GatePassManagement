@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole, type AuthUser } from "@/lib/auth/helpers";
 import { verifyScannedQr } from "@/lib/qr/token";
 import { revalidatePath } from "next/cache";
+import { notifyPassHolder } from "@/lib/realtime/notify";
 import { istDayRange } from "@/lib/time/ist";
 
 /**
@@ -136,6 +137,7 @@ export async function confirmHostelArrival(permissionId: string) {
   revalidatePath("/warden");
   revalidatePath("/warden/scan");
   revalidatePath("/student");
+  notifyPassHolder(permissionId);
   return { success: true };
 }
 

@@ -183,32 +183,13 @@ export function WardenStudentsClient({ user }: Props) {
     <div className="space-y-4">
       {/* Top Info Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="hidden sm:flex h-10 w-10 shrink-0 rounded-2xl bg-orange-500/10 items-center justify-center text-orange-400">
-            <GraduationCap className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h4 className="font-medium text-zinc-100 text-base">{s.profile.name}</h4>
-              {s.studentRoll && (
-                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
-                  {s.studentRoll}
-                </span>
-              )}
-              <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                s.studentType === "HOSTELLER"
-                  ? "bg-orange-500/10 text-orange-400"
-                  : "bg-sky-500/10 text-sky-400"
-              }`}>
-                {s.studentType === "HOSTELLER" ? "Hosteller" : "Day Scholar"}
-              </span>
-
-            </div>
-            <p className="text-xs text-zinc-500 mt-0.5 break-all">
-              {s.profile.email} {s.profile.phone ? `• ${s.profile.phone}` : ""}
-            </p>
-          </div>
-        </div>
+        <span
+          className={`self-start rounded-full px-3 py-1 text-xs font-medium ${
+            s.studentType === "HOSTELLER" ? "bg-orange-500/10 text-orange-400" : "bg-sky-500/10 text-sky-400"
+          }`}
+        >
+          {s.studentType === "HOSTELLER" ? "Hosteller" : "Day Scholar"}
+        </span>
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <Link
             href={`/warden/students/${s.profile.id}`}
@@ -413,7 +394,11 @@ export function WardenStudentsClient({ user }: Props) {
                       <React.Fragment key={s.id}>
                         <tr
                           onClick={() => setExpandedStudentId(isExpanded ? null : s.id)}
-                          className={`${dt.trClickable} select-none`}
+                          className={`${dt.trClickable} select-none ${
+                            isExpanded
+                              ? "[&>td]:bg-zinc-950/70 [&>td]:border-b-0 [&>td:first-child]:rounded-bl-none [&>td:last-child]:rounded-br-none"
+                              : ""
+                          }`}
                           title="Click row to view full details"
                         >
                           {/* Student name, roll & phone */}
@@ -471,8 +456,8 @@ export function WardenStudentsClient({ user }: Props) {
                         {/* Expanded details row */}
                         {isExpanded && (
                           <tr className="animate-fade-in">
-                            <td colSpan={4} className="px-2 pb-3">
-                              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+                            <td colSpan={4} className="px-0 pt-0 pb-3">
+                              <div className="rounded-b-2xl bg-zinc-950/70 px-4 pb-5 pt-1 sm:px-5">
                                 {renderDetails(s)}
                               </div>
                             </td>
@@ -520,92 +505,112 @@ export function WardenStudentsClient({ user }: Props) {
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Full Name"
-                name="name"
-                defaultValue={editingStudent.profile.name}
-                required
-              />
+            <fieldset className="space-y-4 rounded-2xl border border-zinc-800 p-4">
+              <legend className="px-1.5 text-xs font-semibold uppercase tracking-wider text-orange-500">Personal</legend>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Input
+                  label="Full Name"
+                  name="name"
+                  defaultValue={editingStudent.profile.name}
+                  required
+                />
 
-              <Input
-                label="Phone Number"
-                name="phone"
-                defaultValue={editingStudent.profile.phone || ""}
-                placeholder="+91-9876543210"
-              />
+                <Input
+                  label="Phone Number"
+                  name="phone"
+                  defaultValue={editingStudent.profile.phone || ""}
+                  placeholder="+91-9876543210"
+                />
+              </div>
+            </fieldset>
 
-              <Input
-                label="Roll Number"
-                name="studentRoll"
-                defaultValue={editingStudent.studentRoll}
-                required
-                className="font-mono"
-              />
+            <fieldset className="space-y-4 rounded-2xl border border-zinc-800 p-4">
+              <legend className="px-1.5 text-xs font-semibold uppercase tracking-wider text-orange-500">Academic</legend>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Input
+                  label="Roll Number"
+                  name="studentRoll"
+                  defaultValue={editingStudent.studentRoll}
+                  required
+                  className="font-mono"
+                />
 
-              <Input
-                label="Year"
-                name="year"
-                type="number"
-                min={1}
-                max={5}
-                defaultValue={editingStudent.year ?? ""}
-              />
+                <Input
+                  label="Year"
+                  name="year"
+                  type="number"
+                  min={1}
+                  max={5}
+                  defaultValue={editingStudent.year ?? ""}
+                />
 
-              <Input
-                label="Section"
-                name="section"
-                defaultValue={editingStudent.section ?? ""}
-              />
+                <Input
+                  label="Section"
+                  name="section"
+                  defaultValue={editingStudent.section ?? ""}
+                />
+              </div>
+            </fieldset>
 
-              <Select
-                label="Student Type"
-                name="studentType"
-                value={editType}
-                onChange={(e) => setEditType(e.target.value)}
-                className="h-12"
-              >
-                <option value="DAY_SCHOLAR">Day Scholar</option>
-                <option value="HOSTELLER">Hosteller</option>
-              </Select>
-
-              <Select
-                label="Assigned Warden (Hostellers)"
-                key={`warden-${editType}`}
-                id="assigned-warden"
-                name="wardenId"
-                defaultValue={isHostellerEdit ? editingStudent.wardenId || "" : ""}
-                disabled={!isHostellerEdit}
-                className="h-12 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <option value="">-- None --</option>
-                {wardens.map((w: any) => (
-                  <option key={w.id} value={w.id}>
-                    {w.profile?.name} (Block {w.hostelBlock || "N/A"})
-                  </option>
-                ))}
-              </Select>
-
-              <Input
-                key={`block-${editType}`}
-                label="Hostel Block"
-                name="hostelBlock"
-                defaultValue={isHostellerEdit ? editingStudent.hostelBlock || "" : ""}
-                disabled={!isHostellerEdit}
-                placeholder={isHostellerEdit ? "e.g. Block A" : "Hostellers only"}
-                className="disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-
-              <Input
-                key={`room-${editType}`}
-                label="Room Number"
-                name="roomNumber"
-                defaultValue={isHostellerEdit ? editingStudent.roomNumber || "" : ""}
-                disabled={!isHostellerEdit}
-                placeholder={isHostellerEdit ? "e.g. 204" : "Hostellers only"}
-                className="disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </div>
+            <fieldset className="space-y-4 rounded-2xl border border-zinc-800 p-4">
+              <legend className="px-1.5 text-xs font-semibold uppercase tracking-wider text-orange-500">Hostel</legend>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Select
+                  label="Student Type"
+                  name="studentType"
+                  value={editType}
+                  onChange={(e) => setEditType(e.target.value)}
+                  className="h-12"
+                >
+                  <option value="DAY_SCHOLAR">Day Scholar</option>
+                  <option value="HOSTELLER">Hosteller</option>
+                </Select>
+              </div>
+              {isHostellerEdit ? (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Select
+                    label="Assigned Warden (Hostellers)"
+                    key={`warden-${editType}`}
+                    id="assigned-warden"
+                    name="wardenId"
+                    defaultValue={isHostellerEdit ? editingStudent.wardenId || "" : ""}
+                    disabled={!isHostellerEdit}
+                    className="h-12 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="">-- None --</option>
+                    {wardens.map((w: any) => (
+                      <option key={w.id} value={w.id}>
+                        {w.profile?.name} (Block {w.hostelBlock || "N/A"})
+                      </option>
+                    ))}
+                  </Select>
+  
+                  <Input
+                    key={`block-${editType}`}
+                    label="Hostel Block"
+                    name="hostelBlock"
+                    defaultValue={isHostellerEdit ? editingStudent.hostelBlock || "" : ""}
+                    disabled={!isHostellerEdit}
+                    placeholder={isHostellerEdit ? "e.g. Block A" : "Hostellers only"}
+                    className="disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+  
+                  <Input
+                    key={`room-${editType}`}
+                    label="Room Number"
+                    name="roomNumber"
+                    defaultValue={isHostellerEdit ? editingStudent.roomNumber || "" : ""}
+                    disabled={!isHostellerEdit}
+                    placeholder={isHostellerEdit ? "e.g. 204" : "Hostellers only"}
+                    className="disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+              ) : (
+                <p className="rounded-2xl bg-zinc-950 px-4 py-3 text-xs text-zinc-500">
+                  Day scholars have no hostel details. Choose Hosteller to set the warden, block and room.
+                </p>
+              )}
+            </fieldset>
 
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 border-t border-zinc-800">
               <Button

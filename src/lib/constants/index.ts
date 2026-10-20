@@ -159,6 +159,24 @@ export function getDepartmentVariants(dept?: string | null): string[] {
 }
 
 /**
+ * The listed department code ("CSE"…) for a code, full name or alias, or
+ * null when it is not one of the college departments.
+ */
+export function listedDepartmentCode(dept?: string | null): string | null {
+  const lower = (dept ?? "").trim().toLowerCase();
+  if (!lower) return null;
+  const found = DEPARTMENTS.find(
+    (d) => d.code.toLowerCase() === lower || d.name.toLowerCase() === lower || d.aliases.some((a) => a.toLowerCase() === lower)
+  );
+  return found ? found.code : null;
+}
+
+/** Dropdown label: "CSE (Computer Science & Engineering)" */
+export function departmentLabel(d: DepartmentOption): string {
+  return `${d.code} (${d.name})`;
+}
+
+/**
  * Returns the short department code (e.g. "CSE", "ECE").
  */
 export function getDepartmentCode(dept?: string | null): string {

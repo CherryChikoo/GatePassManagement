@@ -3,9 +3,10 @@ import { DateField } from "@/components/ui/date-field";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { useT } from "@/components/providers/language-provider";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, FileText, Info, Loader2, LogIn, Plus, Trash2, UserPlus } from "lucide-react";
+import { ChevronRight, FileText, Info, Loader2, LogIn, PencilLine, Plus, Trash2, UserPlus } from "lucide-react";
+import { adminDeleteVisitor, adminUpdateVisitor } from "@/server/actions/outsiders";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Modal, StatusBadge } from "@/components/ui/primitives";
 import { Card } from "@/components/ui/card";
@@ -29,8 +30,9 @@ import {
   markFacultyReturn,
 } from "@/server/actions/registers";
 import { formatDay, formatInstant, newClientToken } from "./format";
-import { formatTime } from "@/lib/utils";
+import { formatTime, withTimeout } from "@/lib/utils";
 import { RegisterToolbar, useRegisterFilters } from "./toolbar";
+import { useLiveTopics } from "@/lib/realtime/live";
 
 type Move = { at: string; gate: string | null; guard: string | null; guardEmployeeId: string | null } | null;
 
@@ -46,24 +48,40 @@ function MoveCell({ m }: { m: Move }) {
   );
 }
 
-/** Loads data whenever `key` (the filters) changes; `reload` fetches again. */
-function useLoader<T>(fetcher: () => Promise<any>, key: string) {
+// Live-update topics (src/lib/realtime/notify.ts)
+const LIVE_GATE = ["gate"];
+const LIVE_VISITORS = ["visitors"];
+
+/**
+ * Loads data whenever `key` (the filters) changes; `reload` fetches again.
+ * `live`: topics that, when changed on the server, reload quietly (the
+ * current data stays on screen until the new data arrives).
+ */
+function useLoader<T>(fetcher: () => Promise<any>, key: string, live: string[] = []) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [nonce, setNonce] = useState(0);
+  const quiet = useRef(false);
+  useLiveTopics(live, () => {
+    quiet.current = true;
+    setNonce((n) => n + 1);
+  });
   useEffect(() => {
     let cancelled = false;
+    const silent = quiet.current;
+    quiet.current = false;
     async function run() {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
       try {
-        const res = await fetcher();
+        const res = await withTimeout(fetcher());
         if (cancelled) return;
-        if (res?.error) setError(res.error);
-        else setData(res);
+        if (res?.error) {
+          if (!silent) setError(res.error);
+        } else setData(res);
       } catch (err) {
-        if (!cancelled) setError(actionErrorMessage(err, "Could not load the register."));
+        if (!cancelled && !silent) setError(actionErrorMessage(err, "Could not load the register."));
       }
       if (!cancelled) setLoading(false);
     }
@@ -78,12 +96,33 @@ function useLoader<T>(fetcher: () => Promise<any>, key: string) {
 }
 
 /** Card around a register list: stacked rows on phones + a table from `sm` (children render both). */
-function Shell({ loading, error, empty, children }: { loading: boolean; error: string | null; empty: boolean; children: React.ReactNode }) {
+function Shell({
+  loading,
+  error,
+  empty,
+  children,
+  onRetry,
+}: {
+  loading: boolean;
+  error: string | null;
+  empty: boolean;
+  children: React.ReactNode;
+  onRetry?: () => void;
+}) {
   const t = useT();
   return (
     <>
       <LoadingPill active={loading} />
-      {error && <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>}
+      {error && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <span>{t(error)}</span>
+          {onRetry && (
+            <button type="button" onClick={onRetry} className="h-10 rounded-full bg-red-500/10 px-4 text-sm font-semibold text-red-500 hover:bg-red-500/20">
+              {t("Try again")}
+            </button>
+          )}
+        </div>
+      )}
       <Card className={cn("overflow-hidden transition-opacity", loading && "opacity-60")}>
         {children}
         {empty && (
@@ -122,7 +161,8 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
   const f = useRegisterFilters();
   const { data, error, loading, reload } = useLoader<any>(
     () => getFacultyBook({ date: f.dateParam, q: f.q, page: f.page }),
-    `${f.dateParam}|${f.q}|${f.page}`
+    `${f.dateParam}|${f.q}|${f.page}`,
+    LIVE_GATE
   );
   const [selected, setSelected] = useState<any | null>(null);
   const [busy, setBusy] = useState(false);
@@ -152,7 +192,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
         {canMarkIn ? t(" use “Mark In” when the faculty member returns.") : t(" the in-time when they return.")}
       </p>
       {msg && <div role="status" className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm font-medium text-zinc-200 shadow-card">{msg}</div>}
-      <Shell loading={loading} error={error} empty={!!data && data.rows.length === 0}>
+      <Shell loading={loading} error={error} onRetry={reload} empty={!!data && data.rows.length === 0}>
         {/* Phones */}
         {data?.rows.length > 0 && (
           <ul className={cn(dt.mobileList, "sm:hidden")}>
@@ -296,14 +336,16 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
 
 // ─── Form 2 — Visitors Book ───────────────────────────────────
 
-export function VisitorsBookView({ canRegister }: { canRegister: boolean }) {
+export function VisitorsBookView({ canRegister, canAdminEdit = false }: { canRegister: boolean; /** Main Admin: edit / delete any visitor */ canAdminEdit?: boolean }) {
   const t = useT();
   const f = useRegisterFilters();
-  const { data, error, loading } = useLoader<any>(
+  const { data, error, loading, reload } = useLoader<any>(
     () => getVisitorsBook({ date: f.dateParam, q: f.q, page: f.page }),
-    `${f.dateParam}|${f.q}|${f.page}`
+    `${f.dateParam}|${f.q}|${f.page}`,
+    LIVE_VISITORS
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detailsNonce, setDetailsNonce] = useState(0);
   const insideChip = <span className={cn(chipCls, "bg-amber-500/10 text-amber-400")}>{t("Inside")}</span>;
   return (
     <div className="space-y-4">
@@ -321,7 +363,7 @@ export function VisitorsBookView({ canRegister }: { canRegister: boolean }) {
           ) : null
         }
       />
-      <Shell loading={loading} error={error} empty={!!data && data.rows.length === 0}>
+      <Shell loading={loading} error={error} onRetry={reload} empty={!!data && data.rows.length === 0}>
         {/* Phones */}
         {data?.rows.length > 0 && (
           <ul className={cn(dt.mobileList, "sm:hidden")}>
@@ -395,15 +437,37 @@ export function VisitorsBookView({ canRegister }: { canRegister: boolean }) {
       {data && <PagerBar page={f.page} pageSize={data.pageSize} total={data.total} onPageChange={f.setPage} itemLabel={t("records")} />}
 
       <Modal open={!!selectedId} onClose={() => setSelectedId(null)} title={t("Visitor Details")} className="max-w-xl">
-        {selectedId && <VisitorDetails id={selectedId} />}
+        {selectedId && (
+          <VisitorDetails
+            key={`${selectedId}-${detailsNonce}`}
+            id={selectedId}
+            canAdminEdit={canAdminEdit}
+            onChanged={(deleted) => {
+              reload();
+              if (deleted) setSelectedId(null);
+              else setDetailsNonce((n) => n + 1);
+            }}
+          />
+        )}
       </Modal>
     </div>
   );
 }
 
-export function VisitorDetails({ id }: { id: string }) {
+export function VisitorDetails({
+  id,
+  canAdminEdit = false,
+  onChanged,
+}: {
+  id: string;
+  canAdminEdit?: boolean;
+  /** After an admin edit (false) or delete (true) */
+  onChanged?: (deleted: boolean) => void;
+}) {
   const t = useT();
   const { data, error, loading } = useLoader<any>(() => getVisitorDetails(id), id);
+  const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   if (error) return <p role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</p>;
   if (loading || !data) return <p className="py-8 text-center text-sm text-zinc-500">{t("Loading…")}</p>;
   const v = data.visitor;
@@ -439,7 +503,135 @@ export function VisitorDetails({ id }: { id: string }) {
           ["Record created", formatInstant(v.createdAt)],
         ]}
       />
+      {canAdminEdit && (
+        <div className="flex flex-col gap-2 border-t border-zinc-800 pt-4 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="inline-flex h-12 sm:h-11 items-center justify-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-5 text-sm font-medium text-zinc-200 hover:bg-zinc-950"
+          >
+            <PencilLine className="h-4 w-4 text-orange-400" /> {t("Edit")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            className="inline-flex h-12 sm:h-11 items-center justify-center gap-2 rounded-full border border-red-500/30 px-5 text-sm font-medium text-red-400 hover:bg-red-500/10"
+          >
+            <Trash2 className="h-4 w-4" /> {t("Delete")}
+          </button>
+        </div>
+      )}
+      <Modal open={editing} onClose={() => setEditing(false)} title={t("Edit visitor")} className="max-w-xl">
+        {editing && (
+          <AdminVisitorForm
+            visitor={v}
+            onSaved={() => {
+              setEditing(false);
+              onChanged?.(false);
+            }}
+          />
+        )}
+      </Modal>
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title={t("Delete this visitor record?")}
+        description={t("The record is removed permanently and cannot be recovered.")}
+        confirmText={t("Delete")}
+        variant="danger"
+        onConfirm={async () => {
+          setConfirmDelete(false);
+          const res: any = await adminDeleteVisitor(v.id).catch(() => ({ error: "Could not save. Please try again." }));
+          if (res?.error) window.alert(t(res.error));
+          else onChanged?.(true);
+        }}
+      />
     </div>
+  );
+}
+
+/** "…Z" instant → "YYYY-MM-DDTHH:mm" in India time (for a date-time box) */
+const toIstInput = (iso?: string | null) => (iso ? new Date(new Date(iso).getTime() + 19_800_000).toISOString().slice(0, 16) : "");
+
+/** Main Admin: correct every detail of a visitor record, including the times. */
+function AdminVisitorForm({ visitor, onSaved }: { visitor: any; onSaved: () => void }) {
+  const t = useT();
+  const [form, setForm] = useState(() => ({
+    name: visitor.name ?? "",
+    phone: visitor.phone ?? "",
+    category: visitor.category ?? "GUEST",
+    purpose: visitor.purpose ?? "",
+    visitingStudent: visitor.personToVisit ?? "",
+    department: visitor.department ?? "",
+    address: visitor.address ?? "",
+    vehicleNumber: visitor.vehicleNumber ?? "",
+    gate: visitor.gate ?? "",
+    remarks: visitor.remarks ?? "",
+    entryTime: toIstInput(visitor.inTime),
+    exitTime: toIstInput(visitor.outTime),
+  }));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setForm((s) => ({ ...s, [k]: e.target.value }));
+  const box =
+    "h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 [color-scheme:light] outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10";
+  const label = "field-label block space-y-1.5 text-sm font-medium text-zinc-200";
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError(null);
+        try {
+          const res: any = await adminUpdateVisitor(visitor.id, form);
+          if (res?.error) setError(t(res.error));
+          else onSaved();
+        } catch (err) {
+          setError(actionErrorMessage(err, t("Could not save. Please try again.")));
+        }
+        setBusy(false);
+      }}
+      className="space-y-4"
+    >
+      {error && <p role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</p>}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label className={label}><span className="block">{t("Visitor Name")} *</span><input required value={form.name} onChange={set("name")} className={box} /></label>
+        <label className={label}><span className="block">{t("Mobile Number")} *</span><input required inputMode="tel" value={form.phone} onChange={set("phone")} className={box} /></label>
+        <label className={label}>
+          <span className="block">{t("Category")} *</span>
+          <select value={form.category} onChange={set("category")} className={box}>
+            <option value="GUEST">{t("Guest / Visitor")}</option>
+            <option value="PARENT">{t("Parent / Guardian")}</option>
+            <option value="VENDOR">{t("Vendor / Delivery")}</option>
+            <option value="WORKER">{t("Worker / Staff")}</option>
+          </select>
+        </label>
+        <label className={label}><span className="block">{t("Vehicle Number")}</span><input value={form.vehicleNumber} onChange={set("vehicleNumber")} className={box} /></label>
+        <label className={`${label} sm:col-span-2`}><span className="block">{t("Purpose of Visit")} *</span><input required value={form.purpose} onChange={set("purpose")} className={box} /></label>
+        <label className={label}><span className="block">{t("Person to Visit")}</span><input value={form.visitingStudent} onChange={set("visitingStudent")} className={box} /></label>
+        <label className={label}><span className="block">{t("Department")}</span><input value={form.department} onChange={set("department")} className={box} /></label>
+        <label className={label}><span className="block">{t("Address")}</span><input value={form.address} onChange={set("address")} className={box} /></label>
+        <label className={label}><span className="block">{t("Gate")}</span><input value={form.gate} onChange={set("gate")} className={box} /></label>
+        <label className={label}><span className="block">{t("Actual In-Time")} *</span><input required type="datetime-local" value={form.entryTime} onChange={set("entryTime")} className={box} /></label>
+        <label className={label}>
+          <span className="block">{t("Actual Out-Time")}</span>
+          <input type="datetime-local" value={form.exitTime} min={form.entryTime} onChange={set("exitTime")} className={box} />
+        </label>
+        <label className={`${label} sm:col-span-2`}>
+          <span className="block">{t("Remarks")}</span>
+          <textarea value={form.remarks} onChange={set("remarks")} rows={2} className="flex min-h-[72px] w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-base sm:text-sm text-zinc-100 outline-none focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10" />
+        </label>
+      </div>
+      <p className="text-xs text-zinc-500">{t("Leave Out-Time empty if the visitor is still inside.")}</p>
+      <button
+        type="submit"
+        disabled={busy}
+        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-orange-600 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60"
+      >
+        {busy && <Loader2 className="h-4 w-4 animate-spin" />} {busy ? t("Saving…") : t("Save changes")}
+      </button>
+    </form>
   );
 }
 
@@ -484,9 +676,10 @@ function GatePhotos({ permissionId }: { permissionId: string }) {
 export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
   const t = useT();
   const f = useRegisterFilters();
-  const { data, error, loading } = useLoader<any>(
+  const { data, error, loading, reload } = useLoader<any>(
     () => getHostelOutingBook({ hostel, date: f.dateParam, q: f.q, page: f.page }),
-    `${hostel}|${f.dateParam}|${f.q}|${f.page}`
+    `${hostel}|${f.dateParam}|${f.q}|${f.page}`,
+    LIVE_GATE
   );
   const [selected, setSelected] = useState<any | null>(null);
 
@@ -501,7 +694,7 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
           {t("{n} hosteller(s) have no Boys / Ladies hostel set in their profile and are not listed here. Set it in Admin → Users.", { n: data.unassignedHostellers })}
         </p>
       )}
-      <Shell loading={loading} error={error} empty={!!data && data.rows.length === 0}>
+      <Shell loading={loading} error={error} onRetry={reload} empty={!!data && data.rows.length === 0}>
         {/* Phones */}
         {data?.rows.length > 0 && (
           <ul className={cn(dt.mobileList, "sm:hidden")}>
@@ -640,7 +833,7 @@ export function HomeOutingSummaryView() {
   const today = istDateString();
   const [to, setTo] = useState(today);
   const [from, setFrom] = useState(() => istDateString(new Date(Date.now() - 13 * 86_400_000)));
-  const { data, error, loading } = useLoader<any>(() => getHomeOutingSummary({ from, to }), `${from}|${to}`);
+  const { data, error, loading, reload } = useLoader<any>(() => getHomeOutingSummary({ from, to }), `${from}|${to}`, LIVE_GATE);
   // 14 days per page (a range can be up to 62 days)
   const DAYS_PER_PAGE = 14;
   const [page, setPage] = useState(1);
@@ -743,7 +936,7 @@ export function HomeOutingSummaryView() {
         </div>
       )}
 
-      <Shell loading={loading} error={error} empty={!!data && days.length === 0}>
+      <Shell loading={loading} error={error} onRetry={reload} empty={!!data && days.length === 0}>
         {/* Phones */}
         {data && days.length > 0 && (
           <div className="sm:hidden">

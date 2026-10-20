@@ -26,9 +26,10 @@ export const dt = {
   /** Scroll wrapper; the inset padding lets the header band show rounded ends */
   wrap: "overflow-x-auto p-2",
   table: "w-full min-w-[640px] border-separate border-spacing-0 text-sm",
-  th: "bg-zinc-950 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500 whitespace-nowrap first:rounded-l-2xl last:rounded-r-2xl first:pl-4 last:pr-4",
+  /** Header band; the transparent bottom border leaves a small gap before the first row */
+  th: "bg-zinc-950 bg-clip-padding border-b-[6px] border-b-transparent px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500 whitespace-nowrap first:rounded-l-2xl last:rounded-r-2xl first:pl-4 last:pr-4",
   thRight:
-    "bg-zinc-950 px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500 whitespace-nowrap first:rounded-l-2xl last:rounded-r-2xl",
+    "bg-zinc-950 bg-clip-padding border-b-[6px] border-b-transparent px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500 whitespace-nowrap first:rounded-l-2xl last:rounded-r-2xl",
   tr: "group transition-colors",
   trClickable: "group cursor-pointer transition-colors",
   /** Cells carry the row hover (rounded ends) and the hairline between rows */

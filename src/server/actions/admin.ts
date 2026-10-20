@@ -19,7 +19,7 @@ import { getStaffScope, canAccessStudent, canViewProfile } from "@/lib/auth/scop
 import { istDayRangeFromParam } from "@/lib/time/ist";
 import { getSyncReport, reconcilePortalWithLogins, deleteLoginWithoutPortal } from "@/lib/accounts/sync";
 import { deanTitle } from "@/lib/auth/titles";
-import { getDepartmentVariants } from "@/lib/constants";
+import { getDepartmentVariants, listedDepartmentCode } from "@/lib/constants";
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { fillMovementPeople } from "@/lib/people";
@@ -106,6 +106,12 @@ export async function createUser(formData: FormData) {
   // "Head Security" is a Security account that can also take staff attendance
   const isHeadSecurity = parsed.data.role === "HEAD_SECURITY";
   const data = { ...parsed.data, role: isHeadSecurity ? ("SECURITY" as const) : parsed.data.role };
+  // Students: the department must be one from the list (stored as its code, e.g. "CSE")
+  if (data.role === "STUDENT") {
+    const code = listedDepartmentCode(data.department);
+    if (!code) return { error: "Choose the student's department from the list." };
+    data.department = code;
+  }
 
   // Explicitly validate uniqueness before hitting Auth
   const existingEmail = await prisma.profile.findUnique({
@@ -713,6 +719,13 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
     }
   }
 
+  // A changed department must be one from the list (an older custom one may stay as it is)
+  if (input.department !== undefined && (input.department || null) !== (student.department || null)) {
+    const code = listedDepartmentCode(input.department);
+    if (!code) return { error: "Choose the student's department from the list." };
+    input.department = code;
+  }
+
   if (input.email && input.email !== student.profile.email) {
     const existingEmail = await prisma.profile.findUnique({ where: { email: input.email } });
     if (existingEmail && existingEmail.id !== student.profileId) {
@@ -943,7 +956,7 @@ export async function updateUserDetails(profileId: string, rawData: Record<strin
 }
 
 /**
- * Faculty gets their assigned students (and departmental students)
+ * Faculty: only their assigned students. HOD: assigned + their department.
  */
 export async function getFacultyStudents() {
   const user = await requireRole("FACULTY", "FACULTY_ADMIN");
@@ -955,7 +968,7 @@ export async function getFacultyStudents() {
 
   if (!faculty) return { students: [] };
 
-  const deptVariants = getDepartmentVariants(faculty.department);
+  const deptVariants = user.role === "FACULTY_ADMIN" ? getDepartmentVariants(faculty.department) : [];
   const students = await prisma.student.findMany({
     where: {
       OR: [

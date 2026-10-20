@@ -3,7 +3,7 @@
  * definitions. Never trust the browser: every value is re-checked here, and
  * dates / times are always set from the server clock (IST).
  */
-import { firstDirection, pendingActions, type Direction, type EntryRegister, type FieldDef } from "./definitions";
+import { firstDirection, isSirosLabour, pendingActions, type Direction, type EntryRegister, type FieldDef } from "./definitions";
 import { istDateString } from "@/lib/time/ist";
 
 export type RawPayload = {
@@ -110,6 +110,11 @@ async function cleanValue(
     default:
       return { value: null };
   }
+}
+
+/** Validates a new value for an updatable field (status / remarks changed later from the record). */
+export function validateFieldUpdate(f: FieldDef, raw: unknown): Promise<{ value: FieldValue } | { error: string }> {
+  return cleanValue(f, raw, async () => null);
 }
 
 function asRecord(v: unknown): Record<string, unknown> {
@@ -245,7 +250,7 @@ export async function validateNewRecord(
 
   if (details === 0) return { error: "Enter at least one detail" };
 
-  if (def.key === "SIROS_LABOUR_CONTRACT") {
+  if (isSirosLabour(def.key)) {
     const total = typeof data.totalWorkers === "number" ? data.totalWorkers : null;
     const workers = Array.isArray(data.workers) ? data.workers.length : 0;
     if (total !== null && !Number.isInteger(total)) return { error: "Total workers must be a whole number" };
@@ -435,7 +440,7 @@ export async function validateAdminEdit(
     data[g.key] = rows;
   }
 
-  if (def.key === "SIROS_LABOUR_CONTRACT") {
+  if (isSirosLabour(def.key)) {
     const total = typeof data.totalWorkers === "number" ? data.totalWorkers : null;
     const workers = Array.isArray(data.workers) ? data.workers.length : 0;
     if (total !== null && workers > total) return { error: `You listed ${workers} workers but the total under the contractor is ${total}` };

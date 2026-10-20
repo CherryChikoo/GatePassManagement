@@ -7,7 +7,8 @@ import React, { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PagerBar } from "@/components/ui/pager-bar";
-import { Badge, StatusBadge, EmptyState, StatCard } from "@/components/ui/primitives";
+import { Badge, StatusBadge, EmptyState, StatCard, Modal } from "@/components/ui/primitives";
+import { PassFullDetails, prefetchPassDetails } from "@/components/passes/pass-full-details";
 import { BackButton } from "@/components/ui/back-button";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import {
@@ -75,6 +76,8 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
   const [searchQuery, setSearchQuery] = useState("");
   const [passDate, setPassDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  // A pass opened from the list: every detail
+  const [openPassId, setOpenPassId] = useState<string | null>(null);
   const pageSize = 10;
 
   const filteredPermissions = permissions.filter((p) => {
@@ -292,7 +295,12 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
       ) : (
         <div className="grid gap-3 sm:gap-4">
           {paginatedPermissions.map((pass) => (
-            <Card key={pass.id} className="hover:border-zinc-700">
+            <Card
+              key={pass.id}
+              onPointerDown={() => prefetchPassDetails(pass.id)}
+              onClick={() => setOpenPassId(pass.id)}
+              className="cursor-pointer transition-colors hover:border-zinc-700"
+            >
               <CardContent className="p-4 sm:p-5">
                 <div className="space-y-4">
                   {/* Top row: type, purpose, status, applied at */}
@@ -447,6 +455,15 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
         onPageChange={setCurrentPage}
         itemLabel="passes"
       />
+
+      <Modal open={!!openPassId} onClose={() => setOpenPassId(null)} title="Pass Details" className="max-w-2xl">
+        {openPassId && (
+          <PassFullDetails
+            permissionId={openPassId}
+            preview={{ ...permissions.find((p: any) => p.id === openPassId), faculty: { profile: { name: faculty?.name }, employeeId: faculty?.employeeId } }}
+          />
+        )}
+      </Modal>
     </div>
   );
 }

@@ -15,7 +15,7 @@ export default async function SecurityHomePage() {
       hidden={access.hidden}
       creatable={creatable}
       registers={registers}
-      canBuild={access.isHeadSecurity}
+      canBuild={false}
     />
   );
 }

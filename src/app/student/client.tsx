@@ -1,5 +1,6 @@
 "use client";
 
+import { usePassWatch } from "@/hooks/use-pass-watch";
 import { DateField } from "@/components/ui/date-field";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -77,20 +78,16 @@ export function StudentDashboardClient({ user }: Props) {
 
   const state = dashboardData?.state;
 
-  // Poll while waiting on someone else: the approver (PENDING) or the gate scan (QR_CODE).
-  // Every 15 s and only while the screen is visible (a background tab doesn't need
-  // it; returning to the tab refreshes straight away).
-  useEffect(() => {
-    if (state === "PENDING" || state === "QR_CODE") {
-      const interval = setInterval(() => {
-        if (document.visibilityState !== "visible") return;
-        startTransition(() => {
-          useAppStore.getState().refresh();
-        });
-      }, 15_000);
-      return () => clearInterval(interval);
-    }
-  }, [state]);
+  // Waiting on someone else — the approver (PENDING) or the gate scan (QR_CODE):
+  // the screen reloads the moment the pass changes (live ping, or a tiny status
+  // check while there is no live connection), e.g. straight to the
+  // confirmation after the guard scans.
+  const waiting = state === "PENDING" || state === "QR_CODE";
+  usePassWatch(dashboardData?.latestPermission?.id, waiting, () => {
+    startTransition(() => {
+      useAppStore.getState().refresh(true);
+    });
+  });
 
   // A rejection is shown once; after the student dismisses it (button/timer) we go back to the form.
   const latestId: string | undefined = dashboardData?.latestPermission?.id;

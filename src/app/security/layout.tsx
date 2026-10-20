@@ -5,6 +5,7 @@ import { requireRole, avatarUrlFor } from "@/lib/auth/helpers";
 import { logoutAction } from "@/server/actions/auth";
 import { StoreHydrator } from "@/components/providers/store-hydrator";
 import { LanguageProvider } from "@/components/providers/language-provider";
+import { SecurityText } from "@/components/providers/security-text";
 import { LANG_COOKIE, normalizeLang } from "@/lib/i18n";
 
 export default async function SecurityLayout({ children }: { children: React.ReactNode }) {
@@ -19,6 +20,8 @@ export default async function SecurityLayout({ children }: { children: React.Rea
 
   return (
     <LanguageProvider initialLang={lang}>
+    {/* Larger text on every Security screen */}
+    <SecurityText>
     <DashboardLayout defaultCollapsed={isCollapsed}
       role={user.role}
       userName={user.name}
@@ -30,6 +33,7 @@ export default async function SecurityLayout({ children }: { children: React.Rea
       <StoreHydrator user={{ name: user.name, email: user.email, role: user.role, profileId: user.profileId }} />
       {children}
     </DashboardLayout>
+    </SecurityText>
     </LanguageProvider>
   );
 }

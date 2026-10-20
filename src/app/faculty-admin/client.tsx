@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { StatCard, StatusBadge, Modal } from "@/components/ui/primitives";
+import { StatGroup, StatCard, StatusBadge, Modal } from "@/components/ui/primitives";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/utils";
@@ -141,16 +141,21 @@ export function FacultyAdminDashboardClient({ user }: Props) {
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
           {/* Left: stats + requests */}
           <div className="xl:col-span-2 space-y-4 lg:space-y-6 min-w-0">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              <StatCard title="Total Students" value={stats.totalStudents} icon={<Users />} description="In your department" />
-              <StatCard
-                title="Approved Today"
-                value={stats.approvedToday}
-                icon={<CheckCircle2 />}
-                description={`${stats.rejectedToday} rejected today`}
-              />
-              <StatCard title="Exits Today" value={stats.exitsToday} icon={<LogOut />} description="Gate scans" />
-              <StatCard title="Entries Today" value={stats.entriesToday} icon={<LogIn />} description="Gate scans" />
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-4">
+              <StatGroup title="Your department" gridClassName="grid-cols-1">
+                <StatCard title="Total Students" value={stats.totalStudents} icon={<Users />} description="In your department" />
+              </StatGroup>
+              <StatGroup title="Today" className="lg:col-span-3" gridClassName="sm:grid-cols-3">
+                <StatCard
+                  title="Approved"
+                  className="col-span-2 sm:col-span-1"
+                  value={stats.approvedToday}
+                  icon={<CheckCircle2 />}
+                  description={`${stats.rejectedToday} rejected today`}
+                />
+                <StatCard title="Exits" value={stats.exitsToday} icon={<LogOut />} description="Gate scans" />
+                <StatCard title="Entries" value={stats.entriesToday} icon={<LogIn />} description="Gate scans" />
+              </StatGroup>
             </div>
 
             <Card>

@@ -4,6 +4,7 @@ import { DepartmentSelect } from "@/components/ui/department-select";
 import { ResetPasswordButton } from "@/components/users/reset-password-button";
 import { PagerBar } from "@/components/ui/pager-bar";
 import { dt } from "@/components/ui/data-table";
+import { PassFullDetails, prefetchPassDetails } from "@/components/passes/pass-full-details";
 import { istDateString } from "@/lib/time/ist";
 import { scheduledNote } from "@/lib/pass-dates";
 import { actionErrorMessage } from "@/lib/deployment";
@@ -21,6 +22,7 @@ import {
   StatusBadge,
   StatCard,
   EmptyState,
+  Modal,
 } from "@/components/ui/primitives";
 import {
   formatDateTime,
@@ -93,6 +95,8 @@ export function UserDetailClient({
   const [editError, setEditError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [toggling, setToggling] = useState(false);
+  // A pass opened from "Past Permissions Taken"
+  const [openPassId, setOpenPassId] = useState<string | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [editLoading, setEditLoading] = useState(false);
   const [dateFilter, setDateFilter] = useState("ALL"); // ALL, TODAY, WEEK, MONTH, DATE
@@ -983,7 +987,11 @@ export function UserDetailClient({
                       (m: any) => m.type === "ENTRY",
                     );
                     return (
-                      <li key={p.id} className="py-4 space-y-3">
+                      <li
+                        key={p.id}
+                        onPointerDown={() => prefetchPassDetails(p.id)} onClick={() => setOpenPassId(p.id)}
+                        className="py-4 space-y-3 cursor-pointer transition-colors active:bg-zinc-950/70"
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-zinc-100 break-words">{p.purpose}</p>
@@ -1015,24 +1023,7 @@ export function UserDetailClient({
                           <div className="col-span-2 min-w-0">
                             <dt className={labelCls}>Review & Approval</dt>
                             <dd className="mt-0.5">
-                              {p.approval ? (
-                                <div className="space-y-0.5">
-                                  <p className="text-zinc-300">
-                                    <span className="text-zinc-500">By: </span>
-                                    {p.approval.faculty?.profile?.name ||
-                                      p.approval.warden?.profile?.name ||
-                                      p.approverType}
-                                  </p>
-                                  {p.rejectionReason && (
-                                    <p className="text-red-400 italic break-words">&ldquo;{p.rejectionReason}&rdquo;</p>
-                                  )}
-                                  {p.approval.reason && (
-                                    <p className="text-zinc-500 break-words">Note: {p.approval.reason}</p>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="text-amber-400 italic">Pending Review</span>
-                              )}
+                              <ApprovalSummary p={p} />
                             </dd>
                           </div>
                         </dl>
@@ -1086,7 +1077,7 @@ export function UserDetailClient({
                       );
 
                       return (
-                        <tr key={p.id} className={dt.tr}>
+                        <tr key={p.id} className={dt.trClickable} onPointerDown={() => prefetchPassDetails(p.id)} onClick={() => setOpenPassId(p.id)}>
                           {/* Purpose & Destination */}
                           <td className={dt.td}>
                             <p className="font-medium text-zinc-100">
@@ -1130,32 +1121,7 @@ export function UserDetailClient({
 
                           {/* Review & Approval */}
                           <td className={`${dt.td} text-xs`}>
-                            {p.approval ? (
-                              <div className="space-y-0.5">
-                                <p className="text-zinc-300">
-                                  <span className="text-zinc-500">
-                                    By:{" "}
-                                  </span>
-                                  {p.approval.faculty?.profile?.name ||
-                                    p.approval.warden?.profile?.name ||
-                                    p.approverType}
-                                </p>
-                                {p.rejectionReason && (
-                                  <p className="text-xs text-red-400 mt-0.5 italic">
-                                    &ldquo;{p.rejectionReason}&rdquo;
-                                  </p>
-                                )}
-                                {p.approval.reason && (
-                                  <p className="text-xs text-zinc-500 mt-0.5">
-                                    Note: {p.approval.reason}
-                                  </p>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-amber-400 italic">
-                                Pending Review
-                              </span>
-                            )}
+                            <ApprovalSummary p={p} />
                           </td>
 
                           {/* Status */}
@@ -1514,6 +1480,56 @@ export function UserDetailClient({
           </Card>
         )}
       </div>
+
+      {/* A pass from "Past Permissions Taken": every detail */}
+      <Modal open={!!openPassId} onClose={() => setOpenPassId(null)} title="Pass Details" className="max-w-2xl">
+        {openPassId && (
+          <PassFullDetails
+            permissionId={openPassId}
+            preview={{ ...(student ? { student: { profile: { name: user.name }, studentRoll: student.studentRoll } } : {}), ...permissions.find((x) => x.id === openPassId) }}
+          />
+        )}
+      </Modal>
     </>
   );
+}
+
+const APPROVER_ROLE: Record<string, string> = {
+  FACULTY: "Faculty mentor",
+  FACULTY_ADMIN: "HOD",
+  WARDEN: "Warden",
+  DEAN: "Dean",
+  DIRECTOR: "Director",
+};
+
+/** Review & Approval, from the pass's real state (not only the approval record). */
+function ApprovalSummary({ p }: { p: any }) {
+  const who = p.approval?.faculty?.profile?.name || p.approval?.warden?.profile?.name || null;
+  const role = APPROVER_ROLE[p.approval?.approverType ?? p.approverType] ?? null;
+  const approvedStates = ["APPROVED", "EXITED", "COMPLETED"];
+  if (p.status === "REJECTED" || p.approval?.approved === false) {
+    return (
+      <div className="space-y-0.5">
+        <p className="font-medium text-red-400">Rejected{who ? ` by ${who}` : ""}</p>
+        {(p.rejectionReason || p.approval?.reason) && (
+          <p className="text-red-400/80 italic break-words">&ldquo;{p.rejectionReason || p.approval?.reason}&rdquo;</p>
+        )}
+      </div>
+    );
+  }
+  if (p.approval?.approved || p.approvedAt || approvedStates.includes(p.status)) {
+    return (
+      <div className="space-y-0.5">
+        <p className="font-medium text-emerald-500">
+          Approved{who ? ` by ${who}` : role ? ` · ${role}` : ""}
+        </p>
+        {who && role && <p className="text-zinc-500">{role}</p>}
+        {p.approvedAt && <p className="text-zinc-500 tabular-nums">{formatDateTime(p.approvedAt)}</p>}
+        {p.approval?.reason && <p className="text-zinc-500 break-words">Note: {p.approval.reason}</p>}
+      </div>
+    );
+  }
+  if (p.status === "CANCELLED") return <span className="text-zinc-500">Cancelled</span>;
+  if (p.status === "EXPIRED") return <span className="text-zinc-500">Expired before approval</span>;
+  return <span className="text-amber-400 italic">Pending review</span>;
 }

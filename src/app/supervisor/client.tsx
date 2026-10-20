@@ -14,7 +14,7 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
-import { StatCard, EmptyState } from "@/components/ui/primitives";
+import { StatGroup, StatCard, EmptyState } from "@/components/ui/primitives";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
@@ -58,17 +58,25 @@ export function SupervisorDashboardClient({ user }: { user: { name: string } }) 
         </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-        <StatCard title="Requests Today" value={s.requestsToday} icon={<ClipboardCheck />} description="Student + faculty" />
-        <StatCard title="Pending (Students)" value={s.pendingStudent} icon={<Hourglass />} description="Awaiting HOD / warden" />
-        <StatCard title="Pending (Faculty)" value={s.pendingFaculty} icon={<Hourglass />} description="Awaiting HOD / Dean" />
-        <StatCard title="Approved Today" value={s.approvedToday} icon={<CheckCircle2 />} />
-        <StatCard title="Rejected Today" value={s.rejectedToday} icon={<XCircle />} />
-        <StatCard title="Exits Today" value={s.exitsToday} icon={<DoorOpen />} description="Gate scans" />
-        <StatCard title="Entries Today" value={s.entriesToday} icon={<LogIn />} description="Gate scans" />
-        <StatCard title="Students" value={s.totalStudents} icon={<GraduationCap />} />
-        <StatCard title="Faculty & HODs" value={s.totalFaculty} icon={<Briefcase />} />
-        <StatCard title="Visitors Inside" value={s.visitorsInside} icon={<Users />} />
+      <div className="space-y-6">
+        <StatGroup title="Pass requests today" gridClassName="lg:grid-cols-5">
+          <StatCard title="Requests" value={s.requestsToday} icon={<ClipboardCheck />} description="Student + faculty" />
+          <StatCard title="Pending (Students)" value={s.pendingStudent} icon={<Hourglass />} description="Awaiting HOD / warden" />
+          <StatCard title="Pending (Faculty)" value={s.pendingFaculty} icon={<Hourglass />} description="Awaiting HOD / Dean" />
+          <StatCard title="Approved" value={s.approvedToday} icon={<CheckCircle2 />} description="Passes approved" />
+          <StatCard title="Rejected" value={s.rejectedToday} icon={<XCircle />} description="Requests rejected" />
+        </StatGroup>
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-4">
+          <StatGroup title="Gate today" className="lg:col-span-3" gridClassName="sm:grid-cols-3">
+            <StatCard title="Exits" value={s.exitsToday} icon={<DoorOpen />} description="Gate scans" />
+            <StatCard title="Entries" value={s.entriesToday} icon={<LogIn />} description="Gate scans" />
+            <StatCard title="Visitors inside" value={s.visitorsInside} icon={<Users />} description="Not checked out" />
+          </StatGroup>
+          <StatGroup title="People" className="lg:col-span-2">
+            <StatCard title="Students" value={s.totalStudents} icon={<GraduationCap />} />
+            <StatCard title="Faculty & HODs" value={s.totalFaculty} icon={<Briefcase />} />
+          </StatGroup>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">

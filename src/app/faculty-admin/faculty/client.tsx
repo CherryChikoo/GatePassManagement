@@ -84,27 +84,9 @@ export function FacultyAdminFacultyClient({ user }: Props) {
     <div className="space-y-4">
       {/* Top info bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-800">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="hidden sm:flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
-            <Briefcase className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h4 className="text-base font-medium text-zinc-100 break-words">{f.name}</h4>
-              {f.faculty?.employeeId && (
-                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
-                  {f.faculty.employeeId}
-                </span>
-              )}
-              <span className="rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-medium text-orange-400">
-                {f.faculty?.designation || "Faculty Member"}
-              </span>
-            </div>
-            <p className="mt-0.5 text-xs text-zinc-500 break-all">
-              {f.email} {f.phone ? `• ${f.phone}` : ""}
-            </p>
-          </div>
-        </div>
+        <span className="self-start rounded-full bg-orange-500/10 px-3 py-1 text-xs font-medium text-orange-400">
+          {f.faculty?.designation || "Faculty Member"}
+        </span>
         <Link
           href={`/faculty-admin/faculty/${f.id}`}
           prefetch={true}
@@ -264,9 +246,7 @@ export function FacultyAdminFacultyClient({ user }: Props) {
                     </RowActions>
                   </div>
                   {isExpanded && (
-                    <div className="px-3 pb-4 animate-fade-in">
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">{renderDetails(f)}</div>
-                    </div>
+                    <div className="mb-3 rounded-b-2xl bg-zinc-950/70 px-4 pb-4 pt-1 animate-fade-in">{renderDetails(f)}</div>
                   )}
                 </li>
               );
@@ -295,7 +275,11 @@ export function FacultyAdminFacultyClient({ user }: Props) {
                       <React.Fragment key={f.id}>
                         <tr
                           onClick={toggle}
-                          className={`${dt.trClickable} select-none`}
+                          className={`${dt.trClickable} select-none ${
+                            isExpanded
+                              ? "[&>td]:bg-zinc-950/70 [&>td]:border-b-0 [&>td:first-child]:rounded-bl-none [&>td:last-child]:rounded-br-none"
+                              : ""
+                          }`}
                           title="Click row to view full details"
                         >
                           {/* Faculty name & emp ID */}
@@ -362,8 +346,8 @@ export function FacultyAdminFacultyClient({ user }: Props) {
                         {/* Expanded details row */}
                         {isExpanded && (
                           <tr className="animate-fade-in">
-                            <td colSpan={5} className="px-2 pb-3">
-                              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+                            <td colSpan={5} className="px-0 pt-0 pb-3">
+                              <div className="rounded-b-2xl bg-zinc-950/70 px-4 pb-5 pt-1 sm:px-5">
                                 {renderDetails(f)}
                               </div>
                             </td>

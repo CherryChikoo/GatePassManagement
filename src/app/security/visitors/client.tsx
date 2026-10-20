@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { dt, PersonCell, RowActions, IconAction } from "@/components/ui/data-table";
 import { PagerBar } from "@/components/ui/pager-bar";
-import { formatDateTime, formatTime } from "@/lib/utils";
+import { formatDateTime, formatTime, withTimeout } from "@/lib/utils";
 import {
   Users,
   UserPlus,
@@ -24,8 +24,13 @@ import {
   Loader2,
 } from "lucide-react";
 import { registerOutsider, markOutsiderExited } from "@/server/actions/outsiders";
+import { getVisitorsBook } from "@/server/actions/registers";
+import { DateField } from "@/components/ui/date-field";
+import { LoadingPill } from "@/components/ui/loading-pill";
+import { istDateString } from "@/lib/time/ist";
 import { uploadOutsiderPhoto } from "@/lib/storage/image-upload";
 import { useRouter } from "next/navigation";
+import { useLiveTopics } from "@/lib/realtime/live";
 import { Modal, StatusBadge } from "@/components/ui/primitives";
 import { getExitPhotoUrl } from "@/lib/storage/image-upload";
 import { BackButton } from "@/components/ui/back-button";
@@ -41,6 +46,8 @@ interface Props {
 export function OutsidersClient({ user, inside, history }: Props) {
   const t = useT();
   const router = useRouter();
+  // Live: a visitor registered / checked out at another gate (the form keeps what was typed)
+  useLiveTopics(["visitors"], () => router.refresh());
   const [activeTab, setActiveTab] = useState<"REGISTER" | "INSIDE" | "HISTORY">("REGISTER");
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -209,6 +216,41 @@ export function OutsidersClient({ user, inside, history }: Props) {
   
   const ITEMS_PER_PAGE = 10;
 
+  // Entry/Exit Log: pick a day (default today); every visitor who came that day
+  const [logDate, setLogDate] = useState(() => istDateString());
+  const [logQuery, setLogQuery] = useState("");
+  const [log, setLog] = useState<{ rows: any[]; total: number; pageSize: number } | null>(null);
+  const [logLoading, setLogLoading] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setLogQuery(searchQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+  useEffect(() => {
+    if (activeTab !== "HISTORY") return;
+    let cancelled = false;
+    setLogLoading(true);
+    withTimeout(getVisitorsBook({ date: logDate, q: logQuery, page }))
+      .then((res: any) => {
+        if (cancelled || !res?.success) return;
+        setLog({
+          total: res.total,
+          pageSize: res.pageSize,
+          // Same shape as the visitor list (details popup, photo)
+          rows: res.rows.map((r: any) => ({
+            ...r,
+            visitingStudent: r.personToVisit,
+            entryTime: r.inTime,
+            exitTime: r.outTime,
+          })),
+        });
+      })
+      .catch(() => {})
+      .finally(() => !cancelled && setLogLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, logDate, logQuery, page]);
+
   const filteredInside = inside.filter(
     (p) =>
       p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -225,7 +267,8 @@ export function OutsidersClient({ user, inside, history }: Props) {
       (p.vehicleNumber && p.vehicleNumber.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (p.purpose && p.purpose.toLowerCase().includes(searchQuery.toLowerCase()))
   );
-  const paginatedHistory = filteredHistory.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+  // Log tab: today's list until the server answers, then the chosen day
+  const paginatedHistory = log ? log.rows : filteredHistory.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
   const errorAlert = error && (
     <div role="alert" className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-400">
@@ -240,7 +283,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
     </div>
   );
 
-  const labelCls = "block text-sm font-medium text-zinc-300";
+  const labelCls = "field-label block text-sm font-medium text-zinc-300";
   const categoryChip = "inline-flex shrink-0 items-center rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[11px] font-medium text-zinc-300";
 
   return (
@@ -492,7 +535,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                     </div>
                     <div className="space-y-1.5">
                       <label htmlFor="visitor-department" className={labelCls}>{t("Department")}</label>
-                      <DepartmentSelect key={`dept-${formNonce}`} id="visitor-department" placeholder="Department being visited" value={formData.department} onChange={(v) => setFormData({ ...formData, department: v })} />
+                      <DepartmentSelect key={`dept-${formNonce}`} allowOther id="visitor-department" placeholder="Department being visited" value={formData.department} onChange={(v) => setFormData({ ...formData, department: v })} />
                     </div>
                     <div className="space-y-1.5">
                       <label htmlFor="visitor-address" className={labelCls}>{t("Address")}</label>
@@ -615,7 +658,33 @@ export function OutsidersClient({ user, inside, history }: Props) {
       {/* History Tab */}
       {activeTab === "HISTORY" && (
         <>
-          <Card className="overflow-hidden">
+          <LoadingPill active={logLoading} />
+          <div className="flex flex-wrap items-center gap-2">
+            <DateField
+              aria-label={t("Date")}
+              value={logDate}
+              max={istDateString()}
+              onChange={(e) => {
+                if (!e.target.value) return;
+                setLogDate(e.target.value);
+                setPage(1);
+              }}
+              className="h-12 w-full sm:w-56"
+            />
+            {logDate !== istDateString() && (
+              <button
+                type="button"
+                onClick={() => {
+                  setLogDate(istDateString());
+                  setPage(1);
+                }}
+                className="h-12 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-sm font-medium text-orange-500 hover:bg-zinc-950"
+              >
+                {t("Today")}
+              </button>
+            )}
+          </div>
+          <Card className={`overflow-hidden transition-opacity ${logLoading ? "opacity-60" : ""}`}>
             {paginatedHistory.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
                 <span className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 text-zinc-500">
@@ -699,7 +768,13 @@ export function OutsidersClient({ user, inside, history }: Props) {
               </>
             )}
           </Card>
-          <PagerBar page={page} pageSize={ITEMS_PER_PAGE} total={filteredHistory.length} onPageChange={setPage} itemLabel={t("records")} />
+          <PagerBar
+            page={page}
+            pageSize={log ? log.pageSize : ITEMS_PER_PAGE}
+            total={log ? log.total : filteredHistory.length}
+            onPageChange={setPage}
+            itemLabel={t("records")}
+          />
         </>
       )}
 

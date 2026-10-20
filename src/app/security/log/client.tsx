@@ -14,6 +14,7 @@ import { BackButton } from "@/components/ui/back-button";
 import { GoBackButton } from "@/components/ui/go-back-button";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
+import { useLiveTopics } from "@/lib/realtime/live";
 import { Modal } from "@/components/ui/primitives";
 import { dt, IconAction, PersonCell, RowActions } from "@/components/ui/data-table";
 import { PagerBar } from "@/components/ui/pager-bar";
@@ -34,6 +35,8 @@ export function SecurityLogClient({
 }) {
   const t = useT();
   const router = useRouter();
+  // Live: new gate scans or visitors
+  useLiveTopics(["gate", "visitors"], () => router.refresh());
   // Date / tab changes reload the list from the server: show progress meanwhile
   const { push: navigate, isPending: navigating } = usePendingNavigation();
   const [activeTab, setActiveTab] = useState<"ENTRIES" | "EXITS" | "OUTSIDERS">("ENTRIES");

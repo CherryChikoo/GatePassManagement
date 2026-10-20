@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
+import { notifyLive, notifyPassHolder } from "@/lib/realtime/notify";
 import { requireRole, getAuthUser, type AuthUser } from "@/lib/auth/helpers";
 import { verifyScannedQr } from "@/lib/qr/token";
 import { revalidatePath } from "next/cache";
@@ -521,6 +522,8 @@ export async function registerExit(
   }
 
   clearSecurityCaches();
+  notifyLive("gate");
+  notifyPassHolder(permissionId);
   revalidatePath("/security");
   revalidatePath("/security/log");
   revalidatePath("/student");
@@ -636,6 +639,8 @@ export async function registerEntry(
   }
 
   clearSecurityCaches();
+  notifyLive("gate");
+  notifyPassHolder(permissionId);
   revalidatePath("/security");
   revalidatePath("/security/log");
   revalidatePath("/student");

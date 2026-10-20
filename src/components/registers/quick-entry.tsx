@@ -47,6 +47,9 @@ export function QuickEntryModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState(0);
+  // Lists just saved (e.g. coolies), to show to the person concerned
+  const [lastGroups, setLastGroups] = useState<Record<string, Record<string, unknown>[]> | null>(null);
+  const [savedAt, setSavedAt] = useState("");
   // Bumped on every save result, so the popup scrolls up to the "Saved" / error message
   const [resultNo, setResultNo] = useState(0);
 
@@ -62,6 +65,8 @@ export function QuickEntryModal({
         setError(res.error);
       } else {
         setSavedCount((n) => n + 1);
+        setLastGroups((payload as any)?.groups ?? null);
+        setSavedAt(new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" }));
         setToken(newClientToken());
         setFormKey((k) => k + 1); // blank form for the next person
         onSaved?.();
@@ -85,6 +90,37 @@ export function QuickEntryModal({
             </span>
           </div>
         )}
+        {savedCount > 0 &&
+          lastGroups &&
+          (def.groups ?? []).map((g) => {
+            const rows = (lastGroups[g.key] ?? []).filter((r) => Object.values(r).some((v) => String(v ?? "").trim() !== ""));
+            if (rows.length === 0) return null;
+            const shown = g.fields.filter((f) => f.type !== "time");
+            return (
+              <div key={g.key} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+                <p className="text-sm font-semibold text-zinc-100">
+                  {g.label} <span className="font-normal text-zinc-500 tabular-nums">({rows.length})</span>
+                </p>
+                <ol className="mt-2 space-y-1.5">
+                  {rows.map((r, i) => (
+                    <li key={i} className="flex items-start gap-2.5 text-sm">
+                      <span className="w-6 shrink-0 text-right tabular-nums text-zinc-500">{i + 1}.</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="font-medium text-zinc-100">{String(r[shown[0]?.key] ?? "") || "—"}</span>
+                        {shown.slice(1).map((f) => {
+                          const v = String(r[f.key] ?? "").trim();
+                          return v ? <span key={f.key} className="text-zinc-400"> · {f.type === "select" ? t(v) : v}</span> : null;
+                        })}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+                {g.fields.some((f) => f.type === "time") && savedAt && (
+                  <p className="mt-2 text-xs text-zinc-500">{t("In since {time}", { time: savedAt })}</p>
+                )}
+              </div>
+            );
+          })}
         {error && (
           <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {error}

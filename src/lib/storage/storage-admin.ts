@@ -92,6 +92,20 @@ export async function createSignedPhotoUrl(storagePath: string): Promise<string 
   return data.signedUrl;
 }
 
+/** Several photos signed in one Storage request (path → URL; unsafe or failed paths are left out). */
+export async function createSignedPhotoUrls(storagePaths: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const paths = [...new Set(storagePaths.filter(isSafeStoragePath))];
+  if (paths.length === 0) return out;
+  const { data, error } = await adminStorage().from(BUCKET_NAME).createSignedUrls(paths, 3600);
+  if (error) {
+    console.error("[storage] signed URLs error:", error.message);
+    return out;
+  }
+  for (const d of data ?? []) if (d.path && d.signedUrl && !d.error) out.set(d.path, d.signedUrl);
+  return out;
+}
+
 /**
  * Deletes visitor photos older than `daysOld` (outsiders/<file>). Student gate
  * photos (students/<ownerId>/<file>) are permanent and never deleted.
