@@ -1,7 +1,7 @@
 "use client";
 
 import { lockPageScroll } from "@/lib/ui/scroll-lock";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useSyncExternalStore } from "react";
 import { useKeepHeightOnFilter } from "@/lib/ui/keep-height";
 import { useBarSpace, useGlassSupport } from "@/lib/ui/bar-space";
 import Link from "next/link";
@@ -94,6 +94,47 @@ function BrandMark({ compact = false, roleLine }: { compact?: boolean; roleLine:
   );
 }
 
+// ── Laptop sidebar: wide or icons ──────────────────────────
+// One value for the whole browser tab, changed only by Collapse / Expand.
+// It used to live in the layout's own state, started from the value the server
+// rendered; a layout started again from a cached page (router cache, see
+// staleTimes in next.config.ts) took that page's old value, so the sidebar
+// flipped between wide and icons while moving between sections.
+const COLLAPSED_KEY = "gatepass_sidebar_collapsed";
+let collapsedChoice: boolean | null = null;
+const collapsedListeners = new Set<() => void>();
+
+function readCollapsed(serverValue: boolean): boolean {
+  if (collapsedChoice === null) {
+    try {
+      const saved = localStorage.getItem(COLLAPSED_KEY);
+      if (saved === "true" || saved === "false") collapsedChoice = saved === "true";
+    } catch {
+      // storage blocked: the cookie (server value) decides
+    }
+  }
+  return collapsedChoice ?? serverValue;
+}
+
+function saveCollapsed(value: boolean) {
+  collapsedChoice = value;
+  try {
+    localStorage.setItem(COLLAPSED_KEY, String(value));
+  } catch {
+    // storage blocked: the cookie still keeps it
+  }
+  // The cookie lets the server draw the sidebar right on a full page load
+  document.cookie = `${COLLAPSED_KEY}=${value}; path=/; max-age=31536000`;
+  collapsedListeners.forEach((l) => l());
+}
+
+function subscribeCollapsed(listener: () => void) {
+  collapsedListeners.add(listener);
+  return () => {
+    collapsedListeners.delete(listener);
+  };
+}
+
 export function DashboardLayout({
   children,
   role,
@@ -108,7 +149,8 @@ export function DashboardLayout({
   // Who they are (designation / role), not "… Dashboard"
   const roleLine = t(roleTitle || ROLE_FALLBACK[role] || role);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [desktopCollapsed, setDesktopCollapsed] = useState(defaultCollapsed);
+  // Laptop sidebar wide / icons: the tab-wide choice (see readCollapsed), the server's value until hydrated
+  const desktopCollapsed = useSyncExternalStore(subscribeCollapsed, () => readCollapsed(defaultCollapsed), () => defaultCollapsed);
   const pathname = usePathname();
   // Changing a filter never makes the page jump up or down
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -149,14 +191,6 @@ export function DashboardLayout({
   else if (role === "DEAN") navItems = deanNavItems;
   else if (role === "SECURITY_SUPERVISOR") navItems = supervisorNavItems;
 
-  useEffect(() => {
-    const saved = localStorage.getItem("gatepass_sidebar_collapsed");
-    if (saved && !document.cookie.includes("gatepass_sidebar_collapsed")) {
-      setDesktopCollapsed(saved === "true");
-      document.cookie = `gatepass_sidebar_collapsed=${saved}; path=/; max-age=31536000`;
-    }
-  }, []);
-  
   const handleNavigation = () => {
     setSidebarOpen(false);
   };
@@ -186,13 +220,7 @@ export function DashboardLayout({
       : pathname === href || (pathname.startsWith(href + "/") && href !== "/");
 
   const initial = userName.charAt(0).toUpperCase();
-  const toggleCollapsed = () =>
-    setDesktopCollapsed((prev) => {
-      const next = !prev;
-      localStorage.setItem("gatepass_sidebar_collapsed", String(next));
-      document.cookie = `gatepass_sidebar_collapsed=${next}; path=/; max-age=31536000`;
-      return next;
-    });
+  const toggleCollapsed = () => saveCollapsed(!desktopCollapsed);
 
   return (
     <div className="flex h-[100dvh] bg-zinc-950 overflow-hidden">
