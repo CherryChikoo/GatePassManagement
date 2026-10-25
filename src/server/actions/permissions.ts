@@ -5,6 +5,7 @@ import { requireRole } from "@/lib/auth/helpers";
 import { permissionRequestSchema, batchGrantSchema, hostelOutingSchema } from "@/lib/validation/schemas";
 import { revalidatePath } from "next/cache";
 import { notifyApprovers } from "@/lib/realtime/notify";
+import { closeAllSupersededTrips } from "@/lib/passes/close-trips";
 import { resolveStudentActivePass } from "@/lib/permissions/auto-expire";
 import { resolveStudentApprover } from "@/lib/permissions/approver";
 import { generateQrToken, generateCompactLiveQr } from "@/lib/qr/token";
@@ -184,6 +185,8 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
       if (active?.status === "PENDING") throw new Error("PENDING_EXISTS");
       if (active?.status === "APPROVED") throw new Error("APPROVED_EXISTS");
       // Hosteller out on a pass: they come back on its return QR, not a new request
+      // (a trip they already came back from on another pass is closed first)
+      await closeAllSupersededTrips(tx, { studentId: student.id });
       const out = await tx.permission.findFirst({ where: { studentId: student.id, ...OPEN_TRIP_WHERE }, select: { id: true } });
       if (out) throw new Error("OUT_ON_PASS");
 
@@ -315,6 +318,7 @@ export async function batchCreatePermissions(studentIds: string[], data: Record<
     await prisma.$transaction(async (tx) => {
       for (const { id: studentId } of allowed) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"permission-request:" + studentId}))`;
+        await closeAllSupersededTrips(tx, { studentId });
         const active = await tx.permission.findFirst({
           where: { OR: [{ studentId, status: { in: ["PENDING", "APPROVED"] } }, { studentId, ...OPEN_TRIP_WHERE }] },
           select: { id: true },
@@ -482,6 +486,8 @@ export async function createHostelVisitRequest(formData: FormData) {
       if (active?.status === "PENDING") throw new Error("PENDING_EXISTS");
       if (active?.status === "APPROVED") throw new Error("APPROVED_EXISTS");
       // Hosteller out on a pass: they come back on its return QR, not a new request
+      // (a trip they already came back from on another pass is closed first)
+      await closeAllSupersededTrips(tx, { studentId: student.id });
       const out = await tx.permission.findFirst({ where: { studentId: student.id, ...OPEN_TRIP_WHERE }, select: { id: true } });
       if (out) throw new Error("OUT_ON_PASS");
       return tx.permission.create({

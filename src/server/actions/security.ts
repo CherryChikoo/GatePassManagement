@@ -9,6 +9,7 @@ import { gatePhotoFolder, isSafeStoragePath, uploadExitPhotoAdmin } from "@/lib/
 import { istDateString, istDayRangeFromParam, istStartOfDay } from "@/lib/time/ist";
 import { fillMovementPeople } from "@/lib/people";
 import { canScanReturn, delayMinutes, formatDelay, returnDueAt } from "@/lib/passes/return-scan";
+import { closeSupersededTrips } from "@/lib/passes/close-trips";
 
 // No in-memory copies of these lists: several server instances run at once,
 // and a copy kept by one is not cleared by a change made on another (a saved
@@ -517,6 +518,9 @@ export async function registerExit(
           data: { status: "OUTSIDE" },
         });
       }
+      // Going out now means they were back on campus: older trips they never
+      // returned on (e.g. came back on another pass) are over
+      await closeSupersededTrips(tx, permission, permissionId);
 
     });
   } catch (err: any) {
@@ -642,6 +646,8 @@ export async function registerEntry(
           data: { status: "INSIDE" },
         });
       }
+      // Back on campus: any other trip they never returned on is over
+      await closeSupersededTrips(tx, permission, permissionId);
 
     });
   } catch (err: any) {

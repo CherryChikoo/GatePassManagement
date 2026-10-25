@@ -8,7 +8,8 @@ import { resolveStudentApprover, getFacultyApproverOptions } from "@/lib/permiss
 import { istDateString, istStartOfDay } from "@/lib/time/ist";
 import { fillMovementPeople } from "@/lib/people";
 import { getAdminMonitorCounts } from "@/lib/dashboard/admin-monitor";
-import { canScanReturn } from "@/lib/passes/return-scan";
+import { canScanReturn, OPEN_TRIP_WHERE } from "@/lib/passes/return-scan";
+import { closeAllSupersededTrips } from "@/lib/passes/close-trips";
 
 /**
  * Unified preload endpoint — returns ALL data the logged-in user needs
@@ -582,25 +583,30 @@ async function preloadStudent(profileId: string) {
   // hostellers → assigned warden.
   // Only what the pass screen shows (students have one screen; no pass history
   // is sent — it was the biggest part of every load, for 5,000+ students)
-  const [resolution, latestPermission] = await Promise.all([
+  const passSelect = {
+    id: true, status: true, type: true, purpose: true, destination: true,
+    exitDate: true, expectedExit: true, expectedReturn: true, endDate: true,
+    contactNumber: true, remarks: true, rejectionReason: true,
+    approverType: true, approverId: true, createdAt: true, rejectedAt: true,
+    passKind: true,
+    // The stored QR token is never sent to the browser; the pass screen
+    // fetches rotating 60-second tokens instead.
+    qr: { select: QR_PUBLIC_SELECT },
+    // Recorded return (hostellers scan the same pass to come back)
+    movements: { where: { type: "ENTRY" as const }, select: { id: true }, take: 1 },
+  } as const;
+
+  // Out on an outing: that pass's return QR is shown, never the form — even if a
+  // newer request exists. (A trip they already came back from on another pass is
+  // closed first, so it never shows.)
+  // (one indexed lookup; more only when a trip is open)
+  await closeAllSupersededTrips(prisma, { studentId: student.id });
+  const [resolution, latest, openTrip] = await Promise.all([
     resolveStudentApprover(student),
-    prisma.permission.findFirst({
-      where: { studentId: student.id },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true, status: true, type: true, purpose: true, destination: true,
-        exitDate: true, expectedExit: true, expectedReturn: true, endDate: true,
-        contactNumber: true, remarks: true, rejectionReason: true,
-        approverType: true, approverId: true, createdAt: true, rejectedAt: true,
-        passKind: true,
-        // The stored QR token is never sent to the browser; the pass screen
-        // fetches rotating 60-second tokens instead.
-        qr: { select: QR_PUBLIC_SELECT },
-        // Recorded return (hostellers scan the same pass to come back)
-        movements: { where: { type: "ENTRY" }, select: { id: true }, take: 1 },
-      },
-    }),
+    prisma.permission.findFirst({ where: { studentId: student.id }, orderBy: { createdAt: "desc" }, select: passSelect }),
+    prisma.permission.findFirst({ where: { studentId: student.id, ...OPEN_TRIP_WHERE }, orderBy: { createdAt: "desc" }, select: passSelect }),
   ]);
+  const latestPermission = openTrip ?? latest;
 
   const assignedApprover = resolution.ok
     ? { name: resolution.approver.name, label: resolution.approver.label, available: true }

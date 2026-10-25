@@ -31,6 +31,7 @@ import {
 } from "@/lib/registers/validate";
 import { istDateString, istDateToInstant, istDayRangeFromParam, parseDateParam, parsePageParam } from "@/lib/time/ist";
 import { delayMinutes, formatDelay, returnDueAt } from "@/lib/passes/return-scan";
+import { closeSupersededTrips } from "@/lib/passes/close-trips";
 
 /**
  * Delayed return for a pass's row: minutes late of the recorded return, or of
@@ -471,6 +472,8 @@ export async function markFacultyReturn(permissionId: string, gateId?: string) {
       });
       await tx.permission.update({ where: { id: p.id }, data: { status: "COMPLETED" } });
       if (p.qr) await tx.qrCredential.update({ where: { id: p.qr.id }, data: { usedForEntry: true, active: false } });
+      // Back on campus: any other trip they never returned on is over
+      await closeSupersededTrips(tx, { facultyId: p.facultyId }, p.id);
     });
   } catch (err: any) {
     if (err?.code === "P2002") return { error: "Return already recorded" };

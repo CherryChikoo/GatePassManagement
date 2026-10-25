@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { istStartOfDay } from "@/lib/time/ist";
+import { closeAllSupersededTrips } from "@/lib/passes/close-trips";
 
 let lastRunTime = 0;
 // Opportunistic cleanup from request handlers, at most every 5 minutes per
@@ -59,7 +60,10 @@ export async function autoExpireOutdatedPermissions(force: boolean = false) {
       }),
     ]);
 
-    return { success: true, expiredByTimeLimit, expiredByDayEnd: expiredByDayEnd.count };
+    // 3. Trips the person has come back from on another pass (scanned at the gate since)
+    const closedTrips = await closeAllSupersededTrips(prisma);
+
+    return { success: true, expiredByTimeLimit, expiredByDayEnd: expiredByDayEnd.count, closedTrips };
   } catch (error: any) {
     console.error("[autoExpireOutdatedPermissions Error]", error?.message);
     return { success: false, error: "Auto-expire failed" };

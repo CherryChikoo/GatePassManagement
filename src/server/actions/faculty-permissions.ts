@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth/helpers";
 import { facultyRequestSchema } from "@/lib/validation/schemas";
 import { revalidatePath } from "next/cache";
 import { OPEN_TRIP_WHERE } from "@/lib/passes/return-scan";
+import { closeAllSupersededTrips } from "@/lib/passes/close-trips";
 import { notifyApprovers } from "@/lib/realtime/notify";
 import { resolveFacultyActivePass } from "@/lib/permissions/auto-expire";
 import { getDepartmentVariants } from "@/lib/constants";
@@ -127,6 +128,8 @@ export async function createFacultyPermissionRequest(formData: FormData, type: "
       });
       if (active) throw new Error("ACTIVE_EXISTS");
       // Out on a pass: they come back on its QR (or Security marks them in), not a new request
+      // (a trip they already came back from on another pass is closed first)
+      await closeAllSupersededTrips(tx, { facultyId: faculty.id });
       const out = await tx.permission.findFirst({ where: { facultyId: faculty.id, ...OPEN_TRIP_WHERE }, select: { id: true } });
       if (out) throw new Error("OUT_ON_PASS");
       return tx.permission.create({
