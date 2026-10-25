@@ -6,6 +6,7 @@ import { logoutAction } from "@/server/actions/auth";
 import { StoreHydrator } from "@/components/providers/store-hydrator";
 import { LanguageProvider } from "@/components/providers/language-provider";
 import { SecurityText } from "@/components/providers/security-text";
+import { GateWarmup } from "@/components/providers/gate-warmup";
 import { LANG_COOKIE, normalizeLang } from "@/lib/i18n";
 
 export default async function SecurityLayout({ children }: { children: React.ReactNode }) {
@@ -31,6 +32,7 @@ export default async function SecurityLayout({ children }: { children: React.Rea
       roleTitle={roleTitle}
     >
       <StoreHydrator user={{ name: user.name, email: user.email, role: user.role, profileId: user.profileId }} />
+      <GateWarmup />
       {children}
     </DashboardLayout>
     </SecurityText>

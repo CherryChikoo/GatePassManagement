@@ -11,6 +11,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import type { AuthUser } from "@/lib/auth/helpers";
 import { getRegisterAccess } from "./access";
+import { MAX_CODE_TRIES, canOverrideVisitExit } from "@/lib/visits/passes";
 import { getEntryRegister } from "./catalog";
 import { effectiveData, type RegisterData } from "./validate";
 import { istDateString, istDayRangeFromParam, parseDateParam, parsePageParam } from "@/lib/time/ist";
@@ -87,6 +88,10 @@ export async function queryRegisterEntries(user: AuthUser, params: RegisterListP
       orderBy: { createdAt: "asc" },
       select: { id: true, kind: true, data: true, reason: true, ...recorder },
     },
+    // Meeting a faculty / staff member (never the code itself)
+    ...(def.visitHost
+      ? { visitPass: { select: { hostName: true, status: true, attempts: true, exitMethod: true, overrideReason: true, exitedByName: true } } }
+      : {}),
   } satisfies Prisma.RegisterEntrySelect;
 
   const findRows = () =>
@@ -113,6 +118,8 @@ export async function queryRegisterEntries(user: AuthUser, params: RegisterListP
     page,
     pageSize: PAGE_SIZE,
     total,
+    /** May this user let a visitor out without the meeting code (Head Security / Main Admin) */
+    canOverrideVisit: def.visitHost ? await canOverrideVisitExit(user) : false,
     entries: rows.map((r) => ({
       id: r.id,
       entryDate: istDateString(r.entryDate),
@@ -122,6 +129,12 @@ export async function queryRegisterEntries(user: AuthUser, params: RegisterListP
       recordedByEmployeeId: r.recordedByEmployeeId,
       recordedAtGate: r.recordedAtGate,
       original: r.data as RegisterData,
+      visit: (() => {
+        const v = (r as { visitPass?: { hostName: string; status: string; attempts: number; exitMethod: string | null; overrideReason: string | null; exitedByName: string | null } | null }).visitPass;
+        return v
+          ? { hostName: v.hostName, open: v.status !== "EXITED", met: v.status === "MET", locked: v.attempts >= MAX_CODE_TRIES, exitMethod: v.exitMethod, overrideReason: v.overrideReason, exitedByName: v.exitedByName }
+          : null;
+      })(),
       current: effectiveData(def, r.data as RegisterData, r.supplements),
       supplements: r.supplements.map((s) => ({
         id: s.id,

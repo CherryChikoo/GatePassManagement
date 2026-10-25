@@ -1,7 +1,8 @@
 /**
  * Server-side list of every register: the built-in ones (definitions.ts) plus
  * the ones created in the portal (custom_registers). Read fresh on each
- * request, so a new register shows up for every role straight away.
+ * request (not kept in memory: another server instance would not see a new
+ * register), so a new register shows up for every role straight away.
  */
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";

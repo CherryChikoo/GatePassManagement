@@ -1,5 +1,6 @@
 "use client";
 
+import { ThemedSelect } from "@/components/ui/themed-select";
 import { useState } from "react";
 import { DEPARTMENTS, departmentLabel, getDepartmentCode } from "@/lib/constants";
 import { useT } from "@/components/providers/language-provider";
@@ -71,7 +72,7 @@ export function DepartmentSelect({
 
   return (
     <div className={cn("space-y-2", className)}>
-      <select
+      <ThemedSelect
         id={id}
         value={choice}
         required={required}
@@ -97,7 +98,7 @@ export function DepartmentSelect({
         ) : (
           legacy && <option value={OTHER}>{legacy} ({t("current")})</option>
         )}
-      </select>
+      </ThemedSelect>
       {allowOther && choice === OTHER && (
         <input
           value={custom}

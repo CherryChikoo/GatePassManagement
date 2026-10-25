@@ -1,15 +1,17 @@
 "use client";
+import { ThemedSelect } from "@/components/ui/themed-select";
 import { DateField } from "@/components/ui/date-field";
 import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useRef, useState } from "react";
 import { VoicePanel, useVoiceFill } from "@/components/voice/voice-fill";
+import { HostPicker } from "@/components/visits/host-picker";
+import { VisitCodeFields, visitInputReady, type VisitExitInput } from "@/components/visits/visit-code";
 import type { VoiceFill } from "@/lib/voice/spec";
-import { CalendarDays, Camera, CheckCircle2, ChevronDown, Clock, Info, Loader2, LogIn, LogOut, Mic, Plus, Save, Trash2, X } from "lucide-react";
-import { getRegisterPeopleOptions } from "@/server/actions/registers";
+import { CalendarDays, Camera, CheckCircle2, ChevronDown, Clock, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, Save, Trash2, X } from "lucide-react";
+import { callGate } from "@/lib/gate-call";
 import { DepartmentSelect } from "@/components/ui/department-select";
 import { compressPhoto } from "@/lib/images/compress-photo";
-import { uploadRegisterPhoto } from "@/lib/storage/image-upload";
 import type { Direction, EntryRegister, FieldDef, GroupDef } from "@/lib/registers/definitions";
 import { pendingActions, yesNoWords } from "@/lib/registers/definitions";
 import { formatDate } from "@/lib/utils";
@@ -30,7 +32,7 @@ function loadPeople(): Promise<PersonOption[]> {
   if (!peopleCache || Date.now() - peopleCache.at > 5 * 60_000) {
     peopleCache = {
       at: Date.now(),
-      list: getRegisterPeopleOptions().catch(() => {
+      list: callGate("getRegisterPeopleOptions", [], 15_000).catch(() => {
         peopleCache = null;
         return [];
       }),
@@ -195,7 +197,7 @@ function ChoiceWithOther({
   const [custom, setCustom] = useState(() => (value && !options.includes(value) ? value : ""));
   return (
     <div className="space-y-2">
-      <select
+      <ThemedSelect
         id={id}
         value={choice}
         required={required}
@@ -210,7 +212,7 @@ function ChoiceWithOther({
           <option key={o} value={o}>{t(o)}</option>
         ))}
         <option value={OTHER_CHOICE}>{t("Other")}</option>
-      </select>
+      </ThemedSelect>
       {choice === OTHER_CHOICE && (
         <input
           type="text"
@@ -241,8 +243,11 @@ function numericOnly(v: string): string {
 /** Large save button pinned to the bottom of the popup while the form scrolls. */
 // Docked Save bar: a soft shadow above it so fields scrolling underneath read as
 // "more above", and a gap before it so the last field is never tucked under it.
+// It sticks at -bottom-4 / -bottom-6 (the popup body's padding): a sticky bar stops
+// at the padding edge, so at bottom-0 a strip was left below it with fields
+// scrolling through.
 const stickyFooterCls =
-  "sticky bottom-0 z-10 -mx-4 -mb-4 sm:-mx-6 sm:-mb-6 !mt-6 space-y-2 rounded-b-3xl border-t border-zinc-800 bg-zinc-900 px-4 pt-3 pb-4 sm:px-6 sm:pb-6 shadow-[0_-12px_24px_-14px_rgba(16,24,40,0.25)]";
+  "sticky -bottom-4 sm:-bottom-6 z-10 -mx-4 -mb-4 sm:-mx-6 sm:-mb-6 !mt-6 space-y-2 rounded-b-3xl border-t border-zinc-800 bg-zinc-900 px-4 pt-3 pb-4 sm:px-6 sm:pb-6 shadow-[0_-12px_24px_-14px_rgba(16,24,40,0.25)]";
 const saveBtnCls =
   "inline-flex w-full h-14 sm:h-12 items-center justify-center gap-2 rounded-full text-base sm:text-sm font-semibold text-white transition-[background-color,transform] active:scale-[0.98] disabled:opacity-60 disabled:active:scale-100";
 
@@ -303,15 +308,18 @@ function PhotoInput({
     try {
       const b64 = await compressPhoto(file);
       setPreview(b64);
-      const res = await uploadRegisterPhoto(b64, registerKey);
+      const res: any = await callGate("uploadRegisterPhoto", [b64, registerKey], 30_000);
       if (res.error || !res.path) {
         setError(t("Photo upload failed:") + " " + (res.error || t("unknown error")));
+        setPreview(null);
         onChange("");
       } else {
         onChange(res.path);
       }
     } catch (err: any) {
-      setError(err?.message || t("Photo upload failed:"));
+      setError(t(err?.message || "Photo upload failed:"));
+      setPreview(null);
+      onChange("");
     }
     setBusy(false);
   }
@@ -321,7 +329,7 @@ function PhotoInput({
       <div className="flex items-center gap-3">
         <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
           {preview ? (
-             
+
             <img src={preview} alt="" className="h-full w-full object-cover" />
           ) : value ? (
             <CheckCircle2 className="h-7 w-7 text-emerald-400" />
@@ -399,12 +407,12 @@ function FieldInput({
           ? staff.map((s) => ({ v: s.id, l: `${s.name}${s.employeeId ? ` (${s.employeeId})` : ""}` }))
           : (f.options ?? []).map((o) => ({ v: o, l: t(o) }));
       return (
-        <select id={id} value={value} required={required} onChange={(e) => onChange(e.target.value)} className={`${inputCls} [&>option]:bg-zinc-900`}>
+        <ThemedSelect id={id} value={value} required={required} onChange={(e) => onChange(e.target.value)} className={`${inputCls} [&>option]:bg-zinc-900`}>
           <option value="">{t("— Select —")}</option>
           {options.map((o) => (
             <option key={o.v} value={o.v}>{o.l}</option>
           ))}
-        </select>
+        </ThemedSelect>
       );
     }
     case "number":
@@ -520,10 +528,12 @@ export function RegisterForm({
   def: EntryRegister;
   staff: StaffOption[];
   busy: boolean;
-  onSubmit: (payload: { fields: Values; groups: Record<string, Values[]>; direction?: Direction; oneWay?: boolean }) => void;
+  onSubmit: (payload: { fields: Values; groups: Record<string, Values[]>; direction?: Direction; oneWay?: boolean; visitHost?: string }) => void;
 }) {
   const t = useT();
   const m = def.movement;
+  // "Meeting (faculty / staff)" (registers with def.visitHost): that person gets a meeting code
+  const [visitHost, setVisitHost] = useState("");
   const [direction, setDirection] = useState<Direction | null>(m && m.firstDirections.length === 1 ? m.firstDirections[0] : null);
   // "Out only" / "In only": nothing more will be recorded on this record
   const [oneWay, setOneWay] = useState(false);
@@ -648,7 +658,13 @@ export function RegisterForm({
           return;
         }
         setLocalError(null);
-        onSubmit({ fields: values, groups: rows, direction: direction ?? undefined, oneWay: !!m && !m.single && oneWay });
+        onSubmit({
+          fields: values,
+          groups: rows,
+          direction: direction ?? undefined,
+          oneWay: !!m && !m.single && oneWay,
+          ...(def.visitHost && visitHost ? { visitHost } : {}),
+        });
       }}
       className="space-y-5"
     >
@@ -657,9 +673,9 @@ export function RegisterForm({
       {/* Speak everything once: the form fills itself (checked before saving) */}
       <VoicePanel voice={voice} onUndo={undoVoice} />
 
-      {m && <DirectionPicker def={def} value={direction} onChange={(d) => { setDirection(d); setLocalError(null); }} />}
+      {m && !m.fixedStart && <DirectionPicker def={def} value={direction} onChange={(d) => { setDirection(d); setLocalError(null); }} />}
 
-      {m && !m.single && side && (
+      {m && !m.single && !m.fixedStart && side && (
         <fieldset>
           <legend className="sr-only">{t("Record type")}</legend>
           <div className="grid grid-cols-2 gap-2 rounded-2xl border border-zinc-800 bg-zinc-950 p-1">
@@ -707,6 +723,20 @@ export function RegisterForm({
         <p className="flex items-center gap-1 text-xs text-zinc-500">
           <span className="text-base leading-none font-semibold text-orange-500" aria-hidden="true">*</span> {t("Required")}
         </p>
+      )}
+
+      {def.visitHost && direction !== "OUT" && (
+        <div className="space-y-1.5">
+          <label htmlFor="rf-visit-host" className="field-label flex items-center gap-1.5 text-sm font-medium text-zinc-200">
+            <KeyRound className="h-4 w-4 text-orange-500" aria-hidden="true" /> {t("Meeting (faculty / staff)")}
+          </label>
+          <HostPicker id="rf-visit-host" value={visitHost} onChange={setVisitHost} />
+          <p className="text-xs text-zinc-500">
+            {visitHost
+              ? t("They get a meeting code; the visitor needs it from them to go out.")
+              : t("Optional. Leave it empty if they came to meet a student or for other work — then no code is needed.")}
+          </p>
+        </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -848,19 +878,25 @@ export function RegisterForm({
 export function MovementForm({
   def,
   current,
+  visit = null,
+  canOverrideVisit = false,
   busy,
   onSubmit,
 }: {
   def: EntryRegister;
   current: Record<string, any>;
+  /** Came to meet a faculty / staff member: going out needs the meeting code */
+  visit?: { hostName: string; open: boolean; locked: boolean } | null;
+  canOverrideVisit?: boolean;
   busy: boolean;
-  onSubmit: (payload: { markMovement: boolean; reading?: string; groupMarks: Record<string, number[]> }) => void;
+  onSubmit: (payload: { markMovement: boolean; reading?: string; groupMarks: Record<string, number[]> } & VisitExitInput) => void;
 }) {
   const t = useT();
   const pending = pendingActions(def, current);
   const [mark, setMark] = useState<boolean>(!!pending.next);
   const [reading, setReading] = useState("");
   const [marks, setMarks] = useState<Record<string, number[]>>({});
+  const [visitInput, setVisitInput] = useState<VisitExitInput>({ visitCode: "" });
 
   if (!pending.any)
     return (
@@ -869,12 +905,13 @@ export function MovementForm({
       </p>
     );
   const next = pending.next;
+  const needsCode = !!visit?.open && mark && next?.direction === "OUT";
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({ markMovement: mark && !!next, reading, groupMarks: marks });
+        onSubmit({ markMovement: mark && !!next, reading, groupMarks: marks, ...(needsCode ? visitInput : {}) });
       }}
       className="space-y-4"
     >
@@ -901,6 +938,9 @@ export function MovementForm({
               </label>
               <input id="mv-reading" type="text" autoComplete="off" maxLength={100} value={reading} onChange={(e) => setReading(e.target.value)} className={inputCls} />
             </div>
+          )}
+          {needsCode && visit && (
+            <VisitCodeFields hostName={visit.hostName} canOverride={canOverrideVisit} locked={visit.locked} value={visitInput} onChange={setVisitInput} />
           )}
         </div>
       )}
@@ -942,7 +982,7 @@ export function MovementForm({
         );
       })}
       <div className={stickyFooterCls}>
-        <button type="submit" disabled={busy} className={`${saveBtnCls} bg-emerald-600 hover:bg-emerald-700`}>
+        <button type="submit" disabled={busy || (needsCode && !visitInputReady(visitInput))} className={`${saveBtnCls} bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50`}>
           {!busy && <Save className="h-5 w-5 sm:h-4 sm:w-4" />}
           {busy ? t("Saving…") : t("Save")}
         </button>

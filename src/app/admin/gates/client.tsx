@@ -9,6 +9,7 @@ import { Badge, Modal, EmptyState } from "@/components/ui/primitives";
 import { logoutAction } from "@/server/actions/auth";
 import { createGate, updateGate, toggleGateActive } from "@/server/actions/admin";
 import { formatDate } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/deployment";
 import { DoorOpen, Plus, ArrowLeft, MapPin, Edit, Power } from "lucide-react";
 import Link from "next/link";
 import { BackButton } from "@/components/ui/back-button";
@@ -25,6 +26,8 @@ export function GatesClient({ user, gates }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [editingGate, setEditingGate] = useState<any | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
+  // A switch on/off that was refused or failed (shown above the list)
+  const [listError, setListError] = useState<string | null>(null);
 
   useEffect(() => {
     setGatesList(gates);
@@ -33,27 +36,42 @@ export function GatesClient({ user, gates }: Props) {
   async function handleSave(formData: FormData) {
     setLoading(true);
     setError(null);
-    const result = editingGate 
-      ? await updateGate(editingGate.id, formData)
-      : await createGate(formData);
-      
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setShowModal(false);
-      setEditingGate(null);
+    try {
+      const result = editingGate
+        ? await updateGate(editingGate.id, formData)
+        : await createGate(formData);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setShowModal(false);
+        setEditingGate(null);
+      }
+    } catch (err) {
+      setError(actionErrorMessage(err, "Could not save the gate. Please try again."));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   async function handleToggle(id: string) {
+    if (toggling) return;
     setToggling(id);
-    // Optimistic toggle
-    setGatesList((prev) =>
-      prev.map((g) => (g.id === id ? { ...g, active: !g.active } : g))
-    );
-    await toggleGateActive(id);
-    setToggling(null);
+    setListError(null);
+    const flip = () => setGatesList((prev) => prev.map((g) => (g.id === id ? { ...g, active: !g.active } : g)));
+    // Shown switched at once; switched back if the server refuses
+    flip();
+    try {
+      const res: any = await toggleGateActive(id);
+      if (res?.error) {
+        flip();
+        setListError(res.error);
+      }
+    } catch (err) {
+      flip();
+      setListError(actionErrorMessage(err, "Could not change the gate. Please try again."));
+    } finally {
+      setToggling(null);
+    }
   }
 
   function openCreate() {
@@ -69,6 +87,14 @@ export function GatesClient({ user, gates }: Props) {
   return (
     <>
       <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
+        {listError && (
+          <div role="alert" className="flex items-center gap-2.5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            <span className="min-w-0 flex-1">{listError}</span>
+            <button type="button" onClick={() => setListError(null)} className="shrink-0 px-2 text-xs font-semibold hover:underline">
+              OK
+            </button>
+          </div>
+        )}
         <div className="space-y-3">
           <BackButton href="/admin" label="Back to Dashboard" className="-ml-2" />
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -180,7 +206,7 @@ export function GatesClient({ user, gates }: Props) {
           </div>
         </form>
       </Modal>
-    
+
     </>
   );
 }

@@ -4,10 +4,11 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/helpers";
 import { permissionRequestSchema, batchGrantSchema, hostelOutingSchema } from "@/lib/validation/schemas";
 import { revalidatePath } from "next/cache";
+import { notifyApprovers } from "@/lib/realtime/notify";
 import { resolveStudentActivePass } from "@/lib/permissions/auto-expire";
 import { resolveStudentApprover } from "@/lib/permissions/approver";
 import { generateQrToken, generateCompactLiveQr } from "@/lib/qr/token";
-import { canScanReturn, RETURN_QR_TTL_MS } from "@/lib/passes/return-scan";
+import { canScanReturn, OPEN_TRIP_WHERE, RETURN_QR_TTL_MS } from "@/lib/passes/return-scan";
 import { getStaffScope, studentWhereForScope } from "@/lib/auth/scope";
 import { istDateString, istDateTime, istDateToInstant, istDayRange, istStartOfDay } from "@/lib/time/ist";
 
@@ -178,6 +179,9 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
       });
       if (active?.status === "PENDING") throw new Error("PENDING_EXISTS");
       if (active?.status === "APPROVED") throw new Error("APPROVED_EXISTS");
+      // Hosteller out on a pass: they come back on its return QR, not a new request
+      const out = await tx.permission.findFirst({ where: { studentId: student.id, ...OPEN_TRIP_WHERE }, select: { id: true } });
+      if (out) throw new Error("OUT_ON_PASS");
 
       return tx.permission.create({
         data: {
@@ -205,6 +209,7 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
     revalidatePath("/warden");
     revalidatePath("/warden/requests");
 
+    notifyApprovers(permission.id);
     return { success: true, permissionId: permission.id };
   } catch (err: any) {
     if (err?.message === "PENDING_EXISTS") {
@@ -213,6 +218,7 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
     if (err?.message === "APPROVED_EXISTS") {
       return { error: "You have an approved gate pass. Please use your QR code before requesting another." };
     }
+    if (err?.message === "OUT_ON_PASS") return { error: "You are out on a pass. Show its return QR at the gate when you come back — no new request is needed." };
     console.error("[createStudentRequest] failed:", err?.message);
     return { error: "Failed to submit request. Please try again." };
   }
@@ -254,6 +260,7 @@ export async function cancelPermissionRequest(permissionId: string) {
   }
 
   revalidatePath("/student");
+  notifyApprovers(permissionId);
   return { success: true };
 }
 
@@ -305,7 +312,7 @@ export async function batchCreatePermissions(studentIds: string[], data: Record<
       for (const { id: studentId } of allowed) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"permission-request:" + studentId}))`;
         const active = await tx.permission.findFirst({
-          where: { studentId, status: { in: ["PENDING", "APPROVED"] } },
+          where: { OR: [{ studentId, status: { in: ["PENDING", "APPROVED"] } }, { studentId, ...OPEN_TRIP_WHERE }] },
           select: { id: true },
         });
         if (active) throw new Error("ACTIVE_EXISTS");
@@ -347,7 +354,7 @@ export async function batchCreatePermissions(studentIds: string[], data: Record<
     });
   } catch (err: any) {
     if (err?.message === "ACTIVE_EXISTS") {
-      return { error: "One of the selected students already has a pending or approved pass." };
+      return { error: "One of the selected students already has a pending or approved pass, or is out on a pass." };
     }
     console.error("[batchCreatePermissions] failed:", err?.message);
     return { error: "Failed to grant passes" };
@@ -470,6 +477,9 @@ export async function createHostelVisitRequest(formData: FormData) {
       });
       if (active?.status === "PENDING") throw new Error("PENDING_EXISTS");
       if (active?.status === "APPROVED") throw new Error("APPROVED_EXISTS");
+      // Hosteller out on a pass: they come back on its return QR, not a new request
+      const out = await tx.permission.findFirst({ where: { studentId: student.id, ...OPEN_TRIP_WHERE }, select: { id: true } });
+      if (out) throw new Error("OUT_ON_PASS");
       return tx.permission.create({
         data: {
           studentId: student.id,
@@ -492,10 +502,12 @@ export async function createHostelVisitRequest(formData: FormData) {
     revalidatePath("/student");
     revalidatePath("/faculty-admin");
     revalidatePath("/faculty-admin/requests");
+    notifyApprovers(permission.id);
     return { success: true, permissionId: permission.id };
   } catch (err: any) {
     if (err?.message === "PENDING_EXISTS") return { error: "You already have a pending request. Please wait for approval or cancel it first." };
     if (err?.message === "APPROVED_EXISTS") return { error: "You have an approved pass. Please use it before requesting another." };
+    if (err?.message === "OUT_ON_PASS") return { error: "You are out on a pass. Show its return QR at the gate when you come back — no new request is needed." };
     console.error("[createHostelVisitRequest] failed:", err?.message);
     return { error: "Failed to submit request. Please try again." };
   }

@@ -5,6 +5,13 @@ import { useOwnLive } from "@/lib/realtime/live";
 
 /** While the live connection is up, a slow safety check is enough */
 const LIVE_CHECK_MS = 60_000;
+/**
+ * Without a live connection the checks slow down the longer nothing changes:
+ * from `intervalMs` up to this. Thousands of students waiting at once must not
+ * flood the server (Vercel / Supabase free plans) — a change is still seen
+ * within half a minute, and at once when the screen is opened again.
+ */
+const MAX_POLL_MS = 30_000;
 
 /**
  * Watches one pass while the holder is waiting on someone else (QR shown at the
@@ -19,7 +26,7 @@ const LIVE_CHECK_MS = 60_000;
  *
  * Checks run only while the screen is visible; coming back checks at once.
  */
-export function usePassWatch(permissionId: string | null | undefined, enabled: boolean, onChange: () => void, intervalMs = 2500) {
+export function usePassWatch(permissionId: string | null | undefined, enabled: boolean, onChange: () => void, intervalMs = 5000) {
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -43,6 +50,8 @@ export function usePassWatch(permissionId: string | null | undefined, enabled: b
     let stopped = false;
     let busy = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    // Current pace without a live connection (grows while nothing changes)
+    let pollMs = intervalMs;
 
     const check = async () => {
       if (stopped || busy || document.visibilityState !== "visible") return;
@@ -70,9 +79,10 @@ export function usePassWatch(permissionId: string | null | undefined, enabled: b
       timer = setTimeout(async () => {
         timer = null;
         await check();
+        if (!liveRef.current) pollMs = Math.min(MAX_POLL_MS, Math.round(pollMs * 1.5));
         // Rescheduled meanwhile (connection changed): that timer carries on
         if (!timer) schedule();
-      }, liveRef.current ? LIVE_CHECK_MS : intervalMs);
+      }, liveRef.current ? LIVE_CHECK_MS : pollMs);
     };
 
     checkNow.current = () => void check();
@@ -82,7 +92,12 @@ export function usePassWatch(permissionId: string | null | undefined, enabled: b
     };
     check();
     schedule();
-    const onVisible = () => document.visibilityState === "visible" && check();
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      // Back on the screen: check now, then at the quick pace again
+      pollMs = intervalMs;
+      check();
+    };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       stopped = true;

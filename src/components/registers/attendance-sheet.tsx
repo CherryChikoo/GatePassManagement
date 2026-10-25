@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { CheckCheck, ChevronLeft, ChevronRight, Loader2, Lock, MessageSquareText } from "lucide-react";
 import { Modal } from "@/components/ui/primitives";
 import { LoadingPill } from "@/components/ui/loading-pill";
@@ -62,6 +62,8 @@ export function AttendanceSheetView() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // A save that was refused or failed (stays until dismissed)
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [cell, setCell] = useState<{ staffId: string; day: number } | null>(null);
   const [dayOpen, setDayOpen] = useState<number | null>(null);
   const [rankFor, setRankFor] = useState<string | null>(null);
@@ -85,9 +87,11 @@ export function AttendanceSheetView() {
   useEffect(() => {
     load();
   }, [load]);
-  // Live: marks or remarks saved on another device (not while a mark is being saved here)
+  // Live: marks or remarks saved on another device (not while a mark is being saved
+  // here — the reload would put back the cell's old value over the one being saved)
+  const savingNow = useRef(0);
   useLiveTopics(["attendance"], () => {
-    if (!busy) load(true);
+    if (!busy && savingNow.current === 0) load(true);
   });
 
   const flash = (msg: string) => {
@@ -97,17 +101,18 @@ export function AttendanceSheetView() {
 
   async function run(action: () => Promise<any>, done?: string) {
     setBusy(true);
+    setSaveError(null);
     try {
       const res = await action();
       if (res?.error) {
-        window.alert(t(res.error));
+        setSaveError(t(res.error));
         return false;
       }
       if (done) flash(done);
       await load();
       return true;
     } catch (err) {
-      window.alert(actionErrorMessage(err, t("Could not save. Please try again.")));
+      setSaveError(actionErrorMessage(err, t("Could not save. Please try again.")));
       return false;
     } finally {
       setBusy(false);
@@ -128,22 +133,27 @@ export function AttendanceSheetView() {
   }
   async function markCell(staffId: string, day: number, status: string | null) {
     const key = `${staffId}:${day}`;
+    // One save per cell at a time (a second one could be undone by the first's rollback)
+    if (saving.has(key)) return;
     const before = data?.cells[staffId]?.[day];
     setCell(null);
+    setSaveError(null);
+    savingNow.current++;
     patchCell(staffId, day, { mark: status, by: before?.by ?? "", at: new Date().toISOString() });
     setSaving((s) => new Set(s).add(key));
     try {
       const res: any = await setAttendanceMark(staffId, dateOf(day), status);
       if (res?.error) {
         patchCell(staffId, day, before);
-        window.alert(t(res.error));
+        setSaveError(t(res.error));
       } else if (res?.cell) {
         patchCell(staffId, day, res.cell);
       }
     } catch (err) {
       patchCell(staffId, day, before);
-      window.alert(actionErrorMessage(err, t("Could not save. Please try again.")));
+      setSaveError(actionErrorMessage(err, t("Could not save. Please try again.")));
     } finally {
+      savingNow.current--;
       setSaving((s) => {
         const n = new Set(s);
         n.delete(key);
@@ -238,6 +248,14 @@ export function AttendanceSheetView() {
       {notice && (
         <div role="status" className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-400">{notice}</div>
       )}
+      {saveError && (
+        <div role="alert" className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <span className="min-w-0 flex-1">{saveError}</span>
+          <button type="button" onClick={() => setSaveError(null)} className="shrink-0 px-2 text-xs font-semibold hover:underline">
+            OK
+          </button>
+        </div>
+      )}
       {error && (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           <span>{t(error)}</span>
@@ -313,7 +331,7 @@ export function AttendanceSheetView() {
                       <td key={d} className={cn("border-b border-r border-zinc-800 p-0", d === todayDay && "bg-orange-500/5", locked && "bg-zinc-950/70")}>
                         <button
                           type="button"
-                          disabled={future || (!editable && !c)}
+                          disabled={future || (!editable && !c) || saving.has(`${r.id}:${d}`)}
                           onClick={() => setCell({ staffId: r.id, day: d })}
                           aria-label={`${r.name} — ${dayLabel(d)}${c?.mark ? ` — ${t(markOf(c.mark)?.label ?? c.mark)}` : ""}`}
                           className={cn(

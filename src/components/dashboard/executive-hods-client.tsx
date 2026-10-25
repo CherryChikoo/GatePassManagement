@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ui/themed-select";
 import { PassHistoryPanel } from "@/components/passes/pass-history-panel";
 import { oversightRoleMeta, type OversightRole } from "@/components/dashboard/oversight-role";
 
@@ -181,7 +182,7 @@ export function ExecutiveHodsClient({ role }: ExecutiveHodsClientProps) {
 
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
             {/* Department Filter */}
-            <select
+            <ThemedSelect
               aria-label="Department"
               value={selectedDept}
               onChange={(e) => {
@@ -196,10 +197,10 @@ export function ExecutiveHodsClient({ role }: ExecutiveHodsClientProps) {
                   {dept}
                 </option>
               ))}
-            </select>
+            </ThemedSelect>
 
             {/* Status Filter */}
-            <select
+            <ThemedSelect
               aria-label="Account status"
               value={selectedStatus}
               onChange={(e) => {
@@ -211,7 +212,7 @@ export function ExecutiveHodsClient({ role }: ExecutiveHodsClientProps) {
               <option value="ALL">All Status</option>
               <option value="ACTIVE">Active Accounts</option>
               <option value="DISABLED">Disabled Accounts</option>
-            </select>
+            </ThemedSelect>
 
             {hasFilters && (
               <Button

@@ -15,6 +15,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { PAGE_FOOTER_SLOT_ID } from "@/components/ui/pager-bar";
 import { PasswordChangedNotice } from "@/components/users/password-changed-notice";
 import {
+  UserCheck,
   LayoutDashboard,
   FileText,
   LogOut,
@@ -162,7 +163,8 @@ export function DashboardLayout({
   const navRef = useRef<HTMLElement>(null);
   const footerSlotRef = useRef<HTMLDivElement>(null);
   useBarSpace(mainRef, headerRef, navRef, footerSlotRef);
-  useGlassSupport();
+  // Security has solid bars (no glass): no frame-rate checks needed there
+  useGlassSupport(role !== "SECURITY");
 
   // Clear all cached client data before ending the server session
   const [signingOut, setSigningOut] = useState(false);
@@ -464,6 +466,8 @@ export function DashboardLayout({
               <Link
                 key={item.href}
                 href={item.href}
+                // Security: the whole page (light: data comes from the gate cache), not just its loading screen
+                prefetch={role === "SECURITY" ? true : undefined}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
                   "relative flex min-w-0 flex-col items-center justify-center w-full h-full gap-0.5 px-0.5 transition-colors",
@@ -493,6 +497,7 @@ export function DashboardLayout({
                 {link}
                 <Link
                   href="/security/scan?scan=1"
+                  prefetch
                   aria-label={t("Scan QR")}
                   onClick={(e) => {
                     // Already on the scan page (e.g. after a scan or Cancel): the
@@ -529,6 +534,7 @@ export const adminNavItems: NavItem[] = [
   { label: "Gate Management", href: "/admin/gates", icon: <DoorOpen className="h-5 w-5" /> },
   { label: "Activity Logs", href: "/admin/activity", icon: <ActivityIcon className="h-5 w-5" /> },
   { label: "Registers", href: "/admin/registers", icon: <BookOpen className="h-5 w-5" /> },
+  { label: "My Visitors", href: "/my-visitors", icon: <UserCheck className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
   // The following pages are not yet implemented in the initial build:
   // { label: "All Permissions", href: "/admin/permissions", icon: <ClipboardCheck className="h-5 w-5" /> },
@@ -542,6 +548,7 @@ export const facultyNavItems: NavItem[] = [
   { label: "My Passes", href: "/faculty/apply", icon: <Ticket className="h-5 w-5" /> },
   { label: "My Students", href: "/faculty/students", icon: <GraduationCap className="h-5 w-5" /> },
   { label: "Activity", href: "/faculty/activity", icon: <ActivityIcon className="h-5 w-5" /> },
+  { label: "My Visitors", href: "/my-visitors", icon: <UserCheck className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
 ];
 
@@ -551,6 +558,7 @@ export const facultyAdminNavItems: NavItem[] = [
   { label: "Students", href: "/faculty-admin/students", icon: <GraduationCap className="h-5 w-5" /> },
   { label: "Faculty", href: "/faculty-admin/faculty", icon: <Briefcase className="h-5 w-5" /> },
   { label: "Activity", href: "/faculty-admin/activity", icon: <ActivityIcon className="h-5 w-5" /> },
+  { label: "My Visitors", href: "/my-visitors", icon: <UserCheck className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
 ];
 
@@ -560,6 +568,7 @@ export const wardenNavItems: NavItem[] = [
   { label: "Requests", href: "/warden/requests", icon: <Inbox className="h-5 w-5" /> },
   { label: "Scan Hostel Pass", href: "/warden/scan", icon: <ScanLine className="h-5 w-5" /> },
   { label: "Activity", href: "/warden/activity", icon: <ActivityIcon className="h-5 w-5" /> },
+  { label: "My Visitors", href: "/my-visitors", icon: <UserCheck className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
   // Unimplemented:
   // { label: "Approval History", href: "/warden/history", icon: <History className="h-5 w-5" /> },
@@ -581,6 +590,7 @@ export const directorNavItems: NavItem[] = [
   { label: "All HODs", href: "/director/hods", icon: <Network className="h-5 w-5" /> },
   { label: "All Faculty", href: "/director/faculty", icon: <Briefcase className="h-5 w-5" /> },
   { label: "Activity", href: "/director/activity", icon: <ActivityIcon className="h-5 w-5" /> },
+  { label: "My Visitors", href: "/my-visitors", icon: <UserCheck className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
 ];
 
@@ -591,6 +601,7 @@ export const deanNavItems: NavItem[] = [
   { label: "All HODs", href: "/dean/hods", icon: <Network className="h-5 w-5" /> },
   { label: "All Faculty", href: "/dean/faculty", icon: <Briefcase className="h-5 w-5" /> },
   { label: "Activity", href: "/dean/activity", icon: <ActivityIcon className="h-5 w-5" /> },
+  { label: "My Visitors", href: "/my-visitors", icon: <UserCheck className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
 ];
 
@@ -602,5 +613,6 @@ export const supervisorNavItems: NavItem[] = [
   { label: "Faculty", href: "/supervisor/faculty", icon: <Briefcase className="h-5 w-5" /> },
   { label: "Activity", href: "/supervisor/activity", icon: <ActivityIcon className="h-5 w-5" /> },
   { label: "Registers", href: "/supervisor/registers", icon: <BookOpen className="h-5 w-5" /> },
+  { label: "My Visitors", href: "/my-visitors", icon: <UserCheck className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
 ];

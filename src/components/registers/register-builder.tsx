@@ -1,5 +1,6 @@
 "use client";
 
+import { ThemedSelect } from "@/components/ui/themed-select";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowDown, ArrowUp, ClipboardList, Eye, EyeOff, ListPlus, Loader2, MessageSquareText, PencilLine, PenLine, Plus, ToggleRight, Trash2 } from "lucide-react";
@@ -243,17 +244,22 @@ export function RegisterManager({ base }: { base: string }) {
   async function toggleActive(row: Row) {
     setBusyId(row.id);
     const res: any = await setCustomRegisterActive(row.id, !row.active).catch(() => ({ error: t("Could not save. Please try again.") }));
-    if (res?.error) setError(res.error);
     await load();
+    // After the reload (which clears old errors), so a refused change stays on screen
+    if (res?.error) setError(res.error);
     setBusyId(null);
   }
 
   async function remove(row: Row) {
     setBusyId(row.id);
     const res: any = await deleteCustomRegister(row.id).catch(() => ({ error: t("Could not save. Please try again.") }));
-    if (res?.error) setError(res.error);
-    else setNotice(t("Register deleted."));
     await load();
+    // After the reload (which clears old errors), so a refused delete stays on screen
+    if (res?.error) setError(res.error);
+    else {
+      setNotice(t("Register deleted."));
+      setTimeout(() => setNotice(null), 4000);
+    }
     setBusyId(null);
   }
 
@@ -601,7 +607,7 @@ export function RegisterManager({ base }: { base: string }) {
                       aria-label={t("Field name")}
                       className={inputCls}
                     />
-                    <select
+                    <ThemedSelect
                       value={f.type}
                       onChange={(e) => updateField(i, { type: e.target.value as BuilderFieldType })}
                       aria-label={t("Field type")}
@@ -612,7 +618,7 @@ export function RegisterManager({ base }: { base: string }) {
                           {t(ft.label)}
                         </option>
                       ))}
-                    </select>
+                    </ThemedSelect>
                   </div>
                   {f.type === "select" && (
                     <textarea
@@ -718,7 +724,7 @@ export function RegisterManager({ base }: { base: string }) {
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                      <select
+                      <ThemedSelect
                         value={lf.type}
                         onChange={(e) => updateListField(li, fi, { type: e.target.value as BuilderFieldType })}
                         aria-label={t("Field type")}
@@ -729,7 +735,7 @@ export function RegisterManager({ base }: { base: string }) {
                             {t(ft.label)}
                           </option>
                         ))}
-                      </select>
+                      </ThemedSelect>
                       {lf.type === "select" && (
                         <textarea
                           value={lf.optionsText}
@@ -771,7 +777,7 @@ export function RegisterManager({ base }: { base: string }) {
               </button>
             </div>
 
-            <div className="sticky bottom-0 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6 border-t border-zinc-800 bg-zinc-900 px-4 sm:px-6 py-3">
+            <div className="sticky -bottom-4 sm:-bottom-6 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6 border-t border-zinc-800 bg-zinc-900 px-4 sm:px-6 py-3">
               <Button onClick={save} disabled={saving} className="h-12 w-full">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {draft.id ? t("Save changes") : t("Create register")}

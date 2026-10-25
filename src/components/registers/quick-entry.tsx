@@ -6,7 +6,8 @@ import { Modal } from "@/components/ui/primitives";
 import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
 import { REGISTER_BY_KEY, isEntryRegister, type EntryRegister, type RegisterDef, type RegisterKey } from "@/lib/registers/definitions";
-import { createRegisterEntry, getRegisterStaffOptions } from "@/server/actions/registers";
+import { callGate } from "@/lib/gate-call";
+import type { createRegisterEntry } from "@/server/actions/registers";
 import { RegisterForm, type StaffOption } from "./register-form";
 import { newClientToken } from "./format";
 import { localizeRegister } from "./localize";
@@ -38,7 +39,7 @@ export function QuickEntryModal({
   const needsStaff = !!def?.fields.some((f) => f.type === "staff");
   const [staff, setStaff] = useState<StaffOption[]>([]);
   useEffect(() => {
-    if (needsStaff) getRegisterStaffOptions().then(setStaff).catch(() => setStaff([]));
+    if (needsStaff) callGate("getRegisterStaffOptions", [], 15_000).then((s: any) => setStaff(Array.isArray(s) ? s : [])).catch(() => setStaff([]));
   }, [needsStaff]);
 
   // A fresh token per entry: a retried save of the same entry is stored once
@@ -60,7 +61,7 @@ export function QuickEntryModal({
     setBusy(true);
     setError(null);
     try {
-      const res: any = await createRegisterEntry(def.key, payload, token);
+      const res: any = await callGate("createRegisterEntry", [def.key, payload, token]);
       if (res?.error) {
         setError(res.error);
       } else {

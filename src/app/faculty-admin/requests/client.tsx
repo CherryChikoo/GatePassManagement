@@ -1,5 +1,6 @@
 "use client";
 
+import { delayMinutes, formatDelay, returnDueAt } from "@/lib/passes/return-scan";
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,17 @@ import { useStoreReady } from "@/components/providers/store-hydrator";
 import { TopLoadingBar } from "@/components/ui/top-loading-bar";
 import { PassExtraDetails } from "@/components/passes/pass-extra";
 
+/** The request lists as they are now, to put back if an optimistic approve / reject fails */
+function snapshotRequests() {
+  const d = useAppStore.getState().data;
+  return { allRequests: d.allRequests, requests: d.requests };
+}
+function restoreRequests(snap: { allRequests: any; requests: any }) {
+  const st = useAppStore.getState();
+  if (snap.allRequests !== undefined) st.setData("allRequests", snap.allRequests);
+  if (snap.requests !== undefined) st.setData("requests", snap.requests);
+}
+
 export function FacultyAdminRequestsClient() {
   const isReady = useStoreReady();
   const allRequests = useAppStore((s) => s.data.allRequests || s.data.requests);
@@ -36,6 +48,8 @@ export function FacultyAdminRequestsClient() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [processing, setProcessing] = useState<Set<string>>(new Set());
+  // Result of an approve / reject that needs the HOD's attention (shown above the list)
+  const [notice, setNotice] = useState<{ tone: "error" | "info"; text: string } | null>(null);
   const [batchProcessing, setBatchProcessing] = useState(false);
 
   const [rejectModal, setRejectModal] = useState<{ id: string; name: string } | null>(null);
@@ -168,12 +182,13 @@ export function FacultyAdminRequestsClient() {
       },
     }));
 
-    // 2. Also update Zustand store
+    // 2. Also update Zustand store (put back if the server refuses)
+    const before = snapshotRequests();
     updateData("allRequests", (prev: any[]) => {
       if (!prev) return [];
       return prev.map((r) =>
-        r.id === id ? { 
-          ...r, 
+        r.id === id ? {
+          ...r,
           status: action === "APPROVE" ? "APPROVED" : "REJECTED",
           approvedAt: action === "APPROVE" ? nowIso : r.approvedAt,
           rejectedAt: action === "REJECT" ? nowIso : r.rejectedAt,
@@ -184,8 +199,8 @@ export function FacultyAdminRequestsClient() {
     updateData("requests", (prev: any[]) => {
       if (!prev) return [];
       return prev.map((r) =>
-        r.id === id ? { 
-          ...r, 
+        r.id === id ? {
+          ...r,
           status: action === "APPROVE" ? "APPROVED" : "REJECTED",
           approvedAt: action === "APPROVE" ? nowIso : r.approvedAt,
           rejectedAt: action === "REJECT" ? nowIso : r.rejectedAt,
@@ -211,7 +226,8 @@ export function FacultyAdminRequestsClient() {
           delete next[id];
           return next;
         });
-        alert(result.error);
+        restoreRequests(before);
+        setNotice({ tone: "error", text: result.error });
         useAppStore.getState().refresh(true);
       } else if (result.action === "PARTIAL") {
         // "Both HOD & Dean" pass: still pending until the Dean approves
@@ -223,7 +239,7 @@ export function FacultyAdminRequestsClient() {
         const mark = (prev: any[]) => (prev || []).map((r) => (r.id === id ? { ...r, status: "PENDING", hodApprovedAt: nowIso } : r));
         updateData("allRequests", mark);
         updateData("requests", mark);
-        alert(result.message || "Approved. Waiting for the Dean's approval.");
+        setNotice({ tone: "info", text: result.message || "Approved. Waiting for the Dean's approval." });
         useAppStore.getState().refresh(true);
       } else {
         useAppStore.getState().refresh(true);
@@ -234,7 +250,8 @@ export function FacultyAdminRequestsClient() {
         delete next[id];
         return next;
       });
-      alert("Failed to process request");
+      restoreRequests(before);
+      setNotice({ tone: "error", text: "Could not save. Check the connection and try again." });
       useAppStore.getState().refresh(true);
     } finally {
       setProcessing((prev) => {
@@ -281,6 +298,7 @@ export function FacultyAdminRequestsClient() {
       );
     };
 
+    const before = snapshotRequests();
     updateData("allRequests", updateFn);
     updateData("requests", updateFn);
 
@@ -292,7 +310,8 @@ export function FacultyAdminRequestsClient() {
           ids.forEach((id) => delete next[id]);
           return next;
         });
-        alert(result?.error || "Failed to process some batch requests");
+        restoreRequests(before);
+        setNotice({ tone: "error", text: result?.error || "Some requests could not be processed. Please try again." });
       } else {
         // "Both HOD & Dean" passes stay pending until the Dean also approves
         const partialIds: string[] = (result.results || [])
@@ -317,7 +336,8 @@ export function FacultyAdminRequestsClient() {
         ids.forEach((id) => delete next[id]);
         return next;
       });
-      alert("Failed to process batch request");
+      restoreRequests(before);
+      setNotice({ tone: "error", text: "Could not save. Check the connection and try again." });
       useAppStore.getState().refresh(true);
     } finally {
       setBatchProcessing(false);
@@ -332,7 +352,7 @@ export function FacultyAdminRequestsClient() {
       if (next.has(id)) next.delete(id);
       else {
         if (next.size >= 5) {
-          alert("Maximum 5 items can be selected for batch processing");
+          setNotice({ tone: "info", text: "You can select up to 5 requests at a time." });
           return prev;
         }
         next.add(id);
@@ -356,6 +376,19 @@ export function FacultyAdminRequestsClient() {
   return (
     <div className="relative mx-auto max-w-7xl space-y-6 pb-28">
       <TopLoadingBar active={processing.size > 0 || batchProcessing} />
+      {notice && (
+        <div
+          role={notice.tone === "error" ? "alert" : "status"}
+          className={`flex items-start gap-2.5 rounded-2xl border px-4 py-3 text-sm ${
+            notice.tone === "error" ? "border-red-500/20 bg-red-500/10 text-red-400" : "border-sky-500/20 bg-sky-500/10 text-sky-400"
+          }`}
+        >
+          <span className="min-w-0 flex-1">{notice.text}</span>
+          <button type="button" onClick={() => setNotice(null)} className="shrink-0 rounded-full px-2 text-xs font-semibold hover:underline">
+            OK
+          </button>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -627,6 +660,12 @@ export function FacultyAdminRequestsClient() {
                         <div className="flex items-center gap-x-2 gap-y-1.5 flex-wrap">
                           <h3 className="text-base font-medium text-zinc-100 break-words">{applicantName}</h3>
                           <StatusBadge status={req.status} />
+                          {/* Faculty still out past the end of their pass (the QR keeps working) */}
+                          {req.facultyId && req.status === "EXITED" && delayMinutes(returnDueAt(req)) > 0 && (
+                            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-600 whitespace-nowrap">
+                              Delayed return · {formatDelay(delayMinutes(returnDueAt(req)))}
+                            </span>
+                          )}
 
                           {/* Highlight recently accepted pass */}
                           {activeTab === "ACCEPTED" && req.approvedAt && (

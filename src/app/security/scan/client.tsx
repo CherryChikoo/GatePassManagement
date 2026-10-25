@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, Textarea } from "@/components/ui/primitives";
-import { verifyQrScan, registerExit, registerEntry, prepareGatePhoto } from "@/server/actions/security";
+import { callGate } from "@/lib/gate-call";
 import { QrScanner } from "@/components/scan/qr-scanner";
 import { cn, formatDateTime } from "@/lib/utils";
 import {
@@ -30,6 +30,7 @@ import { BackButton } from "@/components/ui/back-button";
 import { GoBackButton } from "@/components/ui/go-back-button";
 import { PassExtraDetails } from "@/components/passes/pass-extra";
 import { facultyRequestTypeLabel } from "@/lib/registers/definitions";
+import { formatDelay } from "@/lib/passes/return-scan";
 
 interface Props {
   user: { name: string; email: string; role: string };
@@ -59,12 +60,14 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Photo uploads in the background as soon as it is taken; Register just waits for it
   const photoUploadRef = useRef<Promise<string | null> | null>(null);
+  // Bumped on every new scan / cancel: a late answer for an earlier scan is ignored
+  const scanIdRef = useRef(0);
 
   function acceptPhoto(dataUrl: string) {
     setCapturedImage(dataUrl);
     const permissionId = verifyResult?.permission?.id;
     photoUploadRef.current = permissionId
-      ? prepareGatePhoto(permissionId, dataUrl)
+      ? callGate("prepareGatePhoto", [permissionId, dataUrl], 20_000)
           .then((r: any) => (r && "path" in r && r.path ? (r.path as string) : null))
           .catch(() => null)
       : null;
@@ -134,21 +137,24 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
 
   // Verify QR code once detected
   async function handleVerify(token: string) {
+    const id = ++scanIdRef.current;
     setState("verifying");
     setError(null);
 
     try {
-      const result = await verifyQrScan(token.trim());
-      if (!result.valid) {
-        setError(result.error || "Invalid QR code");
+      const result: any = await callGate("verifyQrScan", [token.trim()], 15_000);
+      if (id !== scanIdRef.current) return; // cancelled or a newer scan started
+      if (!result?.valid) {
+        setError(result?.error || "Invalid QR code");
         setState("error");
         return;
       }
 
       setVerifyResult(result);
       setState("verified");
-    } catch {
-      setError("Could not verify the pass. Check the network connection and try again.");
+    } catch (err: any) {
+      if (id !== scanIdRef.current) return;
+      setError(err?.message || "Could not verify the pass. Check the network connection and try again.");
       setState("error");
     }
   }
@@ -223,6 +229,7 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
       return;
     }
 
+    const id = scanIdRef.current;
     setState("registering");
     setError(null);
 
@@ -234,29 +241,40 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
     try {
       // Use the photo already uploaded in the background; fall back to sending it now
       const uploaded = photoUploadRef.current ? await photoUploadRef.current : null;
+      if (id !== scanIdRef.current) return;
       const photo = uploaded || capturedImage || undefined;
-      let result;
-      if (action === "EXIT") {
-        result = await registerExit(verifyResult.permission.id, selectedGate, photo, finalNotes);
-      } else {
-        result = await registerEntry(verifyResult.permission.id, selectedGate, photo, finalNotes);
-      }
+      const result: any = await callGate(
+        action === "EXIT" ? "registerExit" : "registerEntry",
+        [verifyResult.permission.id, selectedGate, photo, finalNotes],
+        // a photo still being sent with the request needs longer
+        uploaded || !photo ? 15_000 : 30_000
+      );
+      if (id !== scanIdRef.current) return;
 
-      if (result.error) {
+      if (result?.error) {
         setError(result.error);
         setState("error");
       } else {
         setSuccess(action === "EXIT" ? t("Exit registered successfully!") : t("Entry registered successfully!"));
         setState("done");
       }
-    } catch {
-      setError("Could not register the movement. Check the network connection and try again.");
-      setState("error");
+    } catch (err: any) {
+      if (id !== scanIdRef.current) return;
+      // Timed out: it may have been saved just before the cut-off, so stay on
+      // the pass. Registering again is safe (the server refuses a duplicate),
+      // and scanning again shows what is now allowed.
+      setError(
+        err?.name === "TimeoutError"
+          ? "Taking too long. It may already be saved — scan the pass again to check."
+          : err?.message || "Could not register the movement. Check the network connection and try again."
+      );
+      setState(err?.name === "TimeoutError" ? "verified" : "error");
     }
   }
 
   // Reset to scan again
   function resetScan() {
+    scanIdRef.current++;
     stopCamera();
     setState("idle");
     setVerifyResult(null);
@@ -430,6 +448,9 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
             <CardContent className="p-8 text-center space-y-3">
               <Loader2 className="mx-auto h-10 w-10 animate-spin text-orange-400" />
               <p className="text-base font-medium text-zinc-200">{t("Verifying pass…")}</p>
+              <Button onClick={resetScan} variant="ghost" className="h-11">
+                {t("Cancel")}
+              </Button>
             </CardContent>
           </Card>
         )}
@@ -462,6 +483,21 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
               </div>
               {isExit ? <LogOut className="h-7 w-7 shrink-0" /> : <LogIn className="h-7 w-7 shrink-0" />}
             </div>
+
+            {/* Came back after the planned return: still allowed, recorded as a delayed return */}
+            {verifyResult.delayedMinutes > 0 && (
+              <div role="status" className="flex items-start gap-2.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-600">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>
+                  {t("Delayed return — {time} late", { time: formatDelay(verifyResult.delayedMinutes) })}
+                  {verifyResult.returnDueAt && (
+                    <span className="block text-xs font-normal text-amber-700/80">
+                      {t("Was due back {date}", { date: formatDateTime(verifyResult.returnDueAt) })}
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
 
             {/* The person: photo to compare, name, ID, phone */}
             <Card>
@@ -738,6 +774,9 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
             <CardContent className="p-8 text-center space-y-3">
               <Loader2 className="mx-auto h-10 w-10 animate-spin text-orange-400" />
               <p className="text-base font-medium text-zinc-200">{t("Registering…")}</p>
+              <Button onClick={resetScan} variant="ghost" className="h-11">
+                {t("Cancel")}
+              </Button>
             </CardContent>
           </Card>
         )}

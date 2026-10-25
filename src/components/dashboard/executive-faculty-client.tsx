@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ui/themed-select";
 import { PassHistoryPanel } from "@/components/passes/pass-history-panel";
 import { oversightRoleMeta, type OversightRole } from "@/components/dashboard/oversight-role";
 
@@ -173,7 +174,7 @@ export function ExecutiveFacultyClient({ role }: ExecutiveFacultyClientProps) {
 
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
             {/* Department Filter */}
-            <select
+            <ThemedSelect
               aria-label="Department"
               value={selectedDept}
               onChange={(e) => {
@@ -188,10 +189,10 @@ export function ExecutiveFacultyClient({ role }: ExecutiveFacultyClientProps) {
                   {dept}
                 </option>
               ))}
-            </select>
+            </ThemedSelect>
 
             {/* Role Filter */}
-            <select
+            <ThemedSelect
               aria-label="Role"
               value={selectedRole}
               onChange={(e) => {
@@ -203,10 +204,10 @@ export function ExecutiveFacultyClient({ role }: ExecutiveFacultyClientProps) {
               <option value="ALL">All Roles</option>
               <option value="HOD">Heads of Department (HODs)</option>
               <option value="FACULTY">Teaching Faculty</option>
-            </select>
+            </ThemedSelect>
 
             {/* Status Filter */}
-            <select
+            <ThemedSelect
               aria-label="Account status"
               value={selectedStatus}
               onChange={(e) => {
@@ -218,7 +219,7 @@ export function ExecutiveFacultyClient({ role }: ExecutiveFacultyClientProps) {
               <option value="ALL">All Status</option>
               <option value="ACTIVE">Active Accounts</option>
               <option value="DISABLED">Disabled Accounts</option>
-            </select>
+            </ThemedSelect>
 
             {hasFilters && (
               <Button

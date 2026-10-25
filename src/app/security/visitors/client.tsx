@@ -1,18 +1,22 @@
 "use client";
+import { ThemedSelect } from "@/components/ui/themed-select";
 import { DepartmentSelect } from "@/components/ui/department-select";
 import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
 
 import { useState, useEffect, useRef } from "react";
 import { VoicePanel, useVoiceFill } from "@/components/voice/voice-fill";
+import { HostPicker } from "@/components/visits/host-picker";
+import { VisitExitDialog } from "@/components/visits/visit-code";
 import { VISITOR_SPEC_KEY, type VoiceFill } from "@/lib/voice/spec";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { dt, PersonCell, RowActions, IconAction } from "@/components/ui/data-table";
 import { PagerBar } from "@/components/ui/pager-bar";
-import { formatDateTime, formatTime, withTimeout } from "@/lib/utils";
+import { formatDateTime, formatTime } from "@/lib/utils";
 import {
+  KeyRound,
   Users,
   UserPlus,
   History,
@@ -25,31 +29,36 @@ import {
   RotateCcw,
   Loader2,
 } from "lucide-react";
-import { registerOutsider, markOutsiderExited } from "@/server/actions/outsiders";
-import { getVisitorsBook } from "@/server/actions/registers";
+import { callGate } from "@/lib/gate-call";
+import { useGateData } from "@/lib/gate-cache";
+import { OUTSIDERS_QUERY } from "@/lib/gate-queries";
 import { DateField } from "@/components/ui/date-field";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { istDateString } from "@/lib/time/ist";
-import { uploadOutsiderPhoto } from "@/lib/storage/image-upload";
-import { useRouter } from "next/navigation";
-import { useLiveTopics } from "@/lib/realtime/live";
 import { Modal, StatusBadge } from "@/components/ui/primitives";
-import { getExitPhotoUrl } from "@/lib/storage/image-upload";
 import { BackButton } from "@/components/ui/back-button";
 import { GoBackButton } from "@/components/ui/go-back-button";
 import { LiveDateTime } from "@/components/registers/register-form";
 
+/** Reasons in the Purpose dropdown (saved in English; shown in the guard's language) */
+const VISIT_PURPOSES = ["Meeting", "Parent Visit", "Admission Enquiry", "Delivery", "Maintenance / Repair", "Event", "Interview"];
+const OTHER_PURPOSE = "__other__";
+
 interface Props {
   user: any;
-  inside: any[];
-  history: any[];
 }
 
-export function OutsidersClient({ user, inside, history }: Props) {
+/** Photo link could not be loaded (shown instead of "Loading…" forever) */
+const PHOTO_FAILED = "__failed__";
+
+export function OutsidersClient({ user }: Props) {
   const t = useT();
-  const router = useRouter();
-  // Live: a visitor registered / checked out at another gate (the form keeps what was typed)
-  useLiveTopics(["visitors"], () => router.refresh());
+  // Visitors on campus + today's exits: shown at once from the last load, fetched
+  // again only when a visitor is registered / let out (live), at any gate
+  const outsiders = useGateData<any>(OUTSIDERS_QUERY.key, OUTSIDERS_QUERY.fetch, OUTSIDERS_QUERY.topics);
+  const inside: any[] = outsiders.data?.inside ?? [];
+  /** Head Security: may let a visitor out without the meeting code */
+  const canOverrideVisit = !!outsiders.data?.canOverrideVisit;
   const [activeTab, setActiveTab] = useState<"REGISTER" | "INSIDE" | "HISTORY">("REGISTER");
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -65,6 +74,8 @@ export function OutsidersClient({ user, inside, history }: Props) {
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   
+  // Purpose: "Other" picked (a box to type the reason)
+  const [purposeOther, setPurposeOther] = useState(false);
   // Visitor on foot: no vehicle number needed
   const [onFoot, setOnFoot] = useState(false);
   // Bumped after each registration so the department picker clears too
@@ -81,6 +92,8 @@ export function OutsidersClient({ user, inside, history }: Props) {
     address: "",
     department: "",
     remarks: "",
+    /** Faculty / staff they came to meet (meeting code) */
+    hostProfileId: "",
   });
 
   // ── Voice filling ──────────────────────────────────────────
@@ -137,6 +150,8 @@ export function OutsidersClient({ user, inside, history }: Props) {
   const voiceRing = (k: keyof typeof formData) =>
     voiceVals[k] !== undefined && formData[k] === voiceVals[k] ? " ring-2 ring-amber-400/60" : "";
   const [photo, setPhoto] = useState<string | null>(null);
+  // The photo's upload, started when it is taken (see handlePhotoCapture)
+  const photoUpload = useRef<{ data: string; promise: Promise<{ path: string | null; error: string | null }> } | null>(null);
 
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -177,6 +192,8 @@ export function OutsidersClient({ user, inside, history }: Props) {
         
         const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7);
         setPhoto(compressedBase64);
+        // Upload now, in the background: by the time the form is filled it is usually done
+        photoUpload.current = { data: compressedBase64, promise: callGate("uploadOutsiderPhoto", [compressedBase64, "visitor"], 30_000).catch(() => ({ path: null, error: "upload failed" })) };
       };
       img.src = event.target?.result as string;
     };
@@ -186,20 +203,24 @@ export function OutsidersClient({ user, inside, history }: Props) {
   
   // Fetch photo URL when outsider is selected
   useEffect(() => {
+    let cancelled = false;
     async function fetchUrl() {
       if (selectedOutsider?.photoUrl) {
         if (selectedOutsider.photoUrl.startsWith("data:") || selectedOutsider.photoUrl.startsWith("http")) {
           setPhotoUrl(selectedOutsider.photoUrl);
         } else {
           setPhotoUrl(null); // loading state
-          const url = await getExitPhotoUrl(selectedOutsider.photoUrl);
-          setPhotoUrl(url);
+          const url = await callGate("getExitPhotoUrl", [selectedOutsider.photoUrl], 15_000).catch(() => null);
+          if (!cancelled) setPhotoUrl(url || PHOTO_FAILED);
         }
       } else {
         setPhotoUrl(null);
       }
     }
     fetchUrl();
+    return () => {
+      cancelled = true;
+    };
   }, [selectedOutsider]);
 
   const openOutsiderDetails = (outsider: any) => {
@@ -226,7 +247,9 @@ export function OutsidersClient({ user, inside, history }: Props) {
       }
       let path: string | undefined;
       if (photo) {
-        const upload = await uploadOutsiderPhoto(photo, formData.name);
+        // The upload started when the photo was taken; retried once here if it failed
+        const pre = photoUpload.current?.data === photo ? await photoUpload.current.promise : null;
+        const upload = pre && pre.path && !pre.error ? pre : await callGate("uploadOutsiderPhoto", [photo, formData.name], 30_000);
         if (upload.error || !upload.path) {
           setError(t("Photo upload failed:") + " " + (upload.error || t("unknown error"))); setTimeout(() => setError(null), 3000);
           setLoading(false);
@@ -235,20 +258,22 @@ export function OutsidersClient({ user, inside, history }: Props) {
         path = upload.path;
       }
 
-      const result = await registerOutsider({ ...formData, vehicleNumber: onFoot ? "On foot" : formData.vehicleNumber.trim(), photoUrl: path });
+      const result: any = await callGate("registerOutsider", [{ ...formData, vehicleNumber: onFoot ? "On foot" : formData.vehicleNumber.trim(), photoUrl: path }], 20_000);
       
       if (result.success) {
         setSuccess(t("Visitor registered successfully!")); setTimeout(() => setSuccess(null), 4000);
         setFormData({
           name: "", phone: "", category: "GUEST", purpose: "", visitingStudent: "", gate: "", vehicleNumber: "", entryTime: "",
-          address: "", department: "", remarks: "",
+          address: "", department: "", remarks: "", hostProfileId: "",
         });
         setPhoto(null);
         setOnFoot(false);
         setFormNonce((n) => n + 1);
+        setPurposeOther(false);
         resetVoice();
-        // Stay on a fresh form: the next visitor in the queue can be registered straight away
-        router.refresh();
+        // The lists on the other tabs: fetched again now
+        void outsiders.reload();
+        photoUpload.current = null;
       } else {
         setError(result.error || t("Failed to register")); setTimeout(() => setError(null), 3000);
       }
@@ -259,14 +284,29 @@ export function OutsidersClient({ user, inside, history }: Props) {
     }
   };
 
-  const handleMarkExited = async (id: string) => {
-    
-    const res = await markOutsiderExited(id);
-    if (res.success) {
-      setSuccess(t("Marked as exited")); setTimeout(() => setSuccess(null), 3000);
-      router.refresh();
-    } else {
-      setError(res.error || t("Failed to mark exited")); setTimeout(() => setError(null), 3000);
+  // Visitor who came to meet a faculty / staff member: the meeting code is asked for first
+  const [exitFor, setExitFor] = useState<any | null>(null);
+  // The visitor being marked exited (the buttons wait meanwhile, so a double tap sends one request)
+  const [exitingId, setExitingId] = useState<string | null>(null);
+  const handleMarkExited = async (person: any) => {
+    if (exitingId) return;
+    if (person.visitPass && person.visitPass.status !== "EXITED") {
+      setExitFor(person);
+      return;
+    }
+    setExitingId(person.id);
+    try {
+      const res: any = await callGate("markOutsiderExited", [person.id], 20_000);
+      if (res?.success) {
+        setSuccess(t("Marked as exited")); setTimeout(() => setSuccess(null), 3000);
+        void outsiders.reload();
+      } else {
+        setError(t(res?.error || "Failed to mark exited")); setTimeout(() => setError(null), 4000);
+      }
+    } catch (err: any) {
+      setError(t(err?.message || "Failed to mark exited")); setTimeout(() => setError(null), 4000);
+    } finally {
+      setExitingId(null);
     }
   };
 
@@ -276,37 +316,30 @@ export function OutsidersClient({ user, inside, history }: Props) {
   // Entry/Exit Log: pick a day (default today); every visitor who came that day
   const [logDate, setLogDate] = useState(() => istDateString());
   const [logQuery, setLogQuery] = useState("");
-  const [log, setLog] = useState<{ rows: any[]; total: number; pageSize: number } | null>(null);
-  const [logLoading, setLogLoading] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => setLogQuery(searchQuery.trim()), 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
-  useEffect(() => {
-    if (activeTab !== "HISTORY") return;
-    let cancelled = false;
-    setLogLoading(true);
-    withTimeout(getVisitorsBook({ date: logDate, q: logQuery, page }))
-      .then((res: any) => {
-        if (cancelled || !res?.success) return;
-        setLog({
-          total: res.total,
-          pageSize: res.pageSize,
-          // Same shape as the visitor list (details popup, photo)
-          rows: res.rows.map((r: any) => ({
-            ...r,
-            visitingStudent: r.personToVisit,
-            entryTime: r.inTime,
-            exitTime: r.outTime,
-          })),
-        });
-      })
-      .catch(() => {})
-      .finally(() => !cancelled && setLogLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, logDate, logQuery, page]);
+  // Only while the Log tab is open; each day / search / page is kept, so going back is instant
+  const visitorsLog = useGateData<any>(
+    activeTab === "HISTORY" ? `visitors-log|${logDate}|${logQuery}|${page}` : null,
+    () => callGate("getVisitorsBook", [{ date: logDate, q: logQuery, page }], 15_000),
+    ["visitors"]
+  );
+  const log: { rows: any[]; total: number; pageSize: number } | null = visitorsLog.data?.success
+    ? {
+        total: visitorsLog.data.total,
+        pageSize: visitorsLog.data.pageSize,
+        // Same shape as the visitor list (details popup, photo)
+        rows: visitorsLog.data.rows.map((r: any) => ({
+          ...r,
+          visitingStudent: r.personToVisit,
+          entryTime: r.inTime,
+          exitTime: r.outTime,
+        })),
+      }
+    : null;
+  const logLoading = visitorsLog.loading || visitorsLog.refreshing;
 
   const filteredInside = inside.filter(
     (p) =>
@@ -317,15 +350,8 @@ export function OutsidersClient({ user, inside, history }: Props) {
   );
   const paginatedInside = filteredInside.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
-  const filteredHistory = history.filter(
-    (p) =>
-      p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.phone?.includes(searchQuery) ||
-      (p.vehicleNumber && p.vehicleNumber.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (p.purpose && p.purpose.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-  // Log tab: today's list until the server answers, then the chosen day
-  const paginatedHistory = log ? log.rows : filteredHistory.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+  // Log tab: the chosen day only (nothing from another day while it loads)
+  const paginatedHistory = log ? log.rows : [];
 
   const errorAlert = error && (
     <div role="alert" className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-400">
@@ -503,6 +529,8 @@ export function OutsidersClient({ user, inside, history }: Props) {
                     {t("Vehicle Number")} <span className="text-orange-400">*</span>
                   </label>
                   <div className="flex flex-col sm:flex-row gap-2">
+                    {/* The box takes the rest of the row (it shrank to its placeholder beside the long Telugu button) */}
+                    <div className="min-w-0 flex-1">
                     <Input
                       id="visitor-vehicle"
                       required={!onFoot}
@@ -514,12 +542,13 @@ export function OutsidersClient({ user, inside, history }: Props) {
                       onChange={(e) => setFormData({ ...formData, vehicleNumber: e.target.value.toUpperCase() })}
                       className={`text-base sm:text-sm disabled:opacity-60${voiceRing("vehicleNumber")}`}
                     />
+                    </div>
                     <button
                       type="button"
                       role="switch"
                       aria-checked={onFoot}
                       onClick={() => setOnFoot((v) => !v)}
-                      className={`h-12 shrink-0 rounded-2xl border px-4 text-sm font-medium transition-colors ${
+                      className={`h-12 shrink-0 whitespace-nowrap rounded-2xl border px-4 text-sm font-medium transition-colors ${
                         onFoot
                           ? "border-orange-500/50 bg-orange-500/10 text-orange-400"
                           : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
@@ -569,23 +598,53 @@ export function OutsidersClient({ user, inside, history }: Props) {
 
                 <div className="space-y-1.5">
                   <label htmlFor="visitor-purpose" className={labelCls}>{t("Reason / Purpose of Visit")}</label>
-                  <Input
+                  {/* A real dropdown (a typed-suggestion list hid the other choices once one was
+                      picked); "Other" opens a box to type any reason. Voice can fill either. */}
+                  <ThemedSelect
                     id="visitor-purpose"
-                    list="purpose-options"
-                    placeholder={t("Type or select a reason")}
-                    value={formData.purpose}
-                    onChange={e => setFormData({...formData, purpose: e.target.value})}
-                    className="text-base sm:text-sm"
+                    value={VISIT_PURPOSES.includes(formData.purpose) ? formData.purpose : purposeOther || formData.purpose ? OTHER_PURPOSE : ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setPurposeOther(v === OTHER_PURPOSE);
+                      setFormData({ ...formData, purpose: v === OTHER_PURPOSE ? "" : v });
+                    }}
+                    className="flex h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 [&>option]:bg-zinc-900"
+                  >
+                    <option value="">{t("— Select —")}</option>
+                    {VISIT_PURPOSES.map((p) => (
+                      <option key={p} value={p}>{t(p)}</option>
+                    ))}
+                    <option value={OTHER_PURPOSE}>{t("Other (type the reason)")}</option>
+                  </ThemedSelect>
+                  {(purposeOther || (formData.purpose !== "" && !VISIT_PURPOSES.includes(formData.purpose))) && (
+                    <Input
+                      id="visitor-purpose-other"
+                      autoFocus={purposeOther && !formData.purpose}
+                      maxLength={200}
+                      placeholder={t("Type the reason")}
+                      value={formData.purpose}
+                      onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                      className={`text-base sm:text-sm${voiceRing("purpose")}`}
+                    />
+                  )}
+                </div>
+
+                {/* Meeting a faculty / staff member: they get a code the visitor needs to go out */}
+                <div className="space-y-1.5">
+                  <label htmlFor="visitor-host" className={`${labelCls} flex items-center gap-1.5`}>
+                    <KeyRound className="h-4 w-4 text-orange-500" aria-hidden="true" /> {t("Meeting (faculty / staff)")}
+                  </label>
+                  <HostPicker
+                    key={`host-${formNonce}`}
+                    id="visitor-host"
+                    value={formData.hostProfileId}
+                    onChange={(v) => setFormData({ ...formData, hostProfileId: v })}
                   />
-                  <datalist id="purpose-options">
-                    <option value="Meeting" />
-                    <option value="Delivery" />
-                    <option value="Maintenance / Repair" />
-                    <option value="Parent Visit" />
-                    <option value="Event" />
-                    <option value="Interview" />
-                    <option value="Other" />
-                  </datalist>
+                  <p className="text-xs text-zinc-500">
+                    {formData.hostProfileId
+                      ? t("They get a meeting code; the visitor needs it from them to go out.")
+                      : t("Optional. Leave it empty if they came to meet a student or for other work — then no code is needed.")}
+                  </p>
                 </div>
 
                 {/* Other (optional) details */}
@@ -629,8 +688,21 @@ export function OutsidersClient({ user, inside, history }: Props) {
       {/* Inside Tab */}
       {activeTab === "INSIDE" && (
         <>
+          <LoadingPill active={outsiders.loading} />
           <Card className="overflow-hidden">
-            {paginatedInside.length === 0 ? (
+            {outsiders.error ? (
+              <div role="alert" className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+                <AlertCircle className="h-6 w-6 text-red-400" />
+                <p className="text-sm font-medium text-red-400">{t(outsiders.error)}</p>
+                <Button variant="outline" className="h-11" onClick={() => void outsiders.reload()}>
+                  <RotateCcw className="h-4 w-4" /> {t("Try Again")}
+                </Button>
+              </div>
+            ) : outsiders.loading ? (
+              <div className="flex items-center justify-center gap-2 px-6 py-12 text-sm text-zinc-500">
+                <Loader2 className="h-4 w-4 animate-spin" /> {t("Loading…")}
+              </div>
+            ) : paginatedInside.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
                 <span className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 text-zinc-500">
                   <Users className="h-5 w-5" />
@@ -643,7 +715,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
             ) : (
               <>
                 {/* Phones: stacked rows with a big Mark Exited button */}
-                <ul className={`sm:hidden ${dt.mobileList}`}>
+                <ul className={`lg:hidden ${dt.mobileList}`}>
                   {paginatedInside.map((person) => (
                     <li key={person.id} className="space-y-3 px-4 py-4">
                       <button
@@ -656,17 +728,26 @@ export function OutsidersClient({ user, inside, history }: Props) {
                           name={person.name || "—"}
                           sub={[person.phone, person.purpose].filter(Boolean).join(" · ")}
                         />
+                        {person.visitPass && person.visitPass.status !== "EXITED" && (
+                          <span className="sr-only">{t("Meeting: {name}", { name: person.visitPass.hostName })}</span>
+                        )}
                         <span className="flex shrink-0 flex-col items-end gap-1">
                           <span className="text-sm font-medium text-zinc-100 tabular-nums">{formatTime(person.entryTime)}</span>
                           <span className={categoryChip}>{t(person.category)}</span>
                         </span>
                       </button>
+                      {person.visitPass && person.visitPass.status !== "EXITED" && (
+                        <p className="flex items-center gap-1.5 text-xs font-semibold text-orange-500">
+                          <KeyRound className="h-3.5 w-3.5" aria-hidden="true" /> {t("Meeting: {name}", { name: person.visitPass.hostName })} · {t("code needed to exit")}
+                        </p>
+                      )}
                       <Button
                         variant="outline"
                         className="h-12 w-full"
-                        onClick={(e) => { e.stopPropagation(); handleMarkExited(person.id); }}
+                        onClick={(e) => { e.stopPropagation(); handleMarkExited(person); }}
+                        disabled={!!exitingId}
                       >
-                        <LogOut className="h-4 w-4" />
+                        {exitingId === person.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
                         {t("Mark Exited")}
                       </Button>
                     </li>
@@ -674,7 +755,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                 </ul>
 
                 {/* Tablet & up: table */}
-                <div className={`hidden sm:block ${dt.wrap}`}>
+                <div className={`hidden lg:block ${dt.wrap}`}>
                   <table className={dt.table}>
                     <thead>
                       <tr>
@@ -689,6 +770,11 @@ export function OutsidersClient({ user, inside, history }: Props) {
                         <tr key={person.id} className={dt.trClickable} onClick={() => openOutsiderDetails(person)}>
                           <td className={dt.td}>
                             <PersonCell name={person.name || "—"} sub={person.phone} />
+                            {person.visitPass && person.visitPass.status !== "EXITED" && (
+                              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-orange-500">
+                                <KeyRound className="h-3 w-3" aria-hidden="true" /> {t("Meeting: {name}", { name: person.visitPass.hostName })}
+                              </span>
+                            )}
                           </td>
                           <td className={dt.td}>
                             <span className={categoryChip}>{t(person.category)}</span>
@@ -699,11 +785,18 @@ export function OutsidersClient({ user, inside, history }: Props) {
                           </td>
                           <td className={dt.tdActions}>
                             <RowActions>
-                              <IconAction
-                                label={t("Mark Exited")}
-                                icon={<LogOut />}
-                                onClick={() => handleMarkExited(person.id)}
-                              />
+                              {/* Clearly visible: the main action on someone still inside */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkExited(person);
+                                }}
+                                disabled={!!exitingId}
+                                className="inline-flex h-10 items-center gap-1.5 whitespace-nowrap rounded-full bg-sky-600 px-4 text-sm font-semibold text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.7)] transition-[background-color,transform] hover:bg-sky-700 active:scale-95 disabled:opacity-60"
+                              >
+                                {exitingId === person.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />} {t("Mark Exited")}
+                              </button>
                             </RowActions>
                           </td>
                         </tr>
@@ -748,7 +841,19 @@ export function OutsidersClient({ user, inside, history }: Props) {
             )}
           </div>
           <Card className={`overflow-hidden transition-opacity ${logLoading ? "opacity-60" : ""}`}>
-            {paginatedHistory.length === 0 ? (
+            {visitorsLog.error ? (
+              <div role="alert" className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+                <AlertCircle className="h-6 w-6 text-red-400" />
+                <p className="text-sm font-medium text-red-400">{t(visitorsLog.error)}</p>
+                <Button variant="outline" className="h-11" onClick={() => void visitorsLog.reload()}>
+                  <RotateCcw className="h-4 w-4" /> {t("Try Again")}
+                </Button>
+              </div>
+            ) : !log ? (
+              <div className="flex items-center justify-center gap-2 px-6 py-12 text-sm text-zinc-500">
+                <Loader2 className="h-4 w-4 animate-spin" /> {t("Loading…")}
+              </div>
+            ) : paginatedHistory.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
                 <span className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 text-zinc-500">
                   <History className="h-5 w-5" />
@@ -761,7 +866,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
             ) : (
               <>
                 {/* Phones: stacked rows */}
-                <ul className={`sm:hidden ${dt.mobileList}`}>
+                <ul className={`lg:hidden ${dt.mobileList}`}>
                   {paginatedHistory.map((mov: any) => (
                     <li key={mov.id}>
                       <button
@@ -793,7 +898,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
                 </ul>
 
                 {/* Tablet & up: table */}
-                <div className={`hidden sm:block ${dt.wrap}`}>
+                <div className={`hidden lg:block ${dt.wrap}`}>
                   <table className={dt.table}>
                     <thead>
                       <tr>
@@ -834,7 +939,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
           <PagerBar
             page={page}
             pageSize={log ? log.pageSize : ITEMS_PER_PAGE}
-            total={log ? log.total : filteredHistory.length}
+            total={log ? log.total : 0}
             onPageChange={setPage}
             itemLabel={t("records")}
           />
@@ -852,7 +957,9 @@ export function OutsidersClient({ user, inside, history }: Props) {
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
               <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
                 {selectedOutsider.photoUrl ? (
-                  photoUrl ? (
+                  photoUrl === PHOTO_FAILED ? (
+                    <span className="px-2 text-center text-xs text-zinc-500">{t("Photo unavailable")}</span>
+                  ) : photoUrl ? (
                     <img src={photoUrl} alt="Visitor" className="h-full w-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full animate-pulse items-center justify-center bg-zinc-950">
@@ -940,7 +1047,7 @@ export function OutsidersClient({ user, inside, history }: Props) {
               <Button
                 className="h-12 w-full"
                 onClick={() => {
-                  handleMarkExited(selectedOutsider.id);
+                  handleMarkExited(selectedOutsider);
                   setSelectedOutsider(null);
                 }}
               >
@@ -951,6 +1058,29 @@ export function OutsidersClient({ user, inside, history }: Props) {
           </div>
         )}
       </Modal>
+
+      {/* Meeting code at the gate (visitor came to meet a faculty / staff member) */}
+      {exitFor && (
+        <VisitExitDialog
+          key={exitFor.id}
+          open
+          onClose={() => setExitFor(null)}
+          visitorName={exitFor.name || "—"}
+          hostName={exitFor.visitPass?.hostName ?? ""}
+          locked={(exitFor.visitPass?.attempts ?? 0) >= 5}
+          canOverride={canOverrideVisit}
+          onSubmit={async (input) => {
+            const res: any = await callGate("markOutsiderExited", [exitFor.id, input], 20_000).catch((err: any) => ({
+              error: err?.message || "Failed to mark exited",
+            }));
+            if (res.success) {
+              setSuccess(t("Marked as exited")); setTimeout(() => setSuccess(null), 3000);
+              void outsiders.reload();
+            }
+            return res;
+          }}
+        />
+      )}
     </div>
   );
 

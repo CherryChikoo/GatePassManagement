@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea, EmptyState, Modal, Badge, StatusBadge } from "@/components/ui/primitives";
+import { delayMinutes, formatDelay, returnDueAt } from "@/lib/passes/return-scan";
 import { logoutAction } from "@/server/actions/auth";
 import { handleApproval, batchApproval } from "@/server/actions/approvals";
 import { formatDate, formatDateTime } from "@/lib/utils";
@@ -32,10 +33,23 @@ interface Props {
   user: { name: string; email: string; role: string; profileId: string };
 }
 
+/** The request lists as they are now, to put back if an optimistic approve / reject fails */
+function snapshotRequests() {
+  const d = useAppStore.getState().data;
+  return { allRequests: d.allRequests, requests: d.requests };
+}
+function restoreRequests(snap: { allRequests: any; requests: any }) {
+  const st = useAppStore.getState();
+  if (snap.allRequests !== undefined) st.setData("allRequests", snap.allRequests);
+  if (snap.requests !== undefined) st.setData("requests", snap.requests);
+}
+
 export function WardenRequestsClient({ user }: Props) {
   const isReady = useStoreReady();
   const requestsData = useAppStore((s) => s.data.requests);
   const updateData = useAppStore((s) => s.updateData);
+  // Result of an approve / reject that needs attention (shown above the list)
+  const [notice, setNotice] = useState<{ tone: "error" | "info"; text: string } | null>(null);
 
   const [activeTab, setActiveTab] = useState<"ALL" | "PENDING" | "ACCEPTED" | "REJECTED">("PENDING");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -83,21 +97,23 @@ export function WardenRequestsClient({ user }: Props) {
     if (!approveModal) return;
     const requestId = approveModal.id;
     setProcessing(requestId);
-    
-    // Optimistic UI Update
-    updateData("requests", (old: any) => 
+    const before = snapshotRequests();
+
+    // Optimistic UI Update (put back if the server refuses)
+    updateData("requests", (old: any) =>
       (old || []).map((r: any) => r.id === requestId ? { ...r, status: "APPROVED" } : r)
     );
 
     try {
       const res = await handleApproval(requestId, "APPROVE", undefined, expiryMinutes);
-      if (res?.error) window.alert(res.error);
+      if (res?.error) {
+        restoreRequests(before);
+        setNotice({ tone: "error", text: res.error });
+      }
       useAppStore.getState().refresh(true);
     } catch {
-      updateData("requests", (old: any) =>
-        (old || []).map((r: any) => r.id === requestId ? { ...r, status: "PENDING" } : r)
-      );
-      window.alert("Failed to approve the request. Please try again.");
+      restoreRequests(before);
+      setNotice({ tone: "error", text: "Could not approve. Check the connection and try again." });
     } finally {
       setProcessing(null);
       setApproveModal(null);
@@ -107,27 +123,27 @@ export function WardenRequestsClient({ user }: Props) {
 
   async function handleSingleReject() {
     if (!rejectModal) return;
-    if (!rejectReason.trim()) {
-      window.alert("Please enter a reason for rejecting this request.");
-      return;
-    }
+    // The Reject button stays off until a reason is typed
+    if (!rejectReason.trim()) return;
     const requestId = rejectModal.id;
     setProcessing(requestId);
-    
-    // Optimistic Update
-    updateData("requests", (old: any) => 
+    const before = snapshotRequests();
+
+    // Optimistic Update (put back if the server refuses)
+    updateData("requests", (old: any) =>
       (old || []).map((r: any) => r.id === requestId ? { ...r, status: "REJECTED", rejectionReason: rejectReason } : r)
     );
 
     try {
       const res = await handleApproval(requestId, "REJECT", rejectReason);
-      if (res?.error) window.alert(res.error);
+      if (res?.error) {
+        restoreRequests(before);
+        setNotice({ tone: "error", text: res.error });
+      }
       useAppStore.getState().refresh(true);
     } catch {
-      updateData("requests", (old: any) =>
-        (old || []).map((r: any) => r.id === requestId ? { ...r, status: "PENDING", rejectionReason: null } : r)
-      );
-      window.alert("Failed to reject the request. Please try again.");
+      restoreRequests(before);
+      setNotice({ tone: "error", text: "Could not reject. Check the connection and try again." });
     } finally {
       setProcessing(null);
       setRejectModal(null);
@@ -138,22 +154,25 @@ export function WardenRequestsClient({ user }: Props) {
   async function handleBatchApprove() {
     if (selected.size === 0) return;
     setBatchProcessing(true);
-    
+
     const selectedIds = Array.from(selected);
-    
-    updateData("requests", (old: any) => 
+    const before = snapshotRequests();
+
+    updateData("requests", (old: any) =>
       (old || []).map((r: any) => selectedIds.includes(r.id) ? { ...r, status: "APPROVED" } : r)
     );
 
     try {
       const res: any = await batchApproval(selectedIds, "APPROVE");
-      if (!res?.success) window.alert(res?.error || "Some requests could not be approved.");
+      if (!res?.success) {
+        // Back to the saved state; the refresh shows the ones that did go through
+        restoreRequests(before);
+        setNotice({ tone: "error", text: res?.error || "Some requests could not be approved." });
+      }
       useAppStore.getState().refresh(true);
     } catch {
-      updateData("requests", (old: any) =>
-        (old || []).map((r: any) => selectedIds.includes(r.id) ? { ...r, status: "PENDING" } : r)
-      );
-      window.alert("Failed to process the selected requests.");
+      restoreRequests(before);
+      setNotice({ tone: "error", text: "Could not save. Check the connection and try again." });
     } finally {
       setBatchProcessing(false);
       setSelected(new Set());
@@ -163,6 +182,19 @@ export function WardenRequestsClient({ user }: Props) {
   return (
     <>
       <div className="mx-auto max-w-5xl space-y-6 lg:space-y-8">
+        {notice && (
+          <div
+            role={notice.tone === "error" ? "alert" : "status"}
+            className={`flex items-start gap-2.5 rounded-2xl border px-4 py-3 text-sm ${
+              notice.tone === "error" ? "border-red-500/20 bg-red-500/10 text-red-400" : "border-sky-500/20 bg-sky-500/10 text-sky-400"
+            }`}
+          >
+            <span className="min-w-0 flex-1">{notice.text}</span>
+            <button type="button" onClick={() => setNotice(null)} className="shrink-0 rounded-full px-2 text-xs font-semibold hover:underline">
+              OK
+            </button>
+          </div>
+        )}
         <div className="min-w-0">
           <BackButton href="/warden" label="Back to Dashboard" className="-ml-3 mb-2" />
           <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
@@ -346,6 +378,12 @@ export function WardenRequestsClient({ user }: Props) {
                                     {req.qr?.usedForEntry ? "Returned" : "Exited"}
                                   </span>
                                 )}
+                                {/* Still out past the planned return (the return QR keeps working) */}
+                                {req.status === "EXITED" && !req.qr?.usedForEntry && delayMinutes(returnDueAt(req)) > 0 && (
+                                  <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-600 whitespace-nowrap">
+                                    Delayed return · {formatDelay(delayMinutes(returnDueAt(req)))}
+                                  </span>
+                                )}
                               </div>
                             )}
                           </div>
@@ -444,7 +482,7 @@ export function WardenRequestsClient({ user }: Props) {
             <Button variant="outline" className="w-full sm:w-auto" onClick={() => { setRejectModal(null); setRejectReason(""); }}>
               Cancel
             </Button>
-            <Button variant="destructive" className="w-full sm:w-auto" onClick={handleSingleReject} loading={!!processing}>
+            <Button variant="destructive" className="w-full sm:w-auto" onClick={handleSingleReject} loading={!!processing} disabled={!rejectReason.trim()}>
               Confirm Reject
             </Button>
           </div>

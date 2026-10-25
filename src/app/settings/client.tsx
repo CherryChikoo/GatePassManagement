@@ -108,15 +108,10 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
   const [phone, setPhone] = useState(user.phone || "");
   const department = user.department || "";
   const designation = user.designation || "";
-  // Directors, Deans and HODs manage their own email, Employee ID and title
+  // Directors, Deans and HODs manage their own email and Employee ID (designation: Main Admin only)
   const selfManaged = ["DIRECTOR", "DEAN", "FACULTY_ADMIN"].includes(user.role);
   const [email, setEmail] = useState(user.email || "");
   const [employeeId, setEmployeeId] = useState(user.employeeId || "");
-  const [title, setTitle] = useState(() =>
-    user.role === "DEAN"
-      ? designation.replace(/^dean(\s+of)?\s*/i, "")
-      : designation || (user.role === "DIRECTOR" ? "" : user.role === "FACULTY_ADMIN" ? "Head of Department" : "")
-  );
   const emailChanged = selfManaged && email.trim().toLowerCase() !== (user.email || "").toLowerCase();
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
@@ -179,7 +174,6 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
     if (selfManaged) {
       formData.append("email", email.trim());
       formData.append("employeeId", employeeId.trim());
-      formData.append("title", title.trim());
     }
     if (password || emailChanged) {
       formData.append("currentPassword", currentPassword);
@@ -357,47 +351,19 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
                         Department is assigned by the administrator.
                       </p>
                     </div>
-                    {selfManaged && user.role === "DEAN" ? (
-                      <div className="space-y-1">
-                        <label htmlFor="settings-dean-of" className="block text-sm font-medium text-zinc-300">Dean of</label>
-                        <div className="flex items-stretch rounded-2xl border border-zinc-800 bg-zinc-900 focus-within:border-orange-500/50 focus-within:ring-4 focus-within:ring-orange-500/10">
-                          <span className="flex items-center px-3.5 text-sm font-semibold text-zinc-400 border-r border-zinc-800 whitespace-nowrap">Dean of</span>
-                          <input
-                            id="settings-dean-of"
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            required
-                            maxLength={80}
-                            placeholder="e.g. Placements, Internal Affairs"
-                            className="h-12 w-full min-w-0 bg-transparent px-3.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
-                          />
-                        </div>
-                      </div>
-                    ) : selfManaged ? (
+                    {/* Set by the Main Admin only (Admin → Users) */}
+                    <div>
                       <Input
                         label={user.role === "DIRECTOR" ? "Title" : "Designation"}
-                        name="title"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        required={user.role === "DIRECTOR"}
-                        maxLength={100}
-                        placeholder={user.role === "DIRECTOR" ? "e.g. Managing Director" : "e.g. Head of Department"}
+                        name="designation"
+                        value={designation || (user.role === "FACULTY" ? "Faculty Member" : "—")}
+                        disabled
                         icon={<Briefcase className="h-4 w-4" />}
                       />
-                    ) : (
-                      <div>
-                        <Input
-                          label="Designation"
-                          name="designation"
-                          value={designation || "Faculty Member"}
-                          disabled
-                          icon={<Briefcase className="h-4 w-4" />}
-                        />
-                        <p className="text-[11px] text-zinc-500 mt-1 ml-1">
-                          Designation is assigned administratively.
-                        </p>
-                      </div>
-                    )}
+                      <p className="text-[11px] text-zinc-500 mt-1 ml-1">
+                        Assigned by the administrator.
+                      </p>
+                    </div>
                     {selfManaged && (
                       <Input
                         label="Employee ID"

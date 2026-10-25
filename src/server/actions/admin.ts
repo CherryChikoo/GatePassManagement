@@ -25,25 +25,13 @@ import { revalidatePath } from "next/cache";
 import { fillMovementPeople } from "@/lib/people";
 
 // In-memory caches to make frequent admin dashboard, gates, and user navigation blazing fast
-let cachedDashboard: { data: any; expiresAt: number } | null = null;
-let cachedFaculty: { data: any; expiresAt: number } | null = null;
-let cachedWardens: { data: any; expiresAt: number } | null = null;
-let cachedGates: { data: any; expiresAt: number } | null = null;
-let cachedAdminGates: { data: any; expiresAt: number } | null = null;
-let cachedActivity: { data: any; expiresAt: number } | null = null;
-const userDetailsCache = new Map<string, { data: any; expiresAt: number }>();
-const usersListCache = new Map<string, { data: any; expiresAt: number }>();
+// No in-memory copies of lists here: the portal runs on several server
+// instances at once, and a copy kept by one is not cleared by a change made
+// on another — a deleted user would come back on the next reload. These
+// queries take milliseconds; the browser screens avoid repeat requests.
 
-/** Clears this instance's admin caches. Internal: called after the server's own writes. */
+/** After an admin change: signed-in details (role, active) are read fresh on this instance. */
 function clearAdminCaches() {
-  cachedDashboard = null;
-  cachedFaculty = null;
-  cachedWardens = null;
-  cachedGates = null;
-  cachedAdminGates = null;
-  cachedActivity = null;
-  userDetailsCache.clear();
-  usersListCache.clear();
   invalidateProfileCache();
 }
 
@@ -409,9 +397,6 @@ export async function updateGate(gateId: string, formData: FormData) {
       where: { id: gateId },
       data: { name, location: location || null },
     });
-    cachedGates = null;
-    cachedAdminGates = null;
-    cachedDashboard = null;
     revalidatePath("/admin/gates");
     return { success: true };
   } catch (error: any) {
@@ -434,9 +419,6 @@ export async function toggleGateActive(gateId: string) {
     data: { active: !gate.active },
   });
 
-  cachedGates = null;
-  cachedAdminGates = null;
-  cachedDashboard = null;
   revalidatePath("/admin/gates");
   return { success: true };
 }
@@ -472,9 +454,6 @@ export async function createGate(formData: FormData) {
     },
   });
 
-  cachedGates = null;
-  cachedAdminGates = null;
-  cachedDashboard = null;
   revalidatePath("/admin/gates");
   return { success: true };
 }
@@ -484,9 +463,6 @@ export async function createGate(formData: FormData) {
  */
 export async function getAdminDashboard(dateString?: string) {
   await requireRole("ADMIN");
-  if (!dateString && cachedDashboard && cachedDashboard.expiresAt > Date.now()) {
-    return cachedDashboard.data;
-  }
   const { start: today, end: endOfDay } = istDayRangeFromParam(dateString);
 
   const [
@@ -563,9 +539,6 @@ export async function getAdminDashboard(dateString?: string) {
   };
 
   fillMovementPeople(dashboardData);
-  if (!dateString) {
-    cachedDashboard = { data: dashboardData, expiresAt: Date.now() + 10_000 };
-  }
   return dashboardData;
 }
 
@@ -590,11 +563,6 @@ export async function getUsers(
   page = safePage;
   pageSize = safePageSize;
 
-  const cacheKey = `${page}-${pageSize}-${roleFilter || "ALL"}`;
-  const cached = usersListCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.data;
-  }
   const where = roleFilter ? { role: roleFilter as Role } : {};
 
   const [users, total] = await Promise.all([
@@ -666,7 +634,6 @@ export async function getUsers(
   ]);
 
   const result = { users, total };
-  usersListCache.set(cacheKey, { data: result, expiresAt: Date.now() + 60_000 });
   return result;
 }
 
@@ -999,12 +966,6 @@ export async function getFacultyStudents() {
 export async function getUserDetails(profileId: string, role: string) {
   await requireRole("ADMIN");
 
-  const cacheKey = `${profileId}-${role}`;
-  const cached = userDetailsCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.data;
-  }
-
   let data = null;
 
   if (role === "STUDENT") {
@@ -1040,10 +1001,6 @@ export async function getUserDetails(profileId: string, role: string) {
         gate: true
       }
     });
-  }
-
-  if (data) {
-    userDetailsCache.set(cacheKey, { data, expiresAt: Date.now() + 20_000 });
   }
 
   return data;
@@ -1190,9 +1147,6 @@ export async function getUserFullHistory(profileId: string): Promise<any> {
  */
 export async function getAllFaculty() {
   await requireRole("ADMIN", "STUDENT", "FACULTY", "FACULTY_ADMIN", "WARDEN", "DIRECTOR", "DEAN");
-  if (cachedFaculty && cachedFaculty.expiresAt > Date.now()) {
-    return cachedFaculty.data;
-  }
 
   const data = await prisma.faculty.findMany({
     select: {
@@ -1203,8 +1157,6 @@ export async function getAllFaculty() {
     orderBy: { profile: { name: "asc" } },
   });
 
-  // Cache for 5 minutes - faculty list rarely changes
-  cachedFaculty = { data, expiresAt: Date.now() + 300_000 };
   return data;
 }
 
@@ -1213,9 +1165,6 @@ export async function getAllFaculty() {
  */
 export async function getAllWardens() {
   await requireRole("ADMIN", "STUDENT", "FACULTY", "FACULTY_ADMIN", "WARDEN", "DIRECTOR");
-  if (cachedWardens && cachedWardens.expiresAt > Date.now()) {
-    return cachedWardens.data;
-  }
   const data = await prisma.warden.findMany({
     select: {
       id: true,
@@ -1225,8 +1174,6 @@ export async function getAllWardens() {
     orderBy: { profile: { name: "asc" } },
   });
 
-  // Cache for 5 minutes - warden list rarely changes
-  cachedWardens = { data, expiresAt: Date.now() + 300_000 };
   return data;
 }
 
@@ -1236,9 +1183,7 @@ export async function getAllWardens() {
 export async function getAllGates() {
   await requireRole("ADMIN", "FACULTY", "FACULTY_ADMIN", "WARDEN", "DIRECTOR", "DEAN");
 
-  if (cachedGates && cachedGates.expiresAt > Date.now()) {
-    return cachedGates.data;
-  }  const data = await prisma.gate.findMany({
+  const data = await prisma.gate.findMany({
     select: {
       id: true,
       name: true,
@@ -1246,7 +1191,6 @@ export async function getAllGates() {
     },
   });
 
-  cachedGates = { data, expiresAt: Date.now() + 30_000 };
   return data;
 }
 
@@ -1255,15 +1199,11 @@ export async function getAllGates() {
  */
 export async function getAdminGates() {
   await requireRole("ADMIN");
-  if (cachedAdminGates && cachedAdminGates.expiresAt > Date.now()) {
-    return cachedAdminGates.data;
-  }
   const data = await prisma.gate.findMany({
     orderBy: { createdAt: "desc" },
     select: { id: true, name: true, location: true, active: true, createdAt: true },
   });
 
-  cachedAdminGates = { data, expiresAt: Date.now() + 30_000 };
   return data;
 }
 
@@ -1320,15 +1260,6 @@ export async function assignGateToSecurity(securityId: string, gateId: string) {
  */
 export async function getActivityData(dateString?: string) {
   await requireRole("ADMIN");
-  if (
-    !dateString &&
-    cachedActivity &&
-    Array.isArray(cachedActivity.data?.recentEntries) &&
-    Array.isArray(cachedActivity.data?.recentExits) &&
-    cachedActivity.expiresAt > Date.now()
-  ) {
-    return cachedActivity.data;
-  }
   const { start: today, end: endOfDay } = istDayRangeFromParam(dateString);
 
   // Fetch Movement Data and Stats in parallel
@@ -1401,7 +1332,12 @@ export async function getActivityData(dateString?: string) {
       },
     }),
     prisma.outsider.count({ where: { status: "INSIDE", entryTime: { gte: today, lt: endOfDay } } }),
-    prisma.outsider.findMany({ where: { entryTime: { gte: today, lt: endOfDay } }, orderBy: { entryTime: "desc" } })
+    prisma.outsider.findMany({
+      where: { entryTime: { gte: today, lt: endOfDay } },
+      orderBy: { entryTime: "desc" },
+      // Meeting a faculty / staff member (the code itself is never sent)
+      include: { visitPass: { select: { hostName: true, status: true, attempts: true } } },
+    })
   ,
     prisma.permission.findMany({
       where: { type: "ENTRY", createdAt: { gte: today, lt: endOfDay } },
@@ -1481,9 +1417,6 @@ export async function getActivityData(dateString?: string) {
     outsiders 
   };
 
-  if (!dateString) {
-    cachedActivity = { data: activityData, expiresAt: Date.now() + 10_000 };
-  }
   return activityData;
 }
 

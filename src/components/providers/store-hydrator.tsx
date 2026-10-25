@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useOwnLive } from "@/lib/realtime/live";
 import {
   useAppStore,
   hardNavigate,
@@ -17,9 +18,18 @@ import {
  *    - another tab logged in   → this tab reloads as that user (or to /login)
  *    - page restored by Back/swipe from the browser cache → re-validated on the server
  */
+/** Roles with requests to approve: their list reloads the moment a request arrives */
+const APPROVER_ROLES = ["FACULTY_ADMIN", "DEAN", "WARDEN"];
+
 export function StoreHydrator({ user }: { user: StoreUser }) {
   const initialize = useAppStore((s) => s.initialize);
   const initialized = useRef(false);
+
+  // A request for this approver arrived, was cancelled or decided elsewhere:
+  // a small refresh (requests and counts, not the directories). No polling.
+  useOwnLive((changed) => {
+    if (changed.includes("requests") || changed.includes("*")) useAppStore.getState().refresh(true);
+  }, APPROVER_ROLES.includes(user.role));
 
   useEffect(() => {
     if (!initialized.current) {
@@ -41,9 +51,10 @@ export function StoreHydrator({ user }: { user: StoreUser }) {
     };
     window.addEventListener("pageshow", onPageShow);
 
-    // When the tab becomes visible again, confirm the session still belongs to this user.
+    // When the tab becomes visible again, confirm the session still belongs to this user
+    // (at most once every 30 s — switching apps back and forth sends no extra requests).
     const onVisible = () => {
-      if (document.visibilityState === "visible") useAppStore.getState().refresh(true);
+      if (document.visibilityState === "visible") useAppStore.getState().refresh();
     };
     document.addEventListener("visibilitychange", onVisible);
 

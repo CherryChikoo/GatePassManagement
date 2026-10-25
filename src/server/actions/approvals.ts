@@ -1,7 +1,8 @@
 "use server";
 
+import { exitQrExpiresAt } from "@/lib/passes/return-scan";
 import type { ApproverType, Prisma } from "@prisma/client";
-import { notifyLive, notifyPassHolder } from "@/lib/realtime/notify";
+import { notifyApprovers, notifyLive, notifyPassHolder } from "@/lib/realtime/notify";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole, type AuthUser } from "@/lib/auth/helpers";
 import { generateQrToken } from "@/lib/qr/token";
@@ -10,14 +11,10 @@ import { getDepartmentVariants } from "@/lib/constants";
 import { APPROVAL_EXPIRY_MINUTES, batchApprovalSchema } from "@/lib/validation/schemas";
 import { istDayRange, istStartOfDay } from "@/lib/time/ist";
 
-// In-memory dashboard caches for faculty and warden (15s TTL)
-const facultyDashboardCache = new Map<string, { data: any; expiresAt: number }>();
-const wardenDashboardCache = new Map<string, { data: any; expiresAt: number }>();
-
-function invalidateApprovalsCache() {
-  facultyDashboardCache.clear();
-  wardenDashboardCache.clear();
-}
+// No in-memory copies of these lists: several server instances run at once,
+// and a copy kept by one is not cleared by a change made on another (a saved
+// record would vanish and come back on reload). The queries take milliseconds.
+function invalidateApprovalsCache() {}
 
 /**
  * Builds the Prisma filter for PENDING permissions the given approver may act on.
@@ -124,6 +121,7 @@ export async function handleApproval(
       studentId: true,
       facultyId: true,
       exitDate: true,
+      expectedExit: true,
       approvalMode: true,
       hodApprovedAt: true,
       deanApprovedAt: true,
@@ -163,19 +161,25 @@ export async function handleApproval(
     invalidateApprovalsCache();
     revalidateApprovalPaths();
     notifyPassHolder(permissionId);
+  notifyApprovers(permissionId);
     return { success: true, action: "REJECTED" };
   }
 
-  // APPROVE flow — QR validity:
-  // - Pass for today: valid for the chosen window from now.
+  // APPROVE flow — QR validity (for leaving; the return QR has no time limit):
+  // - Pass for today: the chosen window from now, or until 2 h after the
+  //   planned exit time if that is later (approved at 10 am for a 5 pm outing
+  //   still works at 5 pm) — never past the end of the exit day.
   // - Advance pass for a future IST day: valid for that whole day (scan is
   //   blocked before the day starts; see security.ts).
   const now = new Date();
   const exitDay = istDayRange(permission.exitDate);
-  const expiresAt =
-    exitDay.start > now
-      ? exitDay.end
-      : new Date(now.getTime() + clampExpiryMinutes(expiryMinutes ?? APPROVAL_EXPIRY_MINUTES.DEFAULT) * 60_000);
+  const expiresAt = exitQrExpiresAt({
+    exitDayStart: exitDay.start,
+    exitDayEnd: exitDay.end,
+    expectedExit: permission.expectedExit,
+    chosenMinutes: clampExpiryMinutes(expiryMinutes ?? APPROVAL_EXPIRY_MINUTES.DEFAULT),
+    now,
+  });
 
   const qrTargetId = permission.studentId || permission.facultyId;
   if (!qrTargetId) return { error: "No student or faculty attached to permission" };
@@ -245,6 +249,7 @@ export async function handleApproval(
   invalidateApprovalsCache();
   revalidateApprovalPaths();
   notifyPassHolder(permissionId);
+  notifyApprovers(permissionId);
   if (!finalized) {
     return {
       success: true,
@@ -411,10 +416,7 @@ export async function getWardenAllRequests() {
 export async function getFacultyDashboard() {
   const user = await requireRole("FACULTY");
 
-  const cached = facultyDashboardCache.get(user.profileId);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.data;
-  }  const faculty = await prisma.faculty.findUnique({
+  const faculty = await prisma.faculty.findUnique({
     where: { profileId: user.profileId },
     select: { id: true, department: true, designation: true, maxApprovals: true },
   });
@@ -507,12 +509,6 @@ export async function getFacultyDashboard() {
     recentActivity: recentApprovals,
   };
 
-  // Cache the result for 15 seconds
-  facultyDashboardCache.set(user.profileId, {
-    data: result,
-    expiresAt: Date.now() + 15000, // 15 seconds cache
-  });
-
   return result;
 }
 
@@ -520,10 +516,7 @@ export async function getFacultyDashboard() {
  * Get warden dashboard stats
  */
 export async function getWardenDashboard() {
-  const user = await requireRole("WARDEN");  const cached = wardenDashboardCache.get(user.profileId);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.data;
-  }
+  const user = await requireRole("WARDEN");
 
   const warden = await prisma.warden.findUnique({
     where: { profileId: user.profileId },
@@ -619,12 +612,6 @@ export async function getWardenDashboard() {
     },
     recentActivity: recentApprovals,
   };
-
-  // Cache the result for 15 seconds
-  wardenDashboardCache.set(user.profileId, {
-    data: result,
-    expiresAt: Date.now() + 15000, // 15 seconds cache
-  });
 
   return result;
 }

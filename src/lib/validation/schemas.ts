@@ -188,6 +188,8 @@ export const outsiderSchema = z.object({
   address: z.string().trim().max(300).optional().or(z.literal("")),
   department: z.string().trim().max(100).optional().or(z.literal("")),
   remarks: z.string().trim().max(500).optional().or(z.literal("")),
+  /** Faculty / staff member the visitor came to meet (meeting code) */
+  hostProfileId: z.string().uuid().optional().or(z.literal("")),
 });
 
 // ──────────────────────────────────────────────────────────────

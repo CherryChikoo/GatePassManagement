@@ -1,7 +1,7 @@
 "use client";
 import { useT } from "@/components/providers/language-provider";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeftRight,
@@ -34,9 +34,10 @@ import { BackButton } from "@/components/ui/back-button";
 import { GoBackButton } from "@/components/ui/go-back-button";
 import { REGISTERS, REGISTER_BY_KEY, SECURITY_EDITABLE_REGISTERS, isEntryRegister, type RegisterDef, type RegisterKey } from "@/lib/registers/definitions";
 import { slugForKey } from "@/lib/registers/custom";
-import { getRegisterCountsToday } from "@/server/actions/registers";
+import { useGateData } from "@/lib/gate-cache";
+import { REGISTER_COUNTS_QUERY } from "@/lib/gate-queries";
 import { EntryRegisterView } from "./entry-register-view";
-import { markEntryListsStale, prefetchEntryList } from "./entry-list-cache";
+import { prefetchEntryList } from "./entry-list-cache";
 import { useLiveTopics } from "@/lib/realtime/live";
 import { QuickEntryModal } from "./quick-entry";
 import { AttendanceSheetView } from "./attendance-sheet";
@@ -76,8 +77,6 @@ const REGISTER_ICON: Record<RegisterKey, LucideIcon> = {
   RETURNABLE: Undo2,
 };
 
-/** Today's counts from the last visit to the registers list (this tab only) */
-let lastCounts: Record<string, number> = {};
 
 export function RegistersHub({
   viewer,
@@ -99,22 +98,12 @@ export function RegistersHub({
   const base = BASE[viewer];
   const isSecurity = viewer === "SECURITY";
   const allRegisters = registers ?? REGISTERS;
-  // Last counts show at once when coming back to this list; fresh ones follow
-  const [counts, setCounts] = useState<Record<string, number>>(() => lastCounts);
-  const loadCounts = () => {
-    getRegisterCountsToday()
-      .then((c) => {
-        lastCounts = c;
-        setCounts(c);
-      })
-      .catch(() => {});
-  };
-  useEffect(loadCounts, []);
-  // Live: a register changed — fresh counts, and its list reloads when opened
-  useLiveTopics(["reg:"], (changed) => {
-    markEntryListsStale(changed.includes("*") ? "*" : changed.map((c) => c.slice(4)));
-    loadCounts();
-  });
+  // Today's counts: the last ones show at once; fetched again only when a register
+  // changed (live) — the gate cache (src/lib/gate-cache.ts) keeps them between visits.
+  // The live listener keeps the connection up while this list is open.
+  const countsData = useGateData<Record<string, number>>(REGISTER_COUNTS_QUERY.key, REGISTER_COUNTS_QUERY.fetch, REGISTER_COUNTS_QUERY.topics);
+  const counts = countsData.data ?? {};
+  useLiveTopics(["reg:"], () => {});
 
   const [query, setQuery] = useState("");
   const [quickKey, setQuickKey] = useState<string | null>(null);
@@ -240,7 +229,7 @@ export function RegistersHub({
           registerKey={quickKey}
           def={allRegisters.find((r) => r.key === quickKey)}
           onClose={() => setQuickKey(null)}
-          onSaved={loadCounts}
+          onSaved={() => void countsData.reload()}
         />
       )}
     </div>

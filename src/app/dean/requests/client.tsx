@@ -1,4 +1,6 @@
 "use client";
+import { delayMinutes, formatDelay, returnDueAt } from "@/lib/passes/return-scan";
+import { ThemedSelect } from "@/components/ui/themed-select";
 import { scheduledNote } from "@/lib/pass-dates";
 
 import { useState } from "react";
@@ -31,6 +33,8 @@ export function DeanRequestsClient() {
   const isReady = useStoreReady();
   const requests = useAppStore((s) => s.data.requests);
   const updateData = useAppStore((s) => s.updateData);
+  // Result of an approve / reject that needs attention (shown above the list)
+  const [notice, setNotice] = useState<{ tone: "error" | "info"; text: string } | null>(null);
 
   const [activeTab, setActiveTab] = useState<"PENDING" | "ACCEPTED" | "REJECTED">("PENDING");
   const [selectedDept, setSelectedDept] = useState("ALL");
@@ -149,7 +153,7 @@ export function DeanRequestsClient() {
           delete next[id];
           return next;
         });
-        window.alert(res.error);
+        setNotice({ tone: "error", text: res.error });
         useAppStore.getState().refresh(true);
       } else if (res?.action === "PARTIAL") {
         // "Both HOD & Dean" pass: still pending until the HOD approves
@@ -161,7 +165,7 @@ export function DeanRequestsClient() {
         updateData("requests", (prev: any[]) =>
           (prev || []).map((p: any) => (p.id === id ? { ...p, deanApprovedAt: new Date().toISOString() } : p))
         );
-        window.alert(res.message || "Approved. Waiting for the HOD's approval.");
+        setNotice({ tone: "info", text: res.message || "Approved. Waiting for the HOD's approval." });
         useAppStore.getState().refresh(true);
       } else {
         updateData("requests", (prev: any[]) =>
@@ -174,7 +178,7 @@ export function DeanRequestsClient() {
         delete next[id];
         return next;
       });
-      window.alert("Failed to approve the request. Please try again.");
+      setNotice({ tone: "error", text: "Could not approve. Check the connection and try again." });
     } finally {
       setProcessing((prev) => {
         const next = new Set(prev);
@@ -204,7 +208,7 @@ export function DeanRequestsClient() {
           delete next[id];
           return next;
         });
-        window.alert(res.error);
+        setNotice({ tone: "error", text: res.error });
         useAppStore.getState().refresh(true);
       } else {
         updateData("requests", (prev: any[]) =>
@@ -219,6 +223,7 @@ export function DeanRequestsClient() {
         delete next[id];
         return next;
       });
+      setNotice({ tone: "error", text: "Could not reject. Check the connection and try again." });
     } finally {
       setProcessing((prev) => {
         const next = new Set(prev);
@@ -276,7 +281,7 @@ export function DeanRequestsClient() {
           failedIds.forEach((id) => delete next[id]);
           return next;
         });
-        window.alert(res?.error || "Some requests could not be approved.");
+        setNotice({ tone: "error", text: res?.error || "Some requests could not be approved." });
         useAppStore.getState().refresh(true);
       }
       setSelectedIds(new Set(failedIds));
@@ -286,7 +291,7 @@ export function DeanRequestsClient() {
         ids.forEach((id) => delete next[id]);
         return next;
       });
-      window.alert("Failed to process the selected requests.");
+      setNotice({ tone: "error", text: "Could not save. Check the connection and try again." });
     } finally {
       setBatchProcessing(false);
     }
@@ -326,7 +331,7 @@ export function DeanRequestsClient() {
           failedIds.forEach((id) => delete next[id]);
           return next;
         });
-        window.alert(res?.error || "Some requests could not be rejected.");
+        setNotice({ tone: "error", text: res?.error || "Some requests could not be rejected." });
         useAppStore.getState().refresh(true);
       } else {
         setRejectReason("");
@@ -338,7 +343,7 @@ export function DeanRequestsClient() {
         ids.forEach((id) => delete next[id]);
         return next;
       });
-      window.alert("Failed to process the selected requests.");
+      setNotice({ tone: "error", text: "Could not save. Check the connection and try again." });
     } finally {
       setBatchProcessing(false);
     }
@@ -364,6 +369,19 @@ export function DeanRequestsClient() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
+      {notice && (
+        <div
+          role={notice.tone === "error" ? "alert" : "status"}
+          className={`flex items-start gap-2.5 rounded-2xl border px-4 py-3 text-sm ${
+            notice.tone === "error" ? "border-red-500/20 bg-red-500/10 text-red-400" : "border-sky-500/20 bg-sky-500/10 text-sky-400"
+          }`}
+        >
+          <span className="min-w-0 flex-1">{notice.text}</span>
+          <button type="button" onClick={() => setNotice(null)} className="shrink-0 rounded-full px-2 text-xs font-semibold hover:underline">
+            OK
+          </button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div className="min-w-0">
@@ -460,7 +478,7 @@ export function DeanRequestsClient() {
           </div>
 
           {departments.length > 0 && (
-            <select
+            <ThemedSelect
               value={selectedDept}
               onChange={(e) => {
                 setSelectedDept(e.target.value);
@@ -475,7 +493,7 @@ export function DeanRequestsClient() {
                   {dept}
                 </option>
               ))}
-            </select>
+            </ThemedSelect>
           )}
         </div>
       </div>
@@ -559,6 +577,12 @@ export function DeanRequestsClient() {
                             </span>
                           )}
                           <StatusBadge status={item.status} />
+                          {/* Faculty still out past the end of their pass (the QR keeps working) */}
+                          {item.facultyId && item.status === "EXITED" && delayMinutes(returnDueAt(item)) > 0 && (
+                            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-600 whitespace-nowrap">
+                              Delayed return · {formatDelay(delayMinutes(returnDueAt(item)))}
+                            </span>
+                          )}
                         </div>
                         <p className="mt-1.5 text-xs text-zinc-500">
                           {desig} • Department of {dept}
@@ -659,7 +683,7 @@ export function DeanRequestsClient() {
               <label htmlFor="dean-pass-validity" className="block text-xs font-medium uppercase tracking-wider text-zinc-500">
                 Pass Validity Window (from approval)
               </label>
-              <select
+              <ThemedSelect
                 id="dean-pass-validity"
                 value={expiryMinutes}
                 onChange={(e) => setExpiryMinutes(Number(e.target.value))}
@@ -671,7 +695,7 @@ export function DeanRequestsClient() {
                 <option value={240}>4 Hours</option>
                 <option value={480}>8 Hours (Full Working Day)</option>
                 <option value={720}>12 Hours</option>
-              </select>
+              </ThemedSelect>
             </div>
 
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">

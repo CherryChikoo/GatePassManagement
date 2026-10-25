@@ -46,9 +46,9 @@ const SELF_MANAGED = ["DIRECTOR", "DEAN", "FACULTY_ADMIN"] as const;
 
 /**
  * Users update their own name, phone and (optionally) password.
- * Directors, Deans and HODs may also change their email, Employee ID and title
- * (Dean of …, Director title, HOD designation). Department and role are always
- * admin-managed: department controls approval scope.
+ * Directors, Deans and HODs may also change their email and Employee ID.
+ * Designation / title, department and role are set by the Main Admin only
+ * (Admin → Users); department controls approval scope.
  */
 export async function updateProfileSettings(formData: FormData) {
   const user = await getAuthUser();
@@ -62,7 +62,6 @@ export async function updateProfileSettings(formData: FormData) {
     password: (formData.get("password") as string) ?? "",
     email: selfManaged ? ((formData.get("email") as string) ?? "") : "",
     employeeId: selfManaged ? ((formData.get("employeeId") as string) ?? "") : "",
-    title: selfManaged ? ((formData.get("title") as string) ?? "") : "",
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -73,16 +72,10 @@ export async function updateProfileSettings(formData: FormData) {
     ? parsed.data.email.toLowerCase()
     : null;
 
-  // Faculty-record details for Directors, Deans and HODs
-  let facultyUpdate: { employeeId: string | null; designation: string } | null = null;
+  // Faculty-record details for Directors, Deans and HODs (not the designation: admin only)
+  let facultyUpdate: { employeeId: string | null } | null = null;
   if (selfManaged) {
-    const title = parsed.data.title?.trim() || "";
-    if (user.role === "DEAN" && !title) return { error: "Enter what you are Dean of" };
-    if (user.role === "DIRECTOR" && !title) return { error: "Enter your title, e.g. Managing Director" };
-    facultyUpdate = {
-      employeeId: parsed.data.employeeId?.trim() || null,
-      designation: user.role === "DEAN" ? deanTitle(title) : title || "Head of Department",
-    };
+    facultyUpdate = { employeeId: parsed.data.employeeId?.trim() || null };
   }
 
   // Security accounts change only their name and phone; login details are managed by the admin

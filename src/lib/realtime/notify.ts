@@ -15,7 +15,9 @@
  *
  * Pass holders (students / faculty) get their own private topic, user:<id>,
  * with "pass:<id>" when their pass is approved, rejected or scanned — their
- * open pass screen updates at once (notifyPassHolder).
+ * open pass screen updates at once (notifyPassHolder). Approvers (HOD, Dean,
+ * warden) get "requests" on theirs when a request for them arrives, is
+ * cancelled or is decided (notifyApprovers) — their request list reloads.
  *
  * The channel is private: only the server (service key) can send, and only
  * signed-in gate staff can listen — see prisma/migrations/realtime_live_updates.sql.
@@ -63,6 +65,13 @@ export function notifyLive(...topics: string[]) {
   later(() => sendMessages([{ topic: LIVE_CHANNEL, topics: list }]));
 }
 
+/** Ping one private topic (e.g. a user's own user:<id> topic) with these topic names. */
+export function notifyTopic(topic: string, ...topics: string[]) {
+  const list = [...new Set(topics.filter(Boolean))];
+  if (!topic || !list.length) return;
+  later(() => sendMessages([{ topic, topics: list }]));
+}
+
 /**
  * Tell the pass holder (student or faculty member) that their pass changed —
  * approved, rejected, scanned at the gate… — on their own private topic, so an
@@ -88,6 +97,56 @@ export function notifyPassHolder(...permissionIds: string[]) {
       await sendMessages(messages);
     } catch (err: any) {
       console.warn("[live] pass ping failed:", err?.message);
+    }
+  });
+}
+
+/**
+ * Tell the approvers of these requests that their request list changed (new
+ * request, cancelled, or decided by the other approver), on their own private
+ * topic — their open screens reload just the requests, without polling.
+ * Who: the routed approver (warden / HOD / faculty), plus for faculty passes the
+ * Dean and the HODs of that faculty member's department (who also see them).
+ */
+export function notifyApprovers(...permissionIds: string[]) {
+  const ids = [...new Set(permissionIds.filter(Boolean))];
+  if (!ids.length) return;
+  later(async () => {
+    try {
+      const rows = await prisma.permission.findMany({
+        where: { id: { in: ids } },
+        select: { approverType: true, approverId: true, faculty: { select: { department: true } } },
+      });
+      const userIds = new Set<string>();
+      const wardenIds = rows.filter((r) => r.approverType === "WARDEN").map((r) => r.approverId);
+      const otherIds = rows.filter((r) => r.approverType !== "WARDEN").map((r) => r.approverId);
+      const facultyDepts = [...new Set(rows.map((r) => r.faculty?.department).filter((d): d is string => !!d))];
+      const [wardens, approvers, deansAndHods] = await Promise.all([
+        wardenIds.length
+          ? prisma.warden.findMany({ where: { id: { in: wardenIds } }, select: { profile: { select: { userId: true } } } })
+          : [],
+        // approverId is a profile id (HOD / Dean) or a faculty id, depending on the route
+        otherIds.length
+          ? prisma.profile.findMany({
+              where: { OR: [{ id: { in: otherIds } }, { faculty: { id: { in: otherIds } } }] },
+              select: { userId: true },
+            })
+          : [],
+        facultyDepts.length
+          ? prisma.profile.findMany({
+              where: {
+                active: true,
+                OR: [{ role: "DEAN" }, { role: "FACULTY_ADMIN", faculty: { department: { in: facultyDepts } } }],
+              },
+              select: { userId: true },
+            })
+          : [],
+      ]);
+      for (const w of wardens) userIds.add(w.profile.userId);
+      for (const p of [...approvers, ...deansAndHods]) userIds.add(p.userId);
+      await sendMessages([...userIds].map((u) => ({ topic: personalTopic(u), topics: ["requests"] })));
+    } catch (err: any) {
+      console.warn("[live] approver ping failed:", err?.message);
     }
   });
 }

@@ -1,6 +1,5 @@
 "use client";
 import { DateField } from "@/components/ui/date-field";
-import { usePendingNavigation } from "@/hooks/use-pending-navigation";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { useT } from "@/components/providers/language-provider";
 import { MovementDetails, VisitorDetails } from "@/components/registers/derived-views";
@@ -13,32 +12,28 @@ import { useState, useEffect } from "react";
 import { BackButton } from "@/components/ui/back-button";
 import { GoBackButton } from "@/components/ui/go-back-button";
 import { Input } from "@/components/ui/input";
-import { useRouter } from "next/navigation";
-import { useLiveTopics } from "@/lib/realtime/live";
+import { useGateData } from "@/lib/gate-cache";
+import { callGate } from "@/lib/gate-call";
+import { istDateString } from "@/lib/time/ist";
 import { Modal } from "@/components/ui/primitives";
 import { dt, IconAction, PersonCell, RowActions } from "@/components/ui/data-table";
 import { PagerBar } from "@/components/ui/pager-bar";
 import { cn } from "@/lib/utils";
 
-export function SecurityLogClient({
-  user,
-  studentEntries,
-  studentExits,
-  outsiderVisits,
-  selectedDate
-}: {
-  user: any;
-  studentEntries: any[];
-  studentExits: any[];
-  outsiderVisits: any[];
-  selectedDate: string;
-}) {
+export function SecurityLogClient({ initialDate }: { initialDate?: string }) {
   const t = useT();
-  const router = useRouter();
-  // Live: new gate scans or visitors
-  useLiveTopics(["gate", "visitors"], () => router.refresh());
-  // Date / tab changes reload the list from the server: show progress meanwhile
-  const { push: navigate, isPending: navigating } = usePendingNavigation();
+  // The chosen day's log from the gate cache: shown at once when seen before,
+  // fetched again only after a gate scan / visitor change (live)
+  const [selectedDate, setSelectedDate] = useState(() => initialDate || istDateString());
+  const day = useGateData<any>(
+    `gate-log|${selectedDate}`,
+    () => callGate("getSecurityLogData", [selectedDate], 15_000),
+    ["gate", "visitors"]
+  );
+  const studentEntries: any[] = day.data?.studentEntries ?? [];
+  const studentExits: any[] = day.data?.studentExits ?? [];
+  const outsiderVisits: any[] = day.data?.outsiderVisits ?? [];
+  const navigating = day.loading || day.refreshing;
   const [activeTab, setActiveTab] = useState<"ENTRIES" | "EXITS" | "OUTSIDERS">("ENTRIES");
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -54,7 +49,9 @@ export function SecurityLogClient({
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newDate = e.target.value;
     if (newDate) {
-      navigate(`/security/log?date=${newDate}`);
+      setSelectedDate(newDate);
+      // Kept in the address, so a reload shows the same day
+      window.history.replaceState(null, "", `/security/log?date=${newDate}`);
     }
   };
 
@@ -92,7 +89,7 @@ export function SecurityLogClient({
         ) : (
           <>
             {/* Phones: stacked rows */}
-            <ul className={cn(dt.mobileList, "sm:hidden")}>
+            <ul className={cn(dt.mobileList, "lg:hidden")}>
               {paginated.map((mov) => (
                 <li key={mov.id}>
                   <button
@@ -128,7 +125,7 @@ export function SecurityLogClient({
             </ul>
 
             {/* Larger screens: table */}
-            <div className={cn(dt.wrap, "hidden sm:block")}>
+            <div className={cn(dt.wrap, "hidden lg:block")}>
               <table className={dt.table}>
                 <thead>
                   <tr>
@@ -201,7 +198,7 @@ export function SecurityLogClient({
         ) : (
           <>
             {/* Phones: stacked rows */}
-            <ul className={cn(dt.mobileList, "sm:hidden")}>
+            <ul className={cn(dt.mobileList, "lg:hidden")}>
               {paginated.map((outsider) => (
                 <li key={outsider.id}>
                   <button
@@ -243,7 +240,7 @@ export function SecurityLogClient({
             </ul>
 
             {/* Larger screens: table */}
-            <div className={cn(dt.wrap, "hidden sm:block")}>
+            <div className={cn(dt.wrap, "hidden lg:block")}>
               <table className={dt.table}>
                 <thead>
                   <tr>
@@ -381,9 +378,26 @@ export function SecurityLogClient({
       </div>
 
       <Card className="overflow-hidden">
-        {activeTab === "ENTRIES" && renderMovementList(studentEntries, "ENTRY")}
-        {activeTab === "EXITS" && renderMovementList(studentExits, "EXIT")}
-        {activeTab === "OUTSIDERS" && renderOutsidersList()}
+        {day.error ? (
+          <div role="alert" className="flex flex-col items-center gap-3 px-4 py-14 text-center">
+            <p className="text-sm font-medium text-red-400">{t(day.error)}</p>
+            <button
+              type="button"
+              onClick={() => void day.reload()}
+              className="h-11 rounded-full border border-zinc-800 bg-zinc-900 px-5 text-sm font-medium text-zinc-200 hover:bg-zinc-950"
+            >
+              {t("Try Again")}
+            </button>
+          </div>
+        ) : day.loading ? (
+          <p className="px-4 py-14 text-center text-sm text-zinc-500">{t("Loading…")}</p>
+        ) : (
+          <>
+            {activeTab === "ENTRIES" && renderMovementList(studentEntries, "ENTRY")}
+            {activeTab === "EXITS" && renderMovementList(studentExits, "EXIT")}
+            {activeTab === "OUTSIDERS" && renderOutsidersList()}
+          </>
+        )}
       </Card>
 
 

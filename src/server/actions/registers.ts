@@ -8,6 +8,7 @@ import { createSignedPhotoUrl } from "@/lib/storage/storage-admin";
 import { getRegisterAccess } from "@/lib/registers/access";
 import {
   REGISTER_BY_KEY,
+  pendingActions,
   SECURITY_EDITABLE_REGISTERS,
   facultyRequestTypeLabel,
   isEntryRegister,
@@ -29,9 +30,21 @@ import {
   type StaffResolver,
 } from "@/lib/registers/validate";
 import { istDateString, istDateToInstant, istDayRangeFromParam, parseDateParam, parsePageParam } from "@/lib/time/ist";
+import { delayMinutes, formatDelay, returnDueAt } from "@/lib/passes/return-scan";
+
+/**
+ * Delayed return for a pass's row: minutes late of the recorded return, or of
+ * someone still out past their planned return. Null when on time.
+ */
+function delayOf(p: { status: string; expectedReturn?: Date | null; endDate?: Date | null; exitDate?: Date | null }, back?: { createdAt: Date } | null) {
+  if (!back && p.status !== "EXITED") return null;
+  const minutes = delayMinutes(returnDueAt(p), back ? back.createdAt : null);
+  return minutes > 0 ? { minutes, returned: !!back } : null;
+}
 import { invalidateSecurityCache } from "./security";
 import { getEntryRegister } from "@/lib/registers/catalog";
 import { notifyLive, notifyPassHolder } from "@/lib/realtime/notify";
+import { canOverrideVisitExit, checkVisitExit, closeVisitPass, newVisitCode, notifyHost, resolveHost } from "@/lib/visits/passes";
 import {
   REGISTER_PAGE_SIZE,
   REGISTER_VIEW_ROLES,
@@ -49,12 +62,21 @@ const TOKEN_RE = /^[A-Za-z0-9-]{8,100}$/;
 // ──────────────────────────────────────────────────────────────
 
 
+// A guard's employee ID and gate rarely change: remembered for 5 minutes (one query less per save)
+const staffSnapshotCache = new Map<string, { at: number; staff: { employeeId: string | null; gate: { name: string } | null } | null }>();
+
 /** Who is recording, taken from the signed-in session — never from the form. */
 async function recorderSnapshot(user: AuthUser) {
-  const staff = await prisma.securityStaff.findUnique({
-    where: { profileId: user.profileId },
-    select: { employeeId: true, gate: { select: { name: true } } },
-  });
+  const hit = staffSnapshotCache.get(user.profileId);
+  let staff = hit && Date.now() - hit.at < 5 * 60_000 ? hit.staff : undefined;
+  if (staff === undefined) {
+    staff = await prisma.securityStaff.findUnique({
+      where: { profileId: user.profileId },
+      select: { employeeId: true, gate: { select: { name: true } } },
+    });
+    if (staffSnapshotCache.size > 500) staffSnapshotCache.clear();
+    staffSnapshotCache.set(user.profileId, { at: Date.now(), staff });
+  }
   return {
     recordedById: user.profileId,
     recordedByName: user.name,
@@ -76,11 +98,13 @@ const resolveStaff: StaffResolver = async (id) => {
 /** Optional "YYYY-MM-DD" filter; "" or "all" = every date. */
 const dayFilter = registerDayFilter;
 
-/** After a register change: refresh the pages, and tell open screens of that register (live). */
+/**
+ * After a register change: tell open screens of that register (live). No page
+ * revalidation: register pages load their records in the browser (and reload
+ * after a save), so re-rendering the page inside every save response only
+ * made saving slower.
+ */
 function revalidateRegisters(register?: string) {
-  revalidatePath("/security/registers", "layout");
-  revalidatePath("/admin/registers", "layout");
-  revalidatePath("/supervisor/registers", "layout");
   if (register) notifyLive(`reg:${register}`);
 }
 
@@ -148,23 +172,50 @@ export async function createRegisterEntry(registerKey: string, payload: RawPaylo
   if (!(await getRegisterAccess(user)).canCreate(def.key)) return { error: "You are not allowed to add to this register" };
   if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
 
-  const result = await validateNewRecord(def, payload, resolveStaff);
+  // "Meeting (faculty / staff)": kept outside the record's own fields (see VisitPass)
+  const { visitHost, ...fields } = (payload ?? {}) as RawPayload & { visitHost?: unknown };
+  const result = await validateNewRecord(def, fields as RawPayload, resolveStaff);
   if ("error" in result) return { error: result.error };
+  const host = def.visitHost && visitHost ? await resolveHost(visitHost) : null;
+  if (def.visitHost && visitHost && !host) return { error: "Choose the faculty / staff member from the list" };
+  // A meeting code only for someone coming in (not a record that starts with Out)
+  const meeting = host && result.data.direction !== "OUT" ? host : null;
 
   try {
-    const entry = await prisma.registerEntry.create({
-      data: {
-        register: def.key,
-        kind: "ORIGINAL",
-        entryDate: istDateToInstant(result.entryDateStr),
-        data: result.data as Prisma.InputJsonValue,
-        searchText: buildSearchText(def, result.data),
-        clientToken,
-        ...(await recorderSnapshot(user)),
-      },
-      select: { id: true },
+    const recorder = await recorderSnapshot(user);
+    const entry = await prisma.$transaction(async (tx) => {
+      const created = await tx.registerEntry.create({
+        data: {
+          register: def.key,
+          kind: "ORIGINAL",
+          entryDate: istDateToInstant(result.entryDateStr),
+          data: result.data as Prisma.InputJsonValue,
+          searchText: buildSearchText(def, result.data),
+          clientToken,
+          ...recorder,
+        },
+        select: { id: true },
+      });
+      if (meeting && def.visitHost) {
+        const v = def.visitHost;
+        const text = (k?: string) => (k && typeof result.data[k] === "string" ? String(result.data[k]).trim() : "") || null;
+        await tx.visitPass.create({
+          data: {
+            registerEntryId: created.id,
+            register: def.key,
+            hostProfileId: meeting.id,
+            hostName: meeting.name,
+            visitorName: text(v.visitorField) ?? "Visitor",
+            visitorPhone: text(v.phoneField),
+            purpose: text(v.purposeField),
+            code: newVisitCode(),
+          },
+        });
+      }
+      return created;
     });
     revalidateRegisters(def.key);
+    if (meeting) void notifyHost(meeting.id);
     return { success: true, id: entry.id };
   } catch (err: any) {
     if (err?.code === "P2002") return { success: true, duplicate: true }; // double submit: already saved
@@ -182,6 +233,8 @@ export async function completeRegisterEntry(entryId: string, payload: Completion
   const access = await getRegisterAccess(user);
   if (typeof entryId !== "string" || !entryId) return { error: "Record not found" };
   if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
+  const canOverride = await canOverrideVisitExit(user);
+  let metHost: string | null = null;
 
   try {
     const res = await prisma.$transaction(async (tx) => {
@@ -202,6 +255,22 @@ export async function completeRegisterEntry(entryId: string, payload: Completion
       const checked = await validateCompletion(def, current, payload);
       if ("error" in checked) return { error: checked.error };
 
+      // Leaving (Out, or closing the record) after meeting a faculty / staff member: the meeting code
+      const next = pendingActions(def, current).next;
+      const leaving = (!!payload?.markMovement && next?.direction === "OUT") || !!payload?.close;
+      let visitCheck: Awaited<ReturnType<typeof checkVisitExit>> | null = null;
+      if (leaving) {
+        const pass = await tx.visitPass.findUnique({
+          where: { registerEntryId: original.id },
+          select: { id: true, code: true, status: true, attempts: true, hostName: true, hostProfileId: true },
+        });
+        visitCheck = await checkVisitExit(pass, { code: payload?.visitCode, overrideReason: payload?.visitOverride }, canOverride, tx);
+        if (!visitCheck.ok) {
+          return { error: visitCheck.error, needsCode: true as const, locked: visitCheck.locked, triesLeft: visitCheck.triesLeft, canOverride };
+        }
+        if (visitCheck.passId) metHost = pass?.hostProfileId ?? null;
+      }
+
       await tx.registerEntry.create({
         data: {
           register: def.key,
@@ -213,9 +282,13 @@ export async function completeRegisterEntry(entryId: string, payload: Completion
           ...(await recorderSnapshot(user)),
         },
       });
+      if (visitCheck?.ok) await closeVisitPass(tx, visitCheck, user);
       return { success: true as const, register: def.key };
     });
-    if ("success" in res) revalidateRegisters(res.register);
+    if ("success" in res) {
+      revalidateRegisters(res.register);
+      void notifyHost(metHost);
+    }
     return res;
   } catch (err: any) {
     if (err?.code === "P2002") return { success: true, duplicate: true };
@@ -343,6 +416,8 @@ export async function getFacultyBook(params: { date?: string; q?: string; page?:
         actualOut: movementInfo(out),
         actualIn: movementInfo(back),
         canMarkIn: p.status === "EXITED" && !back,
+        /** Out past the planned return, or came back late: { minutes, returned } */
+        delay: delayOf(p, back),
       };
     }),
   };
@@ -372,7 +447,10 @@ export async function markFacultyReturn(permissionId: string, gateId?: string) {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"faculty-return:" + permissionId}))`;
       const p = await tx.permission.findUnique({
         where: { id: permissionId },
-        select: { id: true, facultyId: true, status: true, qr: { select: { id: true } }, movements: { select: { type: true } } },
+        select: {
+          id: true, facultyId: true, status: true, exitDate: true, endDate: true, expectedReturn: true,
+          qr: { select: { id: true } }, movements: { select: { type: true } },
+        },
       });
       if (!p || !p.facultyId) throw new Error("Faculty pass not found");
       if (p.status !== "EXITED") throw new Error("This pass has no recorded exit to return from");
@@ -385,7 +463,10 @@ export async function markFacultyReturn(permissionId: string, gateId?: string) {
           gateId: gate.id,
           securityUserId: staff.id,
           type: "ENTRY",
-          notes: "Faculty return marked in Faculty Book",
+          notes: [
+            "Faculty return marked in Faculty Book",
+            delayMinutes(returnDueAt(p)) > 0 ? `Delayed return: ${formatDelay(delayMinutes(returnDueAt(p)))} late` : null,
+          ].filter(Boolean).join(" · "),
         },
       });
       await tx.permission.update({ where: { id: p.id }, data: { status: "COMPLETED" } });
@@ -567,6 +648,8 @@ export async function getHostelOutingBook(params: { hostel: "BOYS" | "LADIES"; d
         plannedIn: iso(p.expectedReturn),
         actualOut: movementInfo(out),
         actualReturn: movementInfo(back),
+        /** Out past the planned return, or came back late: { minutes, returned } */
+        delay: delayOf(p, back),
       };
     }),
   };

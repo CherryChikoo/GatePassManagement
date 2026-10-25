@@ -91,7 +91,7 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
       setSuccess("Passes granted successfully for " + selectedStudents.size + " students!");
       setShowBatchModal(false);
       setSelectedStudents(new Set());
-      refreshStore(true);
+      refreshStore(true, true);
       
       setTimeout(() => setSuccess(null), 4000);
     } catch (err: any) {
@@ -173,7 +173,7 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
 
       setSuccess(`Student ${formData.get("name")} updated successfully!`);
       setEditingStudent(null);
-      refreshStore(true); // Refresh Zustand store silently
+      refreshStore(true, true); // Refresh Zustand store silently
       // Clear success message after 4s
       setTimeout(() => setSuccess(null), 4000);
     } catch (err: any) {

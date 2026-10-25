@@ -9,13 +9,16 @@ import { invalidateAdminCaches } from "./admin";
 import { outsiderSchema } from "@/lib/validation/schemas";
 import { isSafeStoragePath } from "@/lib/storage/storage-admin";
 import { istStartOfDay } from "@/lib/time/ist";
+import { canOverrideVisitExit, checkVisitExit, closeVisitPass, newVisitCode, notifyHost, resolveHost } from "@/lib/visits/passes";
+
+/** What Security sees about a visitor's meeting (never the code itself) */
+const MEETING_SELECT = { select: { hostName: true, status: true, attempts: true, exitMethod: true } } as const;
 
 
-let cachedOutsiders: { data: any; expiresAt: number } | null = null;
-
-function clearOutsidersCache() {
-  cachedOutsiders = null;
-}
+// No in-memory copies of these lists: several server instances run at once,
+// and a copy kept by one is not cleared by a change made on another (a saved
+// record would vanish and come back on reload). The queries take milliseconds.
+function clearOutsidersCache() {}
 
 export async function invalidateOutsidersCache() {
   await requireRole("SECURITY", "ADMIN");
@@ -57,6 +60,10 @@ export async function registerOutsider(data: Record<string, unknown>) {
   }
   if (!input.photoUrl) return { success: false, error: "Take the visitor's photo before registering" };
 
+  // Meeting a faculty / staff member: they get a code to give the visitor after the meeting
+  const host = input.hostProfileId ? await resolveHost(input.hostProfileId) : null;
+  if (input.hostProfileId && !host) return { success: false, error: "Choose the faculty / staff member from the list" };
+
   try {
     // A double tap or a retried request must not log the same visitor twice:
     // the same person (name + mobile), still inside, registered in the last
@@ -72,28 +79,47 @@ export async function registerOutsider(data: Record<string, unknown>) {
     });
     if (recent) return { success: true, outsiderId: recent.id, duplicate: true };
 
-    const outsider = await prisma.outsider.create({
-      data: {
-        name: input.name || "",
-        phone: input.phone || "",
-        category: input.category || "GUEST",
-        purpose: input.purpose || "",
-        visitingStudent: input.visitingStudent || null,
-        gate: input.gate || null,
-        vehicleNumber: input.vehicleNumber || null,
-        photoUrl: input.photoUrl || null,
-        address: input.address || null,
-        department: input.department || null,
-        remarks: input.remarks || null,
-        recordedById: user.profileId,
-        recordedByName: user.name,
-        status: "INSIDE",
-        entryTime,
-      },
-      select: { id: true },
+    // The visitor and their meeting code are saved together
+    const outsider = await prisma.$transaction(async (tx) => {
+      const created = await tx.outsider.create({
+        data: {
+          name: input.name || "",
+          phone: input.phone || "",
+          category: input.category || "GUEST",
+          purpose: input.purpose || "",
+          visitingStudent: input.visitingStudent || null,
+          gate: input.gate || null,
+          vehicleNumber: input.vehicleNumber || null,
+          photoUrl: input.photoUrl || null,
+          address: input.address || null,
+          department: input.department || null,
+          remarks: input.remarks || null,
+          recordedById: user.profileId,
+          recordedByName: user.name,
+          status: "INSIDE",
+          entryTime,
+        },
+        select: { id: true },
+      });
+      if (host) {
+        await tx.visitPass.create({
+          data: {
+            outsiderId: created.id,
+            register: "VISITORS",
+            hostProfileId: host.id,
+            hostName: host.name,
+            visitorName: input.name!.trim(),
+            visitorPhone: input.phone || null,
+            purpose: input.purpose || null,
+            code: newVisitCode(),
+          },
+        });
+      }
+      return created;
     });
 
     await afterOutsiderChange();
+    if (host) void notifyHost(host.id);
     return { success: true, outsiderId: outsider.id };
   } catch (error: any) {
     console.error("Failed to register outsider:", error?.message);
@@ -101,30 +127,42 @@ export async function registerOutsider(data: Record<string, unknown>) {
   }
 }
 
-export async function markOutsiderExited(id: string) {
-  await requireRole("SECURITY", "ADMIN");
+/**
+ * Visitor leaves. If they came to meet a faculty / staff member, the meeting
+ * code they got is needed (`code`), or a reason from Head Security / Main
+ * Admin (`overrideReason`). A wrong code answers with needsCode / triesLeft.
+ */
+export async function markOutsiderExited(id: string, opts?: { code?: string; overrideReason?: string }) {
+  const user = await requireRole("SECURITY", "ADMIN");
   if (typeof id !== "string" || !id) return { success: false, error: "Invalid visitor" };
 
-  const updated = await prisma.outsider.updateMany({
-    where: { id, status: "INSIDE" },
-    data: { status: "EXITED", exitTime: new Date() },
+  const canOverride = await canOverrideVisitExit(user);
+  const result = await prisma.$transaction(async (tx) => {
+    const visitor = await tx.outsider.findUnique({
+      where: { id },
+      select: { status: true, visitPass: { select: { id: true, code: true, status: true, attempts: true, hostName: true, hostProfileId: true } } },
+    });
+    if (!visitor || visitor.status !== "INSIDE") return { success: false as const, error: "Visitor not found or already marked as exited." };
+    const check = await checkVisitExit(visitor.visitPass, opts ?? {}, canOverride, tx);
+    if (!check.ok) return { success: false as const, error: check.error, needsCode: true, locked: check.locked, triesLeft: check.triesLeft, canOverride };
+    const updated = await tx.outsider.updateMany({ where: { id, status: "INSIDE" }, data: { status: "EXITED", exitTime: new Date() } });
+    if (updated.count !== 1) return { success: false as const, error: "Visitor not found or already marked as exited." };
+    await closeVisitPass(tx, check, user);
+    return { success: true as const, hostProfileId: visitor.visitPass?.hostProfileId ?? null };
   });
 
-  if (updated.count !== 1) {
-    return { success: false, error: "Visitor not found or already marked as exited." };
-  }
-
+  if (!result.success) return result;
   await afterOutsiderChange();
+  void notifyHost(result.hostProfileId);
   return { success: true };
 }
 
 export async function getOutsiders() {
-  await requireRole("SECURITY", "ADMIN");
+  const user = await requireRole("SECURITY", "ADMIN");
 
   try {
-    if (cachedOutsiders && cachedOutsiders.expiresAt > Date.now()) {
-      return cachedOutsiders.data;
-    }
+    // Who may let a visitor out without the meeting code: per guard, so not in the shared cache
+    const canOverrideVisit = await canOverrideVisitExit(user);
 
     const today = istStartOfDay();
 
@@ -134,17 +172,18 @@ export async function getOutsiders() {
         where: { status: "INSIDE" },
         orderBy: { entryTime: "desc" },
         take: 500,
+        include: { visitPass: MEETING_SELECT },
       }),
       prisma.outsider.findMany({
         where: { status: "EXITED", exitTime: { gte: today } },
         orderBy: { exitTime: "desc" },
         take: 500,
+        include: { visitPass: MEETING_SELECT },
       }),
     ]);
 
     const result = { success: true, inside, history };
-    cachedOutsiders = { data: result, expiresAt: Date.now() + 15000 };
-    return result;
+    return { ...result, canOverrideVisit };
   } catch (error: any) {
     console.error("Failed to fetch outsiders:", error?.message);
     return { success: false, error: "Failed to fetch outsiders." };

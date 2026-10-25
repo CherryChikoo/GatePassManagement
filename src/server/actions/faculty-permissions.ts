@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/helpers";
 import { facultyRequestSchema } from "@/lib/validation/schemas";
 import { revalidatePath } from "next/cache";
+import { OPEN_TRIP_WHERE } from "@/lib/passes/return-scan";
+import { notifyApprovers } from "@/lib/realtime/notify";
 import { resolveFacultyActivePass } from "@/lib/permissions/auto-expire";
 import { getDepartmentVariants } from "@/lib/constants";
 import { istDateToInstant, istStartOfDay, parseDateParam } from "@/lib/time/ist";
@@ -124,6 +126,9 @@ export async function createFacultyPermissionRequest(formData: FormData, type: "
         select: { id: true },
       });
       if (active) throw new Error("ACTIVE_EXISTS");
+      // Out on a pass: they come back on its QR (or Security marks them in), not a new request
+      const out = await tx.permission.findFirst({ where: { facultyId: faculty.id, ...OPEN_TRIP_WHERE }, select: { id: true } });
+      if (out) throw new Error("OUT_ON_PASS");
       return tx.permission.create({
         data: {
           facultyId: faculty.id,
@@ -146,6 +151,9 @@ export async function createFacultyPermissionRequest(formData: FormData, type: "
     if (err?.message === "ACTIVE_EXISTS") {
       return { error: "You already have a pending or approved pass. Use or cancel it before requesting another." };
     }
+    if (err?.message === "OUT_ON_PASS") {
+      return { error: "You are out on a pass. Show its QR at the gate when you come back (or ask Security to mark you in) — no new request is needed." };
+    }
     console.error("[createFacultyPermissionRequest] failed:", err?.message);
     return { error: "Failed to submit request. Please try again." };
   }
@@ -157,6 +165,7 @@ export async function createFacultyPermissionRequest(formData: FormData, type: "
   revalidatePath("/dean");
   revalidatePath("/dean/requests");
 
+  notifyApprovers(permission.id);
   return { success: true, permissionId: permission.id };
 }
 
@@ -184,6 +193,7 @@ export async function cancelFacultyPermissionRequest(permissionId: string) {
   revalidatePath("/director");
   revalidatePath("/dean");
   revalidatePath("/dean/requests");
+  notifyApprovers(permissionId);
   return { success: true };
 }
 

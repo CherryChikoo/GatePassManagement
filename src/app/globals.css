@@ -160,6 +160,25 @@ html.no-blur .glass {
   }
 }
 
+/*
+ * Security screens: solid bars, no glass — nothing see-through behind the
+ * text (clearer for guards in sunlight, and no blur for the phone to redraw
+ * while scrolling) — but the same premium finish: pure white with a faint
+ * top-to-bottom sheen, a hairline border, an inner top highlight and a soft
+ * lifted shadow. (The orange loading pill keeps its own look.)
+ */
+.security-text .glass:not(.loading-pill),
+html.security-text .glass:not(.loading-pill) {
+  background: linear-gradient(180deg, #ffffff 0%, #fafafb 100%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 1px solid rgba(228, 228, 231, 0.95);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 1px 2px rgba(16, 24, 40, 0.05),
+    0 14px 32px -18px rgba(16, 24, 40, 0.28);
+}
+
 /* Soft card elevation */
 .shadow-card {
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 30px -18px rgba(16, 24, 40, 0.18);

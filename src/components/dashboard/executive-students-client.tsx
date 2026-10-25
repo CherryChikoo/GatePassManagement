@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ui/themed-select";
 import { PassHistoryPanel } from "@/components/passes/pass-history-panel";
 import { oversightRoleMeta, type OversightRole } from "@/components/dashboard/oversight-role";
 
@@ -141,7 +142,7 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
 
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
             {/* Department Filter */}
-            <select
+            <ThemedSelect
               aria-label="Department"
               value={selectedDept}
               onChange={(e) => {
@@ -156,10 +157,10 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
                   {dept}
                 </option>
               ))}
-            </select>
+            </ThemedSelect>
 
             {/* Year Filter */}
-            <select
+            <ThemedSelect
               aria-label="Year"
               value={selectedYear}
               onChange={(e) => {
@@ -173,10 +174,10 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
               <option value="2">2nd Year</option>
               <option value="3">3rd Year</option>
               <option value="4">4th Year</option>
-            </select>
+            </ThemedSelect>
 
             {/* Student Type Filter */}
-            <select
+            <ThemedSelect
               aria-label="Student type"
               value={selectedType}
               onChange={(e) => {
@@ -188,7 +189,7 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
               <option value="ALL">All Types</option>
               <option value="HOSTELLER">Hostelers</option>
               <option value="DAY_SCHOLAR">Day Scholars</option>
-            </select>
+            </ThemedSelect>
 
             {hasFilters && (
               <Button

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, RefreshCw } from "lucide-react";
 import { getAccountSyncStatus, fixAccountSync, removeLoginWithoutPortal } from "@/server/actions/admin";
 import { actionErrorMessage } from "@/lib/deployment";
+import { ConfirmDialog } from "@/components/ui/alert-dialog";
 
 type Report = {
   loginCount: number;
@@ -25,9 +26,12 @@ export function AccountSyncPanel() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Login waiting for the "Delete this login?" confirmation
+  const [confirmLogin, setConfirmLogin] = useState<{ id: string; email: string } | null>(null);
 
-  const load = useCallback(async () => {
-    setError(null);
+  /** keepError: reloading after a fix — keep that fix's error on screen */
+  const load = useCallback(async (keepError = false) => {
+    if (!keepError) setError(null);
     try {
       const res: any = await getAccountSyncStatus();
       if (res.error) setError(res.error);
@@ -44,6 +48,7 @@ export function AccountSyncPanel() {
   async function fixPortal() {
     setBusy("fix");
     setNotice(null);
+    setError(null);
     try {
       const res: any = await fixAccountSync();
       if (res.error) setError(res.error);
@@ -52,12 +57,16 @@ export function AccountSyncPanel() {
       setError(actionErrorMessage(err, "Sync failed."));
     }
     setBusy(null);
-    load();
+    load(true);
   }
 
-  async function removeLogin(id: string, email: string) {
-    if (!window.confirm(`Delete the login ${email}? It has no portal account, so it cannot be used.`)) return;
+  function removeLogin(id: string, email: string) {
+    setConfirmLogin({ id, email });
+  }
+
+  async function confirmRemoveLogin(id: string) {
     setBusy(id);
+    setError(null);
     try {
       const res: any = await removeLoginWithoutPortal(id);
       if (res.error) setError(res.error);
@@ -65,7 +74,7 @@ export function AccountSyncPanel() {
       setError(actionErrorMessage(err, "Could not delete the login."));
     }
     setBusy(null);
-    load();
+    load(true);
   }
 
   // Stays out of the way: shown only when something needs attention
@@ -76,7 +85,7 @@ export function AccountSyncPanel() {
       <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300 flex flex-wrap items-center justify-between gap-2">
         <span className="min-w-0">{error}</span>
         <button
-          onClick={load}
+          onClick={() => load()}
           className="inline-flex h-9 items-center rounded-full px-3 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors"
         >
           Retry
@@ -93,6 +102,16 @@ export function AccountSyncPanel() {
   if (r.inSync && !notice) return null;
 
   return (
+    <>
+    <ConfirmDialog
+      open={!!confirmLogin}
+      onClose={() => setConfirmLogin(null)}
+      title="Delete this login?"
+      description={confirmLogin ? `${confirmLogin.email} has no portal account, so it cannot be used. Its Supabase login will be removed.` : ""}
+      confirmText="Delete login"
+      variant="danger"
+      onConfirm={() => confirmLogin && confirmRemoveLogin(confirmLogin.id)}
+    />
     <div
       className={`rounded-2xl border p-4 sm:p-5 space-y-3 ${
         r.inSync ? "border-emerald-500/20 bg-emerald-500/10" : "border-amber-500/25 bg-amber-500/10"
@@ -132,7 +151,7 @@ export function AccountSyncPanel() {
             </button>
           )}
           <button
-            onClick={load}
+            onClick={() => load()}
             disabled={busy !== null}
             className="inline-flex h-10 w-10 sm:h-9 sm:w-9 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200 transition-colors disabled:opacity-50"
             aria-label="Recheck"
@@ -195,5 +214,6 @@ export function AccountSyncPanel() {
         </div>
       )}
     </div>
+    </>
   );
 }

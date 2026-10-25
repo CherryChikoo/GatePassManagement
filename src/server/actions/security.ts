@@ -8,23 +8,14 @@ import { revalidatePath } from "next/cache";
 import { gatePhotoFolder, isSafeStoragePath, uploadExitPhotoAdmin } from "@/lib/storage/storage-admin";
 import { istDateString, istDayRangeFromParam, istStartOfDay } from "@/lib/time/ist";
 import { fillMovementPeople } from "@/lib/people";
-import { canScanReturn } from "@/lib/passes/return-scan";
+import { canScanReturn, delayMinutes, formatDelay, returnDueAt } from "@/lib/passes/return-scan";
 
-let securityDashboardCache: { data: any; expiresAt: number } | null = null;
-let securityLogCache = new Map<string, { data: any; expiresAt: number }>();
+// No in-memory copies of these lists: several server instances run at once,
+// and a copy kept by one is not cleared by a change made on another (a saved
+// record would vanish and come back on reload). The queries take milliseconds.
+export async function invalidateSecurityCache() {}
 
-export async function invalidateSecurityCache() {
-  // Exported from a "use server" module (browser-callable): gate staff only.
-  const caller = await getAuthUser();
-  if (!caller || (caller.role !== "SECURITY" && caller.role !== "ADMIN")) return;
-  securityDashboardCache = null;
-  securityLogCache.clear();
-}
-
-function clearSecurityCaches() {
-  securityDashboardCache = null;
-  securityLogCache.clear();
-}
+function clearSecurityCaches() {}
 
 /** Every gate movement is attributed to the guard who actually recorded it. */
 async function getSecurityStaffId(user: AuthUser): Promise<string | null> {
@@ -242,12 +233,19 @@ export async function verifyQrScan(token: string) {
 
   const approvedBy = await approversOf(permission);
   const holder = permission.student?.profile ?? permission.faculty?.profile ?? null;
+  // Coming back on the same pass after the planned return: still allowed — shown as a delayed return
+  const isReturn = allowedAction === "ENTRY" && permission.type !== "ENTRY";
+  const dueAt = isReturn ? returnDueAt(permission) : null;
+  const delayedMinutes = delayMinutes(dueAt);
   const photoUrl = holder?.avatarUpdatedAt ? `/avatar/${holder.id}?v=${new Date(holder.avatarUpdatedAt).getTime()}` : null;
 
   return {
     valid: true,
     allowedAction,
     manualOverride,
+    /** Return after the planned time: minutes late (0 = on time), and when it was due */
+    delayedMinutes,
+    returnDueAt: delayedMinutes > 0 && dueAt ? dueAt.toISOString() : null,
     /** Who approved the pass: name + role (HOD and Dean both, for two-step passes) */
     approvedBy,
     /** The holder's profile photo, to compare with the person at the gate */
@@ -561,6 +559,8 @@ export async function registerEntry(
   if ("error" in photoResult) return { error: photoResult.error };
   const storedImage = photoResult.path;
 
+  // Set when this is a return after the planned time (kept on the movement)
+  let lateNote: string | null = null;
   try {
     // Interactive transaction: reads + checks + writes are all atomic
     await prisma.$transaction(async (tx) => {
@@ -583,7 +583,9 @@ export async function registerEntry(
         if (!canScanReturn({ ...permission, studentType: permission.student?.studentType }, entries > 0)) {
           throw new Error("Cannot register entry with an EXIT pass. A separate Entry Request is required to enter campus.");
         }
-        // (No pass-window check: a late return is still a return)
+        // (No pass-window check: a late return is still a return, kept on record as delayed)
+        const late = delayMinutes(returnDueAt(permission));
+        if (late > 0) lateNote = `Delayed return: ${formatDelay(late)} late`;
       } else {
         if (permission.status !== "APPROVED") {
           throw new Error("This pass can't be used for an entry now");
@@ -612,7 +614,7 @@ export async function registerEntry(
           securityUserId: securityStaff.id,
           type: "ENTRY",
           imagePath: storedImage,
-          notes: notes || null,
+          notes: [lateNote, notes].filter(Boolean).join(" · ") || null,
         },
       });
       // Complete the pass only from the state that was checked above
@@ -655,9 +657,6 @@ export async function registerEntry(
  */
 export async function getSecurityDashboard() {
   await requireRole("SECURITY", "ADMIN");
-  if (securityDashboardCache && securityDashboardCache.expiresAt > Date.now()) {
-    return securityDashboardCache.data;
-  }
 
   const today = istStartOfDay();
 
@@ -711,28 +710,25 @@ export async function getSecurityDashboard() {
     gates,
   };
 
-  securityDashboardCache = { data: result, expiresAt: Date.now() + 15_000 };
   fillMovementPeople(result);
   return result;
 }
+
+/** Most rows per list on the Gate Log screen (a whole day stays far below this) */
+const LOG_DAY_LIMIT = 1500;
 
 export async function getSecurityLogData(dateStr?: string) {
   await requireRole("SECURITY", "ADMIN");
 
   const { start: targetDate, end: endOfDay, dateStr: selectedDate } = istDayRangeFromParam(dateStr);
 
-  const cacheKey = selectedDate;
-  const cached = securityLogCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.data;
-  }
-
   const [studentEntries, studentExits, outsiderVisits] = await Promise.all([
     prisma.movement.findMany({
       where: { type: "ENTRY", createdAt: { gte: targetDate, lt: endOfDay } },
       orderBy: { createdAt: "desc" },
+      take: LOG_DAY_LIMIT,
       select: {
-        id: true, type: true, createdAt: true, notes: true, imagePath: true,
+        id: true, type: true, createdAt: true, notes: true,
         student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
         faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } } },
         gate: { select: { name: true } },
@@ -742,8 +738,9 @@ export async function getSecurityLogData(dateStr?: string) {
     prisma.movement.findMany({
       where: { type: "EXIT", createdAt: { gte: targetDate, lt: endOfDay } },
       orderBy: { createdAt: "desc" },
+      take: LOG_DAY_LIMIT,
       select: {
-        id: true, type: true, createdAt: true, notes: true, imagePath: true,
+        id: true, type: true, createdAt: true, notes: true,
         student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
         faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } } },
         gate: { select: { name: true } },
@@ -753,6 +750,7 @@ export async function getSecurityLogData(dateStr?: string) {
     prisma.outsider.findMany({
       where: { entryTime: { gte: targetDate, lt: endOfDay } },
       orderBy: { entryTime: "desc" },
+      take: LOG_DAY_LIMIT,
     }),
   ]);
 
@@ -764,8 +762,5 @@ export async function getSecurityLogData(dateStr?: string) {
   };
   
   fillMovementPeople(result);
-  // 15 s cache; at most 30 dates kept (the key is a caller-supplied date)
-  if (securityLogCache.size >= 30) securityLogCache.clear();
-  securityLogCache.set(cacheKey, { data: result, expiresAt: Date.now() + 15000 });
   return result;
 }

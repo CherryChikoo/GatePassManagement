@@ -1,24 +1,17 @@
 import { requireRole } from "@/lib/auth/helpers";
-import { getSecurityLogData } from "@/server/actions/security";
 import { SecurityLogClient } from "./client";
 
+/**
+ * Gate Log (Security). The day's log loads in the browser from the gate
+ * cache (src/lib/gate-cache.ts): the screen opens at once and fetches only
+ * when the day was not seen yet or a gate scan / visitor changed it.
+ */
 export default async function SecurityLogPage({
   searchParams,
 }: {
   searchParams: Promise<{ date?: string }>;
 }) {
-  const resolvedParams = await searchParams;
-  const user = await requireRole("SECURITY");
-  
-  const data = await getSecurityLogData(resolvedParams.date);
-
-  return (
-    <SecurityLogClient 
-      user={user} 
-      studentEntries={data.studentEntries}
-      studentExits={data.studentExits}
-      outsiderVisits={data.outsiderVisits}
-      selectedDate={data.selectedDate}
-    />
-  );
+  const { date } = await searchParams;
+  await requireRole("SECURITY");
+  return <SecurityLogClient initialDate={typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : undefined} />;
 }

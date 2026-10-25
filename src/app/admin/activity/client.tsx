@@ -43,6 +43,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { PagerBar } from "@/components/ui/pager-bar";
+import { VisitExitDialog } from "@/components/visits/visit-code";
 import { dt, PersonCell, RowActions, IconAction } from "@/components/ui/data-table";
 
 interface Props {
@@ -108,7 +109,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
     });
   };
   const isToday = date === istDateString();
-  
+
   const stats = data?.stats || {
     entriesToday: 0,
     exitsToday: 0,
@@ -131,7 +132,7 @@ export function ActivityClient({ user, data: initialData }: Props) {
   const recentPermissions: any[] = data?.recentPermissions || [];
 
   const [activeTab, setActiveTab] = useState<"entries" | "exits" | "outsiders">("entries");
-  
+
   // Search states
   const [entrySearch, setEntrySearch] = useState("");
   const [exitSearch, setExitSearch] = useState("");
@@ -275,9 +276,19 @@ export function ActivityClient({ user, data: initialData }: Props) {
     }
   }
 
-  // Mark outsider as exited (persisted)
+  // Mark outsider as exited (persisted). A visitor with a meeting code: the code popup first
+  const [exitFor, setExitFor] = useState<any | null>(null);
+  // The visitor being marked exited: the buttons wait, so a double tap sends one request
+  const [exitingId, setExitingId] = useState<string | null>(null);
   async function handleMarkExited(id: string) {
+    if (exitingId) return;
     setActionError(null);
+    const person: any = (outsiders || []).find((o) => o.id === id);
+    if (person?.visitPass && person.visitPass.status !== "EXITED") {
+      setExitFor(person);
+      return;
+    }
+    setExitingId(id);
     try {
       const res = await markOutsiderExited(id);
       if (!res?.success) {
@@ -287,6 +298,8 @@ export function ActivityClient({ user, data: initialData }: Props) {
       await reloadData(date);
     } catch {
       setActionError("Failed to mark visitor as exited.");
+    } finally {
+      setExitingId(null);
     }
   }
 
@@ -437,7 +450,17 @@ export function ActivityClient({ user, data: initialData }: Props) {
   const markExitedButton = (o: OutsiderRecord) =>
     o.status === "INSIDE" ? (
       <RowActions>
-        <IconAction label="Mark Exited" icon={<LogOut />} onClick={() => handleMarkExited(o.id)} />
+        <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMarkExited(o.id);
+                                }}
+                                disabled={!!exitingId}
+                                className="inline-flex h-10 items-center gap-1.5 whitespace-nowrap rounded-full bg-sky-600 px-4 text-sm font-semibold text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.7)] transition-[background-color,transform] hover:bg-sky-700 active:scale-95 disabled:opacity-60"
+                              >
+                                <LogOut className="h-4 w-4" /> {exitingId === o.id ? "Saving…" : "Mark Exited"}
+                              </button>
       </RowActions>
     ) : (
       <span className="text-xs text-zinc-500 italic">Completed</span>
@@ -1154,6 +1177,24 @@ export function ActivityClient({ user, data: initialData }: Props) {
           </div>
         )}
       </Modal>
+
+      {/* Visitor with a meeting code: enter it, or let them out with a reason (Main Admin) */}
+      {exitFor && (
+        <VisitExitDialog
+          key={exitFor.id}
+          open
+          onClose={() => setExitFor(null)}
+          visitorName={exitFor.name || "—"}
+          hostName={exitFor.visitPass?.hostName ?? ""}
+          locked={(exitFor.visitPass?.attempts ?? 0) >= 5}
+          canOverride
+          onSubmit={async (input) => {
+            const res: any = await markOutsiderExited(exitFor.id, input);
+            if (res?.success) await reloadData(date);
+            return res;
+          }}
+        />
+      )}
     </>
   );
 }

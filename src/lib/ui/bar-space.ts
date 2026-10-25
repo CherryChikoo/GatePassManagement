@@ -89,8 +89,10 @@ const RETRY_AFTER_MS = 7 * 24 * 60 * 60_000;
  *   it switches to solid bars and remembers that for a week.
  * Sampling runs only while scrolling, so it costs nothing at rest.
  */
-export function useGlassSupport() {
+export function useGlassSupport(enabled = true) {
   useEffect(() => {
+    // Screens without glass (Security) need no checking
+    if (!enabled) return;
     const root = document.documentElement;
     const n = navigator as Navigator & { deviceMemory?: number };
     const weak = (typeof n.deviceMemory === "number" && n.deviceMemory <= 3) || (n.hardwareConcurrency || 8) <= 4;
@@ -159,5 +161,5 @@ export function useGlassSupport() {
 
     document.addEventListener("scroll", onScroll, { capture: true, passive: true });
     return stop;
-  }, []);
+  }, [enabled]);
 }

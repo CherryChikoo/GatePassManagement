@@ -1,9 +1,10 @@
 "use client";
+import { ThemedSelect } from "@/components/ui/themed-select";
 import { DateField } from "@/components/ui/date-field";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { useT } from "@/components/providers/language-provider";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { ChevronRight, FileText, Info, Loader2, LogIn, PencilLine, Plus, Trash2, UserPlus } from "lucide-react";
 import { adminDeleteVisitor, adminUpdateVisitor } from "@/server/actions/outsiders";
@@ -18,21 +19,13 @@ import { istDateString } from "@/lib/time/ist";
 import {
   addOutingNote,
   deleteOutingNote,
-  listOutingNotes,
-  getFacultyBook,
-  getHomeOutingDay,
-  getMovementDetails,
-  getHomeOutingSummary,
-  getHostelOutingBook,
-  getPassGatePhotos,
-  getVisitorDetails,
-  getVisitorsBook,
-  markFacultyReturn,
 } from "@/server/actions/registers";
 import { formatDay, formatInstant, newClientToken } from "./format";
-import { formatTime, withTimeout } from "@/lib/utils";
+import { formatTime } from "@/lib/utils";
 import { RegisterToolbar, useRegisterFilters } from "./toolbar";
-import { useLiveTopics } from "@/lib/realtime/live";
+import { useGateData } from "@/lib/gate-cache";
+import { formatDelay } from "@/lib/passes/return-scan";
+import { callGate } from "@/lib/gate-call";
 
 type Move = { at: string; gate: string | null; guard: string | null; guardEmployeeId: string | null } | null;
 
@@ -53,46 +46,15 @@ const LIVE_GATE = ["gate"];
 const LIVE_VISITORS = ["visitors"];
 
 /**
- * Loads data whenever `key` (the filters) changes; `reload` fetches again.
- * `live`: topics that, when changed on the server, reload quietly (the
- * current data stays on screen until the new data arrives).
+ * Loads `name` data for `key` (the filters), through the gate cache: a copy
+ * seen before shows at once and is fetched again only when it changed
+ * (src/lib/gate-cache.ts). `live`: topics that, when changed on the server,
+ * reload quietly (the current data stays on screen until the new data
+ * arrives). `reload` fetches again now.
  */
-function useLoader<T>(fetcher: () => Promise<any>, key: string, live: string[] = []) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [nonce, setNonce] = useState(0);
-  const quiet = useRef(false);
-  useLiveTopics(live, () => {
-    quiet.current = true;
-    setNonce((n) => n + 1);
-  });
-  useEffect(() => {
-    let cancelled = false;
-    const silent = quiet.current;
-    quiet.current = false;
-    async function run() {
-      if (!silent) setLoading(true);
-      setError(null);
-      try {
-        const res = await withTimeout(fetcher());
-        if (cancelled) return;
-        if (res?.error) {
-          if (!silent) setError(res.error);
-        } else setData(res);
-      } catch (err) {
-        if (!cancelled && !silent) setError(actionErrorMessage(err, "Could not load the register."));
-      }
-      if (!cancelled) setLoading(false);
-    }
-    run();
-    return () => {
-      cancelled = true;
-    };
-    // The fetcher is rebuilt every render; `key` holds everything it depends on.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, nonce]);
-  return { data, error, loading, reload: () => setNonce((n) => n + 1) };
+function useLoader<T>(name: string, fetcher: () => Promise<any>, key: string, live: string[] = []) {
+  const { data, error, loading, reload } = useGateData<any>(`${name}|${key}`, fetcher, live);
+  return { data: (data ?? null) as T | null, error, loading, reload };
 }
 
 /** Card around a register list: stacked rows on phones + a table from `sm` (children render both). */
@@ -156,11 +118,29 @@ const dtLabel = "text-[11px] font-medium uppercase tracking-wider text-zinc-500"
 
 // ─── Form 1 — Faculty Book ────────────────────────────────────
 
+/**
+ * Late return on a pass: "Delayed return · 2 h" while still out past the planned
+ * return, or "Returned 2 h late" once back. Nothing when on time. (The return
+ * QR keeps working; this only marks the delay.)
+ */
+function DelayBadge({ delay, className }: { delay?: { minutes: number; returned: boolean } | null; className?: string }) {
+  const t = useT();
+  if (!delay) return null;
+  return (
+    <span className={cn("inline-flex w-fit items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-600 whitespace-nowrap", className)}>
+      {delay.returned
+        ? t("Returned {time} late", { time: formatDelay(delay.minutes) })
+        : t("Delayed return · {time}", { time: formatDelay(delay.minutes) })}
+    </span>
+  );
+}
+
 export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
   const t = useT();
   const f = useRegisterFilters();
   const { data, error, loading, reload } = useLoader<any>(
-    () => getFacultyBook({ date: f.dateParam, q: f.q, page: f.page }),
+    "faculty-book",
+    () => callGate("getFacultyBook", [{ date: f.dateParam, q: f.q, page: f.page }]),
     `${f.dateParam}|${f.q}|${f.page}`,
     LIVE_GATE
   );
@@ -172,7 +152,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
     setBusy(true);
     setMsg(null);
     try {
-      const res: any = await markFacultyReturn(id);
+      const res: any = await callGate("markFacultyReturn", [id]);
       setMsg(res?.error ?? t("Return marked."));
       if (!res?.error) {
         setSelected(null);
@@ -195,7 +175,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
       <Shell loading={loading} error={error} onRetry={reload} empty={!!data && data.rows.length === 0}>
         {/* Phones */}
         {data?.rows.length > 0 && (
-          <ul className={cn(dt.mobileList, "sm:hidden")}>
+          <ul className={cn(dt.mobileList, "lg:hidden")}>
             {data.rows.map((r: any) => (
               <li key={r.id}>
                 <button type="button" onClick={() => setSelected(r)} className={mobileRowBtn}>
@@ -220,6 +200,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
                       <span className="rounded-xl bg-zinc-950 px-3 py-2">
                         <span className={cn(dtLabel, "block")}>{t("In")}</span>
                         <span className="block text-sm font-medium text-zinc-200 tabular-nums">{r.actualIn ? formatTime(r.actualIn.at) : "—"}</span>
+                        <DelayBadge delay={r.delay} className="mt-1" />
                       </span>
                     </span>
                   </span>
@@ -239,7 +220,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
 
         {/* Larger screens */}
         {data?.rows.length > 0 && (
-          <div className={cn(dt.wrap, "hidden sm:block")}>
+          <div className={cn(dt.wrap, "hidden lg:block")}>
             <table className={dt.table}>
               <thead>
                 <tr>
@@ -278,6 +259,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
                       ) : (
                         <span className="text-zinc-600">—</span>
                       )}
+                      <DelayBadge delay={r.delay} className="mt-1 flex" />
                     </td>
                   </tr>
                 ))}
@@ -317,6 +299,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
             <div>
               <dt className={dtLabel}>{t("Actual In-Time")}</dt>
               <dd className="mt-0.5 text-zinc-200"><MoveCell m={selected.actualIn} /></dd>
+              <DelayBadge delay={selected.delay} className="mt-1" />
             </div>
             <GatePhotos permissionId={selected.id} />
             <div className="sm:col-span-2 flex flex-col sm:flex-row sm:items-center gap-3 border-t border-zinc-800 pt-4">
@@ -340,7 +323,8 @@ export function VisitorsBookView({ canRegister, canAdminEdit = false }: { canReg
   const t = useT();
   const f = useRegisterFilters();
   const { data, error, loading, reload } = useLoader<any>(
-    () => getVisitorsBook({ date: f.dateParam, q: f.q, page: f.page }),
+    "visitors-book",
+    () => callGate("getVisitorsBook", [{ date: f.dateParam, q: f.q, page: f.page }]),
     `${f.dateParam}|${f.q}|${f.page}`,
     LIVE_VISITORS
   );
@@ -366,7 +350,7 @@ export function VisitorsBookView({ canRegister, canAdminEdit = false }: { canReg
       <Shell loading={loading} error={error} onRetry={reload} empty={!!data && data.rows.length === 0}>
         {/* Phones */}
         {data?.rows.length > 0 && (
-          <ul className={cn(dt.mobileList, "sm:hidden")}>
+          <ul className={cn(dt.mobileList, "lg:hidden")}>
             {data.rows.map((r: any) => (
               <li key={r.id}>
                 <button type="button" onClick={() => setSelectedId(r.id)} className={mobileRowBtn}>
@@ -404,7 +388,7 @@ export function VisitorsBookView({ canRegister, canAdminEdit = false }: { canReg
 
         {/* Larger screens */}
         {data?.rows.length > 0 && (
-          <div className={cn(dt.wrap, "hidden sm:block")}>
+          <div className={cn(dt.wrap, "hidden lg:block")}>
             <table className={dt.table}>
               <thead>
                 <tr>
@@ -465,9 +449,11 @@ export function VisitorDetails({
   onChanged?: (deleted: boolean) => void;
 }) {
   const t = useT();
-  const { data, error, loading } = useLoader<any>(() => getVisitorDetails(id), id);
+  const { data, error, loading } = useLoader<any>("visitor", () => callGate("getVisitorDetails", [id]), id);
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   if (error) return <p role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</p>;
   if (loading || !data) return <p className="py-8 text-center text-sm text-zinc-500">{t("Loading…")}</p>;
   const v = data.visitor;
@@ -515,11 +501,20 @@ export function VisitorDetails({
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
-            className="inline-flex h-12 sm:h-11 items-center justify-center gap-2 rounded-full border border-red-500/30 px-5 text-sm font-medium text-red-400 hover:bg-red-500/10"
+            disabled={deleting}
+            className="inline-flex h-12 sm:h-11 items-center justify-center gap-2 rounded-full border border-red-500/30 px-5 text-sm font-medium text-red-400 hover:bg-red-500/10 disabled:opacity-60"
           >
-            <Trash2 className="h-4 w-4" /> {t("Delete")}
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} {t("Delete")}
           </button>
         </div>
+      )}
+      {deleteError && (
+        <p role="alert" className="flex items-start gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <span className="min-w-0 flex-1">{deleteError}</span>
+          <button type="button" onClick={() => setDeleteError(null)} className="shrink-0 px-2 text-xs font-semibold hover:underline">
+            OK
+          </button>
+        </p>
       )}
       <Modal open={editing} onClose={() => setEditing(false)} title={t("Edit visitor")} className="max-w-xl">
         {editing && (
@@ -541,8 +536,12 @@ export function VisitorDetails({
         variant="danger"
         onConfirm={async () => {
           setConfirmDelete(false);
+          if (deleting) return;
+          setDeleting(true);
+          setDeleteError(null);
           const res: any = await adminDeleteVisitor(v.id).catch(() => ({ error: "Could not save. Please try again." }));
-          if (res?.error) window.alert(t(res.error));
+          setDeleting(false);
+          if (res?.error) setDeleteError(t(res.error));
           else onChanged?.(true);
         }}
       />
@@ -600,12 +599,12 @@ function AdminVisitorForm({ visitor, onSaved }: { visitor: any; onSaved: () => v
         <label className={label}><span className="block">{t("Mobile Number")} *</span><input required inputMode="tel" value={form.phone} onChange={set("phone")} className={box} /></label>
         <label className={label}>
           <span className="block">{t("Category")} *</span>
-          <select value={form.category} onChange={set("category")} className={box}>
+          <ThemedSelect value={form.category} onChange={set("category")} className={box}>
             <option value="GUEST">{t("Guest / Visitor")}</option>
             <option value="PARENT">{t("Parent / Guardian")}</option>
             <option value="VENDOR">{t("Vendor / Delivery")}</option>
             <option value="WORKER">{t("Worker / Staff")}</option>
-          </select>
+          </ThemedSelect>
         </label>
         <label className={label}><span className="block">{t("Vehicle Number")}</span><input value={form.vehicleNumber} onChange={set("vehicleNumber")} className={box} /></label>
         <label className={`${label} sm:col-span-2`}><span className="block">{t("Purpose of Visit")} *</span><input required value={form.purpose} onChange={set("purpose")} className={box} /></label>
@@ -652,7 +651,7 @@ export function DetailGrid({ items }: { items: [string, unknown][] }) {
 /** Gate photos for a pass (exit / entry), loaded when the details open. */
 function GatePhotos({ permissionId }: { permissionId: string }) {
   const t = useT();
-  const { data } = useLoader<any>(() => getPassGatePhotos(permissionId), permissionId);
+  const { data } = useLoader<any>("pass-photos", () => callGate("getPassGatePhotos", [permissionId]), permissionId);
   if (!data?.photos?.length) return null;
   return (
     <div className="sm:col-span-2">
@@ -677,7 +676,8 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
   const t = useT();
   const f = useRegisterFilters();
   const { data, error, loading, reload } = useLoader<any>(
-    () => getHostelOutingBook({ hostel, date: f.dateParam, q: f.q, page: f.page }),
+    "hostel-book",
+    () => callGate("getHostelOutingBook", [{ hostel, date: f.dateParam, q: f.q, page: f.page }]),
     `${hostel}|${f.dateParam}|${f.q}|${f.page}`,
     LIVE_GATE
   );
@@ -697,7 +697,7 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
       <Shell loading={loading} error={error} onRetry={reload} empty={!!data && data.rows.length === 0}>
         {/* Phones */}
         {data?.rows.length > 0 && (
-          <ul className={cn(dt.mobileList, "sm:hidden")}>
+          <ul className={cn(dt.mobileList, "lg:hidden")}>
             {data.rows.map((r: any) => (
               <li key={r.id}>
                 <button type="button" onClick={() => setSelected(r)} className={mobileRowBtn}>
@@ -729,6 +729,7 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
                             <span className="text-zinc-600">—</span>
                           )}
                         </span>
+                        <DelayBadge delay={r.delay} className="mt-1" />
                       </span>
                     </span>
                   </span>
@@ -741,7 +742,7 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
 
         {/* Larger screens */}
         {data?.rows.length > 0 && (
-          <div className={cn(dt.wrap, "hidden sm:block")}>
+          <div className={cn(dt.wrap, "hidden lg:block")}>
             <table className={dt.table}>
               <thead>
                 <tr>
@@ -769,6 +770,7 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
                       ) : (
                         "—"
                       )}
+                      <DelayBadge delay={r.delay} className="mt-1 flex" />
                     </td>
                     <td className={cn(dt.tdMuted, "whitespace-nowrap max-w-[200px] truncate")}>{r.remarks || "—"}</td>
                   </tr>
@@ -816,6 +818,7 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
             <div>
               <dt className={dtLabel}>{t("Actual Return")}</dt>
               <dd className="mt-0.5 text-zinc-200"><MoveCell m={selected.actualReturn} /></dd>
+              <DelayBadge delay={selected.delay} className="mt-1" />
             </div>
             <GatePhotos permissionId={selected.id} />
             <div className="sm:col-span-2 border-t border-zinc-800 pt-4"><StatusBadge status={selected.status} /></div>
@@ -833,7 +836,7 @@ export function HomeOutingSummaryView() {
   const today = istDateString();
   const [to, setTo] = useState(today);
   const [from, setFrom] = useState(() => istDateString(new Date(Date.now() - 13 * 86_400_000)));
-  const { data, error, loading, reload } = useLoader<any>(() => getHomeOutingSummary({ from, to }), `${from}|${to}`, LIVE_GATE);
+  const { data, error, loading, reload } = useLoader<any>("outing-summary", () => callGate("getHomeOutingSummary", [{ from, to }]), `${from}|${to}`, LIVE_GATE);
   // 14 days per page (a range can be up to 62 days)
   const DAYS_PER_PAGE = 14;
   const [page, setPage] = useState(1);
@@ -845,12 +848,14 @@ export function HomeOutingSummaryView() {
   const [day, setDay] = useState<string | null>(null);
 
   // Information notes for one date or a set of dates
-  const notesState = useLoader<any>(() => listOutingNotes({ from, to }), `${from}|${to}`);
+  const notesState = useLoader<any>("outing-notes", () => callGate("listOutingNotes", [{ from, to }]), `${from}|${to}`);
   const notes: OutingNote[] = notesState.data?.notes ?? [];
   const notesOn = (date: string) => notes.filter((n) => n.from <= date && n.to >= date);
   const [onlyWithInfo, setOnlyWithInfo] = useState(false);
   const [addingNote, setAddingNote] = useState(false);
   const [removeNote, setRemoveNote] = useState<OutingNote | null>(null);
+  const [removingNote, setRemovingNote] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
 
   const allDays: any[] = data?.days ?? [];
   const days = onlyWithInfo ? allDays.filter((d) => notesOn(d.date).length > 0) : allDays;
@@ -930,16 +935,22 @@ export function HomeOutingSummaryView() {
           </p>
           <ul className="mt-3 space-y-2">
             {notes.map((n) => (
-              <NoteItem key={n.id} note={n} onRemove={n.canDelete ? () => setRemoveNote(n) : undefined} />
+              <NoteItem key={n.id} note={n} onRemove={n.canDelete && !removingNote ? () => setRemoveNote(n) : undefined} />
             ))}
           </ul>
+          {noteError && <div className="mt-3"><p role="alert" className="flex items-start gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <span className="min-w-0 flex-1">{noteError}</span>
+          <button type="button" onClick={() => setNoteError(null)} className="shrink-0 px-2 text-xs font-semibold hover:underline">
+            OK
+          </button>
+        </p></div>}
         </div>
       )}
 
       <Shell loading={loading} error={error} onRetry={reload} empty={!!data && days.length === 0}>
         {/* Phones */}
         {data && days.length > 0 && (
-          <div className="sm:hidden">
+          <div className="lg:hidden">
             <ul className={dt.mobileList}>
               {pageDays.map((d: any) => (
                 <li key={d.date}>
@@ -968,7 +979,7 @@ export function HomeOutingSummaryView() {
 
         {/* Larger screens */}
         {data && days.length > 0 && (
-          <div className={cn(dt.wrap, "hidden sm:block")}>
+          <div className={cn(dt.wrap, "hidden lg:block")}>
             <table className={dt.table}>
               <thead>
                 <tr>
@@ -1037,9 +1048,12 @@ export function HomeOutingSummaryView() {
         onConfirm={async () => {
           const n = removeNote;
           setRemoveNote(null);
-          if (!n) return;
+          if (!n || removingNote) return;
+          setRemovingNote(true);
+          setNoteError(null);
           const res: any = await deleteOutingNote(n.id).catch(() => ({ error: "Could not save. Please try again." }));
-          if (res?.error) window.alert(t(res.error));
+          setRemovingNote(false);
+          if (res?.error) setNoteError(t(res.error));
           notesState.reload();
         }}
       />
@@ -1166,7 +1180,7 @@ function AddNoteForm({ onSaved }: { onSaved: () => void }) {
 /** The passes behind one day's totals in the home outing passbook. */
 function DayDetails({ date }: { date: string }) {
   const t = useT();
-  const { data, error, loading } = useLoader<any>(() => getHomeOutingDay(date), date);
+  const { data, error, loading } = useLoader<any>("outing-day", () => callGate("getHomeOutingDay", [date]), date);
   if (error) return <p role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</p>;
   if (loading || !data) return <p className="py-8 text-center text-sm text-zinc-500">{t("Loading…")}</p>;
 
@@ -1182,7 +1196,7 @@ function DayDetails({ date }: { date: string }) {
       ) : (
         <>
           {/* Phones */}
-          <ul className="sm:hidden divide-y divide-zinc-800/70 rounded-2xl border border-zinc-800">
+          <ul className="lg:hidden divide-y divide-zinc-800/70 rounded-2xl border border-zinc-800">
             {rows.map((r) => (
               <li key={r.id} className="px-4 py-3">
                 <div className="flex items-start justify-between gap-2">
@@ -1201,7 +1215,7 @@ function DayDetails({ date }: { date: string }) {
             ))}
           </ul>
           {/* Larger screens */}
-          <div className="hidden sm:block overflow-x-auto rounded-2xl border border-zinc-800">
+          <div className="hidden lg:block overflow-x-auto rounded-2xl border border-zinc-800">
             <table className="w-full text-sm">
               <thead className="bg-zinc-950 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
                 <tr>
@@ -1244,7 +1258,7 @@ function DayDetails({ date }: { date: string }) {
 /** Full details of one gate exit / entry (student or faculty), in the registers layout. */
 export function MovementDetails({ id }: { id: string }) {
   const t = useT();
-  const { data, error, loading } = useLoader<any>(() => getMovementDetails(id), id);
+  const { data, error, loading } = useLoader<any>("movement", () => callGate("getMovementDetails", [id]), id);
   if (error) return <p role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</p>;
   if (loading || !data) return <p className="py-8 text-center text-sm text-zinc-500">{t("Loading…")}</p>;
   const m = data.movement;

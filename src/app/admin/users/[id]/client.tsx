@@ -1,4 +1,5 @@
 "use client";
+import { ThemedSelect } from "@/components/ui/themed-select";
 import { DateField } from "@/components/ui/date-field";
 import { DepartmentSelect } from "@/components/ui/department-select";
 import { ResetPasswordButton } from "@/components/users/reset-password-button";
@@ -319,7 +320,7 @@ export function UserDetailClient({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <select
+            <ThemedSelect
               value={dateFilter}
               onChange={(e) => {
                 setDateFilter(e.target.value);
@@ -333,7 +334,7 @@ export function UserDetailClient({
               <option value="WEEK">Last 7 Days</option>
               <option value="MONTH">Last 30 Days</option>
               <option value="DATE">Pick a date…</option>
-            </select>
+            </ThemedSelect>
             {dateFilter === "DATE" && (
               <DateField
                 aria-label="Date"

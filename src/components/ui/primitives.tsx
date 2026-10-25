@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { ThemedSelect, type ThemedSelectProps } from "./themed-select";
 import { usePathname } from "next/navigation";
 import { T } from "@/components/providers/language-provider";
 import { createPortal } from "react-dom";
@@ -45,48 +46,29 @@ export { Badge };
 // Select
 // ──────────────────────────────────────────────────────────────
 
-export interface SelectProps
-  extends React.SelectHTMLAttributes<HTMLSelectElement> {
+export interface SelectProps extends ThemedSelectProps {
   label?: string;
   error?: string;
   icon?: React.ReactNode;
 }
 
-const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
-  ({ className, label, error, id, children, ...props }, ref) => {
-    const selectId = id || label?.toLowerCase().replace(/\s+/g, "-");
-    return (
-      <div className="space-y-1.5 min-w-0">
-        {label && (
-          <label
-            htmlFor={selectId}
-            className="field-label block text-xs sm:text-sm font-medium text-zinc-300"
-          >
-            {label}
-          </label>
-        )}
-        <select
-          id={selectId}
-          className={cn(
-            "flex h-11 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-3.5 py-2 text-base sm:text-sm text-zinc-100 transition-all duration-200",
-            "focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500/50",
-            "hover:border-zinc-700",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-
-            "[&>option]:bg-zinc-900 [&>option]:text-zinc-100",
-            error && "border-red-500/50",
-            className
-          )}
-          ref={ref}
-          {...props}
-        >
-          {children}
-        </select>
-        {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
-      </div>
-    );
-  }
-);
+/** Labelled dropdown in the portal's own style (see ThemedSelect). */
+function Select({ className, label, error, id, children, icon: _icon, ...props }: SelectProps) {
+  const selectId = id || label?.toLowerCase().replace(/s+/g, "-");
+  return (
+    <div className="space-y-1.5 min-w-0">
+      {label && (
+        <label htmlFor={selectId} className="field-label block text-xs sm:text-sm font-medium text-zinc-300">
+          {label}
+        </label>
+      )}
+      <ThemedSelect id={selectId} className={cn(error && "border-red-500/50", className)} {...props}>
+        {children}
+      </ThemedSelect>
+      {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
+    </div>
+  );
+}
 Select.displayName = "Select";
 
 export { Select };

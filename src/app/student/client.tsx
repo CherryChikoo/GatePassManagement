@@ -15,7 +15,6 @@ import {
   createEntryRequest,
   createHostelVisitRequest,
   cancelPermissionRequest,
-  generateLiveQrToken,
 } from "@/server/actions/permissions";
 import { formatDateTime } from "@/lib/utils";
 import { istDateString } from "@/lib/time/ist";
@@ -23,6 +22,8 @@ import { normalizeTime } from "@/lib/time/parse-time";
 import { TimeField } from "@/components/ui/time-field";
 import { AssignedApproverCard, type AssignedApprover } from "@/components/student/assigned-approver";
 import QRCode from "qrcode";
+import { callGate } from "@/lib/gate-call";
+import { delayMinutes, formatDelay, returnDueAt } from "@/lib/passes/return-scan";
 
 /** Phone: 10–15 digits, optional +, spaces or dashes (same rule as the server). */
 const PHONE_RE = /^\+?[0-9][0-9\s-]{8,16}[0-9]$/;
@@ -126,7 +127,7 @@ export function StudentDashboardClient({ user }: Props) {
             <RecordMissingSignOut />
           </div>
         </div>
-      
+
     );
   }
 
@@ -167,7 +168,7 @@ export function StudentDashboardClient({ user }: Props) {
           />
         )}
       </div>
-    
+
     </>
   );
 }
@@ -284,6 +285,8 @@ function QrCodeView({
   const isHostelPass = permission?.passKind === "HOSTEL";
   // Hosteller out on this pass: the same QR is scanned again when they come back
   const isReturning = permission?.status === "EXITED" && permission?.type !== "ENTRY" && !isHostelPass;
+  // Past the planned return: the return QR keeps working; the student is told it is delayed
+  const returnDelay = isReturning ? delayMinutes(returnDueAt(permission)) : 0;
   const isHostellerStudent = student?.studentType === "HOSTELLER";
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
@@ -295,9 +298,22 @@ function QrCodeView({
   useEffect(() => {
     let cancelled = false;
 
+    async function showToken(token: string) {
+      const url = await QRCode.toDataURL(token, {
+        width: 360, // rendered large: crisp dots scan faster from a screen
+        margin: 4, // the standard white border scanners need
+        color: { dark: "#000000", light: "#ffffff" },
+        errorCorrectionLevel: "M",
+      });
+      if (!cancelled) {
+        setQrImage(url);
+        setQrError(null);
+      }
+    }
+
     async function refreshToken() {
       try {
-        const res = await generateLiveQrToken(permission.id);
+        const res: any = await callGate("generateLiveQrToken", [permission.id], 15_000);
         if (cancelled) return;
         if ("error" in res && res.error) {
           setQrError(res.error);
@@ -306,24 +322,21 @@ function QrCodeView({
           useAppStore.getState().refresh(true);
           return;
         }
-        if ("token" in res && res.token) {
-          const url = await QRCode.toDataURL(res.token, {
-            width: 360, // rendered large: crisp dots scan faster from a screen
-            margin: 4, // the standard white border scanners need
-            color: { dark: "#000000", light: "#ffffff" },
-            errorCorrectionLevel: "M",
-          });
-          if (!cancelled) {
-            setQrImage(url);
-            setQrError(null);
-          }
-        }
+        if ("token" in res && res.token) await showToken(res.token);
       } catch {
         if (!cancelled) setQrError("Could not refresh your QR code. Check your connection.");
       }
     }
 
-    refreshToken();
+    // The first code came with the screen's data: shown at once (it lives 60 s;
+    // used only while that data is under 40 s old), else asked for now
+    const { data, lastSyncAt } = useAppStore.getState();
+    const seed = data.dashboard?.liveQr;
+    if (seed?.permissionId === permission.id && seed.token && Date.now() - lastSyncAt < 40_000) {
+      showToken(seed.token).catch(() => refreshToken());
+    } else {
+      refreshToken();
+    }
     // Only while the QR is on screen (a locked phone / hidden tab makes no
     // requests); coming back refreshes at once so the code shown is current.
     const interval = setInterval(() => {
@@ -400,6 +413,11 @@ function QrCodeView({
             ? "Present this QR code to the gate security officer to enter campus."
             : "Present this QR code to the gate security officer to exit campus."}
         </p>
+        {returnDelay > 0 && (
+          <p role="status" className="mx-auto mt-3 max-w-md rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-600">
+            Delayed return — {formatDelay(returnDelay)} late. Your QR still works; show it at the gate.
+          </p>
+        )}
       </div>
 
       {/* Main QR Card */}
@@ -527,7 +545,9 @@ function PendingApprovalView({
         setError(res.error);
         setCancelling(false);
       } else {
-        useAppStore.getState().refresh(true);
+        // The screen changes once the refreshed pass arrives; the button is freed either way
+        await useAppStore.getState().refresh(true);
+        setCancelling(false);
       }
     } catch {
       setError("Failed to cancel request. Please try again.");
@@ -770,7 +790,12 @@ function PermissionFormView({
         else setError(result.error);
         setLoading(false);
       } else if (result?.success) {
-        useAppStore.getState().refresh(true);
+        // The screen changes once the refreshed pass arrives; the button is freed either way
+        await useAppStore.getState().refresh(true);
+        setLoading(false);
+      } else {
+        setError("Could not submit. Please try again.");
+        setLoading(false);
       }
     } catch {
       setError("An unexpected error occurred. Please try again.");

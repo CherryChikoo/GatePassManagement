@@ -1,5 +1,6 @@
 "use client";
 
+import { ThemedSelect } from "@/components/ui/themed-select";
 import { usePassWatch } from "@/hooks/use-pass-watch";
 import { DateField } from "@/components/ui/date-field";
 import { useState, useEffect } from "react";
@@ -7,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MapPin, Calendar as CalendarIcon, Clock, Phone, FileText, Send, CheckCircle2, History, LogIn, LogOut, Search, QrCode, ShieldCheck, X } from "lucide-react";
 import { createFacultyPermissionRequest, cancelFacultyPermissionRequest } from "@/server/actions/faculty-permissions";
-import { generateLiveQrToken } from "@/server/actions/permissions";
+import { callGate } from "@/lib/gate-call";
 import { istDateString } from "@/lib/time/ist";
 import { FACULTY_REQUEST_TYPES, facultyRequestDays, facultyRequestTypeLabel } from "@/lib/registers/definitions";
 import { useRouter } from "next/navigation";
@@ -17,6 +18,7 @@ import { PagerBar } from "@/components/ui/pager-bar";
 import { formatDateTime, formatDate } from "@/lib/utils";
 import { useStoreReady } from "@/components/providers/store-hydrator";
 import QRCode from "qrcode";
+import { delayMinutes, formatDelay, returnDueAt } from "@/lib/passes/return-scan";
 
 type TabState = "APPLY" | "HISTORY";
 
@@ -129,6 +131,8 @@ export function FacultyApplyClient() {
   const myPasses = useAppStore((s) => s.data.myPasses);
   // Out on an exit pass with no return yet (the same QR is shown again for the return scan)
   const outOnPass = ((myPasses as any[] | undefined) || []).find((p: any) => isOutOnPass(p)) ?? null;
+  // Past the planned return (end of the last day of the pass): the QR still works, shown as delayed
+  const outDelay = outOnPass ? delayMinutes(returnDueAt(outOnPass)) : 0;
   const approverOptions = useAppStore((s) => s.data.approverOptions) as FacultyApproverOptions | undefined;
 
   const [activeTab, setActiveTab] = useState<TabState>("APPLY");
@@ -173,7 +177,7 @@ export function FacultyApplyClient() {
     let cancelled = false;
     async function refreshToken() {
       try {
-        const res = await generateLiveQrToken(selectedQrPassId!);
+        const res: any = await callGate("generateLiveQrToken", [selectedQrPassId!], 15_000);
         if (cancelled) return;
         if ("error" in res && res.error) {
           setQrError(res.error);
@@ -464,7 +468,7 @@ export function FacultyApplyClient() {
               {/* Request type */}
               <div>
                 <label htmlFor="requestType" className="block text-sm font-medium text-zinc-300 mb-2">Request Type *</label>
-                <select
+                <ThemedSelect
                   id="requestType"
                   name="requestType"
                   value={requestType}
@@ -475,7 +479,7 @@ export function FacultyApplyClient() {
                   {FACULTY_REQUEST_TYPES.map((t) => (
                     <option key={t.value} value={t.value}>{t.label}</option>
                   ))}
-                </select>
+                </ThemedSelect>
               </div>
 
               {/* Dates (no time fields) */}
@@ -853,6 +857,9 @@ export function FacultyApplyClient() {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-zinc-100">You&apos;re out on a pass</p>
                 <p className="mt-0.5 text-sm text-zinc-400">When you come back, show the same QR at the gate so security records your return.</p>
+                {outDelay > 0 && (
+                  <p className="mt-1.5 text-sm font-medium text-amber-600">Delayed return — {formatDelay(outDelay)} late. Your QR still works.</p>
+                )}
               </div>
               <Button onClick={() => setSelectedQrPass(outOnPass)} className="w-full sm:w-auto">
                 <QrCode className="h-4 w-4" />
@@ -860,7 +867,7 @@ export function FacultyApplyClient() {
               </Button>
             </div>
           )}
-          {activeTab === "APPLY" && renderApplyForm()}
+          {activeTab === "APPLY" && !outOnPass && renderApplyForm()}
           {activeTab === "HISTORY" && renderHistory()}
         </div>
       )}

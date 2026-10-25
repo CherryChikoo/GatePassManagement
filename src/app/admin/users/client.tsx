@@ -34,6 +34,7 @@ import { Search,
   Building2,
   Trash2,
   AlertTriangle,
+  X,
   User,
   PencilLine,
   Ban,
@@ -93,6 +94,10 @@ export function UserManagementClient({
   const [toggling, setToggling] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
+  // Why the delete was refused (shown inside the dialog, with "Deactivate instead" when that applies)
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Page-level problem from a list action (status change…), shown above the list
+  const [pageError, setPageError] = useState<string | null>(null);
   const [selectedUserDetails, setSelectedUserDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
@@ -276,38 +281,69 @@ export function UserManagementClient({
         ...prev,
         users: prev.users.map((u) => (u.id === profileId ? { ...u, active: !u.active } : u)),
       }));
+    setPageError(null);
+    let ok = false;
     try {
       const res = await toggleUserActive(profileId);
       if (res?.error) {
         undo();
-        window.alert(res.error);
-      }
-    } catch {
+        setPageError(res.error);
+      } else ok = true;
+    } catch (err) {
       undo();
-      window.alert("Failed to update the account status.");
+      setPageError(actionErrorMessage(err, "Failed to update the account status."));
     }
     setToggling(null);
-    useAppStore.getState().refresh(true);
-    router.refresh();
+    if (ok) {
+      useAppStore.getState().refresh(true, true);
+      router.refresh();
+    }
+    return ok;
   }
 
   function handleDeleteClick(profileId: string) {
+    setDeleteError(null);
     setUserToDelete(profileId);
+  }
+
+  function closeDeleteDialog() {
+    if (deleting) return;
+    setUserToDelete(null);
+    setDeleteError(null);
   }
 
   async function confirmDelete() {
     if (!userToDelete) return;
-    setDeleting(userToDelete);
+    const id = userToDelete;
+    setDeleting(id);
+    setDeleteError(null);
     try {
-      const res = await deleteUser(userToDelete);
-      if (res?.error) window.alert(res.error);
-    } catch {
-      window.alert("Failed to delete the user.");
+      const res = await deleteUser(id);
+      if (res?.error) {
+        // Refused (e.g. has gate-pass history): nothing was removed; say why, in the dialog
+        setDeleteError(res.error);
+        setDeleting(null);
+        return;
+      }
+      // Removed from the database: take it off the list now; the refresh confirms it
+      setUsersData((prev) => ({ ...prev, users: prev.users.filter((u) => u.id !== id), total: Math.max(0, (prev.total ?? 1) - 1) }));
+      setUserToDelete(null);
+      setSuccess("User deleted.");
+      useAppStore.getState().refresh(true, true);
+      router.refresh();
+    } catch (err) {
+      setDeleteError(actionErrorMessage(err, "Failed to delete the user. Please try again."));
     }
     setDeleting(null);
+  }
+
+  /** Delete was refused because of history: switch the account off instead */
+  async function deactivateInstead() {
+    if (!userToDelete) return;
+    const id = userToDelete;
     setUserToDelete(null);
-    useAppStore.getState().refresh(true);
-    router.refresh();
+    setDeleteError(null);
+    if (await handleToggle(id)) setSuccess("Account deactivated. Its gate-pass history is kept.");
   }
 
   async function handleViewDetails(profileId: string, role: string) {
@@ -609,7 +645,19 @@ export function UserManagementClient({
         {success && (
           <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300 animate-fade-in">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
-            {success}
+            <span className="min-w-0 flex-1">{success}</span>
+            <button type="button" onClick={() => setSuccess(null)} aria-label="Dismiss" className="shrink-0 rounded-full p-1 hover:bg-emerald-500/10">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+        {pageError && (
+          <div role="alert" className="flex items-center gap-2.5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400 animate-fade-in">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1">{pageError}</span>
+            <button type="button" onClick={() => setPageError(null)} aria-label="Dismiss" className="shrink-0 rounded-full p-1 hover:bg-red-500/10">
+              <X className="h-4 w-4" />
+            </button>
           </div>
         )}
 
@@ -1184,7 +1232,7 @@ export function UserManagementClient({
       {/* Delete Confirmation Modal */}
       <Modal
         open={!!userToDelete}
-        onClose={() => !deleting && setUserToDelete(null)}
+        onClose={closeDeleteDialog}
         className="max-w-md"
       >
         <div className="flex flex-col items-center justify-center p-2 sm:p-4 text-center">
@@ -1193,27 +1241,40 @@ export function UserManagementClient({
           </div>
           <h2 className="mb-2 text-xl font-medium text-zinc-100">Delete User?</h2>
           <p className="mb-6 text-sm text-zinc-500 leading-relaxed">
-            Are you sure you want to permanently delete this user? This action cannot be undone and will erase all associated records.
+            This permanently removes the account and its login. It cannot be undone. Accounts with gate-pass history
+            can't be deleted (the campus record is kept) — deactivate them instead.
           </p>
+          {deleteError && (
+            <div role="alert" className="mb-5 w-full rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-left text-sm text-red-400">
+              {deleteError}
+            </div>
+          )}
           <div className="flex w-full flex-col-reverse sm:flex-row gap-3">
             <Button
               type="button"
               variant="outline"
               className="flex-1"
-              onClick={() => setUserToDelete(null)}
+              onClick={closeDeleteDialog}
               disabled={!!deleting}
             >
               Cancel
             </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              className="flex-1"
-              onClick={confirmDelete}
-              loading={!!deleting}
-            >
-              Yes, Delete
-            </Button>
+            {deleteError && usersData.users.some((u: any) => u.id === userToDelete && u.active) ? (
+              <Button type="button" className="flex-1" onClick={deactivateInstead}>
+                Deactivate instead
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="destructive"
+                className="flex-1"
+                onClick={confirmDelete}
+                loading={!!deleting}
+                disabled={!!deleteError}
+              >
+                Yes, Delete
+              </Button>
+            )}
           </div>
         </div>
       </Modal>

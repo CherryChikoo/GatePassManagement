@@ -98,6 +98,12 @@ export type MovementDef = {
   firstDirections: Direction[];
   /** A single In-or-Out event (nothing recorded later) */
   single?: boolean;
+  /**
+   * Always starts with the first of firstDirections, and the other side is
+   * always recorded later: the new-entry form shows no In / Out choice and no
+   * "In only" option (e.g. Admission Book: visitors come in, then go out).
+   */
+  fixedStart?: boolean;
   /** Field that shows the chosen direction as "In" / "Out" */
   directionField?: string;
 };
@@ -116,6 +122,12 @@ export type EntryRegister = {
   /** Fixed values printed on the form (e.g. the "To" block of Form 19) */
   /** Shown above the form: fixed details, or a one-line note (note: true) */
   fixed?: { label: string; value: string; note?: boolean }[];
+  /**
+   * "Meeting (faculty / staff)" picker: the person met gets a meeting code
+   * (src/lib/visits/passes.ts) and the Out side needs it. The fields name
+   * which of this register's fields hold the visitor's name / phone / purpose.
+   */
+  visitHost?: { visitorField: string; phoneField?: string; purposeField?: string };
   /** Fields shown in the list table (first is the headline) */
   listFields: string[];
 };
@@ -266,8 +278,9 @@ export const REGISTERS: RegisterDef[] = [
     title: "Admission Book & Pass",
     description: "Admission enquiries and reporting visits by parents and guardians.",
     required: ["parentName", "parentMobile"],
-    movement: { in: { label: "In", timeKey: "timeIn" }, out: { label: "Out", timeKey: "timeOut" }, firstDirections: BOTH },
+    movement: { in: { label: "In", timeKey: "timeIn" }, out: { label: "Out", timeKey: "timeOut" }, firstDirections: ["IN"], fixedStart: true },
     listFields: ["parentName", "programRequested", "admissionReporting", "timeIn", "timeOut"],
+    visitHost: { visitorField: "parentName", phoneField: "parentMobile", purposeField: "purpose" },
     fields: [
       { key: "visitDate", label: "Date of Visit", type: "date" },
       { key: "parentName", label: "Parent / Guardian Name", type: "text" },

@@ -1,10 +1,10 @@
 "use client";
-import { getRegisterPhotoUrl } from "@/lib/storage/image-upload";
+import { callGate } from "@/lib/gate-call";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { useT } from "@/components/providers/language-provider";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, ChevronRight, Clock, Eye, FilePlus2, FileText, History, Loader2, LogIn, LogOut, PencilLine, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronRight, Clock, Eye, FilePlus2, FileText, History, KeyRound, Loader2, LogIn, LogOut, PencilLine, Trash2, XCircle } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Modal } from "@/components/ui/primitives";
 import { Card } from "@/components/ui/card";
@@ -13,16 +13,9 @@ import { PagerBar } from "@/components/ui/pager-bar";
 import { cn, withTimeout } from "@/lib/utils";
 import type { EntryRegister, FieldDef } from "@/lib/registers/definitions";
 import { isSirosLabour, pendingActions, updatableFields, yesNoWords } from "@/lib/registers/definitions";
-import {
-  adminDeleteRegisterEntry,
-  adminUpdateRegisterEntry,
-  securityEditRegisterEntry,
-  completeRegisterEntry,
-  createRegisterEntry,
-  getRegisterStaffOptions,
-  updateRegisterField,
-} from "@/server/actions/registers";
+import { adminDeleteRegisterEntry, adminUpdateRegisterEntry } from "@/server/actions/registers";
 import { fetchEntryList, invalidateEntryLists, markEntryListsStale, peekEntryList } from "./entry-list-cache";
+import { visitExitMessage } from "@/components/visits/visit-code";
 import { useLiveTopics } from "@/lib/realtime/live";
 import { actionErrorMessage } from "@/lib/deployment";
 import { AdminEditForm, CloseRecordForm, MovementForm, RegisterForm, type StaffOption } from "./register-form";
@@ -53,6 +46,16 @@ type Entry = {
   original: Record<string, any>;
   current: Record<string, any>;
   supplements: Supplement[];
+  /** Came to meet a faculty / staff member (meeting code needed to go out while open) */
+  visit?: {
+    hostName: string;
+    open: boolean;
+    met: boolean;
+    locked: boolean;
+    exitMethod: string | null;
+    overrideReason: string | null;
+    exitedByName: string | null;
+  } | null;
 };
 
 function recorderLine(r: { recordedByName: string; recordedByRole: string; recordedByEmployeeId: string | null; recordedAtGate: string | null }, t: Translate) {
@@ -82,7 +85,7 @@ export function EntryRegisterView({
 }) {
   const t = useT();
   const filters = useRegisterFilters();
-  const [data, setData] = useState<{ entries: Entry[]; total: number; pageSize: number } | null>(null);
+  const [data, setData] = useState<{ entries: Entry[]; total: number; pageSize: number; canOverrideVisit?: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [staff, setStaff] = useState<StaffOption[]>([]);
@@ -120,7 +123,7 @@ export function EntryRegisterView({
       setError(null);
     }
     try {
-      const res = await withTimeout(fetchEntryList(params, fresh || silent ? 0 : 10_000));
+      const res = await withTimeout(fetchEntryList(params, !fresh && !silent));
       if (no !== loadNo.current) return;
       setData(res);
       if (silent) setError(null);
@@ -149,7 +152,7 @@ export function EntryRegisterView({
   }, [load]);
 
   useEffect(() => {
-    if (needsStaff) getRegisterStaffOptions().then(setStaff).catch(() => setStaff([]));
+    if (needsStaff) callGate("getRegisterStaffOptions", [], 15_000).then((s: any) => setStaff(Array.isArray(s) ? s : [])).catch(() => setStaff([]));
   }, [needsStaff]);
 
   function openMode(m: "new" | "record" | "edit" | "close", entry?: Entry | null) {
@@ -166,7 +169,7 @@ export function EntryRegisterView({
     try {
       const res = await action();
       if (res?.error) {
-        setFormError(res.error);
+        setFormError(visitExitMessage(t, res));
         setErrorNo((n) => n + 1);
       } else {
         setNotice(done);
@@ -193,14 +196,14 @@ export function EntryRegisterView({
   async function quickRecord(e: Entry) {
     const next = pendingActions(def, e.current).next;
     if (!next || quickId) return;
-    if (next.readingKey) {
+    if (next.readingKey || (e.visit?.open && next.direction === "OUT")) {
       openMode("record", e);
       return;
     }
     setQuickId(e.id);
     setError(null);
     try {
-      const res: any = await completeRegisterEntry(e.id, { markMovement: true }, newClientToken());
+      const res: any = await callGate("completeRegisterEntry", [e.id, { markMovement: true }, newClientToken()]);
       if (res?.error) {
         setError(res.error);
       } else {
@@ -275,7 +278,7 @@ export function EntryRegisterView({
     const entry = selected;
     if (!entry) return null;
     try {
-      const res: any = await updateRegisterField(entry.id, key, value, newClientToken());
+      const res: any = await callGate("updateRegisterField", [entry.id, key, value, newClientToken()]);
       if (res?.error) return t(res.error);
       // Show the change at once; the reload adds the history line
       const shown = typeof value === "string" ? value.trim() || null : value;
@@ -371,7 +374,7 @@ export function EntryRegisterView({
       <Card className={cn("overflow-hidden transition-opacity", loading && "opacity-60")}>
         {/* Phones: stacked rows */}
         {data && data.entries.length > 0 && (
-          <ul className={cn(dt.mobileList, "sm:hidden")}>
+          <ul className={cn(dt.mobileList, "lg:hidden")}>
             {data.entries.map((e) => {
               const open = pendingActions(def, e.current).any;
               const [first, ...rest] = columns;
@@ -394,6 +397,7 @@ export function EntryRegisterView({
                         {open && openChip}
                       </span>
                       {meta && <span className="mt-0.5 block truncate text-sm text-zinc-400">{meta}</span>}
+                      {e.visit && <MeetingChip visit={e.visit} />}
                       <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-500">
                         {statusCols.map((c) => (
                           <StatusChip key={c.key} field={c} withLabel value={e.current[c.key]} />
@@ -417,7 +421,7 @@ export function EntryRegisterView({
 
         {/* Larger screens: table */}
         {data && data.entries.length > 0 && (
-          <div className={cn(dt.wrap, "hidden sm:block")}>
+          <div className={cn(dt.wrap, "hidden lg:block")}>
             <table className={dt.table}>
               <thead>
                 <tr>
@@ -444,6 +448,7 @@ export function EntryRegisterView({
                         <span className="flex flex-col items-start gap-1">
                           {formatFieldValue({ key: "d", label: "", type: "date" }, e.entryDate)}
                           {open && openChip}
+                          {e.visit && <MeetingChip visit={e.visit} />}
                         </span>
                       </td>
                       {hasStarted && <td className={cn(dt.td, "whitespace-nowrap")}>{directionChip(e.current.direction) ?? <span className="text-zinc-600">—</span>}</td>}
@@ -492,7 +497,8 @@ export function EntryRegisterView({
             def={def}
             entry={selected}
             onRecord={canCreate && pendingActions(def, selected.current).any ? () => openMode("record") : undefined}
-            onCloseRecord={canCreate && pendingActions(def, selected.current).next ? () => openMode("close") : undefined}
+            // Someone with an open meeting code leaves through Out (with the code), not "Close record"
+            onCloseRecord={canCreate && pendingActions(def, selected.current).next && !selected.visit?.open ? () => openMode("close") : undefined}
             onEdit={canAdminEdit || canEdit ? () => openMode("edit") : undefined}
             onDelete={canAdminEdit ? () => setConfirmDelete(true) : undefined}
             onUpdateField={canUpdate ? updateField : undefined}
@@ -525,7 +531,7 @@ export function EntryRegisterView({
             def={def}
             staff={staff}
             busy={busy}
-            onSubmit={(payload) => run(() => createRegisterEntry(def.key, payload, token), t("Record saved."))}
+            onSubmit={(payload) => run(() => callGate("createRegisterEntry", [def.key, payload, token]), t("Record saved."))}
           />
         )}
         {mode === "edit" && selected && (
@@ -538,7 +544,7 @@ export function EntryRegisterView({
             busy={busy}
             onSubmit={(payload) =>
               run(
-                () => (canAdminEdit ? adminUpdateRegisterEntry(selected.id, payload) : securityEditRegisterEntry(selected.id, payload, token)),
+                () => (canAdminEdit ? adminUpdateRegisterEntry(selected.id, payload) : callGate("securityEditRegisterEntry", [selected.id, payload, token])),
                 t("Record updated.")
               )
             }
@@ -550,7 +556,7 @@ export function EntryRegisterView({
             def={def}
             current={selected.current}
             busy={busy}
-            onSubmit={(payload) => run(() => completeRegisterEntry(selected.id, payload, token), t("Record closed."))}
+            onSubmit={(payload) => run(() => callGate("completeRegisterEntry", [selected.id, payload, token]), t("Record closed."))}
           />
         )}
         {mode === "record" && selected && (
@@ -558,8 +564,10 @@ export function EntryRegisterView({
             key={formKey}
             def={def}
             current={selected.current}
+            visit={selected.visit ?? null}
+            canOverrideVisit={!!data?.canOverrideVisit}
             busy={busy}
-            onSubmit={(payload) => run(() => completeRegisterEntry(selected.id, payload, token), t("Saved."))}
+            onSubmit={(payload) => run(() => callGate("completeRegisterEntry", [selected.id, payload, token]), t("Saved."))}
           />
         )}
       </Modal>
@@ -585,19 +593,27 @@ export function EntryRegisterView({
 
 /** Photo saved with a register entry (signed, short-lived link). */
 function RegisterPhoto({ path }: { path: unknown }) {
+  const t = useT();
   const [url, setUrl] = useState<string | null>(null);
+  // The link could not be loaded: say so instead of a placeholder forever
+  const [failed, setFailed] = useState(false);
   const valid = typeof path === "string" && path.startsWith("registers/");
   useEffect(() => {
     if (!valid) return;
     let cancelled = false;
-    getRegisterPhotoUrl(path as string)
-      .then((u) => !cancelled && setUrl(u))
-      .catch(() => {});
+    callGate("getRegisterPhotoUrl", [path as string], 15_000)
+      .then((u) => {
+        if (cancelled) return;
+        if (u) setUrl(u);
+        else setFailed(true);
+      })
+      .catch(() => !cancelled && setFailed(true));
     return () => {
       cancelled = true;
     };
   }, [path, valid]);
   if (!valid) return <span className="text-zinc-600">—</span>;
+  if (failed) return <span className="text-sm text-zinc-500">{t("Photo unavailable")}</span>;
   if (!url) return <span className="inline-block h-40 w-40 animate-pulse rounded-2xl bg-zinc-950" />;
   return (
      
@@ -840,6 +856,46 @@ function UpdatableSection({
   );
 }
 
+type Visit = NonNullable<Entry["visit"]>;
+
+/** "Meeting: Dr X" chip; amber while the meeting code is still needed to go out. */
+function MeetingChip({ visit }: { visit: Visit }) {
+  const t = useT();
+  return (
+    <span
+      className={cn(
+        "mt-1 inline-flex max-w-full items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+        visit.open ? "bg-orange-500/10 text-orange-500" : "bg-zinc-900 text-zinc-500"
+      )}
+    >
+      <KeyRound className="h-3 w-3 shrink-0" aria-hidden="true" />
+      <span className="truncate">{t("Meeting: {name}", { name: visit.hostName })}</span>
+    </span>
+  );
+}
+
+/** Who they came to meet, and how they left (code / let out by Head Security). */
+function MeetingSection({ visit }: { visit: Visit }) {
+  const t = useT();
+  return (
+    <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-1.5">
+      <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-zinc-500">
+        <KeyRound className="h-3.5 w-3.5" /> {t("Meeting")}
+      </h3>
+      <p className="text-sm font-medium text-zinc-100">{visit.hostName}</p>
+      <p className="text-sm text-zinc-400">
+        {visit.open
+          ? visit.locked
+            ? t("Code locked after 5 wrong tries — Head Security can let the visitor out.")
+            : t("Meeting code needed to record Out.")
+          : visit.exitMethod === "OVERRIDE"
+          ? t("Let out without the code by {name}: {reason}", { name: visit.exitedByName ?? "—", reason: visit.overrideReason ?? "—" })
+          : t("Left with the meeting code.")}
+      </p>
+    </section>
+  );
+}
+
 function EntryDetails({
   def,
   entry,
@@ -881,6 +937,8 @@ function EntryDetails({
         </div>
       )}
       <ValuesGrid def={def} values={entry.current} />
+
+      {entry.visit && <MeetingSection visit={entry.visit} />}
 
       {updatableFields(def).map((f) => (
         <UpdatableSection

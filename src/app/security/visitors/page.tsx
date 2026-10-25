@@ -1,16 +1,12 @@
 import { requireRole } from "@/lib/auth/helpers";
-import { getOutsiders } from "@/server/actions/outsiders";
 import { OutsidersClient } from "./client";
 
+/**
+ * Visitors (Security). The lists load in the browser from the gate cache
+ * (src/lib/gate-cache.ts): the screen opens at once, showing the last copy,
+ * and fetches only when a visitor was registered / let out somewhere.
+ */
 export default async function OutsidersPage() {
   const user = await requireRole("SECURITY");
-  const data = await getOutsiders();
-  
-  return (
-    <OutsidersClient 
-      user={user} 
-      inside={data.inside || []} 
-      history={data.history || []} 
-    />
-  );
+  return <OutsidersClient user={user} />;
 }

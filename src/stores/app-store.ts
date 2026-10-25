@@ -35,8 +35,12 @@ interface AppState {
 interface AppActions {
   /** First-time init: sets user, fetches all data */
   initialize: (user: StoreUser) => Promise<void>;
-  /** Background refresh — silent, no loading state. Use force=true to bypass throttle */
-  refresh: (force?: boolean) => Promise<void>;
+  /**
+   * Background refresh — silent, no loading state. force=true bypasses the
+   * throttle (after a save). full=true also reloads the people directories
+   * (after adding / changing users); otherwise they come at most every 30 min.
+   */
+  refresh: (force?: boolean, full?: boolean) => Promise<void>;
   /** Set a single data key */
   setData: (key: string, value: any) => void;
   /** Immutably update a single data key */
@@ -58,6 +62,15 @@ export type AppStore = AppState & AppActions;
 const SYNC_INTERVAL_MS = 5 * 60_000;
 const LEGACY_STORE_NAME = "gatepass-store";
 const STALE_THRESHOLD_MS = 5 * 60_000; // 5 minutes — force re-fetch if older
+/**
+ * People directories (department students, hostellers, faculty lists) are the
+ * bulk of each role's data and rarely change, so the regular refresh skips
+ * them (?light=1) and they are reloaded in full at most this often. Keeps the
+ * repeated downloads small (Supabase free plan: 5 GB of data out a month).
+ */
+const FULL_RELOAD_MS = 30 * 60_000;
+/** When the last full (with directories) load arrived */
+let lastFullAt = 0;
 const THROTTLE_MS = 30_000; // 30 seconds — switching tabs back and forth reloads at most this often
 
 // Data is kept in memory only. Older versions persisted every dashboard's
@@ -72,8 +85,8 @@ if (typeof window !== "undefined") {
 
 class SessionExpiredError extends Error {}
 
-async function fetchPreload(): Promise<StoreData> {
-  const res = await fetch("/api/data/preload", {
+async function fetchPreload(light = false): Promise<StoreData> {
+  const res = await fetch(light ? "/api/data/preload?light=1" : "/api/data/preload", {
     credentials: "include",
     cache: "no-store",
   });
@@ -155,6 +168,15 @@ function handleSessionChanged() {
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 /** The preload request currently running, shared by concurrent refresh() calls */
 let refreshInFlight: Promise<void> | null = null;
+/** A forced refresh asked for while another was running: runs right after it */
+let forcedFollowUp: Promise<void> | null = null;
+/**
+ * Bumped on every local change (setData / updateData, e.g. a row removed right
+ * after a delete). A preload answer whose request started before a local change
+ * holds the data from before it, so it must not overwrite the screen — the
+ * forced refresh the screen asks for after its save brings the new data.
+ */
+let localChangeNo = 0;
 let visibilityHandler: (() => void) | null = null;
 
 function startBackgroundSync(refresh: (force?: boolean) => Promise<void>) {
@@ -228,6 +250,7 @@ export const useAppStore = create<AppStore>()(
             handleSessionChanged();
             return;
           }
+          lastFullAt = Date.now();
           set({
             data: preloadData,
             isInitialized: true,
@@ -248,7 +271,7 @@ export const useAppStore = create<AppStore>()(
         }
       },
 
-      refresh: async (force = false) => {
+      refresh: async (force = false, full = false) => {
         const state = get();
         if (!state.user) return;
 
@@ -256,20 +279,37 @@ export const useAppStore = create<AppStore>()(
         if (!force && Date.now() - state.lastSyncAt < THROTTLE_MS) {
           return;
         }
-        // A refresh already running (tab return, poll, after an action…): share it
-        // instead of sending a second identical request.
-        if (refreshInFlight) return refreshInFlight;
+        if (refreshInFlight) {
+          // Not forced (poll, tab return): share the running request.
+          if (!force) return refreshInFlight;
+          // Forced (after a save): the running request may have left before the
+          // save reached the database, so ask again once it is done (one follow-up
+          // for any number of saves meanwhile).
+          forcedFollowUp ??= refreshInFlight.then(() => {
+            forcedFollowUp = null;
+            return get().refresh(true, full);
+          });
+          return forcedFollowUp;
+        }
 
+        const startedAt = localChangeNo;
+        // Light unless asked for, or the directories are due (or never loaded)
+        const light = !full && state.isInitialized && Date.now() - lastFullAt < FULL_RELOAD_MS;
         refreshInFlight = (async () => {
         try {
-          const preloadData = await fetchPreload();
+          const preloadData = await fetchPreload(light);
           // Another tab signed in as a different user → this tab must not show the old screens
           if (preloadData.__profileId && preloadData.__profileId !== get().user?.profileId) {
             handleSessionChanged();
             return;
           }
+          // Changed on screen while this was loading: this answer is older than
+          // that change (the follow-up refresh brings the up-to-date data)
+          if (localChangeNo !== startedAt) return;
+          if (!light) lastFullAt = Date.now();
           set({
-            data: preloadData,
+            // Light answer: everything except the directories — keep those from the last full load
+            data: light ? { ...get().data, ...preloadData } : preloadData,
             isInitialized: true,
             lastSyncAt: Date.now(),
             error: null,
@@ -289,12 +329,14 @@ export const useAppStore = create<AppStore>()(
       },
 
       setData: (key, value) => {
+        localChangeNo++;
         set((state) => ({
           data: { ...state.data, [key]: value },
         }));
       },
 
       updateData: (key, updater) => {
+        localChangeNo++;
         set((state) => ({
           data: { ...state.data, [key]: updater(state.data[key]) },
         }));
@@ -302,6 +344,7 @@ export const useAppStore = create<AppStore>()(
 
       reset: () => {
         stopBackgroundSync();
+        lastFullAt = 0;
         set({
           user: null,
           data: {},

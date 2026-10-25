@@ -48,7 +48,7 @@ let sessionRequest: Promise<Session | null> | null = null;
 /** Access token + user id from the server (the browser never refreshes tokens itself). */
 function getSession(): Promise<Session | null> {
   if (session && session.expiresAt - Date.now() > 2 * 60_000) return Promise.resolve(session);
-  sessionRequest ??= fetch("/api/realtime/token", { credentials: "include", cache: "no-store" })
+  sessionRequest ??= fetch("/api/realtime/token", { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(10_000) })
     .then(async (res): Promise<Session | null> => {
       if (!res.ok) {
         if (res.status === 401) signedOut = true;
@@ -71,13 +71,37 @@ function getSession(): Promise<Session | null> {
 
 const getToken = async () => (await getSession())?.token ?? null;
 
+/** Browser caches told of every gate change, whichever screen is open (see onGatePing) */
+const gatePingHooks = new Set<Listener>();
+
+/**
+ * Caches (gate-cache, entry-list-cache) register here to hear every change on
+ * the gate channel, so data cached by a screen that is closed now is fetched
+ * again when it opens, and only then.
+ */
+export function onGatePing(hook: Listener): () => void {
+  gatePingHooks.add(hook);
+  return () => gatePingHooks.delete(hook);
+}
+
 function emit(c: Chan, topics: string[]) {
+  // Caches first, so screens reloading on this ping don't get the old copy
+  if (chans.get(LIVE_CHANNEL) === c) for (const h of gatePingHooks) h(topics);
   for (const l of c.listeners) l(topics);
+}
+
+/** When the gate channel last connected (null while it is not): data loaded since then would have been told of changes */
+let gateLiveSince: number | null = null;
+
+/** See gateLiveSince; used by src/lib/gate-cache.ts to skip needless refetches. */
+export function liveSince(): number | null {
+  return gateLiveSince;
 }
 
 function setLive(c: Chan, live: boolean) {
   if (c.live === live) return;
   c.live = live;
+  if (chans.get(LIVE_CHANNEL) === c) gateLiveSince = live ? Date.now() : null;
   for (const s of c.statusListeners) s(live);
 }
 

@@ -27,6 +27,10 @@ export type CompletionPayload = {
   reading?: unknown;
   /** Group rows to mark out now, e.g. { workers: [0, 3] } */
   groupMarks?: Record<string, unknown>;
+  /** Meeting code the visitor got from the person they met (registers with a "Meeting" picker) */
+  visitCode?: unknown;
+  /** Head Security / Main Admin: let out without the code, with this reason */
+  visitOverride?: unknown;
 };
 
 export type StaffSnapshot = { id: string; name: string; employeeId: string | null };
