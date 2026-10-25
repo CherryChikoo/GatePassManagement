@@ -198,6 +198,13 @@ export function DashboardLayout({
   };
 
   const isMobileNavRole = role === "STUDENT" || role === "SECURITY";
+  // Staff sections whose page reads the browser store are pre-loaded in full (the
+  // page, not just its loading screen), so a tap opens them at once. Pages that
+  // load their own data on the server (Activity, My Visitors, Settings) are left
+  // to load when tapped: pre-loading them all at once competed with the
+  // dashboard's own data for database connections and slowed everything down.
+  const fullPrefetch = (href: string) =>
+    role !== "STUDENT" && !HEAVY_PAGE.test(href) ? true : undefined;
   // Security works from the bottom bar only (no sidebar / ☰ menu); Settings is the gear in the top bar
   const hasSidebar = navItems.length > 0 && role !== "SECURITY";
   // Security's phone bar: 4 sections + the centre Scan button (Settings stays in the ☰ menu)
@@ -264,6 +271,7 @@ export function DashboardLayout({
                 <Tooltip key={item.href} label={t(item.label)} side="right" disabled={!desktopCollapsed} className="block">
                 <Link
                   href={item.href}
+                  prefetch={fullPrefetch(item.href)}
                   onClick={handleNavigation}
                   aria-label={desktopCollapsed ? t(item.label) : undefined}
                   aria-current={isActive ? "page" : undefined}
@@ -466,8 +474,8 @@ export function DashboardLayout({
               <Link
                 key={item.href}
                 href={item.href}
-                // Security: the whole page (light: data comes from the gate cache), not just its loading screen
-                prefetch={role === "SECURITY" ? true : undefined}
+                // The whole page, not just its loading screen (see fullPrefetch)
+                prefetch={fullPrefetch(item.href)}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
                   "relative flex min-w-0 flex-col items-center justify-center w-full h-full gap-0.5 px-0.5 transition-colors",
@@ -573,6 +581,9 @@ export const wardenNavItems: NavItem[] = [
   // Unimplemented:
   // { label: "Approval History", href: "/warden/history", icon: <History className="h-5 w-5" /> },
 ];
+
+/** Sections that load their own (larger) data on the server: not pre-loaded */
+const HEAVY_PAGE = /\/(activity|my-visitors|settings)(\/|$)/;
 
 export const securityNavItems: NavItem[] = [
   // Home is the registers list; on phones "Scan QR" is the raised centre button

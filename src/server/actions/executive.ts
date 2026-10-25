@@ -1,5 +1,6 @@
 "use server";
 
+import { loadCampusActivity } from "@/lib/activity/campus-activity";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/helpers";
@@ -76,4 +77,13 @@ export async function getExecutiveStudents(params: {
     metrics: { total: campusTotal, active, hostelers: hostellers, dayScholars: campusTotal - hostellers },
     departments: departments.map((d) => d.department).filter((d): d is string => !!d),
   };
+}
+
+/**
+ * One IST day of campus activity (Director, Dean, Security Supervisor). Loaded by
+ * the Activity screen in the browser (cached per day), so the page opens at once.
+ */
+export async function getCampusActivity(dateParam?: string) {
+  await requireRole("DIRECTOR", "DEAN", "SECURITY_SUPERVISOR");
+  return loadCampusActivity(typeof dateParam === "string" ? dateParam : undefined);
 }

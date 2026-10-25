@@ -52,7 +52,6 @@ interface Props {
     stats: {
       entriesToday: number;
       exitsToday: number;
-      totalMovements: number;
     };
     recentEntries: any[];
     recentExits: any[];
@@ -76,7 +75,7 @@ interface OutsiderRecord {
 
 
 
-export function ActivityClient({ user, data: initialData }: Props) {
+export function ActivityClient({ user, data: initialData, loadedAt }: Props & { loadedAt?: number }) {
   const [data, setData] = useState(initialData);
   const [date, setDate] = useState(() => istDateString());
   const [loading, setLoading] = useState(false);
@@ -93,6 +92,15 @@ export function ActivityClient({ user, data: initialData }: Props) {
       setLoading(false);
     }
   }
+
+  // The page may have been pre-loaded minutes ago (instant open): refresh it quietly once
+  useEffect(() => {
+    if (!loadedAt || Date.now() - loadedAt < 20_000) return;
+    getActivityData(istDateString())
+      .then((fresh) => setData(fresh))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleDateChange(newDate: string) {
     setDate(newDate);
@@ -113,7 +121,6 @@ export function ActivityClient({ user, data: initialData }: Props) {
   const stats = data?.stats || {
     entriesToday: 0,
     exitsToday: 0,
-    totalMovements: 0,
     outsidersOnCampus: 0,
   };
 

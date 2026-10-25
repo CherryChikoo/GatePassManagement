@@ -1,7 +1,8 @@
 "use client";
 import { PassFullDetails, prefetchPassDetails } from "@/components/passes/pass-full-details";
 import { DateField } from "@/components/ui/date-field";
-import { usePendingNavigation } from "@/hooks/use-pending-navigation";
+import { callGate } from "@/lib/gate-call";
+import { useGateData } from "@/lib/gate-cache";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { istDateString } from "@/lib/time/ist";
 import { scheduledNote } from "@/lib/pass-dates";
@@ -33,24 +34,25 @@ type SubTab = "ALL" | "PENDING" | "ENTRIES" | "EXITS";
 
 interface HodActivityClientProps {
   user: any;
-  permissions?: any[];
-  facultyPermissions?: any[];
-  facultyMovements?: any[];
-  selectedDate: string;
-  department: string;
+  /** Day from the address (?date=), else today */
+  initialDate?: string;
 }
 
-export function HodActivityClient({
-  user,
-  permissions = [],
-  facultyPermissions = [],
-  facultyMovements = [],
-  selectedDate,
-  department,
-}: HodActivityClientProps) {
+const NO_ROWS: any[] = [];
+
+export function HodActivityClient({ user, initialDate }: HodActivityClientProps) {
   const router = useRouter();
-  // Date / tab changes reload the list from the server: show progress meanwhile
-  const { push: navigate, isPending: navigating } = usePendingNavigation();
+  // The page opens at once; the chosen day loads here (cached per day: a day seen
+  // before shows at once, refreshed quietly when older than 15 s)
+  const [selectedDate, setSelectedDate] = useState(() =>
+    initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? initialDate : istDateString()
+  );
+  const day = useGateData<any>(`hod-activity|${selectedDate}`, () => callGate("getHodActivity", [selectedDate], 20_000), ["gate"]);
+  const permissions: any[] = day.data?.permissions ?? NO_ROWS;
+  const facultyPermissions: any[] = day.data?.facultyPermissions ?? NO_ROWS;
+  const facultyMovements: any[] = day.data?.facultyMovements ?? NO_ROWS;
+  const department: string = day.data?.department ?? "";
+  const navigating = day.loading || day.refreshing;
   const [selectedPermission, setSelectedPermission] = useState<any>(null);
   const [selectedMovement, setSelectedMovement] = useState<any>(null);
   const [search, setSearch] = useState("");
@@ -202,7 +204,11 @@ export function HodActivityClient({
   );
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    navigate(`/faculty-admin/activity?date=${e.target.value}`);
+    if (!e.target.value) return;
+    setSelectedDate(e.target.value);
+    setCurrentPage(1);
+    // Kept in the address, so a reload shows the same day
+    window.history.replaceState(null, "", `/faculty-admin/activity?date=${e.target.value}`);
   };
 
   const handleTabChange = (tab: Tab) => {
@@ -363,7 +369,20 @@ export function HodActivityClient({
         {/* Activity list */}
         <Card className="overflow-hidden">
           <CardContent className="p-0">
-            {paginatedItems.length === 0 ? (
+            {day.error ? (
+              <div role="alert" className="flex flex-col items-center gap-3 py-12 px-4 text-center">
+                <p className="text-sm font-medium text-red-400">{day.error}</p>
+                <button
+                  type="button"
+                  onClick={() => void day.reload()}
+                  className="h-11 rounded-full border border-zinc-800 bg-zinc-900 px-5 text-sm font-medium text-zinc-200 hover:bg-zinc-950"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : day.loading ? (
+              <p className="py-12 px-4 text-center text-sm text-zinc-500">Loading the day&apos;s activity…</p>
+            ) : paginatedItems.length === 0 ? (
               <div className="flex flex-col items-center py-12 px-4 text-center">
                 <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 text-zinc-500">
                   <Clock className="h-5 w-5" />

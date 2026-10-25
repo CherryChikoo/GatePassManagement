@@ -5,30 +5,10 @@ import { ExecutiveActivityClient } from "@/components/dashboard/executive-activi
 
 interface DeanActivityClientProps {
   user: any;
-  permissions?: any[];
-  facultyPermissions?: any[];
-  facultyMovements?: any[];
-  studentMovements?: any[];
-  selectedDate: string;
+  /** Day from the address (?date=), else today */
+  initialDate?: string;
 }
 
-export function DeanActivityClient({
-  user,
-  permissions = [],
-  facultyPermissions = [],
-  facultyMovements = [],
-  studentMovements = [],
-  selectedDate,
-}: DeanActivityClientProps) {
-  return (
-    <ExecutiveActivityClient
-      role="DEAN"
-      user={user}
-      permissions={permissions}
-      facultyPermissions={facultyPermissions}
-      facultyMovements={facultyMovements}
-      studentMovements={studentMovements}
-      selectedDate={selectedDate}
-    />
-  );
+export function DeanActivityClient({ user, initialDate }: DeanActivityClientProps) {
+  return <ExecutiveActivityClient role="DEAN" user={user} initialDate={initialDate} />;
 }

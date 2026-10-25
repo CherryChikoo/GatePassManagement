@@ -823,9 +823,7 @@ function PermissionFormView({
         </h1>
         <p className="mt-1.5 text-sm text-zinc-500 leading-relaxed">
           {requestType === "ENTRY"
-            ? isHosteller
-              ? "Only if you have no outing pass."
-              : "Show the QR at the gate."
+            ? "Show the QR at the gate."
             : requestType === "HOSTEL"
             ? "The warden scans it at the hostel."
             : isHosteller
@@ -838,7 +836,7 @@ function PermissionFormView({
       <div
         role="radiogroup"
         aria-label="Which way are you going?"
-        className={`grid ${isHosteller ? "grid-cols-3" : "grid-cols-2"} gap-1 rounded-[22px] bg-zinc-950 p-1 border border-zinc-800`}
+        className="grid grid-cols-2 gap-1 rounded-[22px] bg-zinc-950 p-1 border border-zinc-800"
       >
         {(
           [
@@ -849,13 +847,8 @@ function PermissionFormView({
               title: "Going out",
               hint: "Leave campus",
             },
-            {
-              type: "ENTRY" as const,
-              icon: LogIn,
-              tone: "text-emerald-400",
-              title: "Coming in",
-              hint: "Enter campus",
-            },
+            // Hostellers come back on their outing pass's QR (no entry request);
+            // instead they get the college → hostel pass
             ...(isHosteller
               ? [
                   {
@@ -866,7 +859,15 @@ function PermissionFormView({
                     hint: "From college",
                   },
                 ]
-              : []),
+              : [
+                  {
+                    type: "ENTRY" as const,
+                    icon: LogIn,
+                    tone: "text-emerald-400",
+                    title: "Coming in",
+                    hint: "Enter campus",
+                  },
+                ]),
           ]
         ).map((opt) => {
           const selected = requestType === opt.type;

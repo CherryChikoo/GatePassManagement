@@ -7,7 +7,7 @@ import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { actionErrorMessage } from "@/lib/deployment";
 import { formatDateTime, formatTime } from "@/lib/utils";
-import { confirmHostelArrival, getHostelPassesToday, verifyHostelPass } from "@/server/actions/warden-scan";
+import { callGate } from "@/lib/gate-call";
 
 type Verified = {
   pass: { id: string; purpose: string; expectedTime: string | null; approvedAt: string | null; approvedBy: string; validUntil: string };
@@ -27,7 +27,7 @@ export function WardenScanClient({ autoStart = false }: { autoStart?: boolean })
 
   const loadLists = useCallback(async () => {
     try {
-      setLists(await getHostelPassesToday());
+      setLists((await callGate("getHostelPassesToday", [], 15_000)) as any);
     } catch {
       /* the list is a convenience; scanning still works */
     }
@@ -43,7 +43,7 @@ export function WardenScanClient({ autoStart = false }: { autoStart?: boolean })
     setNotice(null);
     setVerified(null);
     try {
-      const res: any = await verifyHostelPass(value);
+      const res: any = await callGate("verifyHostelPass", [value], 15_000);
       if (!res.valid) setError(res.error || "Invalid pass");
       else setVerified({ pass: res.pass, student: res.student });
     } catch (err) {
@@ -72,7 +72,7 @@ export function WardenScanClient({ autoStart = false }: { autoStart?: boolean })
     setBusy(true);
     setError(null);
     try {
-      const res: any = await confirmHostelArrival(verified.pass.id);
+      const res: any = await callGate("confirmHostelArrival", [verified.pass.id], 20_000);
       if (res?.error) setError(res.error);
       else {
         setNotice(`${verified.student.name} marked as reached the hostel.`);

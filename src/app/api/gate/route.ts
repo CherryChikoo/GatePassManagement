@@ -24,6 +24,12 @@ import { registerOutsider, markOutsiderExited, getOutsiders } from "@/server/act
 import { uploadOutsiderPhoto, uploadRegisterPhoto, getRegisterPhotoUrl, getExitPhotoUrl } from "@/lib/storage/image-upload";
 import { getVisitHostOptions } from "@/server/actions/visits";
 import { generateLiveQrToken } from "@/server/actions/permissions";
+import { getUsers } from "@/server/actions/admin";
+import { getCampusActivity, getExecutiveStudents } from "@/server/actions/executive";
+import { getHodActivity } from "@/server/actions/hod-activity";
+import { confirmHostelArrival, getHostelPassesToday, verifyHostelPass } from "@/server/actions/warden-scan";
+import { listCustomRegisters } from "@/server/actions/custom-registers";
+import { getAttendanceMonth } from "@/server/actions/attendance";
 
 /**
  * Gate calls (Security screens) as plain requests instead of server actions.
@@ -77,6 +83,20 @@ const GATE_FUNCTIONS = {
   markFacultyReturn,
   // Pass holder's rotating QR code (students, faculty)
   generateLiveQrToken,
+  // Admin → Users list (role tabs and pages switch without a page load)
+  getUsers,
+  // Director / Dean / Supervisor student directory (one page at a time)
+  getExecutiveStudents,
+  // Director / Dean / Supervisor activity (one day)
+  getCampusActivity,
+  getHodActivity,
+  // Warden's hostel scan
+  getHostelPassesToday,
+  verifyHostelPass,
+  confirmHostelArrival,
+  // Register builder list, attendance sheet
+  listCustomRegisters,
+  getAttendanceMonth,
 } as const;
 
 export type GateFunctions = typeof GATE_FUNCTIONS;

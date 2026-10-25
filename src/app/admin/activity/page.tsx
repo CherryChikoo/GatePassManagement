@@ -6,5 +6,5 @@ export default async function AdminActivityPage() {
   const user = await requireRole("ADMIN");
   const data = await getActivityData();
 
-  return <ActivityClient user={user} data={data} />;
+  return <ActivityClient user={user} data={data} loadedAt={Date.now()} />;
 }

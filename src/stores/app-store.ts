@@ -225,13 +225,12 @@ export const useAppStore = create<AppStore>()(
       initialize: async (user: StoreUser) => {
         const state = get();
 
-        // Already initialized for this user AND data isn't stale
-        if (
-          state.isInitialized &&
-          state.user?.profileId === user.profileId &&
-          Date.now() - state.lastSyncAt < STALE_THRESHOLD_MS
-        ) {
+        // Already loaded for this user: show it at once. An older copy (over 5 min,
+        // e.g. back from Settings or a hidden tab) is refreshed in the background
+        // instead of hiding every screen behind a loading skeleton.
+        if (state.isInitialized && state.user?.profileId === user.profileId) {
           startBackgroundSync(get().refresh);
+          if (Date.now() - state.lastSyncAt >= STALE_THRESHOLD_MS) void get().refresh(true);
           return;
         }
 
@@ -366,7 +365,15 @@ export const useAppStore = create<AppStore>()(
  */
 export async function logoutAndClear(logout: () => Promise<unknown>) {
   useAppStore.getState().reset();
-  await logout(); // throws on failure → caller re-enables the button
+  // Sign out through POST /api/auth/logout: a plain request that never waits
+  // behind another server action and whose cookie clearing can't be undone by
+  // a session refresh. The server action `logout` is only the fallback.
+  let ok = false;
+  try {
+    const res = await fetch("/api/auth/logout", { method: "POST", credentials: "include", signal: AbortSignal.timeout(10_000) });
+    ok = res.ok;
+  } catch {}
+  if (!ok) await logout(); // throws on failure → caller re-enables the button
   broadcastSessionEvent("logout");
   // Replace (not push) so Back/swipe cannot return to the signed-in screens
   hardNavigate("/login");

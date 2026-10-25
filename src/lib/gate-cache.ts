@@ -87,6 +87,15 @@ export function prefetchGateData<T>(key: string, fetcher: () => Promise<T>, topi
   loadGateData(key, fetcher, topics).catch(() => {});
 }
 
+/**
+ * Data the page already has (server-rendered at `loadedAt`): kept under `key`
+ * unless a copy is there. Shown at once; fetched again when no longer fresh
+ * (a page pre-loaded minutes ago is refreshed quietly on open).
+ */
+export function seedGateData(key: string, data: unknown, loadedAt: number, topics: string[] = []) {
+  if (!store.has(key)) store.set(key, { data, at: Math.min(loadedAt, Date.now()), topics });
+}
+
 /** Forget cached data whose key starts with `prefix` (after this screen changed it). */
 export function forgetGateData(prefix: string) {
   for (const key of [...store.keys()]) if (key.startsWith(prefix)) store.delete(key);

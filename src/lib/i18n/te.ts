@@ -1069,6 +1069,19 @@ export const te: Record<string, string> = {
   "Other (type the reason)": "ఇతర (కారణం టైప్ చేయండి)",
   "Type the reason": "కారణం టైప్ చేయండి",
 
+  // Record details (registers, faculty / outing passes)
+  "No other details were filled in.": "ఇతర వివరాలు నింపలేదు.",
+  "Hide empty fields": "ఖాళీ వివరాలు దాచండి",
+  "Show {n} empty fields": "{n} ఖాళీ వివరాలు చూపండి",
+  Details: "వివరాలు",
+  "Not back yet": "ఇంకా తిరిగి రాలేదు",
+  "Not out yet": "ఇంకా బయటికి వెళ్లలేదు",
+  Completed: "పూర్తయింది",
+  Back: "తిరిగి వచ్చారు",
+  Planned: "అనుకున్న సమయం",
+  Outing: "బయటకు వెళ్ళడం",
+  "Parent / guardian": "తల్లిదండ్రులు / సంరక్షకులు",
+
   // Late return on the same pass (allowed; marked delayed)
   "Delayed return — {time} late": "ఆలస్యంగా తిరిగి వచ్చారు — {time} ఆలస్యం",
   "Was due back {date}": "తిరిగి రావాల్సిన సమయం {date}",

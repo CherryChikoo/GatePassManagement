@@ -1,5 +1,6 @@
 "use client";
 
+import { callGate } from "@/lib/gate-call";
 import { ThemedSelect } from "@/components/ui/themed-select";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -98,7 +99,7 @@ export function RegisterManager({ base }: { base: string }) {
 
   const load = useCallback(async () => {
     try {
-      setRows(await listCustomRegisters());
+      setRows((await callGate("listCustomRegisters", [], 15_000)) as Row[]);
       setError(null);
     } catch (err) {
       setError(actionErrorMessage(err, t("Could not load the registers.")));

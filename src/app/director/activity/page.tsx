@@ -1,10 +1,7 @@
 import { requireRole } from "@/lib/auth/helpers";
-import { loadCampusActivity } from "@/lib/activity/campus-activity";
 import { DirectorActivityClient } from "./client";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
+/** The day's activity loads in the browser (ExecutiveActivityClient), so this page opens at once. */
 export default async function DirectorActivityPage({
   searchParams,
 }: {
@@ -12,7 +9,6 @@ export default async function DirectorActivityPage({
 }) {
   const { date } = await searchParams;
   const user = await requireRole("DIRECTOR");
-  const activity = await loadCampusActivity(date);
 
-  return <DirectorActivityClient user={user} {...activity} />;
+  return <DirectorActivityClient user={user} initialDate={date} />;
 }

@@ -6,10 +6,11 @@ import { Modal } from "@/components/ui/primitives";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
-import { cn, withTimeout } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useLiveTopics } from "@/lib/realtime/live";
 import { istDateString } from "@/lib/time/ist";
-import { getAttendanceMonth, markAllPresent, saveAttendanceRemark, setAttendanceMark, setStaffRank } from "@/server/actions/attendance";
+import { markAllPresent, saveAttendanceRemark, setAttendanceMark, setStaffRank } from "@/server/actions/attendance";
+import { callGate } from "@/lib/gate-call";
 import { formatInstant } from "./format";
 
 type Cell = { mark: string | null; by: string; at: string };
@@ -75,7 +76,7 @@ export function AttendanceSheetView() {
       setError(null);
     }
     try {
-      const res: any = await withTimeout(getAttendanceMonth(month));
+      const res: any = await callGate("getAttendanceMonth", [month], 15_000);
       if (res?.error) {
         if (!silent) setError(res.error);
       } else setData(res);

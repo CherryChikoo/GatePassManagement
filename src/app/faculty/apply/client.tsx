@@ -225,9 +225,10 @@ export function FacultyApplyClient() {
     return () => clearInterval(interval);
   }, []);
 
-  // Ensure fresh pass data on mount
+  // Fresh pass data on open: a light refresh, skipped if one ran in the last 30 s
+  // (live pings bring approvals and gate scans in between)
   useEffect(() => {
-    useAppStore.getState().refresh(true);
+    useAppStore.getState().refresh();
   }, []);
 
   // Faculty Book (Form 1) request fields

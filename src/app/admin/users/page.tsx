@@ -28,6 +28,7 @@ export default async function AdminUsersPage({
       gates={gates}
       currentPage={page}
       currentRole={roleFilter}
+      loadedAt={Date.now()}
     />
   );
 }

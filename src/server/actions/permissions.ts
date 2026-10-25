@@ -125,6 +125,10 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
   if (!student) {
     return { error: "Student record not found. Contact admin." };
   }
+  // Hostellers come back on their outing pass's QR — no entry request
+  if (type === "ENTRY" && student.studentType === "HOSTELLER") {
+    return { error: "Hostellers don't need an entry request. Show your outing pass QR at the gate when you come back." };
+  }
 
   // Approver is decided by the server, never by the client.
   const resolution = await resolveStudentApprover(student);

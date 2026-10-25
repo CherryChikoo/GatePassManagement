@@ -6,10 +6,17 @@ import { prisma } from "@/lib/db/prisma";
  * "Managing Director" (their designation set by the admin). Falls back to
  * "Dean" / "Director".
  */
+const leadershipTitleCache = new Map<string, { title: string; expiresAt: number }>();
+
 export const getLeadershipTitle = cache(async (profileId: string, role: "DEAN" | "DIRECTOR"): Promise<string> => {
+  // Changes only when the admin edits the designation: a minute per instance, not a query per page
+  const hit = leadershipTitleCache.get(profileId);
+  if (hit && hit.expiresAt > Date.now()) return hit.title;
   const faculty = await prisma.faculty.findUnique({ where: { profileId }, select: { designation: true } });
-  const title = faculty?.designation?.trim();
-  return title || (role === "DEAN" ? "Dean" : "Director");
+  const title = faculty?.designation?.trim() || (role === "DEAN" ? "Dean" : "Director");
+  if (leadershipTitleCache.size > 500) leadershipTitleCache.clear();
+  leadershipTitleCache.set(profileId, { title, expiresAt: Date.now() + 60_000 });
+  return title;
 });
 
 /** "Placements" → "Dean of Placements" (no double prefix if the admin typed it). */

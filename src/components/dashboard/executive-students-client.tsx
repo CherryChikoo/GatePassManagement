@@ -8,8 +8,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal, Badge, EmptyState, StatCard } from "@/components/ui/primitives";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
-import { getExecutiveStudents } from "@/server/actions/executive";
-import { actionErrorMessage } from "@/lib/deployment";
+import type { getExecutiveStudents } from "@/server/actions/executive";
+import { callGate } from "@/lib/gate-call";
+import { useGateData } from "@/lib/gate-cache";
 import { DEPARTMENTS, getDepartmentCode, getDepartmentFullName } from "@/lib/constants";
 import {
   GraduationCap,
@@ -47,37 +48,31 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
     return () => clearTimeout(t);
   }, [search]);
 
-  // One page at a time from the server (search and filters run in the database)
+  // One page at a time from the server (search and filters run in the database),
+  // through the gate cache: a page seen before shows at once (refetched quietly
+  // when older than 15 s), and requests run side by side instead of queuing
   type DirectoryPage = Awaited<ReturnType<typeof getExecutiveStudents>>;
-  const [data, setData] = useState<DirectoryPage | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const params = {
+    page: currentPage,
+    pageSize,
+    q: debouncedSearch,
+    department: selectedDept,
+    year: selectedYear,
+    studentType: selectedType,
+  };
+  const dir = useGateData<DirectoryPage>(
+    `exec-students|${JSON.stringify(params)}`,
+    () => callGate("getExecutiveStudents", [params], 15_000),
+    []
+  );
+  // The last page shown stays on screen while the next one loads
+  const [shown, setShown] = useState<DirectoryPage | null>(null);
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    getExecutiveStudents({
-      page: currentPage,
-      pageSize,
-      q: debouncedSearch,
-      department: selectedDept,
-      year: selectedYear,
-      studentType: selectedType,
-    })
-      .then((res) => {
-        if (cancelled) return;
-        setData(res);
-        setLoadError(null);
-      })
-      .catch((err) => {
-        if (!cancelled) setLoadError(actionErrorMessage(err, "Could not load students."));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [currentPage, debouncedSearch, selectedDept, selectedYear, selectedType]);
+    if (dir.data) setShown(dir.data);
+  }, [dir.data]);
+  const data = dir.data ?? shown;
+  const loading = dir.loading || dir.refreshing;
+  const loadError = data ? null : dir.error;
 
   const paginatedStudents: any[] = data?.rows ?? [];
   const total = data?.total ?? 0;

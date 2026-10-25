@@ -91,6 +91,15 @@ function isPublicPath(pathname: string): boolean {
 
 export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+  // Signing out: no session check or refresh here — a refreshed login cookie on
+  // this response would undo the sign-out (the route clears the cookies itself)
+  if (pathname === "/api/auth/logout") {
+    const headers = new Headers(request.headers);
+    headers.delete(USER_ID_HEADER);
+    headers.delete(USER_EMAIL_HEADER);
+    return NextResponse.next({ request: { headers } });
+  }
+
   const isPublic = isPublicPath(pathname);
 
   const authCookieKey = request.cookies

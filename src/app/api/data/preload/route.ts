@@ -1,5 +1,5 @@
 import { generateLiveQrToken } from "@/server/actions/permissions";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getAuthUser } from "@/lib/auth/helpers";
 import { prisma } from "@/lib/db/prisma";
 import { getDepartmentVariants } from "@/lib/constants";
@@ -31,16 +31,19 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: NO_STORE });
     }
 
-    // Proactively clean up any expired passes (time limit ended or previous days).
-    // Not for Security: the scan re-checks every pass, and the gate screens stay light.
-    if (user.role !== "SECURITY") await autoExpireOutdatedPermissions();
+    // Clean up expired passes (time limit ended or previous days) after the answer
+    // is sent, so it never delays loading: every screen and the scan already
+    // check expiry themselves. Not for Security (the scan re-checks every pass).
+    if (user.role !== "SECURITY") {
+      after(() => autoExpireOutdatedPermissions().then(() => undefined));
+    }
 
     const loaders: Record<string, () => Promise<unknown>> = {
-      FACULTY: async () => ({
-        ...(await preloadFaculty(user.profileId, light)),
-        // Who this faculty member can send their own pass to (HOD / Dean / Both)
-        approverOptions: await getFacultyApproverOptions(user),
-      }),
+      FACULTY: async () => {
+        // Who this faculty member can send their own pass to (HOD / Dean / Both), alongside
+        const [data, approverOptions] = await Promise.all([preloadFaculty(user.profileId, light), getFacultyApproverOptions(user)]);
+        return { ...data, approverOptions };
+      },
       WARDEN: () => preloadWarden(user.profileId, light),
       STUDENT: () => preloadStudent(user.profileId),
       SECURITY: () => preloadSecurity(),

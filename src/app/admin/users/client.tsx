@@ -20,6 +20,11 @@ import {
   updateUserDetails,
 } from "@/server/actions/admin";
 import { useAppStore } from "@/stores/app-store";
+import { callGate } from "@/lib/gate-call";
+import { forgetGateData, seedGateData, useGateData } from "@/lib/gate-cache";
+
+const USERS_PAGE_SIZE = 15;
+const usersKey = (role: string, page: number) => `users|${role}|${page}`;
 import { AccountSyncPanel } from "./account-sync-panel";
 import { Search,
   UserPlus,
@@ -61,6 +66,8 @@ interface Props {
   gates: any[];
   currentPage: number;
   currentRole: string;
+  /** When the server read initialUsers (the page may have been pre-loaded earlier) */
+  loadedAt: number;
 }
 
 export function UserManagementClient({
@@ -71,20 +78,37 @@ export function UserManagementClient({
   gates,
   currentPage,
   currentRole,
+  loadedAt,
 }: Props) {
   const router = useRouter();
   const [usersData, setUsersData] = useState(initialUsers);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isNavigatingRole, startRoleTransition] = useTransition();
   const [pendingRole, setPendingRole] = useState<string | null>(null);
+  // Role tab and page switch in place (no page load): a list seen before shows
+  // at once from the browser cache and is fetched again only when older than 15 s
+  const [role, setRole] = useState(currentRole);
+  const [page, setPage] = useState(currentPage);
+  useState(() => {
+    seedGateData(usersKey(currentRole, currentPage), initialUsers, loadedAt);
+    return 0;
+  });
+  const list = useGateData<any>(
+    usersKey(role, page),
+    () => callGate("getUsers", [page, USERS_PAGE_SIZE, role === "ALL" ? undefined : role], 15_000),
+    []
+  );
+  useEffect(() => {
+    if (!list.data) return;
+    setUsersData(list.data);
+    setPendingRole(null);
+  }, [list.data]);
+  /** After a change here: the lists are fetched again (all roles, all pages) */
+  const refreshList = () => {
+    forgetGateData("users|");
+    void list.reload();
+  };
   const [detailsCache, setDetailsCache] = useState<Record<string, any>>({});
   
-  // Sync state if props change from server
-  useEffect(() => {
-    // eslint-disable-next-line
-    setUsersData(initialUsers);
-    setPendingRole(null);
-  }, [initialUsers]);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedRole, setSelectedRole] = useState("STUDENT");
@@ -231,7 +255,7 @@ export function UserManagementClient({
 
       setSuccess("User details updated successfully!");
       setEditingUser(null);
-      router.refresh();
+      refreshList();
     } catch (err: any) {
       setEditError(actionErrorMessage(err, "Failed to update user"));
     } finally {
@@ -239,15 +263,18 @@ export function UserManagementClient({
     }
   }
 
-  function handleRoleFilter(role: string) {
-    setPendingRole(role);
-    startRoleTransition(() => {
-      if (role === "ALL") {
-        router.push(`/admin/users?page=1`, { scroll: false });
-      } else {
-        router.push(`/admin/users?role=${role}&page=1`, { scroll: false });
-      }
-    });
+  function handleRoleFilter(next: string) {
+    if (next === role) return;
+    setPendingRole(next);
+    setRole(next);
+    setPage(1);
+    // Kept in the address, so a reload (or Back from a user's page) shows the same tab
+    window.history.replaceState(null, "", next === "ALL" ? "/admin/users?page=1" : `/admin/users?role=${next}&page=1`);
+  }
+
+  function handlePageChange(next: number) {
+    setPage(next);
+    window.history.replaceState(null, "", `/admin/users?page=${next}${role !== "ALL" ? `&role=${role}` : ""}`);
   }
 
   async function handleCreateUser(formData: FormData) {
@@ -260,6 +287,8 @@ export function UserManagementClient({
       setSuccess("User created successfully!");
       setShowCreateModal(false);
       setCreateDept("CSE");
+      refreshList();
+      // The faculty / warden pickers in the forms come with the page
       router.refresh();
     }
     setLoading(false);
@@ -296,7 +325,7 @@ export function UserManagementClient({
     setToggling(null);
     if (ok) {
       useAppStore.getState().refresh(true, true);
-      router.refresh();
+      refreshList();
     }
     return ok;
   }
@@ -330,7 +359,7 @@ export function UserManagementClient({
       setUserToDelete(null);
       setSuccess("User deleted.");
       useAppStore.getState().refresh(true, true);
-      router.refresh();
+      refreshList();
     } catch (err) {
       setDeleteError(actionErrorMessage(err, "Failed to delete the user. Please try again."));
     }
@@ -631,7 +660,7 @@ export function UserManagementClient({
               User Management
             </h1>
             <p className="mt-1 text-sm text-zinc-500">
-              {initialUsers.total} registered users
+              {usersData.total} registered users
             </p>
           </div>
           <Button onClick={() => setShowCreateModal(true)} className="w-full sm:w-auto">
@@ -668,18 +697,17 @@ export function UserManagementClient({
             role="tablist"
             aria-label="Filter users by role"
           >
-            {ROLES.map((role) => {
-              const isPending = isNavigatingRole && pendingRole === role;
+            {ROLES.map((tabRole) => {
+              const isPending = pendingRole === tabRole && list.loading;
               return (
                 <button
-                  key={role}
+                  key={tabRole}
                   type="button"
                   role="tab"
-                  aria-selected={currentRole === role}
-                  disabled={isPending}
-                  onClick={() => handleRoleFilter(role)}
-                  className={`inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-2 sm:py-1.5 rounded-full transition-colors whitespace-nowrap capitalize disabled:cursor-wait ${
-                    currentRole === role
+                  aria-selected={role === tabRole}
+                  onClick={() => handleRoleFilter(tabRole)}
+                  className={`inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-2 sm:py-1.5 rounded-full transition-colors whitespace-nowrap capitalize ${
+                    role === tabRole && !isPending
                       ? "bg-zinc-900 text-zinc-100 shadow-card"
                       : isPending
                         ? "text-orange-400"
@@ -687,7 +715,7 @@ export function UserManagementClient({
                   }`}
                 >
                   {isPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                  {role === "FACULTY" ? "Faculty" : role === "FACULTY_ADMIN" ? "HOD" : role === "SECURITY" ? "Security" : role === "SECURITY_SUPERVISOR" ? "Security Supervisors" : role === "DIRECTOR" ? "Director" : role === "DEAN" ? "Dean" : `${role.toLowerCase()}s`}
+                  {tabRole === "FACULTY" ? "Faculty" : tabRole === "FACULTY_ADMIN" ? "HOD" : tabRole === "SECURITY" ? "Security" : tabRole === "SECURITY_SUPERVISOR" ? "Security Supervisors" : tabRole === "DIRECTOR" ? "Director" : tabRole === "DEAN" ? "Dean" : `${tabRole.toLowerCase()}s`}
                 </button>
               );
             })}
@@ -914,10 +942,10 @@ export function UserManagementClient({
 
         {/* Pagination (docked at the bottom of the screen) */}
         <PagerBar
-          page={currentPage}
-          pageSize={15}
+          page={page}
+          pageSize={USERS_PAGE_SIZE}
           total={usersData.total}
-          hrefForPage={(p) => `/admin/users?page=${p}${currentRole !== "ALL" ? `&role=${currentRole}` : ""}`}
+          onPageChange={handlePageChange}
           itemLabel="users"
         />
       </div>

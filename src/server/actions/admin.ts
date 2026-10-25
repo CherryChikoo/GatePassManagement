@@ -1266,7 +1266,6 @@ export async function getActivityData(dateString?: string) {
   const [
     entriesToday,
     exitsToday,
-    totalMovements,
     recentEntries,
     recentExits,
     outsidersCount,
@@ -1286,7 +1285,6 @@ export async function getActivityData(dateString?: string) {
         createdAt: { gte: today, lt: endOfDay },
       },
     }),
-    prisma.movement.count(),
     prisma.movement.findMany({
       where: { type: "ENTRY", createdAt: { gte: today, lt: endOfDay } },
       take: 60,
@@ -1335,6 +1333,7 @@ export async function getActivityData(dateString?: string) {
     prisma.outsider.findMany({
       where: { entryTime: { gte: today, lt: endOfDay } },
       orderBy: { entryTime: "desc" },
+      take: 500,
       // Meeting a faculty / staff member (the code itself is never sent)
       include: { visitPass: { select: { hostName: true, status: true, attempts: true } } },
     })
@@ -1409,7 +1408,6 @@ export async function getActivityData(dateString?: string) {
       exitsToday,
       entryRequestsToday: entryPermissions.length,
       exitRequestsToday: exitPermissions.length,
-      totalMovements,
       outsidersOnCampus: outsidersCount,
     },
     recentEntries: mergedEntries, 

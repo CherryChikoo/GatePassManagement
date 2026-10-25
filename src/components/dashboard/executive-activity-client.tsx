@@ -1,7 +1,8 @@
 "use client";
 import { PassFullDetails } from "@/components/passes/pass-full-details";
 import { DateField } from "@/components/ui/date-field";
-import { usePendingNavigation } from "@/hooks/use-pending-navigation";
+import { callGate } from "@/lib/gate-call";
+import { useGateData } from "@/lib/gate-cache";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { istDateString } from "@/lib/time/ist";
 import { scheduledNote } from "@/lib/pass-dates";
@@ -40,25 +41,25 @@ type SubTab = "ALL" | "PENDING" | "ENTRIES" | "EXITS";
 interface ExecutiveActivityClientProps {
   role: OversightRole;
   user: any;
-  permissions?: any[]; // student permissions
-  facultyPermissions?: any[]; // faculty permissions
-  facultyMovements?: any[]; // standalone faculty movements
-  studentMovements?: any[]; // standalone student movements
-  selectedDate: string;
+  /** Day from the address (?date=), else today */
+  initialDate?: string;
 }
 
-export function ExecutiveActivityClient({
-  role,
-  user,
-  permissions = [],
-  facultyPermissions = [],
-  facultyMovements = [],
-  studentMovements = [],
-  selectedDate,
-}: ExecutiveActivityClientProps) {
+const NO_ROWS: any[] = [];
+
+export function ExecutiveActivityClient({ role, user, initialDate }: ExecutiveActivityClientProps) {
   const router = useRouter();
-  // Date / tab changes reload the list from the server: show progress meanwhile
-  const { push: navigate, isPending: navigating } = usePendingNavigation();
+  // The page opens at once; the chosen day's activity loads here (cached per
+  // day: a day seen before shows at once, refreshed quietly when older than 15 s)
+  const [selectedDate, setSelectedDate] = useState(() =>
+    initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? initialDate : istDateString()
+  );
+  const day = useGateData<any>(`campus-activity|${selectedDate}`, () => callGate("getCampusActivity", [selectedDate], 20_000), ["gate"]);
+  const permissions: any[] = day.data?.permissions ?? NO_ROWS; // student permissions
+  const facultyPermissions: any[] = day.data?.facultyPermissions ?? NO_ROWS;
+  const facultyMovements: any[] = day.data?.facultyMovements ?? NO_ROWS; // standalone faculty movements
+  const studentMovements: any[] = day.data?.studentMovements ?? NO_ROWS; // standalone student movements
+  const navigating = day.loading || day.refreshing;
   const [selectedPermission, setSelectedPermission] = useState<any>(null);
   const [selectedMovement, setSelectedMovement] = useState<any>(null);
   const [search, setSearch] = useState("");
@@ -254,7 +255,11 @@ export function ExecutiveActivityClient({
   const { path: rolePath, title: roleTitle, accent: roleAccent } = oversightRoleMeta(role);
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    navigate(`/${rolePath}/activity?date=${e.target.value}`);
+    if (!e.target.value) return;
+    setSelectedDate(e.target.value);
+    setCurrentPage(1);
+    // Kept in the address, so a reload shows the same day
+    window.history.replaceState(null, "", `/${rolePath}/activity?date=${e.target.value}`);
   };
 
   const handleTabChange = (tab: Tab) => {
@@ -432,7 +437,16 @@ export function ExecutiveActivityClient({
           </div>
 
           {/* Activity List */}
-          {paginatedItems.length === 0 ? (
+          {day.error ? (
+            <div role="alert" className="flex flex-col items-center gap-3 py-14 px-4 text-center">
+              <p className="text-sm font-medium text-red-400">{day.error}</p>
+              <Button variant="outline" className="h-11" onClick={() => void day.reload()}>
+                Try again
+              </Button>
+            </div>
+          ) : day.loading ? (
+            <p className="py-14 px-4 text-center text-sm text-zinc-500">Loading the day&apos;s activity…</p>
+          ) : paginatedItems.length === 0 ? (
             <div className="flex flex-col items-center text-center py-14 px-4">
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 text-zinc-500">
                 <History className="h-5 w-5" />

@@ -1,10 +1,7 @@
 import { requireRole } from "@/lib/auth/helpers";
-import { loadCampusActivity } from "@/lib/activity/campus-activity";
 import { ExecutiveActivityClient } from "@/components/dashboard/executive-activity-client";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
+/** The day's activity loads in the browser (ExecutiveActivityClient), so this page opens at once. */
 export default async function SupervisorActivityPage({
   searchParams,
 }: {
@@ -12,7 +9,6 @@ export default async function SupervisorActivityPage({
 }) {
   const { date } = await searchParams;
   const user = await requireRole("SECURITY_SUPERVISOR");
-  const activity = await loadCampusActivity(date);
 
-  return <ExecutiveActivityClient role="SECURITY_SUPERVISOR" user={user} {...activity} />;
+  return <ExecutiveActivityClient role="SECURITY_SUPERVISOR" user={user} initialDate={date} />;
 }

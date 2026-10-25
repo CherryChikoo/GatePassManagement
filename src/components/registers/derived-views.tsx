@@ -25,6 +25,7 @@ import { formatTime } from "@/lib/utils";
 import { RegisterToolbar, useRegisterFilters } from "./toolbar";
 import { useGateData } from "@/lib/gate-cache";
 import { formatDelay } from "@/lib/passes/return-scan";
+import { FactList, InOutCard, RecordHeader } from "./record-layout";
 import { callGate } from "@/lib/gate-call";
 
 type Move = { at: string; gate: string | null; guard: string | null; guardEmployeeId: string | null } | null;
@@ -272,45 +273,59 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title={t("Faculty pass")} className="max-w-xl">
         {selected && (
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
-            {[
-              ["Faculty Name", selected.facultyName],
-              ["Employee ID", selected.employeeId],
-              ["Designation", selected.designation],
-              ["Department", selected.department],
-              ["Request Type", t(selected.requestType)],
-              ["Number of Days", selected.numberOfDays ?? "—"],
-              ["Start Date", formatDay(selected.startDate)],
-              ["End Date", formatDay(selected.endDate)],
-              ["Request Date", formatInstant(selected.requestDate)],
-              ["Approved", `${formatInstant(selected.approvedAt)} • ${selected.approvedBy}`],
-              ["Reason", selected.reason],
-              ["Note", selected.note],
-            ].map(([k, v]) => (
-              <div key={k as string} className="min-w-0">
-                <dt className={dtLabel}>{t(k as string)}</dt>
-                <dd className="mt-0.5 text-zinc-200 break-words">{(v as any) || "—"}</dd>
-              </div>
-            ))}
-            <div>
-              <dt className={dtLabel}>{t("Actual Out-Time")}</dt>
-              <dd className="mt-0.5 text-zinc-200"><MoveCell m={selected.actualOut} /></dd>
-            </div>
-            <div>
-              <dt className={dtLabel}>{t("Actual In-Time")}</dt>
-              <dd className="mt-0.5 text-zinc-200"><MoveCell m={selected.actualIn} /></dd>
-              <DelayBadge delay={selected.delay} className="mt-1" />
-            </div>
+          <div className="space-y-5">
+            <RecordHeader
+              title={selected.facultyName || "—"}
+              subtitle={[selected.employeeId, selected.designation, selected.department].filter(Boolean).join(" · ") || null}
+              status={<StatusBadge status={selected.status} />}
+            />
+            {/* The trip: out at the gate, back in */}
+            <InOutCard
+              sides={[
+                {
+                  label: t("Out"),
+                  time: selected.actualOut ? formatInstant(selected.actualOut.at) : null,
+                  detail: selected.actualOut?.gate || selected.actualOut?.guard ? [selected.actualOut.gate, selected.actualOut.guard].filter(Boolean).join(" • ") : null,
+                  pending: t("Not out yet"),
+                  direction: "OUT",
+                },
+                {
+                  label: t("In"),
+                  time: selected.actualIn ? formatInstant(selected.actualIn.at) : null,
+                  detail: selected.actualIn?.gate || selected.actualIn?.guard ? [selected.actualIn.gate, selected.actualIn.guard].filter(Boolean).join(" • ") : null,
+                  pending: selected.actualOut ? t("Not back yet") : "—",
+                  direction: "IN",
+                },
+              ]}
+              footer={selected.delay ? <DelayBadge delay={selected.delay} /> : undefined}
+            />
+            <FactList
+              title={t("Pass")}
+              facts={[
+                { label: t("Request Type"), value: t(selected.requestType) },
+                {
+                  label: t("Dates"),
+                  value:
+                    formatDay(selected.endDate) !== formatDay(selected.startDate)
+                      ? `${formatDay(selected.startDate)} – ${formatDay(selected.endDate)}`
+                      : formatDay(selected.startDate),
+                },
+                { label: t("Number of Days"), value: selected.numberOfDays ?? null },
+                { label: t("Approved"), value: selected.approvedAt ? `${formatInstant(selected.approvedAt)} • ${selected.approvedBy}` : null },
+                { label: t("Request Date"), value: formatInstant(selected.requestDate) },
+                { label: t("Reason"), value: selected.reason, wide: true },
+                { label: t("Note"), value: selected.note, wide: true },
+              ]}
+            />
             <GatePhotos permissionId={selected.id} />
-            <div className="sm:col-span-2 flex flex-col sm:flex-row sm:items-center gap-3 border-t border-zinc-800 pt-4">
-              <StatusBadge status={selected.status} />
-              {canMarkIn && selected.canMarkIn && (
-                <button onClick={() => markIn(selected.id)} disabled={busy} className={cn(markInBtnCls, "h-14 sm:h-11 w-full sm:w-auto px-6 text-base sm:text-sm sm:ml-auto")}>
+            {canMarkIn && selected.canMarkIn && (
+              <div className="border-t border-zinc-800 pt-4">
+                <button onClick={() => markIn(selected.id)} disabled={busy} className={cn(markInBtnCls, "h-14 sm:h-11 w-full sm:w-auto px-6 text-base sm:text-sm")}>
                   <LogIn className="h-5 w-5 sm:h-4 sm:w-4" /> {t("Mark In now")}
                 </button>
-              )}
-            </div>
-          </dl>
+              </div>
+            )}
+          </div>
         )}
       </Modal>
     </div>
@@ -784,45 +799,67 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title={t("Outing pass")} className="max-w-xl">
         {selected && (
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
-            {[
-              ["Name", selected.studentName],
-              ["Roll Number", selected.roll],
-              ["Branch", selected.branch],
-              ["Year & Semester", [selected.year && `${t("Year")} ${selected.year}`, selected.semester && `${t("Sem")} ${selected.semester}`].filter(Boolean).join(" • ")],
-              ["Room", [selected.room, selected.hostelBlock && `${t("Block")} ${selected.hostelBlock}`].filter(Boolean).join(" • ")],
-              ["Mobile", selected.mobile],
-              ["Purpose", selected.purpose],
-              ["Destination", selected.destination],
-              ["Outing Date From", formatDay(selected.requestedFrom)],
-              ["Outing Date To", formatDay(selected.requestedTo)],
-              ["Planned Out", formatInstant(selected.plannedOut)],
-              ["Planned In", formatInstant(selected.plannedIn)],
-              ["Informed to Parent / Guardian", selected.parentInformed === true ? t("Yes") : selected.parentInformed === false ? t("No") : "—"],
-              ["Video Call Made to", selected.videoCallNumber],
-              ["Parent / Guardian", selected.guardianName],
-              ["Relation with Student", selected.guardianRelation],
-              ["Hostel In-charge", selected.hostelInchargeDetails],
-              ["Warden", selected.wardenDetails],
-              ["Remarks", selected.remarks],
-            ].map(([k, v]) => (
-              <div key={k as string} className="min-w-0">
-                <dt className={dtLabel}>{t(k as string)}</dt>
-                <dd className="mt-0.5 text-zinc-200 break-words">{(v as any) || "—"}</dd>
-              </div>
-            ))}
-            <div>
-              <dt className={dtLabel}>{t("Actual Out")}</dt>
-              <dd className="mt-0.5 text-zinc-200"><MoveCell m={selected.actualOut} /></dd>
-            </div>
-            <div>
-              <dt className={dtLabel}>{t("Actual Return")}</dt>
-              <dd className="mt-0.5 text-zinc-200"><MoveCell m={selected.actualReturn} /></dd>
-              <DelayBadge delay={selected.delay} className="mt-1" />
-            </div>
+          <div className="space-y-5">
+            <RecordHeader
+              title={selected.studentName || "—"}
+              subtitle={[
+                selected.roll,
+                selected.branch,
+                selected.room && `${t("Room")} ${selected.room}${selected.hostelBlock ? ` • ${t("Block")} ${selected.hostelBlock}` : ""}`,
+              ]
+                .filter(Boolean)
+                .join(" · ") || null}
+              status={<StatusBadge status={selected.status} />}
+            />
+            {/* The trip: planned times under the actual ones */}
+            <InOutCard
+              sides={[
+                {
+                  label: t("Out"),
+                  time: selected.actualOut ? formatInstant(selected.actualOut.at) : null,
+                  detail: [selected.actualOut?.gate || selected.actualOut?.guard ? [selected.actualOut.gate, selected.actualOut.guard].filter(Boolean).join(" • ") : null, selected.plannedOut ? `${t("Planned")}: ${formatInstant(selected.plannedOut)}` : null].filter(Boolean).join(" · ") || null,
+                  pending: t("Not out yet"),
+                  direction: "OUT",
+                },
+                {
+                  label: t("Back"),
+                  time: selected.actualReturn ? formatInstant(selected.actualReturn.at) : null,
+                  detail: [selected.actualReturn?.gate || selected.actualReturn?.guard ? [selected.actualReturn.gate, selected.actualReturn.guard].filter(Boolean).join(" • ") : null, selected.plannedIn ? `${t("Planned")}: ${formatInstant(selected.plannedIn)}` : null].filter(Boolean).join(" · ") || null,
+                  pending: selected.actualOut ? t("Not back yet") : "—",
+                  direction: "IN",
+                },
+              ]}
+              footer={selected.delay ? <DelayBadge delay={selected.delay} /> : undefined}
+            />
+            <FactList
+              title={t("Outing")}
+              facts={[
+                { label: t("Purpose"), value: selected.purpose, wide: true },
+                { label: t("Destination"), value: selected.destination },
+                {
+                  label: t("Dates"),
+                  value:
+                    formatDay(selected.requestedTo) !== formatDay(selected.requestedFrom)
+                      ? `${formatDay(selected.requestedFrom)} – ${formatDay(selected.requestedTo)}`
+                      : formatDay(selected.requestedFrom),
+                },
+                { label: t("Mobile"), value: selected.mobile },
+                { label: t("Year & Semester"), value: [selected.year && `${t("Year")} ${selected.year}`, selected.semester && `${t("Sem")} ${selected.semester}`].filter(Boolean).join(" • ") || null },
+              ]}
+            />
+            <FactList
+              title={t("Parent / guardian")}
+              facts={[
+                { label: t("Informed to Parent / Guardian"), value: selected.parentInformed === true ? t("Yes") : selected.parentInformed === false ? t("No") : null },
+                { label: t("Parent / Guardian"), value: [selected.guardianName, selected.guardianRelation && `(${selected.guardianRelation})`].filter(Boolean).join(" ") || null },
+                { label: t("Video Call Made to"), value: selected.videoCallNumber },
+                { label: t("Hostel In-charge"), value: selected.hostelInchargeDetails },
+                { label: t("Warden"), value: selected.wardenDetails },
+                { label: t("Remarks"), value: selected.remarks, wide: true },
+              ]}
+            />
             <GatePhotos permissionId={selected.id} />
-            <div className="sm:col-span-2 border-t border-zinc-800 pt-4"><StatusBadge status={selected.status} /></div>
-          </dl>
+          </div>
         )}
       </Modal>
     </div>

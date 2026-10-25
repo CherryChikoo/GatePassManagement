@@ -21,6 +21,7 @@ import { actionErrorMessage } from "@/lib/deployment";
 import { AdminEditForm, CloseRecordForm, MovementForm, RegisterForm, type StaffOption } from "./register-form";
 import { formatFieldValue, formatInstant, newClientToken } from "./format";
 import { displayValue } from "./localize";
+import { FactList, InOutCard, RecordHeader, type Fact, type MoveSide } from "./record-layout";
 import type { Translate } from "@/lib/i18n";
 import { RegisterToolbar, useRegisterFilters } from "./toolbar";
 
@@ -621,42 +622,89 @@ function RegisterPhoto({ path }: { path: unknown }) {
   );
 }
 
+/** A register record, top to bottom: who it is, the In / Out card, then the filled details */
 function ValuesGrid({ def, values }: { def: EntryRegister; values: Record<string, any> }) {
   const t = useT();
   const m = def.movement;
+  const fieldOf = (key?: string) => (key ? def.fields.find((f) => f.key === key) : undefined);
+  const show = (key?: string) => {
+    const f = fieldOf(key);
+    const v = key ? values[key] : undefined;
+    if (!f || v === null || v === undefined || v === "") return null;
+    return displayValue(f, v, t);
+  };
+
+  // 1. Who / what: the list's headline field, and the next two as a short line
+  const headField = fieldOf(def.listFields[0]);
+  const title = headField && headField.type !== "photo" ? show(headField.key) : null;
+  const moveKeys = new Set(
+    m ? [m.in.timeKey, m.out.timeKey, m.in.readingKey, m.out.readingKey, m.directionField, "direction"].filter(Boolean) : []
+  );
+  const subtitle = def.listFields
+    .slice(1)
+    .filter((k) => !moveKeys.has(k) && fieldOf(k)?.type !== "photo")
+    .map((k) => show(k))
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(" · ");
+
+  // 2. In / Out, in the order they happened
+  let sides: MoveSide[] = [];
+  let status: React.ReactNode = null;
+  if (m) {
+    const startDir: "IN" | "OUT" = values.direction === "OUT" ? "OUT" : values.direction === "IN" ? "IN" : m.firstDirections[0] ?? "IN";
+    const sideOf = (dir: "IN" | "OUT") => (dir === "IN" ? m.in : m.out);
+    const reading = (key?: string) => (key && show(key) ? `${fieldOf(key)?.label}: ${show(key)}` : null);
+    if (m.single) {
+      const side = sideOf(startDir);
+      sides = [{ label: side.label, time: show(side.timeKey), detail: reading(side.readingKey), direction: startDir }];
+    } else {
+      const otherDir: "IN" | "OUT" = startDir === "IN" ? "OUT" : "IN";
+      const first = sideOf(startDir);
+      const second = sideOf(otherDir);
+      const firstTime = show(first.timeKey);
+      const secondTime = show(second.timeKey);
+      sides = [
+        { label: first.label, time: firstTime, detail: reading(first.readingKey), direction: startDir },
+        {
+          label: second.label,
+          time: secondTime,
+          detail: reading(second.readingKey),
+          direction: otherDir,
+          pending: firstTime ? (otherDir === "IN" ? t("Not back yet") : t("Still inside")) : undefined,
+        },
+      ];
+      const chip = (text: string, cls: string) => (
+        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}`}>{text}</span>
+      );
+      if (firstTime && secondTime) status = chip(t("Completed"), "bg-emerald-500/10 text-emerald-600");
+      else if (firstTime && values.oneWay !== true)
+        status = startDir === "IN" ? chip(t("Inside"), "bg-amber-500/10 text-amber-600") : chip(t("Out"), "bg-sky-500/10 text-sky-500");
+    }
+  }
+
+  // 3. Everything else (status / remarks sections and the In / Out fields have their own places)
+  const facts: Fact[] = [
+    ...(def.fixed ?? []).filter((x) => !x.note).map((x) => ({ label: x.label, value: x.value })),
+    ...def.fields
+      .filter((f) => !f.updatable && !moveKeys.has(f.key) && f.key !== headField?.key)
+      .map((f) => ({
+        label: f.label,
+        value:
+          f.type === "photo"
+            ? values[f.key]
+              ? <RegisterPhoto path={values[f.key]} />
+              : null
+            : show(f.key),
+        wide: f.type === "textarea" || f.type === "photo",
+      })),
+  ];
+
   return (
-    <div className="space-y-4">
-      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-        {m && !m.single && values.direction && (
-          <div className="min-w-0">
-            <dt className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{t("Started with")}</dt>
-            <dd className="mt-1">
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  values.direction === "IN" ? "bg-emerald-500/10 text-emerald-400" : "bg-sky-500/10 text-sky-400"
-                }`}
-              >
-                {values.direction === "IN" ? m.in.label : m.out.label}
-              </span>
-            </dd>
-          </div>
-        )}
-        {def.fixed?.map((x) => (
-          <div key={x.label} className="min-w-0">
-            <dt className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{x.label}</dt>
-            <dd className="mt-0.5 text-sm text-zinc-200">{x.value}</dd>
-          </div>
-        ))}
-        {/* Status / remarks have their own sections below */}
-        {def.fields.filter((f) => !f.updatable).map((f) => (
-          <div key={f.key} className={`min-w-0 ${f.type === "textarea" || f.type === "photo" ? "sm:col-span-2" : ""}`}>
-            <dt className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{f.label}</dt>
-            <dd className="mt-0.5 text-sm text-zinc-200 break-words">
-              {f.type === "photo" ? <RegisterPhoto path={values[f.key]} /> : displayValue(f, values[f.key], t)}
-            </dd>
-          </div>
-        ))}
-      </dl>
+    <div className="space-y-5">
+      {(title || status) && <RecordHeader title={title ?? def.title} subtitle={subtitle || null} status={status} />}
+      {sides.length > 0 && sides.some((x) => x.time) && <InOutCard sides={sides} />}
+      <FactList facts={facts} title={t("Details")} />
       {(def.groups ?? []).map((g) => {
         const rows = Array.isArray(values[g.key]) ? (values[g.key] as Record<string, any>[]) : [];
         const total = isSirosLabour(def.key) && typeof values.totalWorkers === "number" ? values.totalWorkers : null;
