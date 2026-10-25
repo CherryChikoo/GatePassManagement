@@ -419,8 +419,8 @@ export async function prepareGatePhoto(permissionId: string, imageData: string) 
 export async function registerExit(
   permissionId: string,
   gateId: string,
-  imagePath?: string,
-  notes?: string
+  imagePath?: string | null,
+  notes?: string | null
 ) {
   const user = await requireRole("SECURITY");
 
@@ -432,9 +432,13 @@ export async function registerExit(
   if (typeof permissionId !== "string" || typeof gateId !== "string") {
     return { error: "Invalid request" };
   }
-  if (notes !== undefined && (typeof notes !== "string" || notes.length > 500)) {
+  // No note (left out, null or blank) is fine; a note must be text of at most 500 characters
+  if (notes === null || (typeof notes === "string" && !notes.trim())) notes = undefined;
+  if (notes !== undefined && typeof notes !== "string") return { error: "Invalid note" };
+  if (notes !== undefined && notes.length > 500) {
     return { error: "Notes must be at most 500 characters" };
   }
+  if (imagePath === null) imagePath = undefined;
 
   // Photo: mandatory for student passes, not needed for faculty passes
   const photoResult = await resolveGatePhoto(permissionId, imagePath, "exit");
@@ -537,8 +541,8 @@ export async function registerExit(
 export async function registerEntry(
   permissionId: string,
   gateId: string,
-  imagePath?: string,
-  notes?: string
+  imagePath?: string | null,
+  notes?: string | null
 ) {
   const user = await requireRole("SECURITY");
 
@@ -550,9 +554,13 @@ export async function registerEntry(
   if (typeof permissionId !== "string" || typeof gateId !== "string") {
     return { error: "Invalid request" };
   }
-  if (notes !== undefined && (typeof notes !== "string" || notes.length > 500)) {
+  // No note (left out, null or blank) is fine; a note must be text of at most 500 characters
+  if (notes === null || (typeof notes === "string" && !notes.trim())) notes = undefined;
+  if (notes !== undefined && typeof notes !== "string") return { error: "Invalid note" };
+  if (notes !== undefined && notes.length > 500) {
     return { error: "Notes must be at most 500 characters" };
   }
+  if (imagePath === null) imagePath = undefined;
 
   // Photo: mandatory for student passes, not needed for faculty passes
   const photoResult = await resolveGatePhoto(permissionId, imagePath, "entry");

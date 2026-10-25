@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { decodeGateArgs } from "@/lib/gate-wire";
 import { getAuthUser } from "@/lib/auth/helpers";
 import { verifyQrScan, registerExit, registerEntry, prepareGatePhoto, getSecurityLogData } from "@/server/actions/security";
 import {
@@ -111,7 +112,8 @@ export async function POST(req: Request) {
   const name = typeof body?.fn === "string" ? body.fn : "";
   const fn = Object.prototype.hasOwnProperty.call(GATE_FUNCTIONS, name) ? (GATE_FUNCTIONS as Record<string, (...a: unknown[]) => Promise<unknown>>)[name] : null;
   if (!fn) return NextResponse.json({ error: "Unknown request" }, { status: 400, headers: NO_STORE });
-  const args = Array.isArray(body?.args) ? body.args : [];
+  // Left-out optional arguments arrive as markers (JSON has no undefined): restore them
+  const args = Array.isArray(body?.args) ? decodeGateArgs(body.args) : [];
 
   try {
     const result = await fn(...args);

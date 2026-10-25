@@ -7,6 +7,7 @@ import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
 import { REGISTER_BY_KEY, isEntryRegister, type EntryRegister, type RegisterDef, type RegisterKey } from "@/lib/registers/definitions";
 import { callGate } from "@/lib/gate-call";
+import { invalidateEntryLists } from "./entry-list-cache";
 import type { createRegisterEntry } from "@/server/actions/registers";
 import { RegisterForm, type StaffOption } from "./register-form";
 import { newClientToken } from "./format";
@@ -70,6 +71,8 @@ export function QuickEntryModal({
         setSavedAt(new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" }));
         setToken(newClientToken());
         setFormKey((k) => k + 1); // blank form for the next person
+        // Opening this register next shows the new record (not a cached list)
+        invalidateEntryLists(def.key);
         onSaved?.();
       }
     } catch (err) {

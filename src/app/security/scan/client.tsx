@@ -252,8 +252,10 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
       if (id !== scanIdRef.current) return;
 
       if (result?.error) {
+        // Stay on the pass with the reason above the Register button: the guard
+        // can fix it (photo, gate) and try again without scanning again
         setError(result.error);
-        setState("error");
+        setState("verified");
       } else {
         setSuccess(action === "EXIT" ? t("Exit registered successfully!") : t("Entry registered successfully!"));
         setState("done");
@@ -268,7 +270,8 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
           ? "Taking too long. It may already be saved — scan the pass again to check."
           : err?.message || "Could not register the movement. Check the network connection and try again."
       );
-      setState(err?.name === "TimeoutError" ? "verified" : "error");
+      // Stay on the pass either way: registering again is safe (a duplicate is refused)
+      setState("verified");
     }
   }
 

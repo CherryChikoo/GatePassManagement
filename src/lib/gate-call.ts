@@ -12,6 +12,7 @@
  * too long, and a plain Error when there is no network.
  */
 import type { GateFunctions } from "@/app/api/gate/route";
+import { encodeGateArgs } from "@/lib/gate-wire";
 
 type Fn = keyof GateFunctions;
 type Result<K extends Fn> = Awaited<ReturnType<GateFunctions[K]>>;
@@ -23,7 +24,8 @@ export async function callGate<K extends Fn>(fn: K, args: Parameters<GateFunctio
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fn, args }),
+      // Optional arguments left out stay "left out" on the server (see gate-wire.ts)
+      body: JSON.stringify({ fn, args: encodeGateArgs(args) }),
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err: any) {
