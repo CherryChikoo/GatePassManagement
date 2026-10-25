@@ -403,7 +403,7 @@ export async function generateLiveQrToken(permissionId: string) {
 
   // Faculty / hostellers who are out on this pass: the same QR is shown again for
   // the return scan. Each displayed code lives 2 minutes (the screen refreshes it).
-  if (permission.qr && canScanReturn({ ...permission, studentType: permission.student?.studentType }, permission.movements.length > 0)) {
+  if (permission.qr && canScanReturn(permission, permission.movements.length > 0)) {
     const token = generateCompactLiveQr({
       permissionId: permission.id,
       tokenId: permission.qr.id,

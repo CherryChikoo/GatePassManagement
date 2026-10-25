@@ -655,7 +655,7 @@ async function preloadStudent(profileId: string) {
   const isOutOnPass =
     !!latestPermission &&
     canScanReturn(
-      { ...latestPermission, facultyId: null, studentId: student.id, studentType: student.studentType },
+      { ...latestPermission, facultyId: null, studentId: student.id },
       latestPermission.movements.length > 0
     );
   if (latestPermission && latestPermission.status === "PENDING") {

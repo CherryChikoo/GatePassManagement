@@ -77,7 +77,8 @@ export async function verifyQrScan(token: string) {
       // A hosteller coming back from an outing: their exit pass, used to go out
       const returning = await prisma.permission.findFirst({
         where: {
-          student: { studentRoll: input.toUpperCase(), studentType: "HOSTELLER" },
+          student: { studentRoll: input.toUpperCase() },
+          approverType: "WARDEN",
           status: "EXITED",
           type: { not: "ENTRY" },
           OR: [{ passKind: null }, { passKind: { not: "HOSTEL" } }],
@@ -195,7 +196,7 @@ export async function verifyQrScan(token: string) {
     // Default or EXIT type
     if (permission.status === "APPROVED" && !permission.qr.usedForExit && permission.qr.active) {
       allowedAction = "EXIT";
-    } else if (canScanReturn({ ...permission, studentType: permission.student?.studentType }, permission.movements.length > 0)) {
+    } else if (canScanReturn(permission, permission.movements.length > 0)) {
       // Faculty / hosteller coming back: the same pass QR, scanned a second time
       allowedAction = "ENTRY";
     }
@@ -588,7 +589,7 @@ export async function registerEntry(
         // Same lock as "Mark In", so the two can never both record a return.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"faculty-return:" + permissionId}))`;
         const entries = await tx.movement.count({ where: { permissionId, type: "ENTRY" } });
-        if (!canScanReturn({ ...permission, studentType: permission.student?.studentType }, entries > 0)) {
+        if (!canScanReturn(permission, entries > 0)) {
           throw new Error("Cannot register entry with an EXIT pass. A separate Entry Request is required to enter campus.");
         }
         // (No pass-window check: a late return is still a return, kept on record as delayed)

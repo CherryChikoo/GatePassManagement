@@ -6,16 +6,21 @@ import type { Prisma } from "@prisma/client";
  *
  * Applies to:
  * - faculty exit passes (same result as "Mark In" in the Faculty Book), and
- * - hostellers' exit passes (outings / going home).
+ * - hostellers' outing passes (outings / going home).
  * Day scholars still use a separate Entry pass; hostel passes (college → hostel)
  * are scanned by the warden, not at the gate.
+ *
+ * Which student passes are outings is decided by the PASS, not by what the
+ * student is now: an outing pass is approved by a warden (a day scholar's pass by
+ * the HOD). So changing a student between day scholar and hosteller never turns
+ * an old one-way exit into a pending return, nor drops a real outing's return.
  */
 export function canScanReturn(
   p: {
     facultyId: string | null;
     studentId: string | null;
-    /** The student's type, when the pass belongs to a student */
-    studentType?: string | null;
+    /** Who the pass was routed to: "WARDEN" = a hosteller's outing pass */
+    approverType?: string | null;
     passKind?: string | null;
     type: string;
     status: string;
@@ -32,7 +37,7 @@ export function canScanReturn(
     !hasEntryMovement;
   if (!outOnThisPass) return false;
   if (p.facultyId && !p.studentId) return true;
-  return !!p.studentId && p.studentType === "HOSTELLER";
+  return !!p.studentId && p.approverType === "WARDEN";
 }
 
 /** Lifetime of one displayed return code (the screen refreshes it every 45 s). */
@@ -51,7 +56,8 @@ export const OPEN_TRIP_WHERE: Prisma.PermissionWhereInput = {
   movements: { none: { type: "ENTRY" } },
   AND: [
     { OR: [{ passKind: null }, { passKind: { not: "HOSTEL" } }] },
-    { OR: [{ facultyId: { not: null } }, { student: { studentType: "HOSTELLER" } }] },
+    // Faculty, or a student's outing pass (warden-approved; see canScanReturn)
+    { OR: [{ facultyId: { not: null } }, { studentId: { not: null }, approverType: "WARDEN" }] },
   ],
 };
 

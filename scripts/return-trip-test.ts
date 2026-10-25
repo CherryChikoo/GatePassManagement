@@ -22,13 +22,17 @@ const out = { status: "EXITED", type: "EXIT", passKind: null, qr: { usedForExit:
 
 // ── Who comes back on the same QR ──
 expect("hosteller out on an outing -> return on the same QR",
-  canScanReturn({ ...out, studentId: "s1", facultyId: null, studentType: "HOSTELLER" }, false));
+  canScanReturn({ ...out, studentId: "s1", facultyId: null, approverType: "WARDEN" }, false));
 expect("faculty out on leave -> return on the same QR",
   canScanReturn({ ...out, studentId: null, facultyId: "f1" }, false));
 expect("day scholar -> no return on the exit pass (new Entry request)",
-  !canScanReturn({ ...out, studentId: "s2", facultyId: null, studentType: "DAY_SCHOLAR" }, false));
+  !canScanReturn({ ...out, studentId: "s2", facultyId: null, approverType: "FACULTY_ADMIN" }, false));
+expect("day scholar's pass stays one-way after the student is made a hosteller",
+  !canScanReturn({ ...out, studentId: "s2", facultyId: null, approverType: "FACULTY_ADMIN" }, false));
+expect("an outing still needs its return after the student is made a day scholar",
+  canScanReturn({ ...out, studentId: "s1", facultyId: null, approverType: "WARDEN" }, false));
 expect("hostel pass (college -> hostel) is one-way",
-  !canScanReturn({ ...out, passKind: "HOSTEL", studentId: "s1", facultyId: null, studentType: "HOSTELLER" }, false));
+  !canScanReturn({ ...out, passKind: "HOSTEL", studentId: "s1", facultyId: null, approverType: "FACULTY_ADMIN" }, false));
 expect("return already recorded -> no second return",
   !canScanReturn({ ...out, studentId: null, facultyId: "f1" }, true));
 expect("not yet out (approved) -> no return",
