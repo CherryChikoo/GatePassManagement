@@ -7,7 +7,6 @@
  *   2. the In / Out times in one card (gate, guard, readings)
  *   3. the remaining facts — only the filled ones; empty ones behind a toggle
  */
-import { useState } from "react";
 import { ArrowRight, LogIn, LogOut } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { cn } from "@/lib/utils";
@@ -79,40 +78,32 @@ export type Fact = {
 const isEmptyValue = (v: React.ReactNode) =>
   v === null || v === undefined || v === false || (typeof v === "string" && (v.trim() === "" || v.trim() === "—"));
 
-/** Filled facts as label / value pairs; empty ones are hidden behind "Show empty fields" */
+/**
+ * Every fact in its own box (label above, value below), two per row on wider
+ * screens. Empty ones are shown too, as "Not filled", so nothing looks missing.
+ */
 export function FactList({ facts, title }: { facts: Fact[]; title?: string }) {
   const t = useT();
-  const [showEmpty, setShowEmpty] = useState(false);
-  const filled = facts.filter((f) => !isEmptyValue(f.value));
-  const emptyCount = facts.length - filled.length;
-  const shown = showEmpty ? facts : filled;
   if (!facts.length) return null;
   return (
     <div>
       {title && <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">{title}</p>}
-      {shown.length > 0 ? (
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3.5">
-          {shown.map((f) => (
-            <div key={f.label} className={cn("min-w-0", f.wide && "sm:col-span-2")}>
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        {facts.map((f) => {
+          const empty = isEmptyValue(f.value);
+          return (
+            <div
+              key={f.label}
+              className={cn("min-w-0 rounded-2xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5", f.wide && "sm:col-span-2")}
+            >
               <dt className="text-xs text-zinc-500">{f.label}</dt>
-              <dd className="mt-0.5 text-[15px] font-medium leading-snug text-zinc-100 break-words">
-                {isEmptyValue(f.value) ? <span className="font-normal text-zinc-600">—</span> : f.value}
+              <dd className={cn("mt-0.5 break-words leading-snug", empty ? "text-sm text-zinc-600" : "text-[15px] font-medium text-zinc-100")}>
+                {empty ? t("Not filled") : f.value}
               </dd>
             </div>
-          ))}
-        </dl>
-      ) : (
-        <p className="text-sm text-zinc-500">{t("No other details were filled in.")}</p>
-      )}
-      {emptyCount > 0 && (
-        <button
-          type="button"
-          onClick={() => setShowEmpty((s) => !s)}
-          className="mt-3 text-xs font-medium text-orange-500 hover:text-orange-600"
-        >
-          {showEmpty ? t("Hide empty fields") : t("Show {n} empty fields", { n: emptyCount })}
-        </button>
-      )}
+          );
+        })}
+      </dl>
     </div>
   );
 }

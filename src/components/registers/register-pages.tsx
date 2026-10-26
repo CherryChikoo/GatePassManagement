@@ -1,4 +1,5 @@
 "use client";
+import { useRouter } from "next/navigation";
 import { useT } from "@/components/providers/language-provider";
 
 import { useMemo, useState } from "react";
@@ -95,6 +96,7 @@ export function RegistersHub({
   canBuild?: boolean;
 }) {
   const t = useT();
+  const router = useRouter();
   const base = BASE[viewer];
   const isSecurity = viewer === "SECURITY";
   const allRegisters = registers ?? REGISTERS;
@@ -156,13 +158,18 @@ export function RegistersHub({
       <ul className="overflow-hidden rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-card divide-y divide-zinc-800/70">
         {list.map((r) => {
           const Icon = REGISTER_ICON[r.key as RegisterKey] ?? ClipboardList;
-          const href = `${base}/registers/${slugForKey(r.key)}`;
+          // Security: the Visitors Book is the Visitors screen itself (no second visitors screen)
+          const href = isSecurity && r.key === "VISITORS" ? "/security/visitors?view=log" : `${base}/registers/${slugForKey(r.key)}`;
           const n = counts[r.key] ?? 0;
           // "+": entry registers open their form here; the visitors book opens visitor registration
           // Attendance opens its monthly sheet instead of a form
           const quickAdd = isEntryRegister(r) && creatable.includes(r.key) && r.key !== "SECURITY_ATTENDANCE";
           const visitorAdd = isSecurity && r.key === "VISITORS";
-          const prefetch = isEntryRegister(r) && r.key !== "SECURITY_ATTENDANCE" ? () => prefetchEntryList(r.key) : undefined;
+          // On touch: the register's page and its list start loading while the tap completes
+          const prefetch = () => {
+            router.prefetch(href);
+            if (isEntryRegister(r) && r.key !== "SECURITY_ATTENDANCE") prefetchEntryList(r.key);
+          };
           return (
             <li key={r.key} className="flex items-center gap-2 pr-2 sm:pr-3">
               <Link
@@ -185,7 +192,8 @@ export function RegistersHub({
                           : "truncate text-[15px] font-medium text-zinc-100"
                       }
                     >
-                      {t(r.title)}
+                      {/* Security: this row is the Visitors screen itself, so it is simply "Visitors" */}
+                      {isSecurity && r.key === "VISITORS" ? t("Visitors") : t(r.title)}
                     </span>
                     {n > 0 && (
                       <span className="shrink-0 rounded-full bg-zinc-950 border border-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-400 tabular-nums">
@@ -207,8 +215,8 @@ export function RegistersHub({
                 </button>
               ) : visitorAdd ? (
                 <Link
-                  href="/security/visitors"
-                  aria-label={t("Register visitor")}
+                  href="/security/visitors?view=new"
+                  aria-label={t("New visitor")}
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)] hover:bg-orange-700 active:scale-95 transition-[background-color,transform]"
                 >
                   <Plus className="h-5 w-5" />

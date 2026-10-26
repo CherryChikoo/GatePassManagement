@@ -1,3 +1,5 @@
+import { SlowLoadHint } from "@/components/ui/slow-load-hint";
+
 /**
  * Instant navigation placeholder used by route-level loading.tsx files.
  * Rendered immediately on click while the next page's server work completes.
@@ -5,6 +7,7 @@
 export function PageLoading() {
   return (
     <div className="space-y-6" aria-busy="true" aria-label="Loading">
+      <SlowLoadHint />
       <div className="space-y-2">
         <div className="h-7 w-48 bg-zinc-800/60 rounded-lg animate-pulse" />
         <div className="h-4 w-64 bg-zinc-800/40 rounded-md animate-pulse" />

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { Role } from "@prisma/client";
 import { cache } from "react";
 import { headers } from "next/headers";
-import { USER_ID_HEADER, USER_EMAIL_HEADER } from "@/lib/supabase/middleware";
+import { USER_ID_HEADER, USER_EMAIL_HEADER, AUTH_GRACE_HEADER } from "@/lib/supabase/middleware";
 
 export type AuthUser = {
   id: string;
@@ -35,6 +35,8 @@ export function invalidateProfileCache(userId?: string) {
 export const getAuthUser = cache(async (): Promise<AuthUser | null> => {
   let userId: string | null = null;
   let userEmail: string | null = null;
+  // Let in on an expired token while Supabase was unreachable: Security only
+  let graceOnly = false;
 
   // These headers are trustworthy: src/proxy.ts strips any client-supplied
   // values and only sets them after verifying the session JWT signature.
@@ -42,6 +44,7 @@ export const getAuthUser = cache(async (): Promise<AuthUser | null> => {
     const reqHeaders = await headers();
     userId = reqHeaders.get(USER_ID_HEADER);
     userEmail = reqHeaders.get(USER_EMAIL_HEADER);
+    graceOnly = reqHeaders.get(AUTH_GRACE_HEADER) === "1";
   } catch {
     // headers() might throw in certain non-request contexts
   }
@@ -63,6 +66,7 @@ export const getAuthUser = cache(async (): Promise<AuthUser | null> => {
   if (cached && cached.expiresAt > Date.now()) {
     const profile = cached.profile;
     if (!profile || !profile.active) return null;
+    if (graceOnly && profile.role !== "SECURITY") return null;
     return {
       id: profile.id,
       userId: profile.userId,
@@ -80,6 +84,7 @@ export const getAuthUser = cache(async (): Promise<AuthUser | null> => {
   });
 
   if (!profile || !profile.active) return null;
+  if (graceOnly && profile.role !== "SECURITY") return null;
 
   profileCache.set(userId, {
     profile,

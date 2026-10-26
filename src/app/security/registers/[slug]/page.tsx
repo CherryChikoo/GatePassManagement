@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/helpers";
 import { getRegisterAccess } from "@/lib/registers/access";
 import { getRegisterBySlug } from "@/lib/registers/catalog";
@@ -10,5 +10,7 @@ export default async function RegisterDetailPage({ params }: { params: Promise<{
   // Built-in or portal-created register
   const [def, access] = await Promise.all([getRegisterBySlug(slug), getRegisterAccess(user)]);
   if (!def || !access.canView(def.key)) notFound();
+  // Security has one visitors screen
+  if (def.key === "VISITORS") redirect("/security/visitors?view=log");
   return <RegisterPage registerKey={def.key} register={def} viewer="SECURITY" canCreate={access.canCreate(def.key)} />;
 }

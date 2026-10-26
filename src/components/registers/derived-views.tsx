@@ -6,7 +6,7 @@ import { useT } from "@/components/providers/language-provider";
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight, FileText, Info, Loader2, LogIn, PencilLine, Plus, Trash2, UserPlus } from "lucide-react";
+import { ChevronRight, FileText, Info, Loader2, LogIn, PencilLine, Plus, Trash2, UserPlus, Phone } from "lucide-react";
 import { adminDeleteVisitor, adminUpdateVisitor } from "@/server/actions/outsiders";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Modal, StatusBadge } from "@/components/ui/primitives";
@@ -475,35 +475,63 @@ export function VisitorDetails({
   const category: Record<string, string> = { GUEST: t("Guest / Visitor"), PARENT: t("Parent / Guardian"), VENDOR: t("Vendor / Delivery"), WORKER: t("Worker / Staff") };
   return (
     <div className="space-y-5">
+      {/* Who: photo, name, kind of visitor, inside or left, call */}
       <div className="flex items-start gap-4">
         {v.photoUrl ? (
-          <img src={v.photoUrl} alt={`Photo of ${v.name}`} className="h-32 w-32 sm:h-40 sm:w-40 shrink-0 rounded-2xl object-cover border border-zinc-800" />
+          <a href={v.photoUrl} target="_blank" rel="noreferrer" className="shrink-0" aria-label={t("Open photo")}>
+            <img src={v.photoUrl} alt={`Photo of ${v.name}`} className="h-24 w-24 sm:h-28 sm:w-28 rounded-2xl object-cover border border-zinc-800" />
+          </a>
         ) : (
-          <p className="rounded-2xl bg-zinc-950 px-4 py-3 text-xs text-zinc-500">{t("No photo was taken for this visitor.")}</p>
+          <span className="flex h-24 w-24 sm:h-28 sm:w-28 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-3xl font-semibold text-orange-500">
+            {String(v.name || "?").charAt(0)}
+          </span>
         )}
-        <div className="ml-auto shrink-0">
-          <StatusBadge status={v.status} />
+        <div className="min-w-0 flex-1">
+          <p className="text-lg font-semibold leading-snug text-zinc-100 break-words">{v.name || "—"}</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <span className="inline-flex items-center rounded-full bg-orange-500/10 px-2.5 py-0.5 text-xs font-semibold text-orange-500">
+              {category[v.category] ?? v.category}
+            </span>
+            <StatusBadge status={v.status} />
+          </div>
+          {v.phone && (
+            <a
+              href={`tel:${v.phone}`}
+              className="mt-2.5 inline-flex h-10 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950 px-4 text-sm font-medium text-zinc-100 hover:border-orange-500/40"
+            >
+              <Phone className="h-4 w-4 text-orange-500" />
+              <span className="tabular-nums">{v.phone}</span>
+            </a>
+          )}
         </div>
       </div>
-      <DetailGrid
-        items={[
-          ["Visitor Name", v.name],
-          ["Mobile Number", v.phone],
-          ["Address", v.address],
-          ["Person to Visit", v.personToVisit],
-          ["Purpose of Visit", v.purpose],
-          ["Department", v.department],
-          ["Category", category[v.category] ?? v.category],
-          ["Vehicle Number", v.vehicleNumber],
-          ["Gate", v.gate],
-          ["Date", formatDay(v.inTime)],
-          ["Actual In-Time", formatInstant(v.inTime)],
-          ["Actual Out-Time", v.outTime ? formatInstant(v.outTime) : t("Still inside")],
-          ["Remarks", v.remarks],
-          ["Registered by", v.recordedByName],
-          ["Record created", formatInstant(v.createdAt)],
+
+      {/* When: came in, left */}
+      <InOutCard
+        sides={[
+          { label: t("In"), time: v.inTime ? formatInstant(v.inTime) : null, detail: v.gate || null, direction: "IN" },
+          { label: t("Out"), time: v.outTime ? formatInstant(v.outTime) : null, pending: t("Still inside"), direction: "OUT" },
         ]}
       />
+
+      {/* Why: who they came for */}
+      <FactList
+        title={t("Visit")}
+        facts={[
+          { label: t("Person to Visit"), value: v.personToVisit },
+          { label: t("Department"), value: v.department },
+          { label: t("Purpose of Visit"), value: v.purpose, wide: true },
+          { label: t("Vehicle Number"), value: v.vehicleNumber },
+          { label: t("Remarks"), value: v.remarks, wide: true },
+        ]}
+      />
+      <FactList title={t("Visitor")} facts={[{ label: t("Address"), value: v.address, wide: true }]} />
+
+      {/* Who wrote it down */}
+      <p className="border-t border-zinc-800 pt-3 text-xs text-zinc-500">
+        {t("Registered by")} <span className="font-medium text-zinc-300">{v.recordedByName || "—"}</span>
+        {v.createdAt ? ` · ${formatInstant(v.createdAt)}` : ""}
+      </p>
       {canAdminEdit && (
         <div className="flex flex-col gap-2 border-t border-zinc-800 pt-4 sm:flex-row">
           <button

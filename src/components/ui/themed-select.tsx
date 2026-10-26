@@ -12,7 +12,7 @@
  */
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/components/providers/language-provider";
 
@@ -78,6 +78,10 @@ export function ThemedSelect({
   const [active, setActive] = React.useState(0);
   const [pos, setPos] = React.useState<{ top: number; left: number; width: number; up: boolean; maxH: number } | null>(null);
   const [sheet, setSheet] = React.useState(false);
+  // Phone sheet: dragged down by its handle / title (closes past a threshold)
+  const [dragY, setDragY] = React.useState(0);
+  const [dragging, setDragging] = React.useState(false);
+  const drag = React.useRef<{ startY: number; lastY: number; lastT: number; v: number } | null>(null);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
   const listRef = React.useRef<HTMLUListElement>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -98,6 +102,9 @@ export function ThemedSelect({
 
   const openList = () => {
     if (disabled) return;
+    setDragY(0);
+    // A keyboard left open from the last box would hide the sheet's options
+    if (window.innerWidth < 640) (document.activeElement as HTMLElement | null)?.blur?.();
     setSheet(window.innerWidth < 640);
     setQuery("");
     setActive(Math.max(0, items.findIndex((i) => i.value === current)));
@@ -107,6 +114,32 @@ export function ThemedSelect({
   const close = (focusBack = true) => {
     setOpen(false);
     if (focusBack) triggerRef.current?.focus();
+  };
+
+  /** Swipe the sheet down to close it (handle and title row) */
+  const onDragStart = (e: React.PointerEvent) => {
+    drag.current = { startY: e.clientY, lastY: e.clientY, lastT: performance.now(), v: 0 };
+    setDragging(true);
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
+  const onDragMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const now = performance.now();
+    d.v = (e.clientY - d.lastY) / Math.max(1, now - d.lastT); // px per ms
+    d.lastY = e.clientY;
+    d.lastT = now;
+    setDragY(Math.max(0, e.clientY - d.startY));
+  };
+  const onDragEnd = () => {
+    const d = drag.current;
+    drag.current = null;
+    setDragging(false);
+    if (!d) return;
+    const moved = d.lastY - d.startY;
+    // Far enough down, or a quick flick down: close; otherwise snap back
+    if (moved > 80 || (moved > 20 && d.v > 0.5)) close(false);
+    else setDragY(0);
   };
 
   const choose = (item: Item) => {
@@ -184,14 +217,17 @@ export function ThemedSelect({
   };
 
   const placeholder = selected?.value === "" || !selected;
+  // Phone sheet: the empty "— Choose —" option becomes the title instead of a row
+  const sheetTitle = (items.find((i) => i.value === "")?.label ?? "").replace(/^[\s—–-]+|[\s—–-]+$/g, "");
 
   const list = (
-    <ul ref={listRef} id={listId} role="listbox" aria-labelledby={ariaLabelledBy} className="overflow-y-auto overscroll-contain p-1.5" style={{ maxHeight: sheet ? "60dvh" : pos?.maxH }}>
+    <ul ref={listRef} id={listId} role="listbox" aria-labelledby={ariaLabelledBy} className={cn("overflow-y-auto overscroll-contain", sheet ? "px-2 pb-4" : "p-1.5")} style={{ maxHeight: sheet ? "60dvh" : pos?.maxH }}>
       {shown.length === 0 && <li className="px-3 py-3 text-sm text-zinc-500">{t("Nothing matches.")}</li>}
       {shown.map((item, i) => {
         // A group heading above the first row of each group
         const header = item.group && (i === 0 || shown[i - 1].group !== item.group) ? item.group : null;
         const isSel = item.value === current;
+        if (sheet && item.value === "") return null;
         return (
           <React.Fragment key={`${item.group ?? ""}|${item.value}|${i}`}>
             {header && (
@@ -208,7 +244,7 @@ export function ThemedSelect({
               onClick={() => choose(item)}
               className={cn(
                 "flex cursor-pointer items-center justify-between gap-3 rounded-xl px-3 text-left transition-colors",
-                sheet ? "min-h-12 text-base" : "min-h-10 text-sm",
+                sheet ? "min-h-14 text-base border-b border-zinc-800/70 last:border-b-0 rounded-none px-4" : "min-h-10 text-sm",
                 item.group && "pl-5",
                 item.disabled && "cursor-not-allowed opacity-40",
                 isSel ? "bg-orange-500/10 font-medium text-orange-500" : i === active ? "bg-zinc-950 text-zinc-100" : "text-zinc-200"
@@ -291,8 +327,33 @@ export function ThemedSelect({
               <div
                 ref={panelRef}
                 className="absolute inset-x-0 bottom-0 overflow-hidden rounded-t-3xl border border-zinc-800 bg-zinc-900 pb-[env(safe-area-inset-bottom)] shadow-card animate-fade-in"
+                style={{
+                  transform: dragY ? `translateY(${dragY}px)` : undefined,
+                  transition: dragging ? "none" : "transform 180ms ease-out",
+                }}
               >
+                {/* Grab area: hold and swipe down to close */}
+                <div
+                  className="cursor-grab touch-none select-none active:cursor-grabbing"
+                  onPointerDown={onDragStart}
+                  onPointerMove={onDragMove}
+                  onPointerUp={onDragEnd}
+                  onPointerCancel={onDragEnd}
+                >
                 <div className="mx-auto mt-2.5 h-1.5 w-10 rounded-full bg-zinc-800" aria-hidden="true" />
+                <div className="flex items-center justify-between gap-3 px-5 pb-2 pt-3">
+                  <p className="min-w-0 truncate text-base font-semibold text-zinc-100">{sheetTitle || t("Choose")}</p>
+                  <button
+                    type="button"
+                    onClick={() => close()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    aria-label={t("Close")}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-950 text-zinc-400 hover:text-zinc-100"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                </div>
                 {search}
                 {list}
               </div>

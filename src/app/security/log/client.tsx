@@ -13,7 +13,7 @@ import { BackButton } from "@/components/ui/back-button";
 import { GoBackButton } from "@/components/ui/go-back-button";
 import { Input } from "@/components/ui/input";
 import { useGateData } from "@/lib/gate-cache";
-import { callGate } from "@/lib/gate-call";
+import { gateLogQuery } from "@/lib/gate-queries";
 import { istDateString } from "@/lib/time/ist";
 import { Modal } from "@/components/ui/primitives";
 import { dt, IconAction, PersonCell, RowActions } from "@/components/ui/data-table";
@@ -25,11 +25,8 @@ export function SecurityLogClient({ initialDate }: { initialDate?: string }) {
   // The chosen day's log from the gate cache: shown at once when seen before,
   // fetched again only after a gate scan / visitor change (live)
   const [selectedDate, setSelectedDate] = useState(() => initialDate || istDateString());
-  const day = useGateData<any>(
-    `gate-log|${selectedDate}`,
-    () => callGate("getSecurityLogData", [selectedDate], 15_000),
-    ["gate", "visitors"]
-  );
+  const logQuery = gateLogQuery(selectedDate);
+  const day = useGateData<any>(logQuery.key, logQuery.fetch, logQuery.topics);
   const studentEntries: any[] = day.data?.studentEntries ?? [];
   const studentExits: any[] = day.data?.studentExits ?? [];
   const outsiderVisits: any[] = day.data?.outsiderVisits ?? [];

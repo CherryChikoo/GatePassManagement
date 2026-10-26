@@ -2,6 +2,10 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify, createRemoteJWKSet, decodeProtectedHeader } from "jose";
 
+/** Supabase Auth calls (e.g. renewing an expired session) give up after 8 s instead of hanging */
+const timedFetch: typeof fetch = (input, init) =>
+  fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(8_000) });
+
 /**
  * Identity headers forwarded to server components / actions.
  * They are ALWAYS stripped from the incoming request first, so a client can
@@ -10,6 +14,13 @@ import { jwtVerify, createRemoteJWKSet, decodeProtectedHeader } from "jose";
  */
 export const USER_ID_HEADER = "x-user-id";
 export const USER_EMAIL_HEADER = "x-user-email";
+/**
+ * Set when the user was let in on an expired (but genuinely signed) token
+ * because Supabase could not be reached to renew it. Only Security accounts
+ * are kept signed in that way — every other role counts as signed out
+ * (enforced in getAuthUser, which knows the role).
+ */
+export const AUTH_GRACE_HEADER = "x-auth-grace";
 
 type VerifiedUser = { id: string; email: string };
 
@@ -79,6 +90,41 @@ async function verifyLocally(token: string): Promise<VerifiedUser | null> {
   }
 }
 
+/** How long after expiry a genuinely signed token still identifies the user while renewal is unreachable */
+const RENEWAL_GRACE_S = 7 * 24 * 60 * 60;
+
+/**
+ * Verifies the token's signature and issuer but accepts it up to RENEWAL_GRACE_S
+ * past its expiry. Used only when Supabase could not be reached to renew the
+ * session (network / timeout / outage): a gate phone on a weak network after a
+ * long idle must not be signed out. The signature still proves who it is.
+ */
+async function verifyExpiredButGenuine(token: string): Promise<VerifiedUser | null> {
+  try {
+    const { alg } = decodeProtectedHeader(token);
+    const options = { issuer: ISSUER, audience: "authenticated", clockTolerance: RENEWAL_GRACE_S };
+    let payload;
+    if (alg === "HS256") {
+      if (!JWT_SECRET) return null;
+      ({ payload } = await jwtVerify(token, JWT_SECRET, { ...options, algorithms: ["HS256"] }));
+    } else {
+      ({ payload } = await jwtVerify(token, JWKS, { ...options, algorithms: ["ES256", "RS256"] }));
+    }
+    return payload.sub ? { id: payload.sub, email: (payload.email as string) || "" } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Renewal failed because Supabase was unreachable (not because the login is invalid) */
+function isTransientAuthError(error: unknown): boolean {
+  if (!error) return false;
+  const e = error as { name?: string; status?: number; message?: string };
+  if (e.name === "AuthRetryableFetchError") return true;
+  if (typeof e.status === "number" && (e.status === 0 || e.status >= 500)) return true;
+  return /fetch|network|timeout|timed out|abort|ECONN|ENOTFOUND|socket/i.test(e.message ?? "");
+}
+
 function isPublicPath(pathname: string): boolean {
   return (
     pathname === "/login" ||
@@ -97,6 +143,7 @@ export async function updateSession(request: NextRequest) {
     const headers = new Headers(request.headers);
     headers.delete(USER_ID_HEADER);
     headers.delete(USER_EMAIL_HEADER);
+    headers.delete(AUTH_GRACE_HEADER);
     return NextResponse.next({ request: { headers } });
   }
 
@@ -109,6 +156,8 @@ export async function updateSession(request: NextRequest) {
     .join(";");
 
   let user: VerifiedUser | null = null;
+  // Let in on the renewal grace (Security only — see AUTH_GRACE_HEADER)
+  let grace = false;
   const cookiesToSet: { name: string; value: string; options: any }[] = [];
 
   if (authCookieKey) {
@@ -127,6 +176,7 @@ export async function updateSession(request: NextRequest) {
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
+          global: { fetch: timedFetch },
           cookies: {
             getAll() {
               return request.cookies.getAll();
@@ -141,8 +191,21 @@ export async function updateSession(request: NextRequest) {
 
       // getClaims() verifies the JWT signature (JWKS, or the Auth server for
       // legacy symmetric keys) and refreshes the session when needed.
-      const { data } = await supabase.auth.getClaims();
+      const { data, error } = await supabase.auth.getClaims().catch((err: unknown) => ({ data: null, error: err }));
       const claims = data?.claims;
+      if (!claims?.sub && isTransientAuthError(error)) {
+        // Could not reach Supabase to renew: stay signed in on the (genuinely
+        // signed) current token; the next request tries the renewal again.
+        // Any cookie change from the failed attempt is dropped (never a sign-out).
+        const token = readAccessToken(request);
+        const fallback = token ? await verifyExpiredButGenuine(token) : null;
+        if (fallback) {
+          user = fallback;
+          grace = true;
+          cookiesToSet.length = 0;
+          console.warn("[auth] session renewal unreachable — kept the user signed in");
+        }
+      }
       if (claims?.sub) {
         user = { id: claims.sub, email: (claims.email as string) || "" };
         const expMs = typeof claims.exp === "number" ? claims.exp * 1000 : Date.now() + CACHE_TTL_MS;
@@ -174,6 +237,8 @@ export async function updateSession(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.delete(USER_ID_HEADER);
   requestHeaders.delete(USER_EMAIL_HEADER);
+  requestHeaders.delete(AUTH_GRACE_HEADER);
+  if (user && grace) requestHeaders.set(AUTH_GRACE_HEADER, "1");
   if (user) {
     requestHeaders.set(USER_ID_HEADER, user.id);
     if (user.email) requestHeaders.set(USER_EMAIL_HEADER, user.email);

@@ -1080,6 +1080,22 @@ export const te: Record<string, string> = {
   Back: "తిరిగి వచ్చారు",
   Planned: "అనుకున్న సమయం",
   Outing: "బయటకు వెళ్ళడం",
+  "Not filled": "నింపలేదు",
+  Choose: "ఎంచుకోండి",
+  Close: "మూసివేయండి",
+
+  // Visitors screen (one screen: inside now, today's log, new visitor)
+  "Back to visitors": "సందర్శకుల జాబితాకు",
+  "New visitor": "కొత్త సందర్శకుడు",
+  "Photo first, then the details. Saving lets the visitor in.": "ముందు ఫోటో, తర్వాత వివరాలు. సేవ్ చేస్తే సందర్శకుడు లోపలికి వెళ్తారు.",
+  "Inside now": "ప్రస్తుతం లోపల",
+  "Today's log": "ఈరోజు లాగ్",
+  "Visitor log": "సందర్శకుల లాగ్",
+  "Save & let in": "సేవ్ చేసి లోపలికి పంపండి",
+  "Mark this visitor as exited?": "ఈ సందర్శకుడు బయటకు వెళ్ళినట్లు నమోదు చేయాలా?",
+  Visit: "సందర్శన",
+  Visitor: "సందర్శకులు",
+  "Open photo": "ఫోటో తెరవండి",
   "Parent / guardian": "తల్లిదండ్రులు / సంరక్షకులు",
 
   // Late return on the same pass (allowed; marked delayed)

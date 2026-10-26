@@ -28,9 +28,12 @@ import {
   Search,
   RotateCcw,
   Loader2,
+  Phone,
+  ArrowLeft,
 } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
 import { useGateData } from "@/lib/gate-cache";
+import { FactList, InOutCard } from "@/components/registers/record-layout";
 import { OUTSIDERS_QUERY } from "@/lib/gate-queries";
 import { DateField } from "@/components/ui/date-field";
 import { LoadingPill } from "@/components/ui/loading-pill";
@@ -38,6 +41,7 @@ import { istDateString } from "@/lib/time/ist";
 import { Modal, StatusBadge } from "@/components/ui/primitives";
 import { BackButton } from "@/components/ui/back-button";
 import { GoBackButton } from "@/components/ui/go-back-button";
+import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { LiveDateTime } from "@/components/registers/register-form";
 
 /** Reasons in the Purpose dropdown (saved in English; shown in the guard's language) */
@@ -46,12 +50,14 @@ const OTHER_PURPOSE = "__other__";
 
 interface Props {
   user: any;
+  /** "new" opens the new-visitor form, "log" today's log; default: who is inside now */
+  initialView?: "inside" | "log" | "new";
 }
 
 /** Photo link could not be loaded (shown instead of "Loading…" forever) */
 const PHOTO_FAILED = "__failed__";
 
-export function OutsidersClient({ user }: Props) {
+export function OutsidersClient({ user, initialView = "inside" }: Props) {
   const t = useT();
   // Visitors on campus + today's exits: shown at once from the last load, fetched
   // again only when a visitor is registered / let out (live), at any gate
@@ -59,7 +65,30 @@ export function OutsidersClient({ user }: Props) {
   const inside: any[] = outsiders.data?.inside ?? [];
   /** Head Security: may let a visitor out without the meeting code */
   const canOverrideVisit = !!outsiders.data?.canOverrideVisit;
-  const [activeTab, setActiveTab] = useState<"REGISTER" | "INSIDE" | "HISTORY">("REGISTER");
+  // One Visitors screen: the list of who is inside (default) or today's log, and a
+  // separate New visitor screen that always comes back to the list
+  const [activeTab, setActiveTab] = useState<"INSIDE" | "HISTORY">(initialView === "log" ? "HISTORY" : "INSIDE");
+  const [formOpen, setFormOpen] = useState(initialView === "new");
+  // The visitor just registered: highlighted at the top of the list for a moment
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!highlightId) return;
+    const timer = setTimeout(() => setHighlightId(null), 6000);
+    return () => clearTimeout(timer);
+  }, [highlightId]);
+  const openForm = () => {
+    setError(null);
+    setSuccess(null);
+    setFormOpen(true);
+    window.scrollTo({ top: 0 });
+  };
+  const closeForm = () => {
+    setFormOpen(false);
+    setActiveTab("INSIDE");
+    // A reload shows the list, not the form again
+    if (window.location.search) window.history.replaceState(null, "", window.location.pathname);
+    window.scrollTo({ top: 0 });
+  };
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
 
@@ -271,9 +300,13 @@ export function OutsidersClient({ user }: Props) {
         setFormNonce((n) => n + 1);
         setPurposeOther(false);
         resetVoice();
-        // The lists on the other tabs: fetched again now
+        // Back to the list, with the new visitor at the top (highlighted)
         void outsiders.reload();
         photoUpload.current = null;
+        if (result.outsiderId) setHighlightId(String(result.outsiderId));
+        setSearchQuery("");
+        setPage(1);
+        closeForm();
       } else {
         setError(result.error || t("Failed to register")); setTimeout(() => setError(null), 3000);
       }
@@ -288,12 +321,18 @@ export function OutsidersClient({ user }: Props) {
   const [exitFor, setExitFor] = useState<any | null>(null);
   // The visitor being marked exited (the buttons wait meanwhile, so a double tap sends one request)
   const [exitingId, setExitingId] = useState<string | null>(null);
-  const handleMarkExited = async (person: any) => {
+  // Visitor waiting for "Exit?" (no meeting code involved)
+  const [confirmExit, setConfirmExit] = useState<any | null>(null);
+  const handleMarkExited = (person: any) => {
     if (exitingId) return;
     if (person.visitPass && person.visitPass.status !== "EXITED") {
       setExitFor(person);
       return;
     }
+    setConfirmExit(person);
+  };
+  const doMarkExited = async (person: any) => {
+    if (exitingId) return;
     setExitingId(person.id);
     try {
       const res: any = await callGate("markOutsiderExited", [person.id], 20_000);
@@ -371,33 +410,51 @@ export function OutsidersClient({ user }: Props) {
 
   return (
     <div className="mx-auto max-w-5xl space-y-5 sm:space-y-6 pb-24 sm:pb-8">
-      {/* Header */}
-      <div className="min-w-0">
-        <GoBackButton className="mb-3" />
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
-            <Users className="h-5 w-5" />
-          </span>
-          <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
-            {t("Visitor Management")}
-          </h1>
+      {/* Header: the list, or the New visitor screen with a way back */}
+      {formOpen ? (
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={closeForm}
+            className="mb-3 inline-flex h-11 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 pl-2 pr-4 text-sm font-medium text-zinc-200 hover:bg-zinc-950"
+          >
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-600 text-white">
+              <ArrowLeft className="h-4 w-4" />
+            </span>
+            {t("Back to visitors")}
+          </button>
+          <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">{t("New visitor")}</h1>
+          <p className="mt-1 text-sm text-zinc-500">{t("Photo first, then the details. Saving lets the visitor in.")}</p>
         </div>
-        <p className="mt-2 text-sm text-zinc-500">
-          {t("Manual registration and monitoring of campus visitors")}
-        </p>
-      </div>
+      ) : (
+        <div className="min-w-0">
+          <GoBackButton className="mb-3" />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
+                <Users className="h-5 w-5" />
+              </span>
+              <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">{t("Visitors")}</h1>
+            </div>
+            <Button onClick={openForm} size="lg" className="h-12 w-full sm:w-auto px-6 text-base">
+              <UserPlus className="h-5 w-5" />
+              {t("New visitor")}
+            </Button>
+          </div>
+        </div>
+      )}
 
-      {/* Tabs */}
+      {/* Two lists: who is inside now, and the day's log */}
+      {!formOpen && (
       <div
-        className="grid w-full grid-cols-3 gap-1 rounded-[22px] border border-zinc-800 bg-zinc-950 p-1"
+        className="grid w-full grid-cols-2 gap-1 rounded-[22px] border border-zinc-800 bg-zinc-950 p-1"
         role="tablist"
-        aria-label={t("Visitor Management")}
+        aria-label={t("Visitors")}
       >
         {(
           [
-            ["REGISTER", t("New Entry Form"), <UserPlus key="i" className="h-4 w-4 shrink-0" />],
-            ["INSIDE", t("Active Inside"), <MapPin key="i" className="h-4 w-4 shrink-0" />],
-            ["HISTORY", t("Entry/Exit Log"), <History key="i" className="h-4 w-4 shrink-0" />],
+            ["INSIDE", t("Inside now"), <MapPin key="i" className="h-4 w-4 shrink-0" />],
+            ["HISTORY", logDate === istDateString() ? t("Today's log") : t("Visitor log"), <History key="i" className="h-4 w-4 shrink-0" />],
           ] as const
         ).map(([tab, label, icon]) => (
           <button
@@ -424,9 +481,10 @@ export function OutsidersClient({ user }: Props) {
           </button>
         ))}
       </div>
+      )}
 
       {/* Messages (the form shows its own, next to the submit button) */}
-      {activeTab !== "REGISTER" && (errorAlert || successAlert) && (
+      {!formOpen && (errorAlert || successAlert) && (
         <div className="space-y-3">
           {errorAlert}
           {successAlert}
@@ -434,7 +492,7 @@ export function OutsidersClient({ user }: Props) {
       )}
 
       {/* Search (filters the two lists) */}
-      {activeTab !== "REGISTER" && (
+      {!formOpen && (
         <div className="relative w-full sm:max-w-sm">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
           <input
@@ -448,16 +506,12 @@ export function OutsidersClient({ user }: Props) {
         </div>
       )}
 
-      {/* Register Tab */}
-      {activeTab === "REGISTER" && (
+      {/* New visitor screen */}
+      {formOpen && (
         <div className="mx-auto max-w-2xl">
           <Card>
             <CardContent className="p-5 sm:p-6">
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <h2 className="text-lg font-medium text-zinc-100">{t("Manual Registration")}</h2>
-                  <p className="mt-0.5 text-sm text-zinc-500">{t("Register a new visitor.")}</p>
-                </div>
 
                 {/* Speak the visitor's details once: the boxes fill themselves (photo still needed) */}
                 <VoicePanel voice={voice} onUndo={undoVoice} />
@@ -677,7 +731,10 @@ export function OutsidersClient({ user }: Props) {
 
                 <Button type="submit" className="h-14 w-full whitespace-normal text-center text-base leading-tight" size="lg" disabled={loading}>
                   {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <UserPlus className="h-5 w-5" />}
-                  {loading ? t("Registering…") : t("Complete Registration & Allow Entry")}
+                  {loading ? t("Registering…") : t("Save & let in")}
+                </Button>
+                <Button type="button" variant="ghost" className="h-12 w-full" onClick={closeForm} disabled={loading}>
+                  {t("Cancel")}
                 </Button>
               </form>
             </CardContent>
@@ -685,8 +742,8 @@ export function OutsidersClient({ user }: Props) {
         </div>
       )}
 
-      {/* Inside Tab */}
-      {activeTab === "INSIDE" && (
+      {/* Inside now */}
+      {!formOpen && activeTab === "INSIDE" && (
         <>
           <LoadingPill active={outsiders.loading} />
           <Card className="overflow-hidden">
@@ -717,7 +774,10 @@ export function OutsidersClient({ user }: Props) {
                 {/* Phones: stacked rows with a big Mark Exited button */}
                 <ul className={`lg:hidden ${dt.mobileList}`}>
                   {paginatedInside.map((person) => (
-                    <li key={person.id} className="space-y-3 px-4 py-4">
+                    <li
+                      key={person.id}
+                      className={`space-y-3 px-4 py-4 transition-colors ${highlightId === person.id ? "bg-orange-500/10" : ""}`}
+                    >
                       <button
                         type="button"
                         onClick={() => openOutsiderDetails(person)}
@@ -742,13 +802,12 @@ export function OutsidersClient({ user }: Props) {
                         </p>
                       )}
                       <Button
-                        variant="outline"
-                        className="h-12 w-full"
+                        className="h-12 w-full bg-sky-600 text-base text-white hover:bg-sky-700"
                         onClick={(e) => { e.stopPropagation(); handleMarkExited(person); }}
                         disabled={!!exitingId}
                       >
                         {exitingId === person.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-                        {t("Mark Exited")}
+                        {t("Exit")}
                       </Button>
                     </li>
                   ))}
@@ -767,7 +826,11 @@ export function OutsidersClient({ user }: Props) {
                     </thead>
                     <tbody>
                       {paginatedInside.map((person) => (
-                        <tr key={person.id} className={dt.trClickable} onClick={() => openOutsiderDetails(person)}>
+                        <tr
+                          key={person.id}
+                          className={`${dt.trClickable} ${highlightId === person.id ? "bg-orange-500/10" : ""}`}
+                          onClick={() => openOutsiderDetails(person)}
+                        >
                           <td className={dt.td}>
                             <PersonCell name={person.name || "—"} sub={person.phone} />
                             {person.visitPass && person.visitPass.status !== "EXITED" && (
@@ -795,7 +858,7 @@ export function OutsidersClient({ user }: Props) {
                                 disabled={!!exitingId}
                                 className="inline-flex h-10 items-center gap-1.5 whitespace-nowrap rounded-full bg-sky-600 px-4 text-sm font-semibold text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.7)] transition-[background-color,transform] hover:bg-sky-700 active:scale-95 disabled:opacity-60"
                               >
-                                {exitingId === person.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />} {t("Mark Exited")}
+                                {exitingId === person.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />} {t("Exit")}
                               </button>
                             </RowActions>
                           </td>
@@ -811,34 +874,52 @@ export function OutsidersClient({ user }: Props) {
         </>
       )}
 
-      {/* History Tab */}
-      {activeTab === "HISTORY" && (
+      {/* Today's log (any day) */}
+      {!formOpen && activeTab === "HISTORY" && (
         <>
           <LoadingPill active={logLoading} />
-          <div className="flex flex-wrap items-center gap-2">
+          {/* One day (date picker), today, or every visitor ever (newest first) */}
+          <div className="flex items-center gap-2">
             <DateField
               aria-label={t("Date")}
-              value={logDate}
+              value={logDate === "all" ? "" : logDate}
               max={istDateString()}
               onChange={(e) => {
                 if (!e.target.value) return;
                 setLogDate(e.target.value);
                 setPage(1);
               }}
-              className="h-12 w-full sm:w-56"
+              className="h-12 min-w-0 flex-1 sm:w-56 sm:flex-none"
             />
-            {logDate !== istDateString() && (
+            <div className="flex shrink-0 gap-2">
+              {logDate !== istDateString() && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLogDate(istDateString());
+                    setPage(1);
+                  }}
+                  className="h-12 whitespace-nowrap rounded-full border border-zinc-800 bg-zinc-900 px-3 sm:px-4 text-sm font-medium text-orange-500 hover:bg-zinc-950"
+                >
+                  {t("Today")}
+                </button>
+              )}
               <button
                 type="button"
+                aria-pressed={logDate === "all"}
                 onClick={() => {
-                  setLogDate(istDateString());
+                  setLogDate("all");
                   setPage(1);
                 }}
-                className="h-12 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-sm font-medium text-orange-500 hover:bg-zinc-950"
+                className={`h-12 whitespace-nowrap rounded-full border px-3 sm:px-4 text-sm font-medium transition-colors ${
+                  logDate === "all"
+                    ? "border-orange-600 bg-orange-600 text-white"
+                    : "border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-950"
+                }`}
               >
-                {t("Today")}
+                {t("All dates")}
               </button>
-            )}
+            </div>
           </div>
           <Card className={`overflow-hidden transition-opacity ${logLoading ? "opacity-60" : ""}`}>
             {visitorsLog.error ? (
@@ -954,8 +1035,9 @@ export function OutsidersClient({ user }: Props) {
       >
         {selectedOutsider && (
           <div className="space-y-5">
-            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
-              <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
+            {/* Who: photo, name, kind of visitor, inside or left, call */}
+            <div className="flex items-start gap-4">
+              <div className="flex h-24 w-24 sm:h-28 sm:w-28 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
                 {selectedOutsider.photoUrl ? (
                   photoUrl === PHOTO_FAILED ? (
                     <span className="px-2 text-center text-xs text-zinc-500">{t("Photo unavailable")}</span>
@@ -967,81 +1049,71 @@ export function OutsidersClient({ user }: Props) {
                     </div>
                   )
                 ) : (
-                  <Users className="h-8 w-8 text-zinc-600" />
+                  <span className="text-3xl font-semibold text-orange-500">{String(selectedOutsider.name || "?").charAt(0)}</span>
                 )}
               </div>
-              <div className="min-w-0 text-center sm:text-left">
-                <div className="mb-1 flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                  <h3 className="text-xl font-medium text-zinc-100 break-words">{selectedOutsider.name}</h3>
+              <div className="min-w-0 flex-1">
+                <p className="text-lg font-semibold leading-snug text-zinc-100 break-words">{selectedOutsider.name}</p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <span className={categoryChip}>{t(selectedOutsider.category)}</span>
                   <StatusBadge status={selectedOutsider.status} />
                 </div>
-                <p className="mb-3 text-zinc-400 tabular-nums">{selectedOutsider.phone}</p>
-                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                  <span className={categoryChip}>{t(selectedOutsider.category)}</span>
-                  {selectedOutsider.vehicleNumber && (
-                    <span className={categoryChip}>
-                      {t("Vehicle")}: {selectedOutsider.vehicleNumber}
-                    </span>
-                  )}
-                </div>
+                {selectedOutsider.phone && (
+                  <a
+                    href={`tel:${selectedOutsider.phone}`}
+                    className="mt-2.5 inline-flex h-10 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950 px-4 text-sm font-medium text-zinc-100 hover:border-orange-500/40"
+                  >
+                    <Phone className="h-4 w-4 text-orange-500" />
+                    <span className="tabular-nums">{selectedOutsider.phone}</span>
+                  </a>
+                )}
               </div>
             </div>
 
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="min-w-0 rounded-2xl bg-zinc-950 px-4 py-3">
-                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Purpose of Visit")}</dt>
-                <dd className="mt-0.5 text-sm text-zinc-200 break-words">{selectedOutsider.purpose}</dd>
-              </div>
-              <div className="min-w-0 rounded-2xl bg-zinc-950 px-4 py-3">
-                <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Person to Visit")}</dt>
-                <dd className="mt-0.5 text-sm text-zinc-200 break-words">{selectedOutsider.visitingStudent || "N/A"}</dd>
-              </div>
-              {selectedOutsider.department && (
-                <div className="min-w-0 rounded-2xl bg-zinc-950 px-4 py-3">
-                  <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Department")}</dt>
-                  <dd className="mt-0.5 text-sm text-zinc-200 break-words">{selectedOutsider.department}</dd>
-                </div>
-              )}
-              {selectedOutsider.address && (
-                <div className="min-w-0 rounded-2xl bg-zinc-950 px-4 py-3">
-                  <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Address")}</dt>
-                  <dd className="mt-0.5 text-sm text-zinc-200 break-words">{selectedOutsider.address}</dd>
-                </div>
-              )}
-              {selectedOutsider.remarks && (
-                <div className="min-w-0 rounded-2xl bg-zinc-950 px-4 py-3 sm:col-span-2">
-                  <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Remarks")}</dt>
-                  <dd className="mt-0.5 text-sm text-zinc-200 break-words">{selectedOutsider.remarks}</dd>
-                </div>
-              )}
-              {selectedOutsider.recordedByName && (
-                <div className="min-w-0 rounded-2xl bg-zinc-950 px-4 py-3 sm:col-span-2">
-                  <dt className="text-[11px] uppercase tracking-wider text-zinc-500">{t("Registered by")}</dt>
-                  <dd className="mt-0.5 text-sm text-zinc-200 break-words">{selectedOutsider.recordedByName}</dd>
-                </div>
-              )}
-            </dl>
+            {/* When: came in, left */}
+            <InOutCard
+              sides={[
+                {
+                  label: t("In"),
+                  time: selectedOutsider.entryTime ? formatDateTime(new Date(selectedOutsider.entryTime)) : null,
+                  detail: selectedOutsider.gate || null,
+                  direction: "IN",
+                },
+                {
+                  label: t("Out"),
+                  time: selectedOutsider.exitTime ? formatDateTime(new Date(selectedOutsider.exitTime)) : null,
+                  pending: t("Still inside"),
+                  direction: "OUT",
+                },
+              ]}
+            />
 
-            <div className="flex flex-col sm:flex-row justify-between gap-4 rounded-2xl border border-zinc-800 px-4 py-3">
-              <div>
-                <p className="mb-1 flex items-center gap-1 text-[11px] uppercase tracking-wider text-zinc-500">
-                  <MapPin className="h-3 w-3" /> {t("Entry Details")}
-                </p>
-                <p className="text-sm font-medium text-zinc-200 tabular-nums">
-                  {formatDateTime(new Date(selectedOutsider.entryTime))}
-                </p>
-              </div>
-              {selectedOutsider.exitTime && (
-                <div className="text-left sm:text-right">
-                  <p className="mb-1 flex items-center sm:justify-end gap-1 text-[11px] uppercase tracking-wider text-zinc-500">
-                    <History className="h-3 w-3" /> {t("Exit Details")}
-                  </p>
-                  <p className="text-sm font-medium text-zinc-200 tabular-nums">
-                    {formatDateTime(new Date(selectedOutsider.exitTime))}
-                  </p>
-                </div>
-              )}
-            </div>
+            {/* Why: who they came for */}
+            <FactList
+              title={t("Visit")}
+              facts={[
+                { label: t("Person to Visit"), value: selectedOutsider.visitingStudent },
+                { label: t("Department"), value: selectedOutsider.department },
+                {
+                  label: t("Meeting (faculty / staff)"),
+                  value: selectedOutsider.visitPass?.hostName
+                    ? `${selectedOutsider.visitPass.hostName}${selectedOutsider.visitPass.status !== "EXITED" ? ` · ${t("code needed to exit")}` : ""}`
+                    : null,
+                  wide: true,
+                },
+                { label: t("Purpose of Visit"), value: selectedOutsider.purpose, wide: true },
+                { label: t("Vehicle Number"), value: selectedOutsider.vehicleNumber },
+                { label: t("Remarks"), value: selectedOutsider.remarks, wide: true },
+              ]}
+            />
+            <FactList title={t("Visitor")} facts={[{ label: t("Address"), value: selectedOutsider.address, wide: true }]} />
+
+            {/* Who wrote it down */}
+            {selectedOutsider.recordedByName && (
+              <p className="border-t border-zinc-800 pt-3 text-xs text-zinc-500">
+                {t("Registered by")} <span className="font-medium text-zinc-300">{selectedOutsider.recordedByName}</span>
+              </p>
+            )}
 
             {selectedOutsider.status === "INSIDE" && (
               <Button
@@ -1058,6 +1130,17 @@ export function OutsidersClient({ user }: Props) {
           </div>
         )}
       </Modal>
+
+      {/* Plain exit (no meeting code): a quick confirmation */}
+      <ConfirmDialog
+        open={!!confirmExit}
+        onClose={() => setConfirmExit(null)}
+        title={t("Mark this visitor as exited?")}
+        description={confirmExit ? `${confirmExit.name || "—"} · ${t("In")} ${formatTime(confirmExit.entryTime)}` : ""}
+        confirmText={t("Exit")}
+        variant="info"
+        onConfirm={() => confirmExit && doMarkExited(confirmExit)}
+      />
 
       {/* Meeting code at the gate (visitor came to meet a faculty / staff member) */}
       {exitFor && (

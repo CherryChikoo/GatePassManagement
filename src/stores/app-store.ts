@@ -86,10 +86,21 @@ if (typeof window !== "undefined") {
 class SessionExpiredError extends Error {}
 
 async function fetchPreload(light = false): Promise<StoreData> {
-  const res = await fetch(light ? "/api/data/preload?light=1" : "/api/data/preload", {
-    credentials: "include",
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(light ? "/api/data/preload?light=1" : "/api/data/preload", {
+      credentials: "include",
+      cache: "no-store",
+      // Never waits forever (e.g. after the portal sat idle): the screen offers Retry
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (err: any) {
+    throw new Error(
+      err?.name === "TimeoutError" || err?.name === "AbortError"
+        ? "Taking too long to load. Check the connection and retry."
+        : "No internet connection. Check the network and retry."
+    );
+  }
   if (res.status === 401) throw new SessionExpiredError("Session expired");
   if (!res.ok) {
     throw new Error(res.status >= 500 ? "Server error while loading data. Retrying…" : `Failed to load data (${res.status})`);

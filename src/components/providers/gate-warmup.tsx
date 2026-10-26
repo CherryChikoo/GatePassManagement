@@ -12,7 +12,8 @@
 import { useEffect } from "react";
 import { useLiveTopics } from "@/lib/realtime/live";
 import { prefetchGateData } from "@/lib/gate-cache";
-import { OUTSIDERS_QUERY, REGISTER_COUNTS_QUERY } from "@/lib/gate-queries";
+import { OUTSIDERS_QUERY, REGISTER_COUNTS_QUERY, facultyBookQuery, gateLogQuery } from "@/lib/gate-queries";
+import { istDateString } from "@/lib/time/ist";
 
 let warmed = false;
 
@@ -26,6 +27,12 @@ export function GateWarmup() {
       warmed = true;
       prefetchGateData(REGISTER_COUNTS_QUERY.key, REGISTER_COUNTS_QUERY.fetch, REGISTER_COUNTS_QUERY.topics);
       prefetchGateData(OUTSIDERS_QUERY.key, OUTSIDERS_QUERY.fetch, OUTSIDERS_QUERY.topics);
+      // Today's Gate Log and Faculty Book: their first open shows at once too
+      const today = istDateString();
+      const log = gateLogQuery(today);
+      prefetchGateData(log.key, log.fetch, log.topics);
+      const book = facultyBookQuery(today);
+      prefetchGateData(book.key, book.fetch, book.topics);
     };
     // After the first screen has loaded, so it never competes with it
     if ("requestIdleCallback" in window) {
