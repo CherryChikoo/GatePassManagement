@@ -1091,6 +1091,7 @@ export const te: Record<string, string> = {
   "Inside now": "ప్రస్తుతం లోపల",
   "Today's log": "ఈరోజు లాగ్",
   "Visitor log": "సందర్శకుల లాగ్",
+  "Visitors Book": "సందర్శకుల బుక్",
   "Save & let in": "సేవ్ చేసి లోపలికి పంపండి",
   "Mark this visitor as exited?": "ఈ సందర్శకుడు బయటకు వెళ్ళినట్లు నమోదు చేయాలా?",
   Visit: "సందర్శన",

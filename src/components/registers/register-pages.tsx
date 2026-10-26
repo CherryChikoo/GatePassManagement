@@ -192,8 +192,8 @@ export function RegistersHub({
                           : "truncate text-[15px] font-medium text-zinc-100"
                       }
                     >
-                      {/* Security: this row is the Visitors screen itself, so it is simply "Visitors" */}
-                      {isSecurity && r.key === "VISITORS" ? t("Visitors") : t(r.title)}
+                      {/* Security: this row opens the Visitors screen; named "Visitors Book" */}
+                      {isSecurity && r.key === "VISITORS" ? t("Visitors Book") : t(r.title)}
                     </span>
                     {n > 0 && (
                       <span className="shrink-0 rounded-full bg-zinc-950 border border-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-400 tabular-nums">
