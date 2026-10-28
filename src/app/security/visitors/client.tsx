@@ -491,18 +491,67 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
         </div>
       )}
 
-      {/* Search (filters the two lists) */}
+      {/* Filters: search (both lists) and, for the log, the day — one row on wider screens */}
       {!formOpen && (
-        <div className="relative w-full sm:max-w-sm">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-          <input
-            type="search"
-            placeholder={t("Search visitors...")}
-            aria-label={t("Search visitors...")}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-12 w-full rounded-full border border-zinc-800 bg-zinc-900 pl-11 pr-4 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
-          />
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+          <div className="relative w-full lg:max-w-sm lg:flex-1">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+            <input
+              type="search"
+              placeholder={t("Search visitors...")}
+              aria-label={t("Search visitors...")}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-12 w-full rounded-full border border-zinc-800 bg-zinc-900 pl-11 pr-4 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
+            />
+          </div>
+          {activeTab === "HISTORY" && (
+            <div className="lg:flex-1">
+            {/* One day (date picker), today, or every visitor ever (newest first) */}
+            <div className="flex items-center gap-2">
+              <DateField
+                aria-label={t("Date")}
+                value={logDate === "all" ? "" : logDate}
+                max={istDateString()}
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  setLogDate(e.target.value);
+                  setPage(1);
+                }}
+                className="h-12 min-w-0 flex-1 sm:w-56 sm:flex-none"
+              />
+              <div className="flex shrink-0 gap-2">
+                {logDate !== istDateString() && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLogDate(istDateString());
+                      setPage(1);
+                    }}
+                    className="h-12 whitespace-nowrap rounded-full border border-zinc-800 bg-zinc-900 px-3 sm:px-4 text-sm font-medium text-orange-500 hover:bg-zinc-950"
+                  >
+                    {t("Today")}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-pressed={logDate === "all"}
+                  onClick={() => {
+                    setLogDate("all");
+                    setPage(1);
+                  }}
+                  className={`h-12 whitespace-nowrap rounded-full border px-3 sm:px-4 text-sm font-medium transition-colors ${
+                    logDate === "all"
+                      ? "border-orange-600 bg-orange-600 text-white"
+                      : "border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-950"
+                  }`}
+                >
+                  {t("All dates")}
+                </button>
+              </div>
+            </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -878,49 +927,6 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
       {!formOpen && activeTab === "HISTORY" && (
         <>
           <LoadingPill active={logLoading} />
-          {/* One day (date picker), today, or every visitor ever (newest first) */}
-          <div className="flex items-center gap-2">
-            <DateField
-              aria-label={t("Date")}
-              value={logDate === "all" ? "" : logDate}
-              max={istDateString()}
-              onChange={(e) => {
-                if (!e.target.value) return;
-                setLogDate(e.target.value);
-                setPage(1);
-              }}
-              className="h-12 min-w-0 flex-1 sm:w-56 sm:flex-none"
-            />
-            <div className="flex shrink-0 gap-2">
-              {logDate !== istDateString() && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLogDate(istDateString());
-                    setPage(1);
-                  }}
-                  className="h-12 whitespace-nowrap rounded-full border border-zinc-800 bg-zinc-900 px-3 sm:px-4 text-sm font-medium text-orange-500 hover:bg-zinc-950"
-                >
-                  {t("Today")}
-                </button>
-              )}
-              <button
-                type="button"
-                aria-pressed={logDate === "all"}
-                onClick={() => {
-                  setLogDate("all");
-                  setPage(1);
-                }}
-                className={`h-12 whitespace-nowrap rounded-full border px-3 sm:px-4 text-sm font-medium transition-colors ${
-                  logDate === "all"
-                    ? "border-orange-600 bg-orange-600 text-white"
-                    : "border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-950"
-                }`}
-              >
-                {t("All dates")}
-              </button>
-            </div>
-          </div>
           <Card className={`overflow-hidden transition-opacity ${logLoading ? "opacity-60" : ""}`}>
             {visitorsLog.error ? (
               <div role="alert" className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
