@@ -332,6 +332,141 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
   );
 }
 
+// ─── Students Book & Pass ──────────────────────────────────────
+
+export function StudentBookView() {
+  const t = useT();
+  const f = useRegisterFilters();
+  const { data, error, loading, reload } = useLoader<any>(
+    "student-book",
+    () => callGate("getStudentBook", [{ date: f.dateParam, q: f.q, page: f.page }]),
+    `${f.dateParam}|${f.q}|${f.page}`,
+    LIVE_GATE
+  );
+  const [selected, setSelected] = useState<any | null>(null);
+  const passChip = (r: any) => (
+    <span className={cn(chipCls, r.passType === "Entry pass" ? "bg-emerald-500/10 text-emerald-600" : "bg-sky-500/10 text-sky-500")}>{t(r.passType)}</span>
+  );
+
+  return (
+    <div className="space-y-4">
+      <RegisterToolbar filters={f} searchPlaceholder="Search name, roll number, department…" />
+      <p className="text-xs leading-relaxed text-zinc-500">
+        {t("Day scholars' approved gate passes. The times are recorded when security scans the pass at the gate.")}
+      </p>
+      <Shell loading={loading} error={error} onRetry={reload} empty={!!data && data.rows.length === 0}>
+        {/* Phones */}
+        {data?.rows.length > 0 && (
+          <ul className={cn(dt.mobileList, "lg:hidden")}>
+            {data.rows.map((r: any) => (
+              <li key={r.id}>
+                <button type="button" onClick={() => setSelected(r)} className={mobileRowBtn}>
+                  <Initial name={r.studentName} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="truncate text-base font-medium text-zinc-100">{r.studentName}</span>
+                      {passChip(r)}
+                    </span>
+                    <span className="mt-0.5 block truncate text-sm text-zinc-400">
+                      {[r.roll, r.department, r.year ? `${t("Year")} ${r.year}` : null].filter(Boolean).join(" · ") || "—"}
+                    </span>
+                    <span className="mt-1 block text-xs text-zinc-500 tabular-nums">{formatDay(r.date)}</span>
+                    <span className="mt-2 grid grid-cols-2 gap-2">
+                      <span className="rounded-xl bg-zinc-950 px-3 py-2">
+                        <span className={cn(dtLabel, "block")}>{t("Out")}</span>
+                        <span className="block text-sm font-medium text-zinc-200 tabular-nums">{r.actualOut ? formatTime(r.actualOut.at) : "—"}</span>
+                      </span>
+                      <span className="rounded-xl bg-zinc-950 px-3 py-2">
+                        <span className={cn(dtLabel, "block")}>{t("In")}</span>
+                        <span className="block text-sm font-medium text-zinc-200 tabular-nums">{r.actualIn ? formatTime(r.actualIn.at) : "—"}</span>
+                      </span>
+                    </span>
+                  </span>
+                  <ChevronRight className="mt-3 h-5 w-5 shrink-0 text-zinc-600" aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Larger screens */}
+        {data?.rows.length > 0 && (
+          <div className={cn(dt.wrap, "hidden lg:block")}>
+            <table className={dt.table}>
+              <thead>
+                <tr>
+                  {["Request Date", "Student Name", "Roll Number", "Department", "Pass", "Date", "Actual Out-Time", "Actual In-Time"].map((h) => (
+                    <th key={h} className={dt.th}>{t(h)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map((r: any) => (
+                  <tr key={r.id} onClick={() => setSelected(r)} className={dt.trClickable}>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums")}>{formatDay(r.requestDate)}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap")}><PersonCell name={r.studentName || "—"} /></td>
+                    <td className={cn(dt.td, "whitespace-nowrap font-mono")}>{r.roll || "—"}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap")}>{r.department || "—"}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap")}>{passChip(r)}</td>
+                    <td className={cn(dt.td, "whitespace-nowrap tabular-nums")}>{formatDay(r.date)}</td>
+                    <td className={dt.td}><MoveCell m={r.actualOut} /></td>
+                    <td className={dt.td}><MoveCell m={r.actualIn} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Shell>
+      {data && <PagerBar page={f.page} pageSize={data.pageSize} total={data.total} onPageChange={f.setPage} itemLabel={t("records")} />}
+
+      <Modal open={!!selected} onClose={() => setSelected(null)} title={t("Student pass")} className="max-w-xl">
+        {selected && (
+          <div className="space-y-5">
+            <RecordHeader
+              title={selected.studentName || "—"}
+              subtitle={[selected.roll, selected.department, selected.year ? `${t("Year")} ${selected.year}` : null, selected.section].filter(Boolean).join(" · ") || null}
+              status={<StatusBadge status={selected.status} />}
+            />
+            <InOutCard
+              sides={[
+                {
+                  label: t("Out"),
+                  time: selected.actualOut ? formatInstant(selected.actualOut.at) : null,
+                  detail: selected.actualOut?.gate || selected.actualOut?.guard ? [selected.actualOut.gate, selected.actualOut.guard].filter(Boolean).join(" • ") : null,
+                  pending: selected.passType === "Entry pass" ? "—" : t("Not out yet"),
+                  direction: "OUT",
+                },
+                {
+                  label: t("In"),
+                  time: selected.actualIn ? formatInstant(selected.actualIn.at) : null,
+                  detail: selected.actualIn?.gate || selected.actualIn?.guard ? [selected.actualIn.gate, selected.actualIn.guard].filter(Boolean).join(" • ") : null,
+                  pending: selected.passType === "Entry pass" ? t("Not in yet") : "—",
+                  direction: "IN",
+                },
+              ]}
+            />
+            <FactList
+              title={t("Pass")}
+              facts={[
+                { label: t("Pass"), value: t(selected.passType) },
+                { label: t("Date"), value: formatDay(selected.date) },
+                { label: t("Planned time"), value: selected.plannedTime ? formatInstant(selected.plannedTime) : null },
+                { label: t("Approved"), value: selected.approvedAt ? `${formatInstant(selected.approvedAt)} • ${selected.approvedBy}` : null },
+                { label: t("Purpose"), value: selected.purpose, wide: true },
+                { label: t("Destination"), value: selected.destination },
+                { label: t("Mobile"), value: selected.phone },
+                { label: t("Request Date"), value: formatInstant(selected.requestDate) },
+              ]}
+            />
+            <GatePhotos permissionId={selected.id} />
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
 // ─── Form 2 — Visitors Book ───────────────────────────────────
 
 export function VisitorsBookView({ canRegister, canAdminEdit = false }: { canRegister: boolean; /** Main Admin: edit / delete any visitor */ canAdminEdit?: boolean }) {

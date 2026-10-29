@@ -13,6 +13,11 @@ export const LANGS: { code: Lang; label: string }[] = [
   { code: "te", label: "తెలుగు" },
 ];
 
+/** Security's language: Telugu unless English was chosen on this device (cookie "en") */
+export function securityLang(value: string | null | undefined): Lang {
+  return value === "en" ? "en" : "te";
+}
+
 export function normalizeLang(value: string | null | undefined): Lang {
   return value === "te" ? "te" : "en";
 }

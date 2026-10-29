@@ -230,7 +230,11 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
-    return NextResponse.redirect(url);
+    const redirect = NextResponse.redirect(url);
+    // A session that could not be renewed is removed here, so the login page
+    // does not try to renew it again (one less wait on a fresh open)
+    cookiesToSet.forEach(({ name, value, options }) => redirect.cookies.set(name, value, options));
+    return redirect;
   }
 
   // Build downstream headers AFTER any cookie refresh so server code sees the new cookies.

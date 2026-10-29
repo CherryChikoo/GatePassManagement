@@ -1,7 +1,7 @@
 "use client";
 import { useT } from "@/components/providers/language-provider";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { loginAction } from "@/server/actions/auth";
 import Image from "next/image";
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
@@ -12,8 +12,11 @@ export function LoginForm() {
   const t = useT();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  // First visit on a slow phone: the page shows before its code has loaded. A tap
+  // on Sign in then would only reload the page, so the button waits until ready.
+  // The fields are left uncontrolled so anything typed meanwhile is kept.
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
   const [showPassword, setShowPassword] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
 
@@ -116,7 +119,7 @@ export function LoginForm() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="mt-6 sm:mt-7 flex flex-col gap-3">
+          <form method="post" onSubmit={handleSubmit} className="mt-6 sm:mt-7 flex flex-col gap-3">
             <label htmlFor="login-email" className="sr-only">{t("Email")}</label>
             <div className="relative">
               <Mail className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-zinc-500" aria-hidden="true" />
@@ -127,8 +130,6 @@ export function LoginForm() {
                 inputMode="email"
                 autoComplete="email"
                 placeholder={t("Email")}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
                 required
                 className="h-12 w-full rounded-2xl border border-transparent bg-[#eef0f3] pl-11 pr-4 text-base sm:text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors focus:border-orange-500/50 focus:bg-white focus:ring-4 focus:ring-orange-500/10"
               />
@@ -143,8 +144,6 @@ export function LoginForm() {
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 placeholder={t("Password")}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
                 required
                 className="h-12 w-full rounded-2xl border border-transparent bg-[#eef0f3] pl-11 pr-12 text-base sm:text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors focus:border-orange-500/50 focus:bg-white focus:ring-4 focus:ring-orange-500/10"
               />
@@ -176,15 +175,15 @@ export function LoginForm() {
 
             <button
               type="submit"
-              disabled={loading}
-              aria-busy={loading}
+              disabled={loading || !ready}
+              aria-busy={loading || !ready}
               className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-medium text-white transition-[transform,filter] active:scale-[0.99] hover:brightness-110 disabled:opacity-70 disabled:cursor-wait shadow-[0_10px_24px_-10px_rgba(16,24,40,0.55),inset_0_1px_0_rgba(255,255,255,0.15)]"
               style={{ background: "linear-gradient(180deg, #3a3b40 0%, #17181b 100%)" }}
             >
-              {loading ? (
+              {loading || !ready ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  {t("Signing in…")}
+                  {loading ? t("Signing in…") : t("Loading…")}
                 </>
               ) : (
                 t("Sign in")

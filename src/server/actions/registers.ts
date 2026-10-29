@@ -424,6 +424,83 @@ export async function getFacultyBook(params: { date?: string; q?: string; page?:
   };
 }
 
+/**
+ * Students Book & Pass: approved day-scholar gate passes (exit and entry) with
+ * the actual out / in scanned at the gate. Hostellers' outings have their own
+ * hostel books, and hostel passes (college → hostel) never go through the gate.
+ */
+export async function getStudentBook(params: { date?: string; q?: string; page?: number }) {
+  await requireRole(...VIEW_ROLES);
+  const page = parsePageParam(String(params?.page ?? 1));
+  const range = dayFilter(params?.date);
+  const q = typeof params?.q === "string" ? params.q.trim().slice(0, 100) : "";
+
+  const where: Prisma.PermissionWhereInput = {
+    AND: [
+      { studentId: { not: null }, approvedAt: { not: null } },
+      // Day-scholar passes: outings are warden-approved, hostel passes are one-way to the hostel
+      { NOT: { approverType: "WARDEN" } },
+      { OR: [{ passKind: null }, { passKind: { not: "HOSTEL" } }] },
+      ...(range ? [passOnDay(range)] : []),
+      ...(q
+        ? [{
+            student: {
+              OR: [
+                { studentRoll: { contains: q, mode: "insensitive" as const } },
+                { department: { contains: q, mode: "insensitive" as const } },
+                { profile: { name: { contains: q, mode: "insensitive" as const } } },
+              ],
+            },
+          }]
+        : []),
+    ],
+  };
+
+  const [rows, total] = await Promise.all([
+    prisma.permission.findMany({
+      where,
+      orderBy: [{ exitDate: "desc" }, { createdAt: "desc" }],
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+      select: {
+        id: true, createdAt: true, approvedAt: true, status: true, type: true,
+        exitDate: true, expectedExit: true, purpose: true, destination: true,
+        approval: { select: { faculty: { select: { profile: { select: { name: true } } } } } },
+        student: { select: { studentRoll: true, department: true, year: true, section: true, profile: { select: { name: true, phone: true } } } },
+        movements: movementSelect,
+      },
+    }),
+    prisma.permission.count({ where }),
+  ]);
+
+  return {
+    success: true,
+    page,
+    pageSize: PAGE_SIZE,
+    total,
+    rows: rows.map((p) => ({
+      id: p.id,
+      requestDate: iso(p.createdAt),
+      studentName: p.student?.profile.name ?? "",
+      roll: p.student?.studentRoll ?? "",
+      department: p.student?.department ?? null,
+      year: p.student?.year ?? null,
+      section: p.student?.section ?? null,
+      phone: p.student?.profile.phone ?? null,
+      passType: p.type === "ENTRY" ? "Entry pass" : "Exit pass",
+      date: iso(p.exitDate),
+      plannedTime: iso(p.expectedExit),
+      purpose: p.purpose,
+      destination: p.destination,
+      status: p.status,
+      approvedAt: iso(p.approvedAt),
+      approvedBy: p.approval?.faculty?.profile?.name ?? "HOD",
+      actualOut: movementInfo(p.movements.find((m) => m.type === "EXIT")),
+      actualIn: movementInfo(p.movements.find((m) => m.type === "ENTRY")),
+    })),
+  };
+}
+
 /** Security marks a faculty member back on campus on the same pass (no photo needed). */
 export async function markFacultyReturn(permissionId: string, gateId?: string) {
   const user = await requireRole("SECURITY");

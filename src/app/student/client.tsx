@@ -2,7 +2,7 @@
 
 import { usePassWatch } from "@/hooks/use-pass-watch";
 import { DateField } from "@/components/ui/date-field";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -72,7 +72,6 @@ interface Props {
 
 export function StudentDashboardClient({ user }: Props) {
   const router = useRouter();
-  const [isPendingTransition, startTransition] = useTransition();
 
   const isReady = useStoreReady();
   const dashboardData = useAppStore((s) => s.data.dashboard);
@@ -84,10 +83,11 @@ export function StudentDashboardClient({ user }: Props) {
   // check while there is no live connection), e.g. straight to the
   // confirmation after the guard scans.
   const waiting = state === "PENDING" || state === "QR_CODE";
-  usePassWatch(dashboardData?.latestPermission?.id, waiting, () => {
-    startTransition(() => {
-      useAppStore.getState().refresh(true);
-    });
+  usePassWatch(dashboardData?.latestPermission?.id, waiting, async () => {
+    const before = useAppStore.getState().lastSyncAt;
+    await useAppStore.getState().refresh(true);
+    // Not reloaded (network blip): the watcher reports the change again shortly
+    return useAppStore.getState().lastSyncAt !== before;
   });
 
   // A rejection is shown once; after the student dismisses it (button/timer) we go back to the form.
@@ -202,7 +202,18 @@ function RecordMissingSignOut() {
 const TIME_FIELD_CLS = "h-12! rounded-2xl! bg-zinc-900! text-base! sm:text-sm! hover:border-zinc-700 focus:border-orange-500/50!";
 
 const REJECTION_ACK_KEY = "gatepass:rejection-ack";
-const REJECTED_AUTO_RETURN_S = 20;
+const REJECTED_AUTO_RETURN_S = 12;
+
+/** Alerts go away by themselves once the student has had time to read them */
+const ALERT_SHOW_MS = 6000;
+
+function useAutoClear(value: string | null, clear: (v: null) => void) {
+  useEffect(() => {
+    if (!value) return;
+    const timer = setTimeout(() => clear(null), ALERT_SHOW_MS);
+    return () => clearTimeout(timer);
+  }, [value, clear]);
+}
 
 // ──────────────────────────────────────────────────────────────
 // VIEW 0: REJECTED (reason from HOD / warden, then back to the form)
@@ -525,6 +536,7 @@ function PendingApprovalView({
   const router = useRouter();
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useAutoClear(error, setError);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
 
   const approverLabel =
@@ -689,6 +701,7 @@ function PermissionFormView({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useAutoClear(error, setError);
   // Errors shown under the input they belong to
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const showFieldError = (field: string, message: string) => {
@@ -708,7 +721,7 @@ function PermissionFormView({
       new Date(latestPermission.qr.expiresAt) <= new Date());
 
   // The "pass expired" note is shown once per pass: after it is closed (or
-  // fades after 8 s) it doesn't come back on the next sign-in.
+  // fades after a few seconds) it doesn't come back on the next sign-in.
   const expiredPassId: string | null = wasExpired ? latestPermission.id : null;
   const [expiryAlertId, setExpiryAlertId] = useState<string | null>(null);
   const closeExpiryAlert = () => {
@@ -732,7 +745,7 @@ function PermissionFormView({
         localStorage.setItem(EXPIRY_ALERT_SEEN_KEY, expiredPassId);
       } catch {}
       setExpiryAlertId(null);
-    }, 8000);
+    }, ALERT_SHOW_MS);
     return () => {
       clearTimeout(show);
       clearTimeout(hide);

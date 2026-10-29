@@ -318,15 +318,12 @@ export function SecurityLogClient({ initialDate }: { initialDate?: string }) {
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full lg:w-auto">
-          <label className="relative flex h-12 sm:h-11 shrink-0 cursor-pointer items-center gap-2.5 rounded-full border border-zinc-800 bg-zinc-900 pl-4 pr-3 transition-colors hover:border-zinc-700 focus-within:border-orange-500/50 focus-within:ring-4 focus-within:ring-orange-500/10">
-            <CalendarIcon className="h-4 w-4 shrink-0 text-orange-400" />
-            <DateField
-              aria-label={t("Date")}
-              value={selectedDate}
-              onChange={handleDateChange}
-              className="min-w-0 flex-1 bg-transparent text-base sm:text-sm font-medium text-zinc-100 outline-none [color-scheme:light] cursor-pointer"
-            />
-          </label>
+          <DateField
+            aria-label={t("Date")}
+            value={selectedDate}
+            onChange={handleDateChange}
+            className="h-12 sm:h-11 w-full sm:w-56 shrink-0 text-base sm:text-sm font-medium"
+          />
           <div className="relative flex-1 sm:min-w-[260px]">
             <Input
               icon={<Search className="h-4 w-4" />}

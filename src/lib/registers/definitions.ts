@@ -144,6 +144,7 @@ export type RegisterDef = EntryRegister | DerivedRegister;
 
 export const REGISTER_KEYS = [
   "FACULTY_BOOK",
+  "STUDENT_BOOK",
   "VISITORS",
   "ADMISSION",
   "CAR_BOOK",
@@ -263,6 +264,13 @@ export const REGISTERS: RegisterDef[] = [
     number: 1,
     title: "Faculty Book & Pass",
     description: "Approved faculty passes with the actual out-time and in-time marked by security.",
+  },
+  {
+    kind: "derived",
+    key: "STUDENT_BOOK",
+    number: 20,
+    title: "Students Book & Pass",
+    description: "Approved day-scholar gate passes with the actual out-time and in-time scanned at the gate.",
   },
   {
     kind: "derived",

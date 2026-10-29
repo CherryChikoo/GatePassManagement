@@ -49,7 +49,6 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
   const [selectedGate, setSelectedGate] = useState(gates[0]?.id || "");
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
-  const [showNotes, setShowNotes] = useState(false);
   const [manualToken, setManualToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -285,7 +284,6 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
     photoUploadRef.current = null;
     setManualToken("");
     setNotes("");
-    setShowNotes(false);
     setError(null);
     setSuccess(null);
   }
@@ -537,15 +535,6 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
                         {t(PERSON_TYPE[verifyResult.student.studentType] ?? verifyResult.student.studentType)}
                       </span>
                     </div>
-                    <p className="mt-1 truncate text-sm text-zinc-500">
-                      {[
-                        verifyResult.student.designation,
-                        verifyResult.student.department,
-                        verifyResult.student.year ? `${t("Year")} ${verifyResult.student.year}` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ") || "—"}
-                    </p>
                   </div>
                   {verifyResult.student.profile.phone && (
                     <a
@@ -557,6 +546,21 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
                     </a>
                   )}
                 </div>
+                <dl className="mt-4 grid grid-cols-2 gap-2">
+                  {verifyResult.student.studentType === "FACULTY" ? (
+                    <>
+                      <PersonFact label={t("Department")} value={verifyResult.student.department} />
+                      <PersonFact label={t("Designation")} value={verifyResult.student.designation} />
+                    </>
+                  ) : (
+                    <>
+                      <PersonFact label={t("Department")} value={verifyResult.student.department} wide />
+                      <PersonFact label={t("Year")} value={verifyResult.student.year} />
+                      <PersonFact label={t("Section")} value={verifyResult.student.section} />
+                    </>
+                  )}
+                  <PersonFact label={t("Mobile Number")} value={verifyResult.student.profile.phone} wide />
+                </dl>
               </CardContent>
             </Card>
 
@@ -582,19 +586,24 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
                     </PassFact>
                   )}
                 </dl>
-                <div className="border-t border-zinc-800 pt-3">
-                  <p className="text-xs text-zinc-500">{t("Approved by")}</p>
-                  <ul className="mt-1.5 space-y-1.5">
-                    {(verifyResult.approvedBy ?? []).map((ap: { role: string; name: string; at: string | null }, i: number) => (
-                      <li key={i} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
-                        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                        <span className="font-semibold text-zinc-100">{ap.name || t(ap.role)}</span>
-                        {ap.name && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">{t(ap.role)}</span>}
-                        {ap.at && <span className="text-xs text-zinc-500">{formatDateTime(ap.at)}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <ul className="space-y-2 border-t border-zinc-800 pt-3">
+                  {(verifyResult.approvedBy ?? []).map((ap: { role: string; name: string; at: string | null }, i: number) => (
+                    <li key={i} className="flex items-start gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-emerald-600">
+                          {t("Approved by")} {t(ap.role)}
+                        </p>
+                        <p className="mt-0.5 text-base font-semibold leading-snug text-zinc-100 break-words">
+                          {ap.name || t(ap.role)}
+                        </p>
+                        <p className="mt-0.5 text-sm text-zinc-500">
+                          {ap.at ? formatDateTime(ap.at) : t("Not filled")}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </CardContent>
             </Card>
 
@@ -656,21 +665,40 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
                       {t("Gate")}: <span className="font-medium text-zinc-100">{gates[0]?.name ?? "—"}</span>
                     </p>
                   )}
-                  {showNotes || notes ? (
+                  <div>
                     <Textarea
                       label={t("Notes (optional)")}
-                      placeholder={t("Any additional notes...")}
+                      placeholder={t("Tap a note below, or type here…")}
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       id="movement-notes"
                       rows={2}
+                      maxLength={500}
                       className="min-h-[64px]"
                     />
-                  ) : (
-                    <button type="button" onClick={() => setShowNotes(true)} className="text-sm font-medium text-orange-500 hover:text-orange-600">
-                      + {t("Add a note")}
-                    </button>
-                  )}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(isExit ? EXIT_NOTES : ENTRY_NOTES).map((n) => {
+                        const text = t(n);
+                        const picked = notes === text;
+                        return (
+                          <button
+                            key={n}
+                            type="button"
+                            aria-pressed={picked}
+                            onClick={() => setNotes(picked ? "" : text)}
+                            className={cn(
+                              "min-h-11 rounded-full border px-4 py-2 text-sm font-medium transition-colors",
+                              picked
+                                ? "border-orange-500 bg-orange-500 text-white"
+                                : "border-zinc-800 bg-zinc-950 text-zinc-200 hover:border-orange-500/40"
+                            )}
+                          >
+                            {text}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -783,6 +811,24 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
 
 /** Readable person type for the guard */
 const PERSON_TYPE: Record<string, string> = { DAY_SCHOLAR: "Day scholar", HOSTELLER: "Hosteller", FACULTY: "Faculty" };
+
+/** Ready-made notes the guard can tap instead of typing */
+const EXIT_NOTES = ["All details checked", "Left with parent / guardian", "Medical reason", "ID card not shown"];
+const ENTRY_NOTES = ["All details checked", "Came back late", "Came with parent / guardian", "ID card not shown"];
+
+/** One detail about the person, in its own box ("Not filled" when empty) */
+function PersonFact({ label, value, wide = false }: { label: string; value: React.ReactNode; wide?: boolean }) {
+  const t = useT();
+  const empty = value === null || value === undefined || value === "";
+  return (
+    <div className={cn("min-w-0 rounded-2xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5", wide && "col-span-2")}>
+      <dt className="text-xs text-zinc-500">{label}</dt>
+      <dd className={cn("mt-0.5 text-[15px] font-medium leading-snug break-words", empty ? "text-zinc-500" : "text-zinc-100")}>
+        {empty ? t("Not filled") : value}
+      </dd>
+    </div>
+  );
+}
 
 /** One fact about the pass: small label, value under it */
 function PassFact({ label, wide = false, children }: { label: string; wide?: boolean; children: React.ReactNode }) {

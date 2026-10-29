@@ -6,7 +6,7 @@ import { StudentShell } from "@/components/dashboard/student-shell";
 import { logoutAction } from "@/server/actions/auth";
 import { LanguageProvider } from "@/components/providers/language-provider";
 import { SecurityText } from "@/components/providers/security-text";
-import { LANG_COOKIE, normalizeLang } from "@/lib/i18n";
+import { LANG_COOKIE, securityLang } from "@/lib/i18n";
 
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
@@ -16,7 +16,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
   // Under "Gate Pass": their designation / role (e.g. "Head of Department · CSE")
   const roleTitle = await getRoleLine(user.profileId, user.role);
   // Telugu is offered only to Security (incl. Head Security); every other role stays in English
-  const lang = user.role === "SECURITY" ? normalizeLang(cookieStore.get(LANG_COOKIE)?.value) : "en";
+  const lang = user.role === "SECURITY" ? securityLang(cookieStore.get(LANG_COOKIE)?.value) : "en";
 
   // Students keep their own single-screen shell (no staff sidebar)
   if (user.role === "STUDENT") {

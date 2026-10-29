@@ -29,6 +29,7 @@ import {
   ShieldCheck,
   Undo2,
   UsersRound,
+  GraduationCap,
   type LucideIcon,
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
@@ -43,7 +44,8 @@ import { useLiveTopics } from "@/lib/realtime/live";
 import { QuickEntryModal } from "./quick-entry";
 import { AttendanceSheetView } from "./attendance-sheet";
 import { localizeRegister } from "./localize";
-import { FacultyBookView, HomeOutingSummaryView, HostelOutingView, VisitorsBookView } from "./derived-views";
+import { FacultyBookView,
+  StudentBookView, HomeOutingSummaryView, HostelOutingView, VisitorsBookView } from "./derived-views";
 
 export type RegisterViewer = "SECURITY" | "ADMIN" | "SECURITY_SUPERVISOR";
 
@@ -54,9 +56,17 @@ const BASE: Record<RegisterViewer, string> = {
 };
 
 /** One recognisable icon per register (the list is long; icons make it scannable). */
+/** Pass books shown first on the registers list (lower = earlier); everything else keeps its order */
+const PASS_BOOK_ORDER = ["BOYS_HOSTEL_OUTING", "LADIES_HOSTEL_OUTING", "FACULTY_BOOK", "STUDENT_BOOK"];
+const passBookRank = (key: string) => {
+  const i = PASS_BOOK_ORDER.indexOf(key);
+  return i < 0 ? PASS_BOOK_ORDER.length : i;
+};
+
 const REGISTER_ICON: Record<RegisterKey, LucideIcon> = {
   FACULTY_BOOK: Briefcase,
   VISITORS: ContactRound,
+  STUDENT_BOOK: GraduationCap,
   ADMISSION: School,
   CAR_BOOK: Car,
   AUTO_BOOK: CarTaxiFront,
@@ -110,7 +120,12 @@ export function RegistersHub({
   const [query, setQuery] = useState("");
   const [quickKey, setQuickKey] = useState<string | null>(null);
 
-  const visible = allRegisters.filter((r) => !hidden.includes(r.key));
+  // The pass books come first (hostel outings, faculty, students), then the rest in their usual order
+  const visible = allRegisters
+    .filter((r) => !hidden.includes(r.key))
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => passBookRank(a.r.key) - passBookRank(b.r.key) || a.i - b.i)
+    .map(({ r }) => r);
   const q = query.trim().toLowerCase();
   const list = q
     ? visible.filter((r) => `${r.title} ${t(r.title)} ${r.description} ${t(r.description)}`.toLowerCase().includes(q))
@@ -281,6 +296,8 @@ export function RegisterPage({
     );
   } else if (def.key === "FACULTY_BOOK") {
     body = <FacultyBookView canMarkIn={isSecurity} />;
+  } else if (def.key === "STUDENT_BOOK") {
+    body = <StudentBookView />;
   } else if (def.key === "VISITORS") {
     body = <VisitorsBookView canRegister={isSecurity} canAdminEdit={viewer === "ADMIN"} />;
   } else if (def.key === "BOYS_HOSTEL_OUTING") {

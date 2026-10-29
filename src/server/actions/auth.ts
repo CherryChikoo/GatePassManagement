@@ -55,6 +55,11 @@ export async function loginAction(formData: FormData) {
 
     if (error) {
       logger.warn('Login failed', { error: error.message });
+      // Could not reach the sign-in server (slow network, timeout): the password may be right
+      const status = (error as { status?: number }).status;
+      if (error.name === "AuthRetryableFetchError" || status === 0 || (typeof status === "number" && status >= 500)) {
+        return { error: "Could not sign in. Check your connection and try again." };
+      }
       return { error: "Invalid email or password" };
     }
 

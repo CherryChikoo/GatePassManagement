@@ -3,8 +3,14 @@
 import { useEffect, useRef } from "react";
 import { useOwnLive } from "@/lib/realtime/live";
 
-/** While the live connection is up, a slow safety check is enough */
-const LIVE_CHECK_MS = 60_000;
+/**
+ * While the live connection is up, a safety check now and then is enough. Kept
+ * short: a phone's live connection can die silently (screen dimmed at the gate),
+ * and the student must not stay on the QR after the guard has scanned it.
+ */
+const LIVE_CHECK_MS = 20_000;
+/** The screen could not reload after a change (network blip): try again this soon */
+const RETRY_MS = 3_000;
 /**
  * Without a live connection the checks slow down the longer nothing changes:
  * from `intervalMs` up to this. Thousands of students waiting at once must not
@@ -25,8 +31,16 @@ const MAX_POLL_MS = 30_000;
  *   every `intervalMs` instead, as before.
  *
  * Checks run only while the screen is visible; coming back checks at once.
+ *
+ * `onChange` may return `false` when it could not reload the screen: the change
+ * is then reported again a few seconds later, so the screen never stays stuck.
  */
-export function usePassWatch(permissionId: string | null | undefined, enabled: boolean, onChange: () => void, intervalMs = 5000) {
+export function usePassWatch(
+  permissionId: string | null | undefined,
+  enabled: boolean,
+  onChange: () => unknown,
+  intervalMs = 5000,
+) {
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -49,13 +63,20 @@ export function usePassWatch(permissionId: string | null | undefined, enabled: b
     let first: string | null = null;
     let stopped = false;
     let busy = false;
+    // A ping came during a check: check once more right after
+    let again = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     // Current pace without a live connection (grows while nothing changes)
     let pollMs = intervalMs;
 
     const check = async () => {
-      if (stopped || busy || document.visibilityState !== "visible") return;
+      if (stopped || document.visibilityState !== "visible") return;
+      if (busy) {
+        again = true;
+        return;
+      }
       busy = true;
+      again = false;
       try {
         const res = await fetch(`/api/pass-status?id=${encodeURIComponent(permissionId)}`, { cache: "no-store" });
         if (!res.ok) return;
@@ -63,14 +84,22 @@ export function usePassWatch(permissionId: string | null | undefined, enabled: b
         if (!sig || stopped) return;
         if (first === null) first = sig;
         else if (sig !== first) {
-          stopped = true;
-          onChangeRef.current();
+          // Keep watching: the same pass can change again (e.g. out, then back in)
+          const shown = await onChangeRef.current();
+          if (stopped) return;
+          if (shown === false) {
+            // Not reloaded: report this change again shortly
+            setTimeout(() => void check(), RETRY_MS);
+          } else {
+            first = sig;
+          }
         }
       } catch {
         // offline for a moment: the next check tries again
       } finally {
         busy = false;
       }
+      if (again && !stopped) void check();
     };
 
     // The next check comes sooner when there is no live connection

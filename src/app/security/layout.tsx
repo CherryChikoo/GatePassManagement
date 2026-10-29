@@ -7,7 +7,7 @@ import { StoreHydrator } from "@/components/providers/store-hydrator";
 import { LanguageProvider } from "@/components/providers/language-provider";
 import { SecurityText } from "@/components/providers/security-text";
 import { GateWarmup } from "@/components/providers/gate-warmup";
-import { LANG_COOKIE, normalizeLang } from "@/lib/i18n";
+import { LANG_COOKIE, securityLang } from "@/lib/i18n";
 
 export default async function SecurityLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = await cookies();
@@ -17,7 +17,7 @@ export default async function SecurityLayout({ children }: { children: React.Rea
   // Under "Gate Pass": their designation / role (e.g. "Head of Department · CSE")
   const roleTitle = await getRoleLine(user.profileId, user.role);
   // Telugu is offered only to Security (incl. Head Security); every other role stays in English
-  const lang = normalizeLang(cookieStore.get(LANG_COOKIE)?.value);
+  const lang = securityLang(cookieStore.get(LANG_COOKIE)?.value);
 
   return (
     <LanguageProvider initialLang={lang}>
