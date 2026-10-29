@@ -1,5 +1,6 @@
 "use client";
 
+import { scrollPageToTop } from "@/lib/ui/scroll-top";
 import { ThemedSelect } from "@/components/ui/themed-select";
 import { usePassWatch } from "@/hooks/use-pass-watch";
 import { DateField } from "@/components/ui/date-field";
@@ -138,6 +139,9 @@ export function FacultyApplyClient() {
   const [activeTab, setActiveTab] = useState<TabState>("APPLY");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  useEffect(() => {
+    if (success) scrollPageToTop();
+  }, [success]);
   const [loading, setLoading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   
@@ -258,6 +262,7 @@ export function FacultyApplyClient() {
         setTimeout(() => {
           setSuccess(false);
           setActiveTab("HISTORY");
+          scrollPageToTop();
         }, 2000);
       }
     } catch {

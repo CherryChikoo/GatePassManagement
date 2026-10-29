@@ -1,4 +1,5 @@
 "use client";
+import { scrollPageToTop } from "@/lib/ui/scroll-top";
 import { useT } from "@/components/providers/language-provider";
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -319,6 +320,13 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
     const id = requestAnimationFrame(() => registerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }));
     return () => cancelAnimationFrame(id);
   }, [capturedImage, state]);
+
+  // A new step (done, error, scanning, checking…) starts at the top: the page
+  // was scrolled down to Register, and the next screen is much shorter
+  useEffect(() => {
+    if (state === "verified" || state === "capturing_photo" || state === "registering") return;
+    scrollPageToTop();
+  }, [state]);
 
   const isExit = verifyResult?.allowedAction === "EXIT";
   const needsPhoto = verifyResult?.photoRequired !== false;

@@ -1,5 +1,6 @@
 "use client";
 
+import { scrollPageToTop } from "@/lib/ui/scroll-top";
 import { usePassWatch } from "@/hooks/use-pass-watch";
 import { DateField } from "@/components/ui/date-field";
 import { useEffect, useState } from "react";
@@ -89,6 +90,12 @@ export function StudentDashboardClient({ user }: Props) {
     // Not reloaded (network blip): the watcher reports the change again shortly
     return useAppStore.getState().lastSyncAt !== before;
   });
+
+  // Each screen (form, waiting, QR, rejected) starts at the top — the student was
+  // scrolled down at the Submit button, and the next screen is shorter
+  useEffect(() => {
+    if (state) scrollPageToTop();
+  }, [state]);
 
   // A rejection is shown once; after the student dismisses it (button/timer) we go back to the form.
   const latestId: string | undefined = dashboardData?.latestPermission?.id;

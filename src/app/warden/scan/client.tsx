@@ -1,5 +1,6 @@
 "use client";
 
+import { scrollPageToTop } from "@/lib/ui/scroll-top";
 import { useCallback, useEffect, useState } from "react";
 import { QrScanner } from "@/components/scan/qr-scanner";
 import { CheckCircle2, Home, Loader2, ScanLine, Search, XCircle } from "lucide-react";
@@ -21,6 +22,9 @@ export function WardenScanClient({ autoStart = false }: { autoStart?: boolean })
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (notice) scrollPageToTop();
+  }, [notice]);
   const [verified, setVerified] = useState<Verified | null>(null);
   const [roll, setRoll] = useState("");
   const [lists, setLists] = useState<{ expected: Row[]; arrived: Row[] }>({ expected: [], arrived: [] });

@@ -432,6 +432,7 @@ export function DashboardLayout({
         {/* Page content */}
         <div
           ref={scrollRef}
+          data-page-scroll
           className="scrollbar-none flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden px-3 sm:px-4 lg:px-6"
           style={{
             // Before the first measurement: the usual bar sizes

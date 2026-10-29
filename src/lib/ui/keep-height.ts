@@ -9,9 +9,13 @@ import { useEffect, type RefObject } from "react";
  * search box, tab), the list can get shorter; the browser then pulls the view
  * up, and pushes it down again when the list grows back. Right at the change —
  * before the list re-renders — the content keeps its current height as a
- * minimum, so the view stays where it is. Released when the reader scrolls back
- * to the top or opens another page (`resetKey`).
+ * minimum, so the view stays where it is. Released shortly after (the list is
+ * in place by then), or when the reader scrolls back to the top or opens another
+ * page (`resetKey`) — never left behind as empty space at the bottom.
+ *
+ * Typing a note (textarea) or picking a file is not a filter: no hold.
  */
+const HOLD_MS = 1500;
 export function useKeepHeightOnFilter(
   scrollRef: RefObject<HTMLElement | null>,
   contentRef: RefObject<HTMLElement | null>,
@@ -22,17 +26,24 @@ export function useKeepHeightOnFilter(
     const content = contentRef.current;
     if (!scroller || !content) return;
     content.style.minHeight = "";
+    let releaseTimer: ReturnType<typeof setTimeout> | null = null;
+    const release = () => {
+      if (releaseTimer) clearTimeout(releaseTimer);
+      releaseTimer = null;
+      content.style.minHeight = "";
+    };
 
     const hold = (e: Event) => {
       if (scroller.scrollTop <= 0) return;
-      if (e.type === "click") {
-        const el = e.target as Element | null;
-        if (!el?.closest('[role="tab"], [role="radio"], [aria-pressed]')) return;
-      }
+      const el = e.target as Element | null;
+      if (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type === "file")) return;
+      if (e.type === "click" && !el?.closest('[role="tab"], [role="radio"], [aria-pressed]')) return;
       content.style.minHeight = `${content.offsetHeight}px`;
+      if (releaseTimer) clearTimeout(releaseTimer);
+      releaseTimer = setTimeout(release, HOLD_MS);
     };
     const onScroll = () => {
-      if (scroller.scrollTop <= 0 && content.style.minHeight) content.style.minHeight = "";
+      if (scroller.scrollTop <= 0 && content.style.minHeight) release();
     };
 
     scroller.addEventListener("change", hold, true);
@@ -44,7 +55,7 @@ export function useKeepHeightOnFilter(
       scroller.removeEventListener("input", hold, true);
       scroller.removeEventListener("click", hold, true);
       scroller.removeEventListener("scroll", onScroll);
-      content.style.minHeight = "";
+      release();
     };
   }, [scrollRef, contentRef, resetKey]);
 }

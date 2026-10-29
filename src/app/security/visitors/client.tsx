@@ -1,4 +1,5 @@
 "use client";
+import { scrollPageToTop } from "@/lib/ui/scroll-top";
 import { ThemedSelect } from "@/components/ui/themed-select";
 import { DepartmentSelect } from "@/components/ui/department-select";
 import { useT } from "@/components/providers/language-provider";
@@ -80,14 +81,14 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
     setError(null);
     setSuccess(null);
     setFormOpen(true);
-    window.scrollTo({ top: 0 });
+    scrollPageToTop();
   };
   const closeForm = () => {
     setFormOpen(false);
     setActiveTab("INSIDE");
     // A reload shows the list, not the form again
     if (window.location.search) window.history.replaceState(null, "", window.location.pathname);
-    window.scrollTo({ top: 0 });
+    scrollPageToTop();
   };
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
