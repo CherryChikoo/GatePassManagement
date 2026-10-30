@@ -133,6 +133,7 @@ function isTransientAuthError(error: unknown): boolean {
 function isPublicPath(pathname: string): boolean {
   return (
     pathname === "/login" ||
+    pathname === "/api/auth/login" ||
     pathname === "/api/auth/callback" ||
     pathname === "/api/health" ||
     pathname === "/api/version" ||

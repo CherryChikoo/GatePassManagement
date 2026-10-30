@@ -3,6 +3,7 @@
 import { scrollPageToTop } from "@/lib/ui/scroll-top";
 import { ThemedSelect } from "@/components/ui/themed-select";
 import { usePassWatch } from "@/hooks/use-pass-watch";
+import { passSig } from "@/lib/passes/pass-sig";
 import { DateField } from "@/components/ui/date-field";
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -159,15 +160,28 @@ export function FacultyApplyClient() {
 
   // Waiting for approval: reloads the moment the pass is approved or rejected
   // (live ping, or a tiny status check every 4 s while there is no live connection)
-  const firstPendingId: string | null = (myPasses || []).find((p: any) => p.status === "PENDING")?.id ?? null;
+  const firstPending: any = (myPasses || []).find((p: any) => p.status === "PENDING") ?? null;
+  const firstPendingId: string | null = firstPending?.id ?? null;
   const hasPending = !!firstPendingId;
-  usePassWatch(firstPendingId, hasPending, () => useAppStore.getState().refresh(true), 4000);
+  usePassWatch(
+    firstPendingId,
+    firstPending ? passSig(firstPending, firstPending.movements?.length ?? 0) : null,
+    hasPending,
+    () => useAppStore.getState().refresh(true),
+    4000
+  );
 
-  // QR shown: the moment the gate scans it, close the QR and show the updated pass
-  usePassWatch(selectedQrPass?.id ?? null, !!selectedQrPass, () => {
-    setSelectedQrPass(null);
-    useAppStore.getState().refresh(true);
-  });
+  // QR shown: the moment the gate scans it (or it was scanned before the QR
+  // opened, from older data), close the QR and show the updated pass
+  usePassWatch(
+    selectedQrPass?.id ?? null,
+    selectedQrPass ? passSig(selectedQrPass, selectedQrPass.movements?.length ?? 0) : null,
+    !!selectedQrPass,
+    () => {
+      setSelectedQrPass(null);
+      useAppStore.getState().refresh(true);
+    }
+  );
 
   // Rotating QR while the modal is open: a fresh 60-second signed token every 45 seconds
   const [qrError, setQrError] = useState<string | null>(null);

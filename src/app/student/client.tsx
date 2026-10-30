@@ -82,9 +82,10 @@ export function StudentDashboardClient({ user }: Props) {
   // Waiting on someone else — the approver (PENDING) or the gate scan (QR_CODE):
   // the screen reloads the moment the pass changes (live ping, or a tiny status
   // check while there is no live connection), e.g. straight to the
-  // confirmation after the guard scans.
+  // confirmation after the guard scans. Compared with the pass as shown here, so
+  // a QR shown from data loaded before the scan is noticed too.
   const waiting = state === "PENDING" || state === "QR_CODE";
-  usePassWatch(dashboardData?.latestPermission?.id, waiting, async () => {
+  usePassWatch(dashboardData?.latestPermission?.id, dashboardData?.latestPermission?.sig, waiting, async () => {
     const before = useAppStore.getState().lastSyncAt;
     await useAppStore.getState().refresh(true);
     // Not reloaded (network blip): the watcher reports the change again shortly

@@ -108,6 +108,33 @@ async function fetchPreload(light = false): Promise<StoreData> {
   return res.json();
 }
 
+/** Data asked for right after signing in (see prefetchPreload) */
+let earlyPreload: { promise: Promise<StoreData>; at: number } | null = null;
+const EARLY_PRELOAD_MAX_AGE_MS = 15_000;
+
+/**
+ * Just signed in: ask for the dashboard data now, at the same time as the
+ * dashboard page, instead of after the page has arrived. The store uses this
+ * answer when it starts (a sign-in is one wait instead of two in a row).
+ */
+export function prefetchPreload() {
+  const promise = fetchPreload();
+  promise.catch(() => {});
+  earlyPreload = { promise, at: Date.now() };
+}
+
+/** The data asked for at sign-in, if fresh; null = ask now */
+async function takeEarlyPreload(): Promise<StoreData | null> {
+  const early = earlyPreload;
+  earlyPreload = null;
+  if (!early || Date.now() - early.at > EARLY_PRELOAD_MAX_AGE_MS) return null;
+  try {
+    return await early.promise;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Full-page navigation that REPLACES the current history entry. Used whenever
  * the session ends or changes, so the in-app router cache and the back/forward
@@ -254,7 +281,7 @@ export const useAppStore = create<AppStore>()(
         set({ user, isLoading: true, error: null });
 
         try {
-          const preloadData = await fetchPreload();
+          const preloadData = (await takeEarlyPreload()) ?? (await fetchPreload());
           // Another tab signed in as a different user → this tab must not show the old screens
           if (preloadData.__profileId && preloadData.__profileId !== get().user?.profileId) {
             handleSessionChanged();

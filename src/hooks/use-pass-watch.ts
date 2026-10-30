@@ -26,9 +26,15 @@ const MAX_POLL_MS = 30_000;
  *
  * - Live (normal): the server pings this user's private topic when the pass
  *   changes; the screen then asks /api/pass-status for the pass's tiny
- *   fingerprint and reacts straight away. A safety check runs once a minute.
+ *   fingerprint and reacts straight away. A safety check runs every 20 s.
  * - Not live (no connection yet, or none free): it checks the fingerprint
- *   every `intervalMs` instead, as before.
+ *   every `intervalMs` instead, slowing down to every 30 s.
+ *
+ * `shownSig` is the fingerprint of the pass as the screen shows it (passSig,
+ * sent with the screen's data). The server's fingerprint is compared with it,
+ * not with the first answer: a screen opened from data loaded before the scan
+ * (back from another page, phone woken up) still sees that it is out of date.
+ * Without it, a change is any change after the first answer.
  *
  * Checks run only while the screen is visible; coming back checks at once.
  *
@@ -37,13 +43,16 @@ const MAX_POLL_MS = 30_000;
  */
 export function usePassWatch(
   permissionId: string | null | undefined,
+  shownSig: string | null | undefined,
   enabled: boolean,
   onChange: () => unknown,
   intervalMs = 5000,
 ) {
   const onChangeRef = useRef(onChange);
+  const shownRef = useRef(shownSig);
   useEffect(() => {
     onChangeRef.current = onChange;
+    shownRef.current = shownSig;
   });
 
   const checkNow = useRef<(() => void) | null>(null);
@@ -60,7 +69,8 @@ export function usePassWatch(
 
   useEffect(() => {
     if (!enabled || !permissionId) return;
-    let first: string | null = null;
+    // Server fingerprint already acted on (or, without shownSig, the first one seen)
+    let handled: string | null = null;
     let stopped = false;
     let busy = false;
     // A ping came during a check: check once more right after
@@ -82,16 +92,18 @@ export function usePassWatch(
         if (!res.ok) return;
         const { sig } = (await res.json()) as { sig?: string };
         if (!sig || stopped) return;
-        if (first === null) first = sig;
-        else if (sig !== first) {
+        const shown = shownRef.current;
+        if (!shown && handled === null) {
+          handled = sig;
+        } else if (sig !== (shown || handled) && sig !== handled) {
           // Keep watching: the same pass can change again (e.g. out, then back in)
-          const shown = await onChangeRef.current();
+          const done = await onChangeRef.current();
           if (stopped) return;
-          if (shown === false) {
+          if (done === false) {
             // Not reloaded: report this change again shortly
             setTimeout(() => void check(), RETRY_MS);
           } else {
-            first = sig;
+            handled = sig;
           }
         }
       } catch {

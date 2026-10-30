@@ -63,6 +63,8 @@ export const te: Record<string, string> = {
     "రీసెట్ చేయమని మీ HOD లేదా అడ్మినిస్ట్రేటర్‌ను అడగండి. విద్యార్థులు మరియు అధ్యాపకులు కొత్త పాస్‌వర్డ్‌ను తమ HOD నుండి పొందవచ్చు.",
   "Sign in": "సైన్ ఇన్",
   "Signing in…": "సైన్ ఇన్ అవుతోంది…",
+  "Checking your details": "మీ వివరాలు చూస్తున్నాం",
+  "Opening your dashboard": "మీ డాష్‌బోర్డ్ తెరుస్తున్నాం",
   "Don't have an account? Contact your administrator.": "ఖాతా లేదా? మీ అడ్మినిస్ట్రేటర్‌ను సంప్రదించండి.",
   "Could not sign in. Check your connection and try again.": "సైన్ ఇన్ కాలేదు. మీ ఇంటర్నెట్ కనెక్షన్ చూసి మళ్ళీ ప్రయత్నించండి.",
   "A new version of Gate Pass is available. Reloading…": "Gate Pass కొత్త వెర్షన్ అందుబాటులో ఉంది. మళ్ళీ లోడ్ అవుతోంది…",

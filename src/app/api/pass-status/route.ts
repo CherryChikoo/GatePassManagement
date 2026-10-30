@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth/helpers";
 import { prisma } from "@/lib/db/prisma";
+import { passSig } from "@/lib/passes/pass-sig";
 
 /**
  * Tiny "has my pass changed?" check for the pass holder's screen (QR shown,
@@ -35,6 +36,6 @@ export async function GET(req: Request) {
   });
   if (!p) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const sig = [p.status, p.qr?.usedForExit ? 1 : 0, p.qr?.usedForEntry ? 1 : 0, p.qr?.active ? 1 : 0, p._count.movements].join("|");
+  const sig = passSig(p, p._count.movements);
   return NextResponse.json({ sig }, { headers: { "Cache-Control": "no-store" } });
 }

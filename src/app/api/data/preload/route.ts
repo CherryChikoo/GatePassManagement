@@ -10,6 +10,7 @@ import { fillMovementPeople } from "@/lib/people";
 import { getAdminMonitorCounts } from "@/lib/dashboard/admin-monitor";
 import { canScanReturn, OPEN_TRIP_WHERE } from "@/lib/passes/return-scan";
 import { closeAllSupersededTrips } from "@/lib/passes/close-trips";
+import { passSig } from "@/lib/passes/pass-sig";
 
 /**
  * Unified preload endpoint — returns ALL data the logged-in user needs
@@ -597,6 +598,8 @@ async function preloadStudent(profileId: string) {
     qr: { select: QR_PUBLIC_SELECT },
     // Recorded return (hostellers scan the same pass to come back)
     movements: { where: { type: "ENTRY" as const }, select: { id: true }, take: 1 },
+    // For the pass fingerprint (see passSig)
+    _count: { select: { movements: true } },
   } as const;
 
   // Out on an outing: that pass's return QR is shown, never the form — even if a
@@ -696,6 +699,8 @@ async function preloadStudent(profileId: string) {
         endDate: latestPermission.endDate?.toISOString?.() ?? latestPermission.endDate,
         createdAt: latestPermission.createdAt?.toISOString?.() ?? latestPermission.createdAt,
         approverName,
+        // What the screen shows: compared with /api/pass-status to spot a change
+        sig: passSig(latestPermission, latestPermission._count.movements),
         qr: latestPermission.qr
           ? {
               ...latestPermission.qr,

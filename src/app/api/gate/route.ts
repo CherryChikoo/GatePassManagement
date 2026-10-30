@@ -49,7 +49,6 @@ import { getAttendanceMonth } from "@/server/actions/attendance";
  * POST { fn: "<name>", args: [...] }  ->  the function's result (JSON)
  */
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
 
 const GATE_FUNCTIONS = {
   verifyQrScan,

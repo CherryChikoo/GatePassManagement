@@ -2,12 +2,50 @@
 import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useState } from "react";
-import { loginAction } from "@/server/actions/auth";
 import Image from "next/image";
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { broadcastSessionEvent } from "@/stores/app-store";
-import { isStaleDeploymentError, reloadForNewDeployment } from "@/lib/deployment";
+import { broadcastSessionEvent, hardNavigate, prefetchPreload } from "@/stores/app-store";
+import { SigningInOverlay, type SigningInStep } from "@/components/ui/signing-in-overlay";
+
+/** Signing in takes longer than this: the full-screen "Signing in…" shows (a quick one never flashes it) */
+const SIGNING_IN_OVERLAY_MS = 500;
+/** Signed in but the dashboard has not opened after this long: open it as a full page */
+const SIGNED_IN_FALLBACK_MS = 5_000;
+
+type SignInResult = { error: string } | { redirectUrl: string };
+
+/**
+ * Signs in through /api/auth/login: a fixed address, so a sign-in page opened
+ * before a new deployment still works on the first try (a server action's ID
+ * changes with every deployment). A dropped connection or a server hiccup on
+ * the first try (e.g. a sleeping server waking up) is tried once more.
+ */
+async function requestSignIn(email: string, password: string): Promise<SignInResult> {
+  for (let attempt = 1; ; attempt++) {
+    const last = attempt >= 2;
+    let res: Response;
+    try {
+      res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(25_000),
+      });
+    } catch (err: any) {
+      // Timed out: trying again would only double the wait
+      if (last || err?.name === "TimeoutError") throw err;
+      continue;
+    }
+    if (res.status >= 500 && !last) continue;
+    const data = await res.json().catch(() => null);
+    if (data && typeof data.redirectUrl === "string") return { redirectUrl: data.redirectUrl };
+    if (data && typeof data.error === "string") return { error: data.error };
+    if (!last) continue;
+    throw new Error(`Sign-in failed (${res.status})`);
+  }
+}
 
 export function LoginForm() {
   const t = useT();
@@ -26,40 +64,53 @@ export function LoginForm() {
   }, []);
   const [showPassword, setShowPassword] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
+  // "Signing in…" screen: which step, and whether it is taking long enough to show it
+  const [step, setStep] = useState<SigningInStep>("checking");
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!loading) return;
+    const timer = setTimeout(() => setSlow(true), SIGNING_IN_OVERLAY_MS);
+    return () => clearTimeout(timer);
+  }, [loading]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
+    setSlow(false);
+    setStep("checking");
     setError(null);
     const formData = new FormData(e.currentTarget);
     try {
-      const result = await loginAction(formData);
-      if (result?.error) {
+      const result = await requestSignIn(String(formData.get("email") ?? ""), String(formData.get("password") ?? ""));
+      if ("error" in result) {
         setError(result.error);
-        setLoading(false);
-      } else if (result?.redirectUrl) {
-        // Other open tabs switch to this user (one session per browser)
-        broadcastSessionEvent("login");
-        // In-app move: the scripts are already loaded, so the dashboard opens
-        // without a full page reload (nothing from another user is cached here —
-        // signing out always reloads the page)
-        router.replace(result.redirectUrl);
-      }
-    } catch (err: any) {
-      // Page was opened before a new deployment → reload it and let the user sign in again
-      if (isStaleDeploymentError(err)) {
-        setError(t("A new version of Gate Pass is available. Reloading…"));
-        if (reloadForNewDeployment()) return;
-        setError(t("A new version of Gate Pass is available. Please refresh this page and sign in again."));
         setLoading(false);
         return;
       }
+      const target = result.redirectUrl;
+      // Stays on screen until the dashboard replaces this page
+      setStep("opening");
+      // The dashboard data is asked for now, alongside the dashboard page
+      prefetchPreload();
+      // Other open tabs switch to this user (one session per browser)
+      broadcastSessionEvent("login");
+      // In-app move: the scripts are already loaded, so the dashboard opens
+      // without a full page reload (nothing from another user is cached here —
+      // signing out always reloads the page)
+      router.replace(target);
+      // Still here a few seconds later (the move was lost): open it as a full page
+      setTimeout(() => {
+        if (window.location.pathname === "/login") hardNavigate(target);
+      }, SIGNED_IN_FALLBACK_MS);
+    } catch {
       setError(t("Could not sign in. Check your connection and try again."));
       setLoading(false);
     }
   }
 
   return (
+    <>
+    {loading && slow && <SigningInOverlay step={step} />}
     <div className="relative min-h-[100dvh] overflow-hidden bg-[#f2f2f3] flex items-center justify-center px-4 py-6 sm:py-10">
       {/* Soft grey page with a faint grid fading out from the centre */}
       <div
@@ -208,5 +259,6 @@ export function LoginForm() {
         </div>
       </div>
     </div>
+    </>
   );
 }

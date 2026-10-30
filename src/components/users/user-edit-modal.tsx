@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Eye, EyeOff } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { Modal, Select } from "@/components/ui/primitives";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { actionErrorMessage } from "@/lib/deployment";
 import { DEPARTMENTS, departmentLabel } from "@/lib/constants";
 import { updateStudentDetails, updateUserDetails, resetUserPassword } from "@/server/actions/admin";
+import { Part, PasswordField, DeanOfField } from "./form-part";
 
 const ROLE_NAME: Record<string, string> = {
   STUDENT: "Student",
@@ -105,7 +106,6 @@ function EditForm({
   const [dept, setDept] = useState(initialDept.code);
   const customDept = initialDept.custom;
   const [studentType, setStudentType] = useState<string>(user.student?.studentType || "DAY_SCHOLAR");
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   let part = 0;
   const next = () => ++part;
@@ -207,32 +207,13 @@ function EditForm({
       <Part no={next()} title="Login" hint="How they sign in">
         <Input label="Email" name="email" type="email" defaultValue={user.email} required />
         {canSetPassword && (
-          <div className="min-w-0">
-            <label htmlFor="edit-new-password" className="mb-1.5 block text-sm font-medium text-zinc-300">
-              New password
-            </label>
-            <div className="relative">
-              <input
-                id="edit-new-password"
-                name="newPassword"
-                type={showPassword ? "text" : "password"}
-                autoComplete="new-password"
-                minLength={8}
-                maxLength={72}
-                placeholder="Empty = keep the current one"
-                className="h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 pl-4 pr-12 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-2.5 text-zinc-500 hover:bg-zinc-950 hover:text-zinc-200"
-              >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            <p className="mt-1.5 text-xs text-zinc-500">At least 8 characters. They are told it was changed.</p>
-          </div>
+          <PasswordField
+            id="edit-new-password"
+            name="newPassword"
+            label="New password"
+            placeholder="Empty = keep the current one"
+            help="At least 8 characters. They are told it was changed."
+          />
         )}
       </Part>
 
@@ -292,21 +273,7 @@ function EditForm({
           <Input label="Employee ID" name="employeeId" defaultValue={user.faculty?.employeeId || ""} className="font-mono" />
           {departmentSelect}
           {user.role === "DEAN" ? (
-            <div className="sm:col-span-2">
-              <label htmlFor="edit-dean-of" className="mb-1.5 block text-sm font-medium text-zinc-300">Dean of *</label>
-              <div className="flex items-stretch overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 transition-colors hover:border-zinc-700 focus-within:border-orange-500/50 focus-within:ring-2 focus-within:ring-orange-500/40">
-                <span className="flex items-center bg-zinc-950 px-4 text-sm font-medium text-zinc-500 border-r border-zinc-800 whitespace-nowrap">Dean of</span>
-                <input
-                  id="edit-dean-of"
-                  name="deanOf"
-                  required
-                  maxLength={80}
-                  defaultValue={(user.faculty?.designation || "").replace(/^dean(\s+of)?\s*/i, "")}
-                  placeholder="e.g. Placements, Internal Affairs"
-                  className="h-12 w-full min-w-0 bg-transparent px-4 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
-                />
-              </div>
-            </div>
+            <DeanOfField id="edit-dean-of" defaultValue={(user.faculty?.designation || "").replace(/^dean(\s+of)?\s*/i, "")} />
           ) : (
             <Input
               label={user.role === "DIRECTOR" ? "Title *" : "Designation"}
@@ -364,23 +331,5 @@ function EditForm({
         </Button>
       </div>
     </form>
-  );
-}
-
-/** One numbered part of the form: number, title and hint on top, its fields below */
-function Part({ no, title, hint, children }: { no: number; title: string; hint: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 sm:p-5">
-      <div className="mb-4 flex items-center gap-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-500 text-sm font-semibold text-white">
-          {no}
-        </span>
-        <div className="min-w-0">
-          <h3 className="text-base font-semibold leading-tight text-zinc-100">{title}</h3>
-          <p className="text-xs text-zinc-500">{hint}</p>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{children}</div>
-    </section>
   );
 }

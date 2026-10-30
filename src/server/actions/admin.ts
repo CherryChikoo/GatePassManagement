@@ -157,6 +157,10 @@ export async function createUser(formData: FormData) {
         name: data.name,
         email: data.email,
         phone: data.phone || null,
+        // Faculty-type accounts keep their designation on the faculty record; the rest here
+        ...(["WARDEN", "SECURITY", "SECURITY_SUPERVISOR", "ADMIN"].includes(data.role)
+          ? { designation: data.designation?.trim() || null }
+          : {}),
       },
     });
 

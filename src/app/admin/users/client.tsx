@@ -1,15 +1,12 @@
 "use client";
-import { DepartmentSelect } from "@/components/ui/department-select";
 import { actionErrorMessage } from "@/lib/deployment";
 
 import React, { useState, useEffect, useTransition } from "react";
 import { Modal, Select, Badge, EmptyState } from "@/components/ui/primitives";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { logoutAction } from "@/server/actions/auth";
 import { 
-  createUser, 
   toggleUserActive, 
   deleteUser,
   getUserDetails,
@@ -25,16 +22,14 @@ const USERS_PAGE_SIZE = 15;
 const usersKey = (role: string, page: number) => `users|${role}|${page}`;
 import { AccountSyncPanel } from "./account-sync-panel";
 import { UserEditModal } from "@/components/users/user-edit-modal";
+import { UserCreateModal } from "@/components/users/user-create-modal";
 import { Search,
   UserPlus,
   Users,
   Shield,
   ArrowLeft,
-  Mail,
-  Lock,
   Phone,
   GraduationCap,
-  BookOpen,
   Building2,
   Trash2,
   AlertTriangle,
@@ -54,7 +49,7 @@ import { useRouter } from "next/navigation";
 import { BackButton } from "@/components/ui/back-button";
 import { PagerBar } from "@/components/ui/pager-bar";
 import { dt, PersonCell, RowActions, IconAction } from "@/components/ui/data-table";
-import { DEPARTMENTS, departmentLabel, getDepartmentCode, getDepartmentFullName } from "@/lib/constants";
+import { getDepartmentCode, getDepartmentFullName } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -110,9 +105,6 @@ export function UserManagementClient({
   
 
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedRole, setSelectedRole] = useState("STUDENT");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -136,8 +128,6 @@ export function UserManagementClient({
     });
   }
 
-  const [createStudentType, setCreateStudentType] = useState("DAY_SCHOLAR");
-  const [createDept, setCreateDept] = useState("CSE");
 
   function handleOpenEdit(u: any) {
     setEditingUser(u);
@@ -155,23 +145,6 @@ export function UserManagementClient({
   function handlePageChange(next: number) {
     setPage(next);
     window.history.replaceState(null, "", `/admin/users?page=${next}${role !== "ALL" ? `&role=${role}` : ""}`);
-  }
-
-  async function handleCreateUser(formData: FormData) {
-    setLoading(true);
-    setError(null);
-    const result = await createUser(formData);
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setSuccess("User created successfully!");
-      setShowCreateModal(false);
-      setCreateDept("CSE");
-      refreshList();
-      // The faculty / warden pickers in the forms come with the page
-      router.refresh();
-    }
-    setLoading(false);
   }
 
   async function handleToggle(profileId: string) {
@@ -304,9 +277,7 @@ export function UserManagementClient({
   });
 
   // ── Shared visual helpers (markup only) ─────────────────────
-  const sectionCls = "rounded-2xl border border-zinc-800 p-4 sm:p-5 space-y-4";
   const sectionLabelCls = "flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-zinc-500";
-  const fieldLabelCls = "block text-sm font-medium text-zinc-300";
   const tileLabelCls = "flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500";
 
   function initials(name: string) {
@@ -830,312 +801,21 @@ export function UserManagementClient({
         />
       </div>
 
-      {/* Create User Modal */}
-      <Modal
+      {/* Create a person: same numbered parts as the Edit window */}
+      <UserCreateModal
         open={showCreateModal}
-        onClose={() => {
+        onClose={() => setShowCreateModal(false)}
+        onCreated={(message) => {
+          setSuccess(message);
           setShowCreateModal(false);
-          setError(null);
+          refreshList();
+          // The faculty / warden pickers in the forms come with the page
+          router.refresh();
         }}
-        title="Create New User"
-        className="max-w-2xl"
-      >
-        <form
-          // Not a form action: React resets action forms after submit, which would
-          // wipe everything typed when the server returns an error (e.g. email taken).
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleCreateUser(new FormData(e.currentTarget));
-          }}
-          className="space-y-4 sm:space-y-5"
-        >
-          {error && (
-            <div className="flex items-start gap-2.5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Account credentials */}
-          <section className={sectionCls}>
-            <h3 className={sectionLabelCls}>
-              <Users className="h-3.5 w-3.5 text-orange-400" /> Account Credentials
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input name="name" label="Full Name *" required id="create-name" icon={<Users className="h-4 w-4" />} />
-              <Input name="email" type="email" label="Email *" required id="create-email" icon={<Mail className="h-4 w-4" />} />
-              <Input name="password" type="password" label="Password *" required minLength={8} maxLength={72} placeholder="At least 8 characters" id="create-password" icon={<Lock className="h-4 w-4" />} />
-              <Input name="phone" type="tel" label="Phone" id="create-phone" icon={<Phone className="h-4 w-4" />} />
-            </div>
-          </section>
-
-          {/* Role */}
-          <section className={sectionCls}>
-            <h3 className={sectionLabelCls}>
-              <Shield className="h-3.5 w-3.5 text-orange-400" /> Role & Permissions
-            </h3>
-            <Select
-              label="Role *"
-              name="role"
-              value={selectedRole}
-              onChange={(e) => setSelectedRole(e.target.value)}
-              id="create-role"
-            >
-              <option value="STUDENT">Student</option>
-              <option value="FACULTY">Faculty</option>
-              <option value="FACULTY_ADMIN">HOD (Head of Department)</option>
-              <option value="DEAN">Dean</option>
-              <option value="DIRECTOR">Director</option>
-              <option value="WARDEN">Warden</option>
-              <option value="SECURITY">Security</option>
-              <option value="HEAD_SECURITY">Head Security (takes staff attendance)</option>
-              <option value="SECURITY_SUPERVISOR">Security Supervisor (view only)</option>
-              <option value="ADMIN">Admin (full access)</option>
-            </Select>
-            {selectedRole === "ADMIN" && (
-              <p className="mt-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-amber-400">
-                An admin can do everything you can: create and disable users, edit records and change settings. Give this only to people you trust.
-              </p>
-            )}
-          </section>
-
-          {/* Student-specific fields */}
-          {selectedRole === "STUDENT" && (
-            <section className={sectionCls}>
-              <h3 className={sectionLabelCls}>
-                <GraduationCap className="h-3.5 w-3.5 text-orange-400" />
-                Student-Specific Details
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input name="studentRoll" label="Roll Number *" required id="create-roll" />
-                <Select
-                  name="department"
-                  label="Department"
-                  id="create-department"
-                  value={createDept}
-                  onChange={(e) => setCreateDept(e.target.value)}
-                >
-                  {DEPARTMENTS.map((dept) => (
-                    <option key={dept.code} value={dept.code}>
-                      {departmentLabel(dept)}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input name="year" type="number" min={1} max={6} label="Year" id="create-year" />
-                <Input name="semester" type="number" min={1} max={12} label="Semester" id="create-semester" />
-                <Input name="section" label="Section" id="create-section" />
-                <Select name="studentType" label="Type" id="create-student-type" value={createStudentType} onChange={(e) => setCreateStudentType(e.target.value)}>
-                  <option value="DAY_SCHOLAR">Day Scholar</option>
-                  <option value="HOSTELLER">Hosteller</option>
-                </Select>
-              </div>
-              <Select name="assignedFacultyId" label="Assigned Faculty" id="create-faculty">
-                <option value="">None</option>
-                {faculty.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.profile.name} {f.department ? `(${f.department})` : ""}
-                  </option>
-                ))}
-              </Select>
-
-              {createStudentType === "HOSTELLER" && (
-                <div className="space-y-4 rounded-2xl bg-zinc-950 p-4">
-                  <p className={sectionLabelCls}>
-                    <Building2 className="h-3.5 w-3.5 text-orange-400" />
-                    Hostel
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="sm:col-span-2">
-                      <Select name="hostelType" label="Hostel" id="create-hostel-type" required defaultValue="">
-                        <option value="" disabled>Select hostel</option>
-                        <option value="BOYS">Boys Hostel</option>
-                        <option value="LADIES">Ladies Hostel</option>
-                      </Select>
-                    </div>
-                    <Input name="roomNumber" label="Room Number" id="create-room" />
-                    <Input name="hostelBlock" label="Hostel Block" id="create-hostel" />
-                  </div>
-                  <Select name="assignedWardenId" label="Assigned Warden" id="create-warden">
-                    <option value="">None</option>
-                    {wardens.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.profile.name} {w.hostelBlock ? `(Block ${w.hostelBlock})` : ""}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              )}
-            </section>
-          )}
-
-          {/* Faculty-specific */}
-          {selectedRole === "FACULTY" && (
-            <section className={sectionCls}>
-              <h3 className={sectionLabelCls}>
-                <BookOpen className="h-3.5 w-3.5 text-orange-400" />
-                Faculty-Specific Details
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input name="employeeId" label="Employee ID *" required id="create-fac-emp" />
-                <Select
-                  name="department"
-                  label="Department *"
-                  required
-                  id="create-fac-dept"
-                  value={createDept}
-                  onChange={(e) => setCreateDept(e.target.value)}
-                >
-                  {DEPARTMENTS.map((dept) => (
-                    <option key={dept.code} value={dept.code}>
-                      {departmentLabel(dept)}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <Input name="designation" label="Designation" defaultValue="Assistant Professor" id="create-designation" />
-            </section>
-          )}
-
-          {/* HOD-specific */}
-          {selectedRole === "FACULTY_ADMIN" && (
-            <section className={sectionCls}>
-              <h3 className={sectionLabelCls}>
-                <Shield className="h-3.5 w-3.5 text-orange-400" />
-                HOD (Head of Department) Details
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input name="employeeId" label="Employee ID *" required id="create-hod-emp" defaultValue={`HOD-${Date.now().toString().slice(-4)}`} />
-                <Select
-                  name="department"
-                  label="Department *"
-                  required
-                  id="create-hod-dept"
-                  value={createDept}
-                  onChange={(e) => setCreateDept(e.target.value)}
-                >
-                  {DEPARTMENTS.map((dept) => (
-                    <option key={dept.code} value={dept.code}>
-                      {departmentLabel(dept)}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <Input name="designation" label="Designation" defaultValue="Head of Department" id="create-hod-designation" />
-            </section>
-          )}
-
-          {/* Director-specific */}
-          {selectedRole === "DIRECTOR" && (
-            <section className={sectionCls}>
-              <h3 className={sectionLabelCls}>
-                <Shield className="h-3.5 w-3.5 text-orange-400" />
-                Director Details
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input name="employeeId" label="Employee ID *" required id="create-dir-emp" defaultValue={`DIR-${Date.now().toString().slice(-4)}`} />
-                <div className="space-y-1.5">
-                  <label htmlFor="create-dir-dept" className="block text-sm font-medium text-zinc-300">Department</label>
-                  <DepartmentSelect name="department" id="create-dir-dept" defaultValue="All Departments" extraOptions={["All Departments"]} />
-                </div>
-              </div>
-              <Input
-                name="designation"
-                label="Title *"
-                required
-                maxLength={100}
-                placeholder="e.g. Managing Director"
-                id="create-dir-designation"
-              />
-            </section>
-          )}
-
-          {/* Dean-specific */}
-          {selectedRole === "DEAN" && (
-            <section className={sectionCls}>
-              <h3 className={sectionLabelCls}>
-                <Shield className="h-3.5 w-3.5 text-orange-400" />
-                Dean Details
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input name="employeeId" label="Employee ID *" required id="create-dean-emp" defaultValue={`DEAN-${Date.now().toString().slice(-4)}`} />
-                <div className="space-y-1.5">
-                  <label htmlFor="create-dean-dept" className="block text-sm font-medium text-zinc-300">Department</label>
-                  <DepartmentSelect name="department" id="create-dean-dept" defaultValue="All Departments" extraOptions={["All Departments"]} />
-                </div>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label htmlFor="create-dean-of" className={fieldLabelCls}>Dean of *</label>
-                <div className="flex items-stretch overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 transition-colors hover:border-zinc-700 focus-within:border-orange-500/50 focus-within:ring-2 focus-within:ring-orange-500/40">
-                  <span className="flex items-center bg-zinc-950 px-4 text-sm font-medium text-zinc-500 border-r border-zinc-800 whitespace-nowrap">Dean of</span>
-                  <input
-                    id="create-dean-of"
-                    name="deanOf"
-                    required
-                    maxLength={80}
-                    placeholder="e.g. Placements, Internal Affairs, Academics"
-                    className="h-12 w-full min-w-0 bg-transparent px-4 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* Warden-specific */}
-          {selectedRole === "WARDEN" && (
-            <section className={sectionCls}>
-              <h3 className={sectionLabelCls}>
-                <Building2 className="h-3.5 w-3.5 text-orange-400" />
-                Warden-Specific Details
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input name="employeeId" label="Employee ID *" required id="create-warden-emp" />
-                <Input name="wardenHostelBlock" label="Hostel Block" id="create-warden-block" />
-              </div>
-            </section>
-          )}
-
-          {/* Security-specific */}
-          {(selectedRole === "SECURITY" || selectedRole === "HEAD_SECURITY") && (
-            <section className={sectionCls}>
-              <h3 className={sectionLabelCls}>
-                <Shield className="h-3.5 w-3.5 text-orange-400" />
-                Security-Specific Details
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input name="employeeId" label="Employee ID *" required id="create-sec-emp" />
-                <Select name="assignedGateId" label="Assigned Gate" id="create-sec-gate">
-                  <option value="">None</option>
-                  {gates?.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </section>
-          )}
-
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-5 border-t border-zinc-800">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full sm:w-auto"
-              onClick={() => {
-                setShowCreateModal(false);
-                setError(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" loading={loading} className="w-full sm:w-auto">
-              <UserPlus className="h-4 w-4" />
-              Create User
-            </Button>
-          </div>
-        </form>
-      </Modal>
+        faculty={faculty}
+        wardens={wardens}
+        gates={gates}
+      />
 
       {/* Delete Confirmation Modal */}
       <Modal

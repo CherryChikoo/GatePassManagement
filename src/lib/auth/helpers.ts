@@ -20,6 +20,16 @@ export type AuthUser = {
 // In-memory profile cache with 20s TTL to prevent repeating DB profile queries across components & actions
 const profileCache = new Map<string, { profile: any; expiresAt: number }>();
 
+/** What the profile cache holds (also read by sign-in, which fills the cache) */
+export const AUTH_PROFILE_SELECT = {
+  id: true, userId: true, role: true, name: true, email: true, active: true, avatarUpdatedAt: true,
+} as const;
+
+/** Just signed in: the profile read there is reused, so the first page skips that lookup */
+export function rememberProfile(profile: { userId: string }) {
+  profileCache.set(profile.userId, { profile, expiresAt: Date.now() + 20_000 });
+}
+
 export function invalidateProfileCache(userId?: string) {
   if (userId) {
     profileCache.delete(userId);
@@ -85,7 +95,7 @@ export const getAuthUser = cache(async (): Promise<AuthUser | null> => {
 
   const profile = await prisma.profile.findUnique({
     where: { userId },
-    select: { id: true, userId: true, role: true, name: true, email: true, active: true, avatarUpdatedAt: true },
+    select: AUTH_PROFILE_SELECT,
   });
 
   if (!profile || !profile.active) return null;
