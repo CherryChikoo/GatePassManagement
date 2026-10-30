@@ -39,6 +39,8 @@ const settingsSchema = z.object({
   email: z.string().trim().email("Enter a valid email").max(200).optional().or(z.literal("")),
   employeeId: z.string().trim().max(50).optional().or(z.literal("")),
   title: z.string().trim().max(100).optional().or(z.literal("")),
+  // Admins only: their own designation (shown under "Gate Pass")
+  designation: z.string().trim().max(100).optional().or(z.literal("")),
 });
 
 /** Roles that manage their own profile details (department stays admin-managed). */
@@ -62,6 +64,7 @@ export async function updateProfileSettings(formData: FormData) {
     password: (formData.get("password") as string) ?? "",
     email: selfManaged ? ((formData.get("email") as string) ?? "") : "",
     employeeId: selfManaged ? ((formData.get("employeeId") as string) ?? "") : "",
+    designation: user.role === "ADMIN" ? ((formData.get("designation") as string) ?? "") : "",
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -131,7 +134,12 @@ export async function updateProfileSettings(formData: FormData) {
       await prisma.$transaction(async (tx) => {
         await tx.profile.update({
           where: { id: user.id },
-          data: { name, phone, ...(newEmail ? { email: newEmail } : {}) },
+          data: {
+            name,
+            phone,
+            ...(newEmail ? { email: newEmail } : {}),
+            ...(user.role === "ADMIN" ? { designation: parsed.data.designation || null } : {}),
+          },
         });
         if (facultyUpdate) {
           await tx.faculty.update({ where: { profileId: user.id }, data: facultyUpdate });

@@ -22,6 +22,10 @@ model Profile {
   name          String
   email         String         @unique
   phone         String?
+  /// Job title for Admin, Warden, Security and Supervisor accounts (faculty,
+  /// HODs, Deans and Directors keep theirs on the faculty record). Shown under
+  /// "Gate Pass" in the app frame.
+  designation   String?
   active        Boolean        @default(true)
   /// When the profile photo was last set (null = no photo). The photo lives in
   /// Storage at avatars/<id>.jpg; this date versions its URL so browsers cache it.

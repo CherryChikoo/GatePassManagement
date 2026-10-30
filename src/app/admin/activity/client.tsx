@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatDateTime, formatDate, getRelativeTime } from "@/lib/utils";
 import { logoutAction } from "@/server/actions/auth";
-import { getActivityData } from "@/server/actions/admin";
+import { callGate } from "@/lib/gate-call";
+import { useGateData } from "@/lib/gate-cache";
 import { registerOutsider, markOutsiderExited } from "@/server/actions/outsiders";
 import { istDateString } from "@/lib/time/ist";
 import { getExitPhotoUrl, uploadOutsiderPhoto } from "@/lib/storage/image-upload";
@@ -48,16 +49,20 @@ import { dt, PersonCell, RowActions, IconAction } from "@/components/ui/data-tab
 
 interface Props {
   user: { name: string; email: string; role: string };
-  data: {
-    stats: {
-      entriesToday: number;
-      exitsToday: number;
-    };
-    recentEntries: any[];
-    recentExits: any[];
-    recentPermissions?: any[];
-  };
 }
+
+type ActivityData = {
+  stats: {
+    entriesToday: number;
+    exitsToday: number;
+  };
+  recentEntries: any[];
+  recentExits: any[];
+  recentPermissions?: any[];
+};
+
+/** Shown until the first copy of a day arrives */
+const NO_ACTIVITY = {} as ActivityData;
 
 interface OutsiderRecord {
   id: string;
@@ -75,36 +80,22 @@ interface OutsiderRecord {
 
 
 
-export function ActivityClient({ user, data: initialData, loadedAt }: Props & { loadedAt?: number }) {
-  const [data, setData] = useState(initialData);
+export function ActivityClient({ user }: Props) {
   const [date, setDate] = useState(() => istDateString());
-  const [loading, setLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // The page opens at once; the chosen day loads here (cached per day: a day seen
+  // before shows at once and is refreshed quietly; gate / visitor changes reload it)
+  const day = useGateData<ActivityData>(`admin-activity|${date}`, () => callGate("getActivityData", [date], 20_000), ["gate", "visitors"]);
+  const data = day.data ?? NO_ACTIVITY;
+  // Nothing to show for this day yet
+  const loading = day.loading;
 
-  async function reloadData(forDate: string) {
-    setLoading(true);
-    try {
-      const newData = await getActivityData(forDate);
-      setData(newData);
-    } catch {
-      setActionError("Failed to load activity data.");
-    } finally {
-      setLoading(false);
-    }
+  async function reloadData(_forDate: string) {
+    await day.reload();
   }
 
-  // The page may have been pre-loaded minutes ago (instant open): refresh it quietly once
-  useEffect(() => {
-    if (!loadedAt || Date.now() - loadedAt < 20_000) return;
-    getActivityData(istDateString())
-      .then((fresh) => setData(fresh))
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function handleDateChange(newDate: string) {
-    setDate(newDate);
-    await reloadData(newDate);
+  function handleDateChange(newDate: string) {
+    if (newDate) setDate(newDate);
   }
 
   const formatDisplayDate = (dateStr: string) => {
@@ -488,7 +479,7 @@ export function ActivityClient({ user, data: initialData, loadedAt }: Props & { 
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            {loading && (
+            {(loading || day.refreshing) && (
               <div className="flex items-center text-sm text-zinc-500 gap-2">
                 <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
                 <span className="hidden sm:inline">Loading data...</span>
@@ -516,6 +507,12 @@ export function ActivityClient({ user, data: initialData, loadedAt }: Props & { 
         </div>
 
         {/* Main Content Area with Loading State */}
+        {day.error && (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            <span>{day.error}</span>
+            <Button variant="outline" size="sm" onClick={() => day.reload()}>Try again</Button>
+          </div>
+        )}
         <LoadingPill active={loading} />
         <div className={`space-y-6 lg:space-y-8 transition-opacity duration-200 ${loading ? "opacity-50 pointer-events-none grayscale-[0.2]" : "opacity-100"}`}>
           {/* Movement Operations Summary Cards */}

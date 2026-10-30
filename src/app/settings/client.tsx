@@ -106,6 +106,8 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
   // Controlled form state
   const [name, setName] = useState(user.name || "");
   const [phone, setPhone] = useState(user.phone || "");
+  // Admins set their own designation (shown under "Gate Pass")
+  const [adminDesignation, setAdminDesignation] = useState(user.designation || "");
   const department = user.department || "";
   const designation = user.designation || "";
   // Directors, Deans and HODs manage their own email and Employee ID (designation: Main Admin only)
@@ -171,6 +173,7 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
     const formData = new FormData();
     formData.append("name", name);
     formData.append("phone", phone);
+    if (user.role === "ADMIN") formData.append("designation", adminDesignation.trim());
     if (selfManaged) {
       formData.append("email", email.trim());
       formData.append("employeeId", employeeId.trim());
@@ -335,6 +338,21 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
                   placeholder={t("e.g. +91 9876543210")}
                   icon={<Phone className="h-4 w-4" />}
                 />
+
+                {user.role === "ADMIN" && (
+                  <div>
+                    <Input
+                      label="Designation"
+                      name="designation"
+                      value={adminDesignation}
+                      onChange={(e) => setAdminDesignation(e.target.value)}
+                      maxLength={100}
+                      placeholder="e.g. System Administrator, Principal's Office"
+                      icon={<Briefcase className="h-4 w-4" />}
+                    />
+                    <p className="text-[11px] text-zinc-500 mt-1 ml-1">Shown under “Gate Pass” in the menu.</p>
+                  </div>
+                )}
 
                 {/* Department & Designation (Visible for Faculty and HOD) */}
                 {isFacultyOrHod && (

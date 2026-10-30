@@ -56,9 +56,15 @@ export const getRoleLine = cache(async (profileId: string, role: string): Promis
     const designation = f?.designation?.trim();
     if (role === "FACULTY_ADMIN") line = f?.department ? `Head of Department · ${f.department}` : "Head of Department";
     else if (designation) line = designation;
-  } else if (role === "SECURITY") {
-    const s = await prisma.securityStaff.findUnique({ where: { profileId }, select: { isHead: true } });
-    if (s?.isHead) line = "Head Security";
+  } else {
+    // Admin, Warden, Security, Supervisor: the designation set by the admin
+    const p = await prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { designation: true, securityStaff: { select: { isHead: true } } },
+    });
+    const designation = p?.designation?.trim();
+    if (designation) line = designation;
+    else if (role === "SECURITY" && p?.securityStaff?.isHead) line = "Head Security";
   }
 
   if (roleLineCache.size > 2000) roleLineCache.clear();

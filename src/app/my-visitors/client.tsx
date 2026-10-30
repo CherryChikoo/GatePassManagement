@@ -13,7 +13,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { dt, RowActions, IconAction } from "@/components/ui/data-table";
 import { cn, formatDateTime, formatTime } from "@/lib/utils";
 import { useOwnLive } from "@/lib/realtime/live";
-import { listMyVisits, markVisitMet, type MyVisit, type MyVisitsPage } from "@/server/actions/visits";
+import { markVisitMet, type MyVisit, type MyVisitsPage } from "@/server/actions/visits";
+import { callGate } from "@/lib/gate-call";
+import { useGateData } from "@/lib/gate-cache";
 import { DateField } from "@/components/ui/date-field";
 import { PagerBar } from "@/components/ui/pager-bar";
 import { istDateString } from "@/lib/time/ist";
@@ -51,41 +53,23 @@ function CodeChip({ code }: { code: string }) {
   );
 }
 
-export function MyVisitorsClient({ initial }: { initial: MyVisitsPage }) {
-  const [data, setData] = useState(initial);
+/** Shown until the first copy arrives */
+const NO_VISITS: MyVisitsPage = { rows: [], total: 0, page: 1, pageSize: 10, hereCount: 0, date: "" };
+
+export function MyVisitorsClient() {
   // Who came on this day: today, or a day picked on the calendar
   const [date, setDate] = useState(() => istDateString());
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
+  // The page opens at once; the day loads here (a day / page seen before shows at
+  // once and is refreshed quietly)
+  const list = useGateData<MyVisitsPage>(`my-visits|${date}|${page}`, () => callGate("listMyVisits", [{ view: "day", date, page }], 20_000), []);
+  const data = list.data ?? NO_VISITS;
+  const loading = list.loading || list.refreshing;
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Only the newest load updates the list
-  const loadNo = useRef(0);
-  const reload = useCallback(async () => {
-    const no = ++loadNo.current;
-    setLoading(true);
-    try {
-      const res = await listMyVisits({ view: "day", date, page });
-      if (no !== loadNo.current) return;
-      setData(res);
-    } catch {
-      // keep what is shown; the next change or visit refreshes it
-    } finally {
-      if (no === loadNo.current) setLoading(false);
-    }
-  }, [date, page]);
-
-  // Date / page changed (today's first page came with the page itself)
-  const first = useRef(true);
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    void reload();
-  }, [reload]);
+  const reload = list.reload;
 
   // Live: a visitor for me arrived / left (or I marked a meeting done in another tab)
   useOwnLive((changed) => {
@@ -250,9 +234,24 @@ export function MyVisitorsClient({ initial }: { initial: MyVisitsPage }) {
 
       <Card className={cn("transition-opacity", loading && "opacity-60")}>
         <CardContent className="p-0">
-          {rows.length === 0 ? (
+          {list.error ? (
+            <div role="alert" className="px-4 py-10 text-center text-sm text-red-500 space-y-3">
+              <p>{list.error}</p>
+              <button
+                type="button"
+                onClick={() => void list.reload()}
+                className="h-10 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-sm font-medium text-zinc-200 hover:border-zinc-700"
+              >
+                Try again
+              </button>
+            </div>
+          ) : rows.length === 0 ? (
             <p className="px-4 py-12 text-center text-sm text-zinc-500">
-              {date === istDateString() ? "No visitors have come to meet you today." : "No visitors came to meet you on this day."}
+              {list.loading
+                ? "Loading your visitors…"
+                : date === istDateString()
+                ? "No visitors have come to meet you today."
+                : "No visitors came to meet you on this day."}
             </p>
           ) : (
             <>

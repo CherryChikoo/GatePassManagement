@@ -6,13 +6,15 @@ export interface InputProps
   label?: string;
   error?: string;
   icon?: React.ReactNode;
+  /** Classes for the outer wrapper (label + field), e.g. a grid column span */
+  wrapperClassName?: string;
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, label, error, icon, type, id, ...props }, ref) => {
+  ({ className, label, error, icon, type, id, wrapperClassName, ...props }, ref) => {
     const inputId = id || label?.toLowerCase().replace(/\s+/g, "-");
     return (
-      <div className="flex flex-col gap-1">
+      <div className={cn("flex flex-col gap-1", wrapperClassName)}>
         {label && (
           <label
             htmlFor={inputId}

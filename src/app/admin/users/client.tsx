@@ -16,9 +16,6 @@ import {
   assignFacultyToStudent,
   assignWardenToStudent,
   assignGateToSecurity,
-  updateStudentDetails,
-  updateUserDetails,
-  resetUserPassword,
 } from "@/server/actions/admin";
 import { useAppStore } from "@/stores/app-store";
 import { callGate } from "@/lib/gate-call";
@@ -27,7 +24,7 @@ import { forgetGateData, seedGateData, useGateData } from "@/lib/gate-cache";
 const USERS_PAGE_SIZE = 15;
 const usersKey = (role: string, page: number) => `users|${role}|${page}`;
 import { AccountSyncPanel } from "./account-sync-panel";
-import { NewPasswordSection } from "@/components/users/new-password-section";
+import { UserEditModal } from "@/components/users/user-edit-modal";
 import { Search,
   UserPlus,
   Users,
@@ -128,8 +125,6 @@ export function UserManagementClient({
   const [loadingDetails, setLoadingDetails] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
-  const [editLoading, setEditLoading] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [navigatingUserId, setNavigatingUserId] = useState<string | null>(null);
   const [isNavigatingId, startIdTransition] = useTransition();
@@ -142,143 +137,10 @@ export function UserManagementClient({
   }
 
   const [createStudentType, setCreateStudentType] = useState("DAY_SCHOLAR");
-  const [editStudentType, setEditStudentType] = useState("DAY_SCHOLAR");
   const [createDept, setCreateDept] = useState("CSE");
-  const [editDept, setEditDept] = useState("CSE");
-  const [editCustomDept, setEditCustomDept] = useState("");
 
   function handleOpenEdit(u: any) {
     setEditingUser(u);
-    if (u.role === "STUDENT" && u.student) {
-      setEditStudentType(u.student.studentType || "DAY_SCHOLAR");
-      const currentDept = u.student.department || "";
-      const matched = DEPARTMENTS.find(
-        (d) =>
-          d.code.toLowerCase() === currentDept.toLowerCase() ||
-          d.name.toLowerCase() === currentDept.toLowerCase() ||
-          d.aliases.some((a) => a.toLowerCase() === currentDept.toLowerCase())
-      );
-      if (matched) {
-        setEditDept(matched.code);
-        setEditCustomDept("");
-      } else if (currentDept) {
-        setEditDept("OTHER");
-        setEditCustomDept(currentDept);
-      } else {
-        setEditDept("CSE");
-        setEditCustomDept("");
-      }
-    } else if (["FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN"].includes(u.role) && u.faculty) {
-      // Director/Dean usually hold "All Departments", which is kept via the OTHER/custom branch
-      const currentDept = u.faculty.department || "";
-      const matched = DEPARTMENTS.find(
-        (d) =>
-          d.code.toLowerCase() === currentDept.toLowerCase() ||
-          d.name.toLowerCase() === currentDept.toLowerCase() ||
-          d.aliases.some((a) => a.toLowerCase() === currentDept.toLowerCase())
-      );
-      if (matched) {
-        setEditDept(matched.code);
-        setEditCustomDept("");
-      } else if (currentDept) {
-        setEditDept("OTHER");
-        setEditCustomDept(currentDept);
-      } else {
-        setEditDept("CSE");
-        setEditCustomDept("");
-      }
-    }
-    setEditError(null);
-  }
-
-  async function handleSaveEdit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!editingUser) return;
-    setEditLoading(true);
-    setEditError(null);
-
-    const formData = new FormData(e.currentTarget);
-    // Optional new login password (checked before anything is saved)
-    const newPassword = String(formData.get("newPassword") || "");
-    if (newPassword && newPassword.length < 8) {
-      setEditError("The new password must be at least 8 characters");
-      setEditLoading(false);
-      return;
-    }
-    const resolvedDept = editDept === "OTHER" ? ((formData.get("customDepartment") as string) || editCustomDept).trim() : editDept;
-
-    try {
-      if (editingUser.role === "STUDENT") {
-        const studentId = editingUser.student?.id;
-        if (!studentId) {
-          setEditError("Student record ID is missing");
-          setEditLoading(false);
-          return;
-        }
-
-        const res = await updateStudentDetails(studentId, {
-          name: formData.get("name") as string,
-          email: formData.get("email") as string,
-          phone: formData.get("phone") as string,
-          studentRoll: formData.get("studentRoll") as string,
-          department: resolvedDept,
-          year: formData.get("year") ? Number(formData.get("year")) : null,
-          semester: formData.get("semester") ? Number(formData.get("semester")) : null,
-          section: formData.get("section") as string,
-          studentType: formData.get("studentType") as any,
-          hostelType: formData.get("studentType") === "HOSTELLER" ? (formData.get("hostelType") as string) || null : null,
-          facultyId: (formData.get("facultyId") as string) || null,
-          wardenId: (formData.get("wardenId") as string) || null,
-          roomNumber: (formData.get("roomNumber") as string) || null,
-          hostelBlock: (formData.get("hostelBlock") as string) || null,
-        });
-
-        if (res?.error) {
-          setEditError(res.error);
-          setEditLoading(false);
-          return;
-        }
-      } else {
-        const res = await updateUserDetails(editingUser.id, {
-          name: formData.get("name") as string,
-          email: formData.get("email") as string,
-          phone: formData.get("phone") as string,
-          employeeId: formData.get("employeeId") as string,
-          department: resolvedDept,
-          // Deans are saved as "Dean of <area>"
-          designation:
-            editingUser.role === "DEAN"
-              ? `Dean of ${String(formData.get("deanOf") || "").trim().replace(/^dean\s+of\s+/i, "")}`
-              : (formData.get("designation") as string),
-          hostelBlock: formData.get("hostelBlock") as string,
-          gateId: formData.get("gateId") as string,
-          ...(editingUser.role === "SECURITY" ? { isHeadSecurity: formData.get("isHeadSecurity") === "on" } : {}),
-        });
-
-        if (res?.error) {
-          setEditError(res.error);
-          setEditLoading(false);
-          return;
-        }
-      }
-
-      if (newPassword) {
-        const pw: any = await resetUserPassword(editingUser.id, newPassword);
-        if (pw?.error) {
-          setEditError(`Details saved, but the password was not changed: ${pw.error}`);
-          setEditLoading(false);
-          return;
-        }
-      }
-
-      setSuccess(newPassword ? "Details and password updated." : "User details updated successfully!");
-      setEditingUser(null);
-      refreshList();
-    } catch (err: any) {
-      setEditError(actionErrorMessage(err, "Failed to update user"));
-    } finally {
-      setEditLoading(false);
-    }
   }
 
   function handleRoleFilter(next: string) {
@@ -425,10 +287,6 @@ export function UserManagementClient({
     setAssigning(false);
   }
 
-  const EDIT_ROLE_NAME: Record<string, string> = {
-    STUDENT: "Student", FACULTY: "Faculty", FACULTY_ADMIN: "HOD", DIRECTOR: "Director", DEAN: "Dean",
-    WARDEN: "Warden", SECURITY: "Security", SECURITY_SUPERVISOR: "Security Supervisor", ADMIN: "Admin",
-  };
   const ROLES = ["STUDENT", "FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "WARDEN", "SECURITY", "SECURITY_SUPERVISOR", "ADMIN"];
 
   const filteredUsers = usersData.users.filter((u: any) => {
@@ -1329,348 +1187,20 @@ export function UserManagementClient({
         </div>
       </Modal>
 
-      {/* Edit User Modal */}
-      <Modal
-        open={!!editingUser}
-        onClose={() => !editLoading && setEditingUser(null)}
-        title={editingUser ? `Edit ${EDIT_ROLE_NAME[editingUser.role] ?? "User"} — ${editingUser.name}` : "Edit User"}
-        className="max-w-2xl"
-      >
-        {editingUser && (
-          <form onSubmit={handleSaveEdit} className="space-y-4 sm:space-y-5">
-            {editError && (
-              <div className="flex items-start gap-2.5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                <span>{editError}</span>
-              </div>
-            )}
-
-            {/* Account & contact */}
-            <section className={sectionCls}>
-              <h3 className={sectionLabelCls}>
-                <User className="h-3.5 w-3.5 text-orange-400" /> Account & Contact
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className={fieldLabelCls}>Full Name</label>
-                  <Input
-                    name="name"
-                    defaultValue={editingUser.name}
-                    required
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className={fieldLabelCls}>Email Address</label>
-                  <Input
-                    name="email"
-                    type="email"
-                    defaultValue={editingUser.email}
-                    required
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className={fieldLabelCls}>Phone Number</label>
-                  <Input
-                    name="phone"
-                    defaultValue={editingUser.phone || ""}
-                    placeholder="+91-9876543210"
-                  />
-                </div>
-              </div>
-            </section>
-
-            {editingUser.role === "STUDENT" && (
-              <section className={sectionCls}>
-                <h3 className={sectionLabelCls}>
-                  <GraduationCap className="h-3.5 w-3.5 text-orange-400" /> Student Details
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className={fieldLabelCls}>Roll Number</label>
-                    <Input
-                      name="studentRoll"
-                      defaultValue={editingUser.student?.studentRoll || ""}
-                      required
-                      className="font-mono"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className={fieldLabelCls}>Department</label>
-                    <Select
-                      name="department"
-                      value={editDept}
-                      onChange={(e) => setEditDept(e.target.value)}
-                    >
-                      {DEPARTMENTS.map((d) => (
-                        <option key={d.code} value={d.code}>
-                          {departmentLabel(d)}
-                        </option>
-                      ))}
-                      {editDept === "OTHER" && editCustomDept && <option value="OTHER">{editCustomDept} (current)</option>}
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className={fieldLabelCls}>Year</label>
-                    <Input
-                      name="year"
-                      type="number"
-                      min={1}
-                      max={5}
-                      defaultValue={editingUser.student?.year ?? ""}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className={fieldLabelCls}>Semester</label>
-                    <Input
-                      name="semester"
-                      type="number"
-                      min={1}
-                      max={12}
-                      defaultValue={editingUser.student?.semester ?? ""}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className={fieldLabelCls}>Section</label>
-                    <Input
-                      name="section"
-                      defaultValue={editingUser.student?.section ?? ""}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className={fieldLabelCls}>Student Type</label>
-                    <Select
-                      name="studentType"
-                      value={editStudentType}
-                      onChange={(e) => setEditStudentType(e.target.value)}
-                    >
-                      <option value="DAY_SCHOLAR">Day Scholar</option>
-                      <option value="HOSTELLER">Hosteller</option>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <label className={fieldLabelCls}>Assigned Faculty Advisor</label>
-                    <Select
-                      name="facultyId"
-                      defaultValue={editingUser.student?.facultyId || ""}
-                    >
-                      <option value="">-- None --</option>
-                      {faculty.map((f: any) => (
-                        <option key={f.id} value={f.id}>
-                          {f.profile?.name} ({f.department || "No Dept"})
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-
-                  {editStudentType === "HOSTELLER" && (
-                    <>
-                      <div className="space-y-1.5">
-                        <label className={fieldLabelCls}>Assigned Warden (Hostellers)</label>
-                        <Select
-                          name="wardenId"
-                          defaultValue={editingUser.student?.wardenId || ""}
-                        >
-                          <option value="">-- None --</option>
-                          {wardens.map((w: any) => (
-                            <option key={w.id} value={w.id}>
-                              {w.profile?.name} (Block {w.hostelBlock || "N/A"})
-                            </option>
-                          ))}
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className={fieldLabelCls}>Hostel</label>
-                        <Select
-                          name="hostelType"
-                          defaultValue={editingUser.student?.hostelType || ""}
-                        >
-                          <option value="">-- Not set --</option>
-                          <option value="BOYS">Boys Hostel</option>
-                          <option value="LADIES">Ladies Hostel</option>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className={fieldLabelCls}>Hostel Block</label>
-                        <Input
-                          name="hostelBlock"
-                          defaultValue={editingUser.student?.hostelBlock || ""}
-                          placeholder="e.g. Block A"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className={fieldLabelCls}>Room Number</label>
-                        <Input
-                          name="roomNumber"
-                          defaultValue={editingUser.student?.roomNumber || ""}
-                          placeholder="e.g. 204"
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-              </section>
-            )}
-
-            {(editingUser.role === "FACULTY" || editingUser.role === "FACULTY_ADMIN" || editingUser.role === "DIRECTOR" || editingUser.role === "DEAN") && (
-              <section className={sectionCls}>
-                <h3 className={sectionLabelCls}>
-                  <BookOpen className="h-3.5 w-3.5 text-orange-400" /> Role Details
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className={fieldLabelCls}>Employee ID</label>
-                    <Input
-                      name="employeeId"
-                      defaultValue={editingUser.faculty?.employeeId || ""}
-                      className="font-mono"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className={fieldLabelCls}>Department</label>
-                    <Select
-                      name="department"
-                      value={editDept}
-                      onChange={(e) => setEditDept(e.target.value)}
-                    >
-                      {DEPARTMENTS.map((d) => (
-                        <option key={d.code} value={d.code}>
-                          {departmentLabel(d)}
-                        </option>
-                      ))}
-                      {editDept === "OTHER" && editCustomDept && <option value="OTHER">{editCustomDept} (current)</option>}
-                    </Select>
-                  </div>
-                  {editingUser.role === "DEAN" ? (
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <label htmlFor="edit-dean-of" className={fieldLabelCls}>Dean of *</label>
-                      <div className="flex items-stretch overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 transition-colors hover:border-zinc-700 focus-within:border-orange-500/50 focus-within:ring-2 focus-within:ring-orange-500/40">
-                        <span className="flex items-center bg-zinc-950 px-4 text-sm font-medium text-zinc-500 border-r border-zinc-800 whitespace-nowrap">Dean of</span>
-                        <input
-                          id="edit-dean-of"
-                          name="deanOf"
-                          required
-                          maxLength={80}
-                          defaultValue={(editingUser.faculty?.designation || "").replace(/^dean(\s+of)?\s*/i, "")}
-                          placeholder="e.g. Placements, Internal Affairs"
-                          className="h-12 w-full min-w-0 bg-transparent px-4 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <label className={fieldLabelCls}>{editingUser.role === "DIRECTOR" ? "Title *" : "Designation"}</label>
-                      <Input
-                        name="designation"
-                        required={editingUser.role === "DIRECTOR"}
-                        maxLength={100}
-                        placeholder={editingUser.role === "DIRECTOR" ? "e.g. Managing Director" : undefined}
-                        defaultValue={editingUser.faculty?.designation || ""}
-                      />
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
-
-            {editingUser.role === "WARDEN" && (
-              <section className={sectionCls}>
-                <h3 className={sectionLabelCls}>
-                  <Building2 className="h-3.5 w-3.5 text-orange-400" /> Warden Details
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className={fieldLabelCls}>Employee ID</label>
-                    <Input
-                      name="employeeId"
-                      defaultValue={editingUser.warden?.employeeId || ""}
-                      className="font-mono"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className={fieldLabelCls}>Hostel Block</label>
-                    <Input
-                      name="hostelBlock"
-                      defaultValue={editingUser.warden?.hostelBlock || ""}
-                    />
-                  </div>
-                </div>
-              </section>
-            )}
-
-            {editingUser.role === "SECURITY" && (
-              <section className={sectionCls}>
-                <h3 className={sectionLabelCls}>
-                  <Shield className="h-3.5 w-3.5 text-orange-400" /> Security Details
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className={fieldLabelCls}>Employee ID</label>
-                    <Input
-                      name="employeeId"
-                      defaultValue={editingUser.securityStaff?.employeeId || ""}
-                      className="font-mono"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className={fieldLabelCls}>Assigned Gate</label>
-                    <Select
-                      name="gateId"
-                      defaultValue={editingUser.securityStaff?.gate?.id || ""}
-                    >
-                      <option value="">-- None --</option>
-                      {gates?.map((g: any) => (
-                        <option key={g.id} value={g.id}>{g.name}</option>
-                      ))}
-                    </Select>
-                  </div>
-                  <label className="flex items-start gap-3 rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 cursor-pointer sm:col-span-2 hover:border-zinc-700 transition-colors">
-                    <input
-                      type="checkbox"
-                      name="isHeadSecurity"
-                      defaultChecked={!!editingUser.securityStaff?.isHead}
-                      className="mt-0.5 h-4 w-4 accent-orange-500"
-                    />
-                    <span>
-                      <span className="block text-sm font-medium text-zinc-200">Head Security</span>
-                      <span className="block text-xs text-zinc-500">Can see and take the staff attendance register. Everything else is the same as Security.</span>
-                    </span>
-                  </label>
-                </div>
-              </section>
-            )}
-
-            {editingUser.role !== "ADMIN" && <NewPasswordSection sectionCls={sectionCls} labelCls={sectionLabelCls} />}
-
-            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-5 border-t border-zinc-800">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full sm:w-auto"
-                onClick={() => setEditingUser(null)}
-                disabled={editLoading}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                loading={editLoading}
-                className="w-full sm:w-auto"
-              >
-                Save Changes
-              </Button>
-            </div>
-          </form>
-        )}
-      </Modal>
+      {/* Edit a person: the shared window (also used on the person's page) */}
+      <UserEditModal
+        user={editingUser}
+        onClose={() => setEditingUser(null)}
+        onSaved={(message) => {
+          setSuccess(message);
+          setEditingUser(null);
+          refreshList();
+        }}
+        faculty={faculty}
+        wardens={wardens}
+        gates={gates}
+        canSetPassword={editingUser?.role !== "ADMIN"}
+      />
 
       {/* View Details Modal */}
       <Modal

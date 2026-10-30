@@ -200,7 +200,7 @@ export function DashboardLayout({
   const isMobileNavRole = role === "STUDENT" || role === "SECURITY";
   // Staff sections whose page reads the browser store are pre-loaded in full (the
   // page, not just its loading screen), so a tap opens them at once. Pages that
-  // load their own data on the server (Activity, My Visitors, Settings) are left
+  // load their own data on the server (see HEAVY_PAGE) are left
   // to load when tapped: pre-loading them all at once competed with the
   // dashboard's own data for database connections and slowed everything down.
   const fullPrefetch = (href: string) =>
@@ -583,8 +583,12 @@ export const wardenNavItems: NavItem[] = [
   // { label: "Approval History", href: "/warden/history", icon: <History className="h-5 w-5" /> },
 ];
 
-/** Sections that load their own (larger) data on the server: not pre-loaded */
-const HEAVY_PAGE = /\/(activity|my-visitors|settings)(\/|$)/;
+/**
+ * Sections that still load their own (larger) data on the server: not pre-loaded.
+ * The other Activity pages and My Visitors open at once and load in the browser,
+ * so they are pre-loaded like the rest.
+ */
+const HEAVY_PAGE = /^\/(faculty|warden)\/activity(\/|$)|\/settings(\/|$)/;
 
 export const securityNavItems: NavItem[] = [
   // Home is the registers list; on phones "Scan QR" is the raised centre button

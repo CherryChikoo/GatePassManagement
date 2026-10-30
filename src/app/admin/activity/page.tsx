@@ -1,10 +1,8 @@
 import { requireRole } from "@/lib/auth/helpers";
-import { getActivityData } from "@/server/actions/admin";
 import { ActivityClient } from "./client";
 
+/** The day's activity loads in the browser (ActivityClient), so this page opens at once. */
 export default async function AdminActivityPage() {
   const user = await requireRole("ADMIN");
-  const data = await getActivityData();
-
-  return <ActivityClient user={user} data={data} loadedAt={Date.now()} />;
+  return <ActivityClient user={user} />;
 }

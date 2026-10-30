@@ -850,7 +850,10 @@ export async function updateUserDetails(profileId: string, rawData: Record<strin
 
   // Profile and role record change together (one transaction): never half-saved
   const writes: Prisma.PrismaPromise<unknown>[] = [];
-  if (data.name !== undefined || data.phone !== undefined || emailChanged) {
+  // Faculty-type accounts keep their designation on the faculty record; the rest on the profile
+  const profileDesignation =
+    !["FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "STUDENT"].includes(profile.role) && data.designation !== undefined;
+  if (data.name !== undefined || data.phone !== undefined || emailChanged || profileDesignation) {
     writes.push(
       prisma.profile.update({
         where: { id: profileId },
@@ -858,6 +861,7 @@ export async function updateUserDetails(profileId: string, rawData: Record<strin
           ...(data.name ? { name: data.name } : {}),
           ...(emailChanged ? { email: data.email } : {}),
           ...(data.phone !== undefined ? { phone: data.phone || null } : {}),
+          ...(profileDesignation ? { designation: data.designation || null } : {}),
         },
       })
     );

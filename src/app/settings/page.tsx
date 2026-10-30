@@ -23,10 +23,14 @@ export default async function SettingsPage() {
   // Fetch phone number from profile
   const profile = await prisma.profile.findUnique({
     where: { id: user.id },
-    select: { phone: true },
+    select: { phone: true, designation: true },
   });
   if (profile?.phone) {
     extraData.phone = profile.phone;
+  }
+  // Admin, Warden, Security, Supervisor: designation lives on the profile
+  if (!extraData.designation && profile?.designation) {
+    extraData.designation = profile.designation;
   }
 
   return <SettingsClient user={{ ...user, ...extraData }} avatarUrl={avatarUrlFor(user)} />;

@@ -24,9 +24,9 @@ import {
 } from "@/server/actions/registers";
 import { registerOutsider, markOutsiderExited, getOutsiders } from "@/server/actions/outsiders";
 import { uploadOutsiderPhoto, uploadRegisterPhoto, getRegisterPhotoUrl, getExitPhotoUrl } from "@/lib/storage/image-upload";
-import { getVisitHostOptions } from "@/server/actions/visits";
+import { getVisitHostOptions, listMyVisits } from "@/server/actions/visits";
 import { generateLiveQrToken } from "@/server/actions/permissions";
-import { getUsers } from "@/server/actions/admin";
+import { getUsers, getActivityData } from "@/server/actions/admin";
 import { getCampusActivity, getExecutiveStudents } from "@/server/actions/executive";
 import { getHodActivity } from "@/server/actions/hod-activity";
 import { confirmHostelArrival, getHostelPassesToday, verifyHostelPass } from "@/server/actions/warden-scan";
@@ -88,6 +88,9 @@ const GATE_FUNCTIONS = {
   generateLiveQrToken,
   // Admin → Users list (role tabs and pages switch without a page load)
   getUsers,
+  // Admin → Activity (one day), staff → My Visitors (one day / page)
+  getActivityData,
+  listMyVisits,
   // Director / Dean / Supervisor student directory (one page at a time)
   getExecutiveStudents,
   // Director / Dean / Supervisor activity (one day)
