@@ -26,6 +26,7 @@ export async function GET(req: Request) {
   // lists), which change rarely and are most of the payload; the browser keeps
   // the copy from the last full load. Requests, counts and passes always come.
   const light = new URL(req.url).searchParams.get("light") === "1";
+  const startedAt = Date.now();
   try {
     const user = await getAuthUser();
     if (!user) {
@@ -62,6 +63,8 @@ export async function GET(req: Request) {
     const data = (await loader()) as Record<string, unknown>;
     // Faculty gate movements: show the faculty member, not "Unknown"
     fillMovementPeople(data);
+    const ms = Date.now() - startedAt;
+    if (ms > 1500) console.warn(`[preload] slow: ${user.role} ${light ? "light" : "full"} ${ms}ms`);
     return NextResponse.json({ ...data, __profileId: user.profileId, __light: light }, { headers: NO_STORE });
   } catch (err: any) {
     console.error("[Preload] Error:", err?.message);

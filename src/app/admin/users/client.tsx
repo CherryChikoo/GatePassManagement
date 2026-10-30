@@ -18,6 +18,7 @@ import {
   assignGateToSecurity,
   updateStudentDetails,
   updateUserDetails,
+  resetUserPassword,
 } from "@/server/actions/admin";
 import { useAppStore } from "@/stores/app-store";
 import { callGate } from "@/lib/gate-call";
@@ -26,6 +27,7 @@ import { forgetGateData, seedGateData, useGateData } from "@/lib/gate-cache";
 const USERS_PAGE_SIZE = 15;
 const usersKey = (role: string, page: number) => `users|${role}|${page}`;
 import { AccountSyncPanel } from "./account-sync-panel";
+import { NewPasswordSection } from "@/components/users/new-password-section";
 import { Search,
   UserPlus,
   Users,
@@ -196,6 +198,13 @@ export function UserManagementClient({
     setEditError(null);
 
     const formData = new FormData(e.currentTarget);
+    // Optional new login password (checked before anything is saved)
+    const newPassword = String(formData.get("newPassword") || "");
+    if (newPassword && newPassword.length < 8) {
+      setEditError("The new password must be at least 8 characters");
+      setEditLoading(false);
+      return;
+    }
     const resolvedDept = editDept === "OTHER" ? ((formData.get("customDepartment") as string) || editCustomDept).trim() : editDept;
 
     try {
@@ -253,7 +262,16 @@ export function UserManagementClient({
         }
       }
 
-      setSuccess("User details updated successfully!");
+      if (newPassword) {
+        const pw: any = await resetUserPassword(editingUser.id, newPassword);
+        if (pw?.error) {
+          setEditError(`Details saved, but the password was not changed: ${pw.error}`);
+          setEditLoading(false);
+          return;
+        }
+      }
+
+      setSuccess(newPassword ? "Details and password updated." : "User details updated successfully!");
       setEditingUser(null);
       refreshList();
     } catch (err: any) {
@@ -407,6 +425,10 @@ export function UserManagementClient({
     setAssigning(false);
   }
 
+  const EDIT_ROLE_NAME: Record<string, string> = {
+    STUDENT: "Student", FACULTY: "Faculty", FACULTY_ADMIN: "HOD", DIRECTOR: "Director", DEAN: "Dean",
+    WARDEN: "Warden", SECURITY: "Security", SECURITY_SUPERVISOR: "Security Supervisor", ADMIN: "Admin",
+  };
   const ROLES = ["STUDENT", "FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "WARDEN", "SECURITY", "SECURITY_SUPERVISOR", "ADMIN"];
 
   const filteredUsers = usersData.users.filter((u: any) => {
@@ -1311,7 +1333,7 @@ export function UserManagementClient({
       <Modal
         open={!!editingUser}
         onClose={() => !editLoading && setEditingUser(null)}
-        title={editingUser ? `Edit ${editingUser.role === 'STUDENT' ? 'Student' : editingUser.role} Details` : "Edit User"}
+        title={editingUser ? `Edit ${EDIT_ROLE_NAME[editingUser.role] ?? "User"} — ${editingUser.name}` : "Edit User"}
         className="max-w-2xl"
       >
         {editingUser && (
@@ -1625,6 +1647,8 @@ export function UserManagementClient({
                 </div>
               </section>
             )}
+
+            {editingUser.role !== "ADMIN" && <NewPasswordSection sectionCls={sectionCls} labelCls={sectionLabelCls} />}
 
             <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-5 border-t border-zinc-800">
               <Button

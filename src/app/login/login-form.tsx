@@ -5,18 +5,25 @@ import { useEffect, useState } from "react";
 import { loginAction } from "@/server/actions/auth";
 import Image from "next/image";
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
-import { broadcastSessionEvent, hardNavigate } from "@/stores/app-store";
+import { useRouter } from "next/navigation";
+import { broadcastSessionEvent } from "@/stores/app-store";
 import { isStaleDeploymentError, reloadForNewDeployment } from "@/lib/deployment";
 
 export function LoginForm() {
   const t = useT();
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   // First visit on a slow phone: the page shows before its code has loaded. A tap
   // on Sign in then would only reload the page, so the button waits until ready.
   // The fields are left uncontrolled so anything typed meanwhile is kept.
   const [ready, setReady] = useState(false);
-  useEffect(() => setReady(true), []);
+  useEffect(() => {
+    setReady(true);
+    // Wake the server and its database connection while the person types, so
+    // signing in does not wait for a sleeping server (free plan)
+    fetch("/api/health", { cache: "no-store" }).catch(() => {});
+  }, []);
   const [showPassword, setShowPassword] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
 
@@ -33,7 +40,10 @@ export function LoginForm() {
       } else if (result?.redirectUrl) {
         // Other open tabs switch to this user (one session per browser)
         broadcastSessionEvent("login");
-        hardNavigate(result.redirectUrl);
+        // In-app move: the scripts are already loaded, so the dashboard opens
+        // without a full page reload (nothing from another user is cached here —
+        // signing out always reloads the page)
+        router.replace(result.redirectUrl);
       }
     } catch (err: any) {
       // Page was opened before a new deployment → reload it and let the user sign in again

@@ -21,6 +21,11 @@ export const USER_EMAIL_HEADER = "x-user-email";
  * (enforced in getAuthUser, which knows the role).
  */
 export const AUTH_GRACE_HEADER = "x-auth-grace";
+/**
+ * Set on every request the proxy has checked. With it and no user id, the
+ * visitor is simply not signed in — server code need not ask Supabase again.
+ */
+export const AUTH_CHECKED_HEADER = "x-auth-checked";
 
 type VerifiedUser = { id: string; email: string };
 
@@ -144,6 +149,7 @@ export async function updateSession(request: NextRequest) {
     headers.delete(USER_ID_HEADER);
     headers.delete(USER_EMAIL_HEADER);
     headers.delete(AUTH_GRACE_HEADER);
+    headers.delete(AUTH_CHECKED_HEADER);
     return NextResponse.next({ request: { headers } });
   }
 
@@ -242,6 +248,7 @@ export async function updateSession(request: NextRequest) {
   requestHeaders.delete(USER_ID_HEADER);
   requestHeaders.delete(USER_EMAIL_HEADER);
   requestHeaders.delete(AUTH_GRACE_HEADER);
+  requestHeaders.set(AUTH_CHECKED_HEADER, "1");
   if (user && grace) requestHeaders.set(AUTH_GRACE_HEADER, "1");
   if (user) {
     requestHeaders.set(USER_ID_HEADER, user.id);

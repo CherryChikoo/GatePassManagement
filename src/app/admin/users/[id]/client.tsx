@@ -3,6 +3,7 @@ import { ThemedSelect } from "@/components/ui/themed-select";
 import { DateField } from "@/components/ui/date-field";
 import { DepartmentSelect } from "@/components/ui/department-select";
 import { ResetPasswordButton } from "@/components/users/reset-password-button";
+import { NewPasswordSection } from "@/components/users/new-password-section";
 import { PagerBar } from "@/components/ui/pager-bar";
 import { dt } from "@/components/ui/data-table";
 import { PassFullDetails, prefetchPassDetails } from "@/components/passes/pass-full-details";
@@ -37,6 +38,7 @@ import {
   toggleUserActive,
   updateStudentDetails,
   updateUserDetails,
+  resetUserPassword,
 } from "@/server/actions/admin";
 import { BackButton } from "@/components/ui/back-button";
 import {
@@ -226,12 +228,25 @@ export function UserDetailClient({
   }
 
   // Handle save edit details
+  // Who may set this person's login password (same rules as the server)
+  const canSetPassword =
+    (currentUser.role === "ADMIN" && user.role !== "ADMIN") ||
+    (currentUser.role === "FACULTY_ADMIN" && (user.role === "STUDENT" || user.role === "FACULTY")) ||
+    (currentUser.role === "WARDEN" && user.role === "STUDENT");
+
   async function handleSaveEdit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setEditLoading(true);
     setEditError(null);
 
     const formData = new FormData(e.currentTarget);
+    // Optional new login password (checked before anything is saved)
+    const newPassword = String(formData.get("newPassword") || "");
+    if (newPassword && newPassword.length < 8) {
+      setEditError("The new password must be at least 8 characters");
+      setEditLoading(false);
+      return;
+    }
 
     try {
       if (isStudent && student) {
@@ -272,7 +287,16 @@ export function UserDetailClient({
         }
       }
 
-      setSuccess("User details updated successfully!");
+      if (newPassword) {
+        const pw: any = await resetUserPassword(user.id, newPassword);
+        if (pw?.error) {
+          setEditError(`Details saved, but the password was not changed: ${pw.error}`);
+          setEditLoading(false);
+          return;
+        }
+      }
+
+      setSuccess(newPassword ? "Details and password updated." : "User details updated successfully!");
       setActiveTab("overview");
       router.refresh();
       setTimeout(() => setSuccess(null), 4000);
@@ -448,9 +472,7 @@ export function UserDetailClient({
                     {user.active ? "Disable" : "Enable"}
                   </Button>
                 )}
-                {((currentUser.role === "ADMIN" && user.role !== "ADMIN") ||
-                  (currentUser.role === "FACULTY_ADMIN" && (user.role === "STUDENT" || user.role === "FACULTY")) ||
-                  (currentUser.role === "WARDEN" && user.role === "STUDENT")) && (
+                {canSetPassword && (
                   <ResetPasswordButton profileId={user.id} name={user.name} className="col-span-2 sm:col-span-1" />
                 )}
               </div>
@@ -1457,6 +1479,8 @@ export function UserDetailClient({
                     </div>
                   </section>
                 )}
+
+                {canSetPassword && <NewPasswordSection sectionCls={sectionCls} labelCls={sectionLabelCls} />}
 
                 <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pt-5 border-t border-zinc-800">
                   <Button

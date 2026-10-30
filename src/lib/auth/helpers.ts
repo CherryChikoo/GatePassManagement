@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { Role } from "@prisma/client";
 import { cache } from "react";
 import { headers } from "next/headers";
-import { USER_ID_HEADER, USER_EMAIL_HEADER, AUTH_GRACE_HEADER } from "@/lib/supabase/middleware";
+import { USER_ID_HEADER, USER_EMAIL_HEADER, AUTH_GRACE_HEADER, AUTH_CHECKED_HEADER } from "@/lib/supabase/middleware";
 
 export type AuthUser = {
   id: string;
@@ -37,6 +37,7 @@ export const getAuthUser = cache(async (): Promise<AuthUser | null> => {
   let userEmail: string | null = null;
   // Let in on an expired token while Supabase was unreachable: Security only
   let graceOnly = false;
+  let proxyChecked = false;
 
   // These headers are trustworthy: src/proxy.ts strips any client-supplied
   // values and only sets them after verifying the session JWT signature.
@@ -45,11 +46,15 @@ export const getAuthUser = cache(async (): Promise<AuthUser | null> => {
     userId = reqHeaders.get(USER_ID_HEADER);
     userEmail = reqHeaders.get(USER_EMAIL_HEADER);
     graceOnly = reqHeaders.get(AUTH_GRACE_HEADER) === "1";
+    proxyChecked = reqHeaders.get(AUTH_CHECKED_HEADER) === "1";
   } catch {
     // headers() might throw in certain non-request contexts
   }
 
-  // Fallback (e.g. public routes): verify with Supabase Auth directly
+  // The proxy checked this request and found no session: not signed in
+  if (!userId && proxyChecked) return null;
+
+  // Fallback (requests the proxy did not see): verify with Supabase Auth directly
   if (!userId) {
     const supabase = await createServerSupabaseClient();
     const {

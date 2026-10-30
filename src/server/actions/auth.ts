@@ -14,6 +14,7 @@ import { createClient } from "@supabase/supabase-js";
 const PASSWORD_NOTICE_COOKIE = "gp_pw_notice";
 
 export async function loginAction(formData: FormData) {
+  const startedAt = Date.now();
   try {
     const raw = {
       email: (formData.get("email") as string) || "",
@@ -109,6 +110,8 @@ export async function loginAction(formData: FormData) {
       }
     }
 
+    const ms = Date.now() - startedAt;
+    if (ms > 1500) logger.warn('Slow sign-in', { ms, role: profile.role });
     return { redirectUrl: getRoleDashboardPath(profile.role) };
   } catch (err: any) {
     logger.error('Login action exception', err);
