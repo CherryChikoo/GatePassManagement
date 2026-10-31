@@ -9,7 +9,7 @@ import { REGISTER_BY_KEY, isEntryRegister, type EntryRegister, type RegisterDef,
 import { callGate } from "@/lib/gate-call";
 import { invalidateEntryLists } from "./entry-list-cache";
 import type { createRegisterEntry } from "@/server/actions/registers";
-import { RegisterForm, type StaffOption } from "./register-form";
+import { RegisterForm, clearRegisterDraft, type StaffOption } from "./register-form";
 import { newClientToken } from "./format";
 import { localizeRegister } from "./localize";
 
@@ -66,6 +66,7 @@ export function QuickEntryModal({
       if (res?.error) {
         setError(res.error);
       } else {
+        clearRegisterDraft(def.key);
         setSavedCount((n) => n + 1);
         setLastGroups((payload as any)?.groups ?? null);
         setSavedAt(new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" }));

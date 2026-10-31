@@ -8,7 +8,7 @@ import { VoicePanel, useVoiceFill } from "@/components/voice/voice-fill";
 import { HostPicker } from "@/components/visits/host-picker";
 import { VisitCodeFields, visitInputReady, type VisitExitInput } from "@/components/visits/visit-code";
 import type { VoiceFill } from "@/lib/voice/spec";
-import { CalendarDays, Camera, CheckCircle2, ChevronDown, Clock, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, Save, Trash2, X } from "lucide-react";
+import { CalendarDays, Camera, CheckCircle2, ChevronDown, Clock, Eraser, History, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, Save, Trash2, X } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
 import { DepartmentSelect } from "@/components/ui/department-select";
 import { compressPhoto } from "@/lib/images/compress-photo";
@@ -19,6 +19,41 @@ import { displayValue } from "./localize";
 
 export type StaffOption = { id: string; name: string; employeeId: string | null };
 type Values = Record<string, any>;
+
+/**
+ * What was typed in a new record, kept for this browser tab until it is saved:
+ * a mistaken Back (or closing the form) loses nothing, and reopening the form
+ * brings it all back. Cleared on save (clearRegisterDraft) or with "Clear all".
+ */
+const DRAFT_PREFIX = "gatepass:register-draft:";
+const DRAFT_MAX_AGE_MS = 12 * 60 * 60_000;
+type Draft = { values: Values; rows: Record<string, Values[]>; direction: Direction | null; oneWay: boolean; visitHost: string; at: number };
+
+function readDraft(registerKey: string): Draft | null {
+  try {
+    const d = JSON.parse(sessionStorage.getItem(DRAFT_PREFIX + registerKey) || "null") as Draft | null;
+    return d && Date.now() - d.at < DRAFT_MAX_AGE_MS ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The record was saved: its kept copy is no longer needed */
+export function clearRegisterDraft(registerKey: string) {
+  try {
+    sessionStorage.removeItem(DRAFT_PREFIX + registerKey);
+  } catch {}
+}
+
+const filledIn = (v: unknown) => String(v ?? "").trim() !== "";
+/** Anything typed or picked (a direction alone does not count) */
+function hasTyped(values: Values, rows: Record<string, Values[]>, visitHost: string) {
+  return (
+    !!visitHost ||
+    Object.values(values).some(filledIn) ||
+    Object.values(rows).some((list) => list.some((row) => Object.values(row).some(filledIn)))
+  );
+}
 
 // text-base on phones keeps iOS from zooming into the field
 const inputCls =
@@ -532,21 +567,47 @@ export function RegisterForm({
 }) {
   const t = useT();
   const m = def.movement;
+  // What was typed here before and not saved (the form only opens on a tap, so this runs in the browser)
+  const [draft] = useState(() => readDraft(def.key));
+  const startDirection: Direction | null = m && m.firstDirections.length === 1 ? m.firstDirections[0] : null;
   // "Meeting (faculty / staff)" (registers with def.visitHost): that person gets a meeting code
-  const [visitHost, setVisitHost] = useState("");
-  const [direction, setDirection] = useState<Direction | null>(m && m.firstDirections.length === 1 ? m.firstDirections[0] : null);
+  const [visitHost, setVisitHost] = useState(draft?.visitHost ?? "");
+  const [direction, setDirection] = useState<Direction | null>(draft?.direction ?? startDirection);
   // "Out only" / "In only": nothing more will be recorded on this record
-  const [oneWay, setOneWay] = useState(false);
+  const [oneWay, setOneWay] = useState(draft?.oneWay ?? false);
   // Bumped when a picked person fills other boxes, so dropdowns show the new value
   const [fillNo, setFillNo] = useState(0);
   // What each box got from the last picked person (so a new pick can replace it)
   const autoFilled = useRef<Record<string, string>>({});
   const fillTargets = new Set(def.fields.flatMap((f) => (f.fills ? Object.values(f.fills) : [])) as string[]);
-  const [values, setValues] = useState<Values>({});
-  const [rows, setRows] = useState<Record<string, Values[]>>(() =>
-    Object.fromEntries((def.groups ?? []).map((g) => [g.key, [emptyRow(g)]]))
-  );
+  const emptyRows = () => Object.fromEntries((def.groups ?? []).map((g) => [g.key, [emptyRow(g)]])) as Record<string, Values[]>;
+  const [values, setValues] = useState<Values>(draft?.values ?? {});
+  const [rows, setRows] = useState<Record<string, Values[]>>(() => draft?.rows ?? emptyRows());
   const [localError, setLocalError] = useState<string | null>(null);
+  // "Your unsaved details were kept." while showing a brought-back draft
+  const [restored, setRestored] = useState(() => !!draft && hasTyped(draft.values, draft.rows, draft.visitHost));
+  // "Clear all": a second tap within a few seconds really clears (one stray tap never wipes the form)
+  const [confirmClear, setConfirmClear] = useState(false);
+  // Bumped by "Clear all" so pickers and photo boxes start empty too
+  const [clearNo, setClearNo] = useState(0);
+  const typedSomething = hasTyped(values, rows, visitHost);
+
+  // Keep the typed details for this tab (removed once nothing is typed)
+  useEffect(() => {
+    try {
+      if (hasTyped(values, rows, visitHost)) {
+        sessionStorage.setItem(DRAFT_PREFIX + def.key, JSON.stringify({ values, rows, direction, oneWay, visitHost, at: Date.now() }));
+      } else {
+        sessionStorage.removeItem(DRAFT_PREFIX + def.key);
+      }
+    } catch {}
+  }, [def.key, values, rows, direction, oneWay, visitHost]);
+
+  useEffect(() => {
+    if (!confirmClear) return;
+    const timer = setTimeout(() => setConfirmClear(false), 3000);
+    return () => clearTimeout(timer);
+  }, [confirmClear]);
 
   // ── Voice filling ──────────────────────────────────────────
   // What voice put in each box: a box is only (re)filled by voice while it is
@@ -639,6 +700,27 @@ export function RegisterForm({
   };
   const voiceDone = voice.status === "done";
 
+  const clearAll = () => {
+    setValues({});
+    setRows(emptyRows());
+    setDirection(startDirection);
+    setOneWay(false);
+    setVisitHost("");
+    setLocalError(null);
+    autoFilled.current = {};
+    voiceSet.current = {};
+    voiceRows.current = {};
+    voiceDir.current = null;
+    beforeVoice.current = null;
+    setVoiceKeys([]);
+    setVoiceGroups([]);
+    voice.reset();
+    setClearNo((n) => n + 1);
+    setRestored(false);
+    setConfirmClear(false);
+    clearRegisterDraft(def.key);
+  };
+
   const side = m && direction ? (direction === "IN" ? m.in : m.out) : null;
   const readingKeys = new Set([m?.in.readingKey, m?.out.readingKey].filter(Boolean) as string[]);
   const visible = def.fields.filter(
@@ -668,6 +750,33 @@ export function RegisterForm({
       }}
       className="space-y-5"
     >
+      {/* Brought-back details, and one place to start again */}
+      {(restored || typedSomething) && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {restored ? (
+            <p className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-emerald-600">
+              <History className="h-4 w-4 shrink-0" aria-hidden="true" /> {t("Your unsaved details were kept.")}
+            </p>
+          ) : (
+            <span />
+          )}
+          {typedSomething && (
+            <button
+              type="button"
+              onClick={() => (confirmClear ? clearAll() : setConfirmClear(true))}
+              className={`inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-medium transition-colors ${
+                confirmClear
+                  ? "border-red-500/40 bg-red-500/10 text-red-500"
+                  : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-red-500/30 hover:text-red-500"
+              }`}
+            >
+              <Eraser className="h-4 w-4" aria-hidden="true" />
+              {confirmClear ? t("Tap again to clear everything") : t("Clear all")}
+            </button>
+          )}
+        </div>
+      )}
+
       <LiveDateTime />
 
       {/* Speak everything once: the form fills itself (checked before saving) */}
@@ -750,7 +859,7 @@ export function RegisterForm({
             missing={voiceDone && def.required.includes(f.key) && String(values[f.key] ?? "").trim() === ""}
           >
             <FieldInput
-              key={`${f.key}-${fillTargets.has(f.key) ? fillNo : 0}-${voiceVer[f.key] ?? 0}`}
+              key={`${f.key}-${clearNo}-${fillTargets.has(f.key) ? fillNo : 0}-${voiceVer[f.key] ?? 0}`}
               registerKey={def.key}
               f={f}
               id={`rf-${f.key}`}
@@ -812,7 +921,7 @@ export function RegisterForm({
               <p className="text-xs text-zinc-500">{t("In-time is recorded now; out-times are marked later from the record.")}</p>
             )}
             {list.map((row, i) => (
-              <div key={`${rowsVer}-${i}`} className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3 sm:p-4 space-y-3">
+              <div key={`${rowsVer}-${clearNo}-${i}`} className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3 sm:p-4 space-y-3">
                 <div className="flex min-h-10 items-center justify-between gap-2">
                   <p className="text-sm font-medium text-zinc-300">{g.itemLabel} {i + 1}</p>
                   {list.length > 1 && (

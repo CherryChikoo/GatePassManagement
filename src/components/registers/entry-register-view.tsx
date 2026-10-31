@@ -18,7 +18,7 @@ import { fetchEntryList, invalidateEntryLists, markEntryListsStale, peekEntryLis
 import { visitExitMessage } from "@/components/visits/visit-code";
 import { useLiveTopics } from "@/lib/realtime/live";
 import { actionErrorMessage } from "@/lib/deployment";
-import { AdminEditForm, CloseRecordForm, MovementForm, RegisterForm, type StaffOption } from "./register-form";
+import { AdminEditForm, CloseRecordForm, MovementForm, RegisterForm, clearRegisterDraft, type StaffOption } from "./register-form";
 import { formatFieldValue, formatInstant, newClientToken } from "./format";
 import { displayValue } from "./localize";
 import { FactList, InOutCard, RecordHeader, type Fact, type MoveSide } from "./record-layout";
@@ -532,7 +532,13 @@ export function EntryRegisterView({
             def={def}
             staff={staff}
             busy={busy}
-            onSubmit={(payload) => run(() => callGate("createRegisterEntry", [def.key, payload, token]), t("Record saved."))}
+            onSubmit={(payload) =>
+              run(async () => {
+                const res: any = await callGate("createRegisterEntry", [def.key, payload, token]);
+                if (!res?.error) clearRegisterDraft(def.key);
+                return res;
+              }, t("Record saved."))
+            }
           />
         )}
         {mode === "edit" && selected && (

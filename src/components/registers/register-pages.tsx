@@ -2,7 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useT } from "@/components/providers/language-provider";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeftRight,
@@ -89,6 +89,16 @@ const REGISTER_ICON: Record<RegisterKey, LucideIcon> = {
 };
 
 
+/** The register last opened from the list: coming back shows the list at that register */
+const LAST_OPENED_KEY = "gatepass:last-register";
+const LAST_OPENED_MAX_AGE_MS = 6 * 60 * 60_000;
+
+function rememberOpenedRegister(key: string) {
+  try {
+    sessionStorage.setItem(LAST_OPENED_KEY, JSON.stringify({ key, at: Date.now() }));
+  } catch {}
+}
+
 export function RegistersHub({
   viewer,
   hidden = [],
@@ -119,6 +129,26 @@ export function RegistersHub({
 
   const [query, setQuery] = useState("");
   const [quickKey, setQuickKey] = useState<string | null>(null);
+
+  // Back from a register: the list opens where that register is (not at the top),
+  // and its row glows for a moment so the guard sees where they were
+  useEffect(() => {
+    let saved: { key?: string; at?: number } | null = null;
+    try {
+      saved = JSON.parse(sessionStorage.getItem(LAST_OPENED_KEY) || "null");
+    } catch {}
+    if (!saved?.key || !saved.at || Date.now() - saved.at > LAST_OPENED_MAX_AGE_MS) return;
+    const row = document.querySelector<HTMLElement>(`[data-register-row="${CSS.escape(saved.key)}"]`);
+    if (!row) return;
+    // After the router's own scroll on arrival
+    const frame = requestAnimationFrame(() => row.scrollIntoView({ block: "center" }));
+    row.classList.add("bg-orange-500/10");
+    const timer = setTimeout(() => row.classList.remove("bg-orange-500/10"), 1500);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
+  }, []);
 
   // The pass books come first (hostel outings, faculty, students), then the rest in their usual order
   const visible = allRegisters
@@ -186,12 +216,13 @@ export function RegistersHub({
             if (isEntryRegister(r) && r.key !== "SECURITY_ATTENDANCE") prefetchEntryList(r.key);
           };
           return (
-            <li key={r.key} className="flex items-center gap-2 pr-2 sm:pr-3">
+            <li key={r.key} data-register-row={r.key} className="flex items-center gap-2 pr-2 sm:pr-3 transition-colors duration-700">
               <Link
                 href={href}
                 // Start loading the list on tap, while the page opens
                 onPointerDown={prefetch}
                 onFocus={prefetch}
+                onClick={() => rememberOpenedRegister(r.key)}
                 className="group flex min-w-0 flex-1 items-center gap-3 px-3 sm:px-4 py-3.5 hover:bg-zinc-950/70 transition-colors"
               >
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
