@@ -8,7 +8,7 @@ import { VoicePanel, useVoiceFill } from "@/components/voice/voice-fill";
 import { HostPicker } from "@/components/visits/host-picker";
 import { VisitCodeFields, visitInputReady, type VisitExitInput } from "@/components/visits/visit-code";
 import type { VoiceFill } from "@/lib/voice/spec";
-import { CalendarDays, Camera, CheckCircle2, ChevronDown, Clock, Eraser, History, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, Save, Trash2, X } from "lucide-react";
+import { CalendarDays, Camera, CheckCircle2, ChevronDown, Clock, History, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
 import { DepartmentSelect } from "@/components/ui/department-select";
 import { compressPhoto } from "@/lib/images/compress-photo";
@@ -23,7 +23,7 @@ type Values = Record<string, any>;
 /**
  * What was typed in a new record, kept for this browser tab until it is saved:
  * a mistaken Back (or closing the form) loses nothing, and reopening the form
- * brings it all back. Cleared on save (clearRegisterDraft) or with "Clear all".
+ * brings it all back. Cleared on save (clearRegisterDraft) or with "Clear form".
  */
 const DRAFT_PREFIX = "gatepass:register-draft:";
 const DRAFT_MAX_AGE_MS = 12 * 60 * 60_000;
@@ -586,9 +586,7 @@ export function RegisterForm({
   const [localError, setLocalError] = useState<string | null>(null);
   // "Your unsaved details were kept." while showing a brought-back draft
   const [restored, setRestored] = useState(() => !!draft && hasTyped(draft.values, draft.rows, draft.visitHost));
-  // "Clear all": a second tap within a few seconds really clears (one stray tap never wipes the form)
-  const [confirmClear, setConfirmClear] = useState(false);
-  // Bumped by "Clear all" so pickers and photo boxes start empty too
+  // Bumped by "Clear form" so pickers and photo boxes start empty too
   const [clearNo, setClearNo] = useState(0);
   const typedSomething = hasTyped(values, rows, visitHost);
 
@@ -602,12 +600,6 @@ export function RegisterForm({
       }
     } catch {}
   }, [def.key, values, rows, direction, oneWay, visitHost]);
-
-  useEffect(() => {
-    if (!confirmClear) return;
-    const timer = setTimeout(() => setConfirmClear(false), 3000);
-    return () => clearTimeout(timer);
-  }, [confirmClear]);
 
   // ── Voice filling ──────────────────────────────────────────
   // What voice put in each box: a box is only (re)filled by voice while it is
@@ -717,7 +709,6 @@ export function RegisterForm({
     voice.reset();
     setClearNo((n) => n + 1);
     setRestored(false);
-    setConfirmClear(false);
     clearRegisterDraft(def.key);
   };
 
@@ -763,15 +754,11 @@ export function RegisterForm({
           {typedSomething && (
             <button
               type="button"
-              onClick={() => (confirmClear ? clearAll() : setConfirmClear(true))}
-              className={`inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-medium transition-colors ${
-                confirmClear
-                  ? "border-red-500/40 bg-red-500/10 text-red-500"
-                  : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-red-500/30 hover:text-red-500"
-              }`}
+              onClick={clearAll}
+              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border-2 border-red-500/50 bg-red-500/10 px-5 text-sm font-semibold text-red-600 transition-[background-color,transform] hover:bg-red-500/15 active:scale-[0.97]"
             >
-              <Eraser className="h-4 w-4" aria-hidden="true" />
-              {confirmClear ? t("Tap again to clear everything") : t("Clear all")}
+              <RotateCcw className="h-[18px] w-[18px]" aria-hidden="true" />
+              {t("Clear form")}
             </button>
           )}
         </div>
