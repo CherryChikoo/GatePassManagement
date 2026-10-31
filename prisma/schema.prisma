@@ -42,6 +42,10 @@ model Profile {
   recordedOutsiders Outsider[]     @relation("OutsiderRecordedBy")
   /// Visitors / admission people who came to meet this person (meeting codes)
   hostedVisits      VisitPass[]    @relation("VisitPassHost")
+  /// Self check-in requests (QR at the gate) from visitors who came to meet this person
+  hostedVisitRequests VisitRequest[] @relation("VisitRequestHost")
+  /// Self check-in requests made from this guard's Show QR screen
+  issuedVisitRequests VisitRequest[] @relation("VisitRequestIssuedBy")
 
   @@index([role, active])
   @@map("profiles")
@@ -298,6 +302,8 @@ model Outsider {
   createdAt       DateTime  @default(now()) @map("created_at")
   /// Meeting code, when the visitor came to meet a faculty / staff member
   visitPass       VisitPass?
+  /// The self check-in request (QR at the gate) this visitor was let in from
+  visitRequest    VisitRequest?
 
   @@index([status, entryTime(sort: Desc)])
   @@index([entryTime(sort: Desc)])
@@ -363,6 +369,8 @@ model RegisterEntry {
   createdAt            DateTime        @default(now()) @map("created_at")
   /// Meeting code (e.g. Admission Book: the person came to meet a faculty member)
   visitPass            VisitPass?
+  /// The self check-in request (QR at the gate) this record was made from
+  visitRequest         VisitRequest?
 
   @@index([register, kind, entryDate(sort: Desc)])
   @@index([parentId])
@@ -459,4 +467,69 @@ model VisitPass {
   @@index([hostProfileId, createdAt(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
   @@map("visit_passes")
+}
+
+/// Self check-in from a visitor's own phone (Visitors Book / Admission Book).
+/// The visitor scans the QR on Security's screen and fills the form; Security
+/// checks it, takes the photo and accepts it (-> a normal Visitors Book visitor
+/// or Admission Book record, linked here) or rejects it. The phone follows the
+/// visit with a secret only it has (kept here only as a SHA-256 hash).
+/// PENDING -> ACCEPTED -> EXITED, or REJECTED. A PENDING request older than 60
+/// minutes counts as expired. See src/lib/visits/requests.ts.
+model VisitRequest {
+  id               String         @id @default(uuid())
+  /// "VISITORS" | "ADMISSION"
+  register         String
+  /// PENDING | ACCEPTED | REJECTED | EXITED
+  status           String         @default("PENDING")
+  /// SHA-256 (hex) of the phone's secret; the secret itself is never stored
+  secretHash       String         @unique @map("secret_hash")
+  /// What the visitor typed (keys = the register's field keys)
+  data             Json
+  visitorName      String         @map("visitor_name")
+  visitorPhone     String         @map("visitor_phone")
+  /// Faculty / staff member they came to meet (exit with the meeting code)
+  hostProfileId    String?        @map("host_profile_id")
+  host             Profile?       @relation("VisitRequestHost", fields: [hostProfileId], references: [id], onDelete: SetNull)
+  /// Office they came to (exit by scanning the office's QR poster)
+  officeId         String?        @map("office_id")
+  office           Office?        @relation(fields: [officeId], references: [id], onDelete: SetNull)
+  /// Guard whose QR was scanned, and that guard's gate at the time
+  issuedById       String?        @map("issued_by_id")
+  issuedBy         Profile?       @relation("VisitRequestIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
+  gate             String?
+  /// Photo Security took at Accept (storage path, outsiders/...)
+  photoUrl         String?        @map("photo_url")
+  rejectReason     String?        @map("reject_reason")
+  decidedById      String?        @map("decided_by_id")
+  decidedByName    String?        @map("decided_by_name")
+  decidedAt        DateTime?      @map("decided_at")
+  /// The record made at Accept: a Visitors Book visitor or an Admission Book record
+  outsiderId       String?        @unique @map("outsider_id")
+  outsider         Outsider?      @relation(fields: [outsiderId], references: [id], onDelete: SetNull)
+  registerEntryId  String?        @unique @map("register_entry_id")
+  registerEntry    RegisterEntry? @relation(fields: [registerEntryId], references: [id], onDelete: SetNull)
+  /// From this time the phone shows its Exit QR: CODE (meeting code typed) | OFFICE (office poster scanned)
+  exitUnlockedAt   DateTime?      @map("exit_unlocked_at")
+  exitUnlockMethod String?        @map("exit_unlock_method")
+  officeVisitedAt  DateTime?      @map("office_visited_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  @@index([register, status, createdAt(sort: Desc)])
+  @@map("visit_requests")
+}
+
+/// An office visitors come to (Accounts, Exam cell…). Offices have no logins:
+/// each has a printed QR poster (<site>/o/<posterKey>) the visitor scans with
+/// their phone to record the visit and unlock their Exit QR.
+model Office {
+  id        String         @id @default(uuid())
+  name      String
+  /// Random, unguessable key printed in the poster's QR
+  posterKey String         @unique @map("poster_key")
+  active    Boolean        @default(true)
+  createdAt DateTime       @default(now()) @map("created_at")
+  requests  VisitRequest[]
+
+  @@map("offices")
 }

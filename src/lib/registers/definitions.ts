@@ -343,8 +343,10 @@ export const REGISTERS: RegisterDef[] = [
     kind: "entry",
     key: "AUTO_BOOK",
     number: 5,
-    title: "Auto Book",
-    description: "College autos going out on trips, with readings.",
+    // Replaced by the one simple Auto Book (AUTO_IN_OUT): kept only so its past
+    // records can still be read; no new entries (src/lib/registers/access.ts)
+    title: "Old Auto Book",
+    description: "College autos with readings (old records only; new autos go in the Auto Book).",
     required: ["autoNumber"],
     movement: {
       in: { label: "In", timeKey: "inTime", readingKey: "inReading" },
@@ -554,18 +556,21 @@ export const REGISTERS: RegisterDef[] = [
     kind: "entry",
     key: "AUTO_IN_OUT",
     number: 17,
-    title: "Auto In & Out Book",
-    description: "Outside autos entering and leaving the campus.",
+    // The one Auto Book: every auto (college or outside) coming in or going out.
+    // Kept simple on purpose: auto number, driver, anything else; times are automatic.
+    title: "Auto Book",
+    description: "Autos coming in and going out: auto number, driver and any other details.",
     required: ["autoNumber", "driverName"],
     movement: { in: { label: "In", timeKey: "inTime" }, out: { label: "Out", timeKey: "outTime" }, firstDirections: BOTH },
     listFields: ["autoNumber", "driverName", "inTime", "outTime"],
     fields: [
       { key: "date", label: "Date", type: "date" },
-      { key: "autoNumber", label: "Auto Number / Vehicle Number", type: "text" },
+      { key: "autoNumber", label: "Auto Number", type: "text", placeholder: "e.g. AP 39 T 1234" },
       { key: "driverName", label: "Driver Name", type: "text" },
       { key: "inTime", label: "In-Time", type: "time" },
       { key: "outTime", label: "Out-Time", type: "time" },
-      { key: "purposeRemarks", label: "Purpose / Remarks", type: "textarea" },
+      // Older records called this "Purpose / Remarks" (same box)
+      { key: "purposeRemarks", label: "Additional information", type: "textarea", placeholder: "Purpose, who came in it, anything else" },
     ],
   },
   {

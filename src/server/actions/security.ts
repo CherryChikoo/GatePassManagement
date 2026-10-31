@@ -3,7 +3,8 @@
 import { prisma } from "@/lib/db/prisma";
 import { notifyLive, notifyPassHolder } from "@/lib/realtime/notify";
 import { requireRole, getAuthUser, type AuthUser } from "@/lib/auth/helpers";
-import { verifyScannedQr } from "@/lib/qr/token";
+import { isVisitExitQr, verifyScannedQr } from "@/lib/qr/token";
+import { describeVisitorExitQr } from "./visit-requests";
 import { revalidatePath } from "next/cache";
 import { gatePhotoFolder, isSafeStoragePath, uploadExitPhotoAdmin } from "@/lib/storage/storage-admin";
 import { istDateString, istDayRangeFromParam, istStartOfDay } from "@/lib/time/ist";
@@ -39,6 +40,10 @@ export async function verifyQrScan(token: string) {
     return { valid: false, error: "Scan a QR code or enter a roll number" };
   }
   const input = token.trim();
+
+  // A visitor's Exit QR (from their phone after the meeting / office visit):
+  // its own card and its own "Allow exit", never a pass lookup
+  if (isVisitExitQr(input)) return await describeVisitorExitQr(input);
 
   let permissionId: string | null = null;
   let scannedTokenId: string | null = null;

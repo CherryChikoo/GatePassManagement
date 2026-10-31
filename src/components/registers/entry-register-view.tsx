@@ -24,6 +24,8 @@ import { displayValue } from "./localize";
 import { FactList, InOutCard, RecordHeader, type Fact, type MoveSide } from "./record-layout";
 import type { Translate } from "@/lib/i18n";
 import { RegisterToolbar, useRegisterFilters } from "./toolbar";
+import { fetchInsideEntries } from "./inside-entries";
+import { insideForLabel, useMinuteClock } from "@/components/visits/hub-tiles";
 
 type Supplement = {
   id: string;
@@ -76,6 +78,7 @@ export function EntryRegisterView({
   canCreate,
   canAdminEdit = false,
   canEdit = false,
+  insideOnly = false,
 }: {
   def: EntryRegister;
   canCreate: boolean;
@@ -83,10 +86,17 @@ export function EntryRegisterView({
   canAdminEdit?: boolean;
   /** Security on registers they may edit (e.g. Cooli Book): edit, saved as a correction */
   canEdit?: boolean;
+  /**
+   * "Inside now" (Admission Book buttons): only today's records still waiting
+   * for Out, with how long each has been inside; no date filter or pages.
+   */
+  insideOnly?: boolean;
 }) {
   const t = useT();
   const filters = useRegisterFilters();
-  const [data, setData] = useState<{ entries: Entry[]; total: number; pageSize: number; canOverrideVisit?: boolean } | null>(null);
+  const [data, setData] = useState<{ entries: Entry[]; total: number; pageSize: number; canOverrideVisit?: boolean; partial?: boolean } | null>(null);
+  // "Inside 2 h 10 min" moves on once a minute (no requests)
+  const now = useMinuteClock(insideOnly);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [staff, setStaff] = useState<StaffOption[]>([]);
@@ -114,6 +124,25 @@ export function EntryRegisterView({
    */
   const load = useCallback(async (fresh = false, silent = false) => {
     const no = ++loadNo.current;
+    if (insideOnly) {
+      if (fresh) invalidateEntryLists(def.key);
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
+      try {
+        const res = await withTimeout(fetchInsideEntries(def, !fresh && !silent));
+        if (no !== loadNo.current) return;
+        setData({ entries: res.entries, total: res.entries.length, pageSize: Math.max(1, res.entries.length), canOverrideVisit: res.canOverrideVisit, partial: res.partial });
+        if (silent) setError(null);
+        return res.entries as Entry[];
+      } catch (err) {
+        if (no === loadNo.current && !silent) setError(actionErrorMessage(err, t("Could not load the register.")));
+      } finally {
+        if (no === loadNo.current) setLoading(false);
+      }
+      return;
+    }
     const params = { register: def.key, date: filters.dateParam, q: filters.q, page: filters.page, shift: filters.shift };
     if (fresh) invalidateEntryLists(def.key);
     // A list seen before shows at once; the fresh copy replaces it quietly
@@ -134,7 +163,9 @@ export function EntryRegisterView({
     } finally {
       if (no === loadNo.current) setLoading(false);
     }
-  }, [def.key, filters.dateParam, filters.q, filters.page, filters.shift, t]);
+    // `def` matters only for the Inside now list (its key is already a dependency)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [def.key, filters.dateParam, filters.q, filters.page, filters.shift, t, insideOnly]);
 
   // Live: another guard (or the admin) changed a register
   useLiveTopics(["reg:"], (changed) => {
@@ -313,6 +344,7 @@ export function EntryRegisterView({
 
   return (
     <div className="space-y-4">
+      {!insideOnly && (
       <RegisterToolbar
         filters={filters}
         action={
@@ -326,8 +358,9 @@ export function EntryRegisterView({
           ) : null
         }
       />
+      )}
 
-      {shiftField && (
+      {shiftField && !insideOnly && (
         <div role="radiogroup" aria-label={t("Shift")} className="flex items-center gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none]">
           <span className="shrink-0 text-xs font-medium text-zinc-500">{t("Shift")}</span>
           {[
@@ -399,6 +432,9 @@ export function EntryRegisterView({
                       </span>
                       {meta && <span className="mt-0.5 block truncate text-sm text-zinc-400">{meta}</span>}
                       {e.visit && <MeetingChip visit={e.visit} />}
+                      {insideOnly && (
+                        <span className="mt-1 block text-xs font-semibold text-amber-600 tabular-nums">{insideForLabel(t, e.createdAt, now)}</span>
+                      )}
                       <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-500">
                         {statusCols.map((c) => (
                           <StatusChip key={c.key} field={c} withLabel value={e.current[c.key]} />
@@ -450,6 +486,7 @@ export function EntryRegisterView({
                           {formatFieldValue({ key: "d", label: "", type: "date" }, e.entryDate)}
                           {open && openChip}
                           {e.visit && <MeetingChip visit={e.visit} />}
+                          {insideOnly && <span className="text-xs font-semibold text-amber-600">{insideForLabel(t, e.createdAt, now)}</span>}
                         </span>
                       </td>
                       {hasStarted && <td className={cn(dt.td, "whitespace-nowrap")}>{directionChip(e.current.direction) ?? <span className="text-zinc-600">—</span>}</td>}
@@ -483,13 +520,18 @@ export function EntryRegisterView({
             <span className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 text-zinc-500">
               <FileText className="h-5 w-5" />
             </span>
-            <p className="text-sm text-zinc-500">{filters.dateParam === "all" ? t("No records yet.") : t("No records for this date.")}</p>
+            <p className="text-sm text-zinc-500">
+              {insideOnly ? t("Nobody is inside now.") : filters.dateParam === "all" ? t("No records yet.") : t("No records for this date.")}
+            </p>
           </div>
         )}
         {!data && !error && <p className="px-4 py-12 text-center text-sm text-zinc-500">{t("Loading…")}</p>}
       </Card>
 
-      {data && <PagerBar page={filters.page} pageSize={data.pageSize} total={data.total} onPageChange={filters.setPage} itemLabel={t("records")} />}
+      {insideOnly && data?.partial && (
+        <p className="px-1 text-xs text-zinc-500">{t("A very busy day: only the latest 200 records are checked. See Old records for the rest.")}</p>
+      )}
+      {data && !insideOnly && <PagerBar page={filters.page} pageSize={data.pageSize} total={data.total} onPageChange={filters.setPage} itemLabel={t("records")} />}
 
       {/* Details */}
       <Modal open={!!selected && mode === null} onClose={() => setSelected(null)} title={def.title} className="max-w-2xl">
@@ -625,6 +667,28 @@ function RegisterPhoto({ path }: { path: unknown }) {
   return (
      
     <img src={url} alt="" className="h-40 w-40 rounded-2xl border border-zinc-800 object-cover" />
+  );
+}
+
+/** Photo taken at a QR check-in (signed, short-lived link); nothing when the record was typed by Security. */
+function CheckInPhoto({ recordId }: { recordId: string }) {
+  const t = useT();
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    callGate("getCheckInPhotoUrl", [recordId], 15_000)
+      .then((u) => !cancelled && setUrl(typeof u === "string" ? u : null))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [recordId]);
+  if (!url) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">{t("Photo at check-in")}</p>
+      <img src={url} alt="" className="h-40 w-40 rounded-2xl border border-zinc-800 object-cover" />
+    </div>
   );
 }
 
@@ -991,6 +1055,9 @@ function EntryDetails({
         </div>
       )}
       <ValuesGrid def={def} values={entry.current} />
+
+      {/* Admission Book: the photo Security took when letting a QR check-in in (none for typed records) */}
+      {def.key === "ADMISSION" && <CheckInPhoto recordId={entry.id} />}
 
       {entry.visit && <MeetingSection visit={entry.visit} />}
 

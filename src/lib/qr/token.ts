@@ -164,3 +164,87 @@ export async function verifyScannedQr(
   }
   return { valid: false, error: "Not a Gate Pass QR code" };
 }
+
+// ──────────────────────────────────────────────────────────────
+// Visitor self check-in codes (src/lib/visits/requests.ts)
+//
+//   GV1.<V|A>.<guard's profile id, 32 hex>.<expiry, base36 seconds>.<signature>
+//     Check-in QR on Security's Show QR screen (V = Visitors Book, A = Admission
+//     Book), shown as <site>/v/<token>. Valid 5 minutes; the screen refreshes it.
+//   GX1.<check-in request id, 32 hex>.<expiry, base36 seconds>.<signature>
+//     Exit QR on the visitor's phone, scanned by Security. Valid 2 minutes.
+//
+// Same secret and signature as GP1; the different prefixes keep each kind of
+// code from ever being accepted as another.
+// ──────────────────────────────────────────────────────────────
+
+const CHECKIN_PREFIX = "GV1";
+const CHECKIN_TTL_SECONDS = 5 * 60;
+const VISIT_EXIT_PREFIX = "GX1";
+const VISIT_EXIT_TTL_SECONDS = 2 * 60;
+const EXP36 = /^[0-9a-z]{1,10}$/;
+
+export type CheckInRegister = "VISITORS" | "ADMISSION";
+const REGISTER_LETTER: Record<CheckInRegister, string> = { VISITORS: "V", ADMISSION: "A" };
+
+function signedCompact(body: string): string {
+  return `${body}.${compactSignature(body)}`;
+}
+
+/** The signature part matches the body (timing-safe). */
+function compactSignatureOk(body: string, sig: string): boolean {
+  const expected = Buffer.from(compactSignature(body));
+  const given = Buffer.from(sig);
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+/** Check-in QR for one register, issued to the guard showing it. */
+export function generateCheckInToken(register: CheckInRegister, guardProfileId: string): { token: string; expiresAt: Date } {
+  const exp = Math.floor(Date.now() / 1000) + CHECKIN_TTL_SECONDS;
+  const token = signedCompact(`${CHECKIN_PREFIX}.${REGISTER_LETTER[register]}.${toHex32(guardProfileId)}.${exp.toString(36)}`);
+  return { token, expiresAt: new Date(exp * 1000) };
+}
+
+/**
+ * Reads a check-in token. `graceMs` keeps an expired token usable a little
+ * longer (sending the form: time to fill it in after opening it).
+ */
+export function verifyCheckInToken(
+  value: unknown,
+  graceMs = 0
+): { ok: true; register: CheckInRegister; guardProfileId: string; expiresAt: Date } | { ok: false; error: "invalid" | "expired" } {
+  if (typeof value !== "string" || value.length > 200) return { ok: false, error: "invalid" };
+  const parts = value.trim().split(".");
+  if (parts.length !== 5 || parts[0] !== CHECKIN_PREFIX) return { ok: false, error: "invalid" };
+  const [, letter, guard, exp36, sig] = parts;
+  const register = letter === "V" ? "VISITORS" : letter === "A" ? "ADMISSION" : null;
+  if (!register || !HEX32.test(guard) || !EXP36.test(exp36)) return { ok: false, error: "invalid" };
+  if (!compactSignatureOk(`${CHECKIN_PREFIX}.${letter}.${guard}.${exp36}`, sig)) return { ok: false, error: "invalid" };
+  const expiresAt = new Date(parseInt(exp36, 36) * 1000);
+  if (expiresAt.getTime() + graceMs < Date.now()) return { ok: false, error: "expired" };
+  return { ok: true, register, guardProfileId: fromHex32(guard), expiresAt };
+}
+
+/** Exit QR for a visitor who is inside and may leave. */
+export function generateVisitExitQr(requestId: string): { token: string; expiresAt: Date } {
+  const exp = Math.floor(Date.now() / 1000) + VISIT_EXIT_TTL_SECONDS;
+  return { token: signedCompact(`${VISIT_EXIT_PREFIX}.${toHex32(requestId)}.${exp.toString(36)}`), expiresAt: new Date(exp * 1000) };
+}
+
+export function isVisitExitQr(value: unknown): boolean {
+  return typeof value === "string" && value.trim().startsWith(`${VISIT_EXIT_PREFIX}.`);
+}
+
+/** Reads a scanned Exit QR: the check-in request it was issued for. */
+export function verifyVisitExitQr(value: unknown): { valid: true; requestId: string } | { valid: false; error: string } {
+  if (typeof value !== "string" || value.length > 200) return { valid: false, error: "Invalid QR code" };
+  const parts = value.trim().split(".");
+  if (parts.length !== 4 || parts[0] !== VISIT_EXIT_PREFIX) return { valid: false, error: "Invalid QR code" };
+  const [, id, exp36, sig] = parts;
+  if (!HEX32.test(id) || !EXP36.test(exp36)) return { valid: false, error: "Invalid QR code" };
+  if (!compactSignatureOk(`${VISIT_EXIT_PREFIX}.${id}.${exp36}`, sig)) return { valid: false, error: "Invalid or tampered QR code" };
+  if (parseInt(exp36, 36) * 1000 < Date.now()) {
+    return { valid: false, error: "This exit QR has expired. Ask the visitor to open it again on their phone." };
+  }
+  return { valid: true, requestId: fromHex32(id) };
+}

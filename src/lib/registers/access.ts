@@ -12,6 +12,8 @@ import type { AuthUser } from "@/lib/auth/helpers";
 import type { RegisterKey } from "./definitions";
 
 const ATTENDANCE: RegisterKey = "SECURITY_ATTENDANCE";
+/** Replaced registers: Security no longer sees them; Admin / Supervisor can still read the old records */
+const RETIRED: RegisterKey[] = ["AUTO_BOOK"];
 
 export type RegisterAccess = {
   isHeadSecurity: boolean;
@@ -39,13 +41,18 @@ async function isHeadSecurityStaff(profileId: string): Promise<boolean> {
 export async function getRegisterAccess(user: AuthUser): Promise<RegisterAccess> {
   const isHeadSecurity = user.role === "SECURITY" ? await isHeadSecurityStaff(user.profileId) : false;
   const viewer = user.role === "SECURITY" || user.role === "ADMIN" || user.role === "SECURITY_SUPERVISOR";
-  const hidden: RegisterKey[] = user.role === "SECURITY" && !isHeadSecurity ? [ATTENDANCE] : [];
+  const hidden: RegisterKey[] =
+    user.role === "SECURITY" ? [...(isHeadSecurity ? [] : [ATTENDANCE]), ...RETIRED] : [];
 
   return {
     isHeadSecurity,
     hidden,
     canView: (key) => viewer && !hidden.includes(key as RegisterKey),
     canCreate: (key) =>
-      key === ATTENDANCE ? user.role === "ADMIN" || isHeadSecurity : user.role === "SECURITY",
+      RETIRED.includes(key as RegisterKey)
+        ? false
+        : key === ATTENDANCE
+        ? user.role === "ADMIN" || isHeadSecurity
+        : user.role === "SECURITY",
   };
 }

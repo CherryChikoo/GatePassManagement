@@ -32,6 +32,7 @@ import { GoBackButton } from "@/components/ui/go-back-button";
 import { PassExtraDetails } from "@/components/passes/pass-extra";
 import { facultyRequestTypeLabel } from "@/lib/registers/definitions";
 import { formatDelay } from "@/lib/passes/return-scan";
+import { VisitorExitResult, REGISTER_LABEL } from "./visitor-exit";
 
 interface Props {
   user: { name: string; email: string; role: string };
@@ -148,6 +149,12 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
         setError(result?.error || "Invalid QR code");
         setState("error");
         return;
+      }
+
+      // A visitor's Exit QR: how long they were inside, as of this scan
+      if (result.kind === "VISITOR_EXIT") {
+        const since = result.visitor?.insideSince ? new Date(result.visitor.insideSince).getTime() : NaN;
+        result.insideMinutes = Number.isFinite(since) ? Math.max(0, Math.floor((Date.now() - since) / 60_000)) : null;
       }
 
       setVerifyResult(result);
@@ -275,6 +282,34 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
     }
   }
 
+  // A visitor's Exit QR: one tap records them as left (Visitors Book / Admission Book)
+  async function handleAllowVisitorExit() {
+    if (verifyResult?.kind !== "VISITOR_EXIT") return;
+    const id = scanIdRef.current;
+    setState("registering");
+    setError(null);
+    try {
+      const result: any = await callGate("allowVisitorExit", [verifyResult.token], 20_000);
+      if (id !== scanIdRef.current) return;
+      if (result?.error) {
+        // Stay on the visitor with the reason (expired QR → scan again)
+        setError(result.error);
+        setState("verified");
+      } else {
+        setSuccess(t("Visitor exit recorded!"));
+        setState("done");
+      }
+    } catch (err: any) {
+      if (id !== scanIdRef.current) return;
+      setError(
+        err?.name === "TimeoutError"
+          ? "Taking too long. It may already be saved — scan the visitor's QR again to check."
+          : err?.message || "Could not record the exit. Check the network connection and try again."
+      );
+      setState("verified");
+    }
+  }
+
   // Reset to scan again
   function resetScan() {
     scanIdRef.current++;
@@ -328,6 +363,7 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
     scrollPageToTop();
   }, [state]);
 
+  const isVisitorExit = verifyResult?.kind === "VISITOR_EXIT";
   const isExit = verifyResult?.allowedAction === "EXIT";
   const needsPhoto = verifyResult?.photoRequired !== false;
   const passLabel = !verifyResult
@@ -363,12 +399,19 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
                 <CheckCircle2 className="h-9 w-9" />
               </div>
               <h2 className="text-xl font-medium text-zinc-100">{success}</h2>
-              <p className="mt-1.5 text-base text-zinc-300 break-words">
-                <span className="font-medium text-zinc-100">{verifyResult?.student?.profile?.name}</span>
-                {verifyResult?.student?.studentRoll && (
-                  <span className="text-zinc-500"> · {verifyResult?.student?.studentRoll}</span>
-                )}
-              </p>
+              {isVisitorExit ? (
+                <p className="mt-1.5 text-base text-zinc-300 break-words">
+                  <span className="font-medium text-zinc-100">{verifyResult.visitor?.name}</span>
+                  <span className="text-zinc-500"> · {t(REGISTER_LABEL[verifyResult.visitor?.register] ?? "Visitors Book")}</span>
+                </p>
+              ) : (
+                <p className="mt-1.5 text-base text-zinc-300 break-words">
+                  <span className="font-medium text-zinc-100">{verifyResult?.student?.profile?.name}</span>
+                  {verifyResult?.student?.studentRoll && (
+                    <span className="text-zinc-500"> · {verifyResult?.student?.studentRoll}</span>
+                  )}
+                </p>
+              )}
               <Button onClick={scanNext} size="lg" className="mt-6 h-14 w-full text-base">
                 <ScanLine className="h-5 w-5" />
                 {t("Scan Next")}
@@ -473,8 +516,20 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
           </Card>
         )}
 
+        {/* VISITOR EXIT QR — no photo or gate step, just Allow exit */}
+        {state === "verified" && isVisitorExit && (
+          <VisitorExitResult
+            card={verifyResult}
+            insideMinutes={verifyResult.insideMinutes ?? null}
+            error={error && tError(error)}
+            onAllow={handleAllowVisitorExit}
+            onCancel={resetScan}
+            onScanAgain={scanNext}
+          />
+        )}
+
         {/* VERIFIED — kept on screen under the camera, so coming back from a photo keeps the place */}
-        {(state === "verified" || state === "capturing_photo") && verifyResult && (
+        {(state === "verified" || state === "capturing_photo") && verifyResult && !isVisitorExit && (
           <div className="space-y-3 animate-scale-in">
             {verifyResult?.manualOverride && (
               <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-600">

@@ -1,5 +1,4 @@
 "use client";
-import { scrollPageToTop } from "@/lib/ui/scroll-top";
 import { ThemedSelect } from "@/components/ui/themed-select";
 import { DepartmentSelect } from "@/components/ui/department-select";
 import { useT } from "@/components/providers/language-provider";
@@ -30,7 +29,8 @@ import {
   RotateCcw,
   Loader2,
   Phone,
-  ArrowLeft,
+  QrCode,
+  PencilLine,
 } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
 import { useGateData } from "@/lib/gate-cache";
@@ -44,21 +44,44 @@ import { BackButton } from "@/components/ui/back-button";
 import { GoBackButton } from "@/components/ui/go-back-button";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { LiveDateTime } from "@/components/registers/register-form";
+import { HubBackButton, HubTiles, insideForLabel, useHubView, useMinuteClock } from "@/components/visits/hub-tiles";
+import { CheckInQrScreen } from "@/components/visits/checkin-qr-screen";
+import { ARRIVAL_COUNTS_QUERY } from "@/components/visits/arrival-alert";
+import { useLiveTopics } from "@/lib/realtime/live";
+import type { ArrivalCounts, StudentParents } from "@/server/actions/visit-requests";
+import { ParentSearch, parentOf, type ParentWho } from "./parent-search";
 
 /** Reasons in the Purpose dropdown (saved in English; shown in the guard's language) */
 const VISIT_PURPOSES = ["Meeting", "Parent Visit", "Admission Enquiry", "Delivery", "Maintenance / Repair", "Event", "Interview"];
 const OTHER_PURPOSE = "__other__";
 
-interface Props {
-  user: any;
-  /** "new" opens the new-visitor form, "log" today's log; default: who is inside now */
-  initialView?: "inside" | "log" | "new";
+/**
+ * What was typed in the new-visitor form, kept for this browser tab until it is
+ * saved: a mistaken Back loses nothing, and the form shows it again when it
+ * opens. Removed on save and by "Clear form".
+ */
+const VISITOR_DRAFT_KEY = "gatepass:visitor-draft";
+const VISITOR_DRAFT_MAX_AGE_MS = 12 * 60 * 60_000;
+const EMPTY_VISITOR = {
+  name: "", phone: "", category: "GUEST", purpose: "", visitingStudent: "", gate: "", vehicleNumber: "", entryTime: "",
+  address: "", department: "", remarks: "", hostProfileId: "",
+};
+type VisitorDraft = { formData: typeof EMPTY_VISITOR; onFoot: boolean; purposeOther: boolean; photo: string | null; at: number };
+
+function forgetVisitorDraft() {
+  try {
+    sessionStorage.removeItem(VISITOR_DRAFT_KEY);
+  } catch {}
 }
+
+/** Screens behind the 4 buttons (?view=…); no view = the buttons */
+const VIEWS = ["qr", "new", "inside", "log"] as const;
+type View = (typeof VIEWS)[number];
 
 /** Photo link could not be loaded (shown instead of "Loading…" forever) */
 const PHOTO_FAILED = "__failed__";
 
-export function OutsidersClient({ user, initialView = "inside" }: Props) {
+export function OutsidersClient() {
   const t = useT();
   // Visitors on campus + today's exits: shown at once from the last load, fetched
   // again only when a visitor is registered / let out (live), at any gate
@@ -66,10 +89,22 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
   const inside: any[] = outsiders.data?.inside ?? [];
   /** Head Security: may let a visitor out without the meeting code */
   const canOverrideVisit = !!outsiders.data?.canOverrideVisit;
-  // One Visitors screen: the list of who is inside (default) or today's log, and a
-  // separate New visitor screen that always comes back to the list
-  const [activeTab, setActiveTab] = useState<"INSIDE" | "HISTORY">(initialView === "log" ? "HISTORY" : "INSIDE");
-  const [formOpen, setFormOpen] = useState(initialView === "new");
+  // The 4 buttons (Show QR · Type it myself · Inside now · Old records); each opens its screen
+  const { view, go, back } = useHubView(VIEWS);
+  const formOpen = view === "new";
+  const activeTab: "INSIDE" | "HISTORY" = view === "log" ? "HISTORY" : "INSIDE";
+  const showList = view === "inside" || view === "log";
+  // Visitors waiting at the gate after scanning the QR (shown on the Show QR button;
+  // same cached copy as the arrival pop-up, so no extra request)
+  const arrivals = useGateData<ArrivalCounts | { error: string }>(
+    view === "hub" ? ARRIVAL_COUNTS_QUERY.key : null,
+    ARRIVAL_COUNTS_QUERY.fetch,
+    ARRIVAL_COUNTS_QUERY.topics
+  );
+  useLiveTopics(ARRIVAL_COUNTS_QUERY.topics, () => {}, view === "hub");
+  const waiting = arrivals.data && "VISITORS" in arrivals.data ? arrivals.data.VISITORS : 0;
+  // "Inside 2 h 10 min" moves on by itself, once a minute (no requests)
+  const now = useMinuteClock(view === "inside");
   // The visitor just registered: highlighted at the top of the list for a moment
   const [highlightId, setHighlightId] = useState<string | null>(null);
   useEffect(() => {
@@ -77,20 +112,15 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
     const timer = setTimeout(() => setHighlightId(null), 6000);
     return () => clearTimeout(timer);
   }, [highlightId]);
-  const openForm = () => {
+  const [searchQuery, setSearchQuery] = useState("");
+  const openView = (v: View) => {
     setError(null);
     setSuccess(null);
-    setFormOpen(true);
-    scrollPageToTop();
+    setSearchQuery("");
+    go(v);
   };
-  const closeForm = () => {
-    setFormOpen(false);
-    setActiveTab("INSIDE");
-    // A reload shows the list, not the form again
-    if (window.location.search) window.history.replaceState(null, "", window.location.pathname);
-    scrollPageToTop();
-  };
-  const [searchQuery, setSearchQuery] = useState("");
+  // Saved: the Inside now list, new visitor on top (Back still returns to the buttons)
+  const closeForm = () => go("inside", { replace: true });
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -110,21 +140,8 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
   const [onFoot, setOnFoot] = useState(false);
   // Bumped after each registration so the department picker clears too
   const [formNonce, setFormNonce] = useState(0);
-  const [formData, setFormData] = useState({
-    name: "",
-    phone: "",
-    category: "GUEST",
-    purpose: "",
-    visitingStudent: "",
-    gate: "",
-    vehicleNumber: "",
-    entryTime: "",
-    address: "",
-    department: "",
-    remarks: "",
-    /** Faculty / staff they came to meet (meeting code) */
-    hostProfileId: "",
-  });
+  // hostProfileId: faculty / staff they came to meet (meeting code)
+  const [formData, setFormData] = useState(EMPTY_VISITOR);
 
   // ── Voice filling ──────────────────────────────────────────
   // Fills empty boxes (or ones voice filled before) — never what the guard typed.
@@ -179,9 +196,76 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
   /** Highlight for a box filled by voice and not yet changed by the guard */
   const voiceRing = (k: keyof typeof formData) =>
     voiceVals[k] !== undefined && formData[k] === voiceVals[k] ? " ring-2 ring-amber-400/60" : "";
+
+  // ── Parent of a student: picked from the box at the top, the form fills itself ──
+  const [parentNote, setParentNote] = useState<string | null>(null);
+  const fillFromParent = (s: StudentParents, who: ParentWho) => {
+    const p = parentOf(s, who);
+    if (!p) return;
+    const vehicle = (s.parentVehicle ?? "").trim().toUpperCase();
+    const walks = /^ON FOOT$/.test(vehicle);
+    setFormData((f) => ({
+      ...f,
+      name: p.name,
+      phone: p.phone,
+      address: s.homeAddress?.trim() || f.address,
+      // Their usual vehicle (the guard can change it, or tap No vehicle)
+      vehicleNumber: vehicle && !walks ? vehicle : f.vehicleNumber,
+      category: "PARENT",
+      purpose: "Parent Visit",
+      visitingStudent: `${s.name} (${s.roll})`,
+      department: s.department ?? f.department,
+    }));
+    if (walks) setOnFoot(true);
+    else if (vehicle) setOnFoot(false);
+    categoryTapped.current = true;
+    setPurposeOther(false);
+    // The department picker shows the new value
+    setDeptVoiceNo((n) => n + 1);
+    const whoLabel = who === "FATHER" ? t("Father") : who === "MOTHER" ? t("Mother") : t("Guardian");
+    setParentNote(t("Filled from {student}'s {who}. Check the details and take the photo.", { student: s.name, who: whoLabel }));
+  };
   const [photo, setPhoto] = useState<string | null>(null);
   // The photo's upload, started when it is taken (see handlePhotoCapture)
   const photoUpload = useRef<{ data: string; promise: Promise<{ path: string | null; error: string | null }> } | null>(null);
+
+  // ── Unsaved details kept for this tab (see VISITOR_DRAFT_KEY) ──
+  const typedSomething =
+    !!photo || onFoot || Object.entries(formData).some(([k, v]) => (k === "category" ? v !== "GUEST" : String(v ?? "").trim() !== ""));
+  const [restoredDraft, setRestoredDraft] = useState(false);
+  const draftChecked = useRef(false);
+  // Opening the form: bring back what was typed before (read after the page is up, never while it is drawn on the server)
+  useEffect(() => {
+    if (!formOpen || draftChecked.current) return;
+    draftChecked.current = true;
+    let d: VisitorDraft | null = null;
+    try {
+      d = JSON.parse(sessionStorage.getItem(VISITOR_DRAFT_KEY) || "null");
+    } catch {}
+    if (!d || Date.now() - d.at > VISITOR_DRAFT_MAX_AGE_MS) return;
+    setFormData({ ...EMPTY_VISITOR, ...d.formData });
+    setOnFoot(!!d.onFoot);
+    setPurposeOther(!!d.purposeOther);
+    setPhoto(d.photo ?? null);
+    setFormNonce((n) => n + 1);
+    setRestoredDraft(true);
+  }, [formOpen]);
+  // Keep it while typing (after the check above, so an empty first render never wipes it)
+  useEffect(() => {
+    if (!formOpen || !draftChecked.current) return;
+    try {
+      if (typedSomething) {
+        sessionStorage.setItem(VISITOR_DRAFT_KEY, JSON.stringify({ formData, onFoot, purposeOther, photo, at: Date.now() }));
+      } else {
+        sessionStorage.removeItem(VISITOR_DRAFT_KEY);
+      }
+    } catch {
+      // A large photo can be over the browser's limit: keep the details without it
+      try {
+        sessionStorage.setItem(VISITOR_DRAFT_KEY, JSON.stringify({ formData, onFoot, purposeOther, photo: null, at: Date.now() }));
+      } catch {}
+    }
+  }, [formOpen, typedSomething, formData, onFoot, purposeOther, photo]);
 
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -257,6 +341,20 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
     setSelectedOutsider(outsider);
   };
 
+  /** Empty form (after saving, or "Clear form"); the kept copy goes too */
+  const clearVisitorForm = () => {
+    setFormData(EMPTY_VISITOR);
+    setPhoto(null);
+    setOnFoot(false);
+    setFormNonce((n) => n + 1);
+    setPurposeOther(false);
+    setParentNote(null);
+    setRestoredDraft(false);
+    resetVoice();
+    photoUpload.current = null;
+    forgetVisitorDraft();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
@@ -292,18 +390,9 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
       
       if (result.success) {
         setSuccess(t("Visitor registered successfully!")); setTimeout(() => setSuccess(null), 4000);
-        setFormData({
-          name: "", phone: "", category: "GUEST", purpose: "", visitingStudent: "", gate: "", vehicleNumber: "", entryTime: "",
-          address: "", department: "", remarks: "", hostProfileId: "",
-        });
-        setPhoto(null);
-        setOnFoot(false);
-        setFormNonce((n) => n + 1);
-        setPurposeOther(false);
-        resetVoice();
+        clearVisitorForm();
         // Back to the list, with the new visitor at the top (highlighted)
         void outsiders.reload();
-        photoUpload.current = null;
         if (result.outsiderId) setHighlightId(String(result.outsiderId));
         setSearchQuery("");
         setPage(1);
@@ -411,81 +500,78 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
 
   return (
     <div className="mx-auto max-w-5xl space-y-5 sm:space-y-6 pb-24 sm:pb-8">
-      {/* Header: the list, or the New visitor screen with a way back */}
-      {formOpen ? (
-        <div className="min-w-0">
-          <button
-            type="button"
-            onClick={closeForm}
-            className="mb-3 inline-flex h-11 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 pl-2 pr-4 text-sm font-medium text-zinc-200 hover:bg-zinc-950"
-          >
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-600 text-white">
-              <ArrowLeft className="h-4 w-4" />
-            </span>
-            {t("Back to visitors")}
-          </button>
-          <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">{t("New visitor")}</h1>
-          <p className="mt-1 text-sm text-zinc-500">{t("Photo first, then the details. Saving lets the visitor in.")}</p>
-        </div>
-      ) : (
-        <div className="min-w-0">
-          <GoBackButton className="mb-3" />
-          <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* The 4 buttons; every other screen has "← Buttons" in the same place */}
+      {view === "hub" ? (
+        <>
+          <div className="min-w-0">
+            <GoBackButton className="mb-3" />
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
                 <Users className="h-5 w-5" />
               </span>
               <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">{t("Visitors")}</h1>
             </div>
-            <Button onClick={openForm} size="lg" className="h-12 w-full sm:w-auto px-6 text-base">
-              <UserPlus className="h-5 w-5" />
-              {t("New visitor")}
-            </Button>
           </div>
-        </div>
-      )}
-
-      {/* Two lists: who is inside now, and the day's log */}
-      {!formOpen && (
-      <div
-        className="grid w-full grid-cols-2 gap-1 rounded-[22px] border border-zinc-800 bg-zinc-950 p-1"
-        role="tablist"
-        aria-label={t("Visitors")}
-      >
-        {(
-          [
-            ["INSIDE", t("Inside now"), <MapPin key="i" className="h-4 w-4 shrink-0" />],
-            ["HISTORY", logDate === istDateString() ? t("Today's log") : t("Visitor log"), <History key="i" className="h-4 w-4 shrink-0" />],
-          ] as const
-        ).map(([tab, label, icon]) => (
-          <button
-            key={tab}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex min-h-12 min-w-0 items-center justify-center gap-1.5 rounded-[18px] px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium leading-tight transition-colors ${
-              activeTab === tab ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
-            }`}
-          >
-            <span className="hidden sm:inline-flex">{icon}</span>
-            <span className="min-w-0 text-center break-words">{label}</span>
-            {tab === "INSIDE" && (
-              <span
-                className={`flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${
-                  activeTab === tab ? "bg-orange-600 text-white" : "bg-zinc-900 text-zinc-400 border border-zinc-800"
-                }`}
-              >
+          <HubTiles
+            tiles={[
+              {
+                key: "qr",
+                icon: QrCode,
+                title: t("Show QR"),
+                hint: t("The visitor scans it and fills the form on their phone"),
+                badge: waiting > 0 ? t("{n} waiting", { n: waiting }) : null,
+                primary: true,
+                onClick: () => openView("qr"),
+              },
+              {
+                key: "new",
+                icon: PencilLine,
+                title: t("Type it myself"),
+                hint: t("Fill the visitor's details here"),
+                onClick: () => openView("new"),
+              },
+              {
+                key: "inside",
+                icon: MapPin,
+                title: t("Inside now"),
+                hint: t("Who is inside, and Mark exit"),
+                count: outsiders.data ? inside.length : null,
+                onClick: () => openView("inside"),
+              },
+              {
+                key: "log",
+                icon: History,
+                title: t("Old records"),
+                hint: t("Visitors of any day"),
+                onClick: () => openView("log"),
+              },
+            ]}
+          />
+        </>
+      ) : view === "qr" ? (
+        <CheckInQrScreen register="VISITORS" onBack={back} />
+      ) : (
+        <div className="min-w-0">
+          <HubBackButton className="mb-3" onClick={back} />
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
+              {view === "new" ? <UserPlus className="h-5 w-5" /> : view === "inside" ? <MapPin className="h-5 w-5" /> : <History className="h-5 w-5" />}
+            </span>
+            <h1 className="min-w-0 text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 break-words">
+              {view === "new" ? t("New visitor") : view === "inside" ? t("Inside now") : t("Old records")}
+            </h1>
+            {view === "inside" && outsiders.data && (
+              <span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-orange-600 px-2 text-sm font-semibold tabular-nums text-white">
                 {inside.length}
               </span>
             )}
-          </button>
-        ))}
-      </div>
+          </div>
+          {formOpen && <p className="mt-1 text-sm text-zinc-500">{t("Photo first, then the details. Saving lets the visitor in.")}</p>}
+        </div>
       )}
 
       {/* Messages (the form shows its own, next to the submit button) */}
-      {!formOpen && (errorAlert || successAlert) && (
+      {(view === "hub" || showList) && (errorAlert || successAlert) && (
         <div className="space-y-3">
           {errorAlert}
           {successAlert}
@@ -493,7 +579,7 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
       )}
 
       {/* Filters: search (both lists) and, for the log, the day — one row on wider screens */}
-      {!formOpen && (
+      {showList && (
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
           <div className="relative w-full lg:max-w-sm lg:flex-1">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
@@ -562,6 +648,39 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
           <Card>
             <CardContent className="p-5 sm:p-6">
               <form onSubmit={handleSubmit} className="space-y-6">
+
+                {/* Brought-back details, and one tap to start again */}
+                {(restoredDraft || typedSomething) && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    {restoredDraft ? (
+                      <p className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-emerald-600">
+                        <History className="h-4 w-4 shrink-0" aria-hidden="true" /> {t("Your unsaved details were kept.")}
+                      </p>
+                    ) : (
+                      <span />
+                    )}
+                    {typedSomething && (
+                      <button
+                        type="button"
+                        onClick={clearVisitorForm}
+                        className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border-2 border-red-500/50 bg-red-500/10 px-5 text-sm font-semibold text-red-600 transition-[background-color,transform] hover:bg-red-500/15 active:scale-[0.97]"
+                      >
+                        <RotateCcw className="h-[18px] w-[18px]" aria-hidden="true" />
+                        {t("Clear form")}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* A student's parent: pick the student and who came; the boxes fill from the saved details */}
+                <div className="space-y-2">
+                  <ParentSearch onPick={fillFromParent} />
+                  {parentNote && (
+                    <p role="status" className="flex items-start gap-2 px-1 text-sm font-medium text-emerald-500">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> {parentNote}
+                    </p>
+                  )}
+                </div>
 
                 {/* Speak the visitor's details once: the boxes fill themselves (photo still needed) */}
                 <VoicePanel voice={voice} onUndo={undoVoice} />
@@ -783,7 +902,7 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
                   {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <UserPlus className="h-5 w-5" />}
                   {loading ? t("Registering…") : t("Save & let in")}
                 </Button>
-                <Button type="button" variant="ghost" className="h-12 w-full" onClick={closeForm} disabled={loading}>
+                <Button type="button" variant="ghost" className="h-12 w-full" onClick={back} disabled={loading}>
                   {t("Cancel")}
                 </Button>
               </form>
@@ -793,7 +912,7 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
       )}
 
       {/* Inside now */}
-      {!formOpen && activeTab === "INSIDE" && (
+      {view === "inside" && (
         <>
           <LoadingPill active={outsiders.loading} />
           <Card className="overflow-hidden">
@@ -846,6 +965,7 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
                           <span className={categoryChip}>{t(person.category)}</span>
                         </span>
                       </button>
+                      <p className="text-xs font-semibold text-amber-600 tabular-nums">{insideForLabel(t, person.entryTime, now)}</p>
                       {person.visitPass && person.visitPass.status !== "EXITED" && (
                         <p className="flex items-center gap-1.5 text-xs font-semibold text-orange-500">
                           <KeyRound className="h-3.5 w-3.5" aria-hidden="true" /> {t("Meeting: {name}", { name: person.visitPass.hostName })} · {t("code needed to exit")}
@@ -895,6 +1015,7 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
                           </td>
                           <td className={dt.td}>
                             <span className="font-medium text-zinc-200 tabular-nums">{formatTime(person.entryTime)}</span>
+                            <p className="mt-0.5 whitespace-nowrap text-xs font-semibold text-amber-600 tabular-nums">{insideForLabel(t, person.entryTime, now)}</p>
                           </td>
                           <td className={dt.tdActions}>
                             <RowActions>
@@ -925,7 +1046,7 @@ export function OutsidersClient({ user, initialView = "inside" }: Props) {
       )}
 
       {/* Today's log (any day) */}
-      {!formOpen && activeTab === "HISTORY" && (
+      {view === "log" && (
         <>
           <LoadingPill active={logLoading} />
           <Card className={`overflow-hidden transition-opacity ${logLoading ? "opacity-60" : ""}`}>

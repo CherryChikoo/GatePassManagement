@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { requireRole, type AuthUser } from "@/lib/auth/helpers";
-import { verifyScannedQr } from "@/lib/qr/token";
+import { isVisitExitQr, verifyScannedQr } from "@/lib/qr/token";
 import { revalidatePath } from "next/cache";
 import { notifyPassHolder } from "@/lib/realtime/notify";
 import { istDayRange } from "@/lib/time/ist";
@@ -41,6 +41,8 @@ export async function verifyHostelPass(input: string) {
   if (!myWardenId) return { valid: false, error: "Your warden record was not found. Contact the administrator." };
   if (typeof input !== "string" || !input.trim()) return { valid: false, error: "Scan a QR code or enter a roll number" };
   const value = input.trim();
+  // A visitor's Exit QR is let out at the main gate, not at the hostel
+  if (isVisitExitQr(value)) return { valid: false, error: "This is a visitor's exit QR — scan it at the main gate." };
 
   let permissionId: string | null = null;
   let scannedTokenId: string | null = null;

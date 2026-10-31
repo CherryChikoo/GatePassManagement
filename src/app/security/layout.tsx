@@ -7,6 +7,7 @@ import { StoreHydrator } from "@/components/providers/store-hydrator";
 import { LanguageProvider } from "@/components/providers/language-provider";
 import { SecurityText } from "@/components/providers/security-text";
 import { GateWarmup } from "@/components/providers/gate-warmup";
+import { ArrivalAlert } from "@/components/visits/arrival-alert";
 import { LANG_COOKIE, securityLang } from "@/lib/i18n";
 
 export default async function SecurityLayout({ children }: { children: React.ReactNode }) {
@@ -33,6 +34,8 @@ export default async function SecurityLayout({ children }: { children: React.Rea
     >
       <StoreHydrator user={{ name: user.name, email: user.email, role: user.role, profileId: user.profileId }} />
       <GateWarmup />
+      {/* "New visitor waiting at the gate": visitors who filled the form on their phone */}
+      <ArrivalAlert />
       {children}
     </DashboardLayout>
     </SecurityText>

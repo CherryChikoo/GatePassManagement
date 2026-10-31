@@ -23,6 +23,7 @@ import {
   Package,
   PackageOpen,
   Plus,
+  QrCode,
   School,
   Search,
   Shovel,
@@ -42,6 +43,7 @@ import { EntryRegisterView } from "./entry-register-view";
 import { prefetchEntryList } from "./entry-list-cache";
 import { useLiveTopics } from "@/lib/realtime/live";
 import { QuickEntryModal } from "./quick-entry";
+import { checkInQrHref, type CheckInRegister } from "@/components/visits/arrival-alert";
 import { AttendanceSheetView } from "./attendance-sheet";
 import { localizeRegister } from "./localize";
 import { FacultyBookView,
@@ -203,13 +205,17 @@ export function RegistersHub({
       <ul className="overflow-hidden rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-card divide-y divide-zinc-800/70">
         {list.map((r) => {
           const Icon = REGISTER_ICON[r.key as RegisterKey] ?? ClipboardList;
-          // Security: the Visitors Book is the Visitors screen itself (no second visitors screen)
-          const href = isSecurity && r.key === "VISITORS" ? "/security/visitors?view=log" : `${base}/registers/${slugForKey(r.key)}`;
+          // Security: the Visitors Book is the Visitors screen itself (its 4 buttons; no second visitors screen)
+          const href = isSecurity && r.key === "VISITORS" ? "/security/visitors" : `${base}/registers/${slugForKey(r.key)}`;
           const n = counts[r.key] ?? 0;
-          // "+": entry registers open their form here; the visitors book opens visitor registration
+          // Visitors Book / Admission Book: a QR button opens Show QR (visitors fill the form on their phone)
+          const checkInQr =
+            isSecurity && (r.key === "VISITORS" || (r.key === "ADMISSION" && creatable.includes(r.key)))
+              ? checkInQrHref(r.key as CheckInRegister)
+              : null;
+          // "+": entry registers open their form here
           // Attendance opens its monthly sheet instead of a form
           const quickAdd = isEntryRegister(r) && creatable.includes(r.key) && r.key !== "SECURITY_ATTENDANCE";
-          const visitorAdd = isSecurity && r.key === "VISITORS";
           // On touch: the register's page and its list start loading while the tap completes
           const prefetch = () => {
             router.prefetch(href);
@@ -250,7 +256,16 @@ export function RegistersHub({
                   {!isSecurity && <span className="mt-0.5 block truncate text-xs text-zinc-500">{t(r.description)}</span>}
                 </span>
               </Link>
-              {quickAdd ? (
+              {checkInQr ? (
+                <Link
+                  href={checkInQr}
+                  onPointerDown={() => router.prefetch(checkInQr)}
+                  aria-label={`${t("Show QR")} — ${r.key === "VISITORS" ? t("Visitors Book") : t(r.title)}`}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)] hover:bg-orange-700 active:scale-95 transition-[background-color,transform]"
+                >
+                  <QrCode className="h-5 w-5" />
+                </Link>
+              ) : quickAdd ? (
                 <button
                   type="button"
                   onClick={() => setQuickKey(r.key)}
@@ -259,14 +274,6 @@ export function RegistersHub({
                 >
                   <Plus className="h-5 w-5" />
                 </button>
-              ) : visitorAdd ? (
-                <Link
-                  href="/security/visitors?view=new"
-                  aria-label={t("New visitor")}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)] hover:bg-orange-700 active:scale-95 transition-[background-color,transform]"
-                >
-                  <Plus className="h-5 w-5" />
-                </Link>
               ) : (
                 <Link href={href} aria-hidden="true" tabIndex={-1} className="flex h-11 w-11 shrink-0 items-center justify-center text-zinc-600">
                   <ChevronRight className="h-5 w-5" />

@@ -32,6 +32,18 @@ import { getHodActivity } from "@/server/actions/hod-activity";
 import { confirmHostelArrival, getHostelPassesToday, verifyHostelPass } from "@/server/actions/warden-scan";
 import { listCustomRegisters } from "@/server/actions/custom-registers";
 import { getAttendanceMonth } from "@/server/actions/attendance";
+import {
+  getCheckInQr,
+  listArrivals,
+  countArrivals,
+  acceptArrival,
+  rejectArrival,
+  allowVisitorExit,
+  describeVisitorExitQr,
+  getCheckInPhotoUrl,
+  searchStudentParents,
+} from "@/server/actions/visit-requests";
+import { listOffices, createOffice, renameOffice, setOfficeActive, newOfficePoster } from "@/server/actions/offices";
 
 /**
  * Gate calls (Security screens) as plain requests instead of server actions.
@@ -102,6 +114,22 @@ const GATE_FUNCTIONS = {
   // Register builder list, attendance sheet
   listCustomRegisters,
   getAttendanceMonth,
+  // Visitor self check-in: Show QR, arrivals, Accept / Reject, Exit QR, parent search
+  getCheckInQr,
+  listArrivals,
+  countArrivals,
+  acceptArrival,
+  rejectArrival,
+  allowVisitorExit,
+  describeVisitorExitQr,
+  getCheckInPhotoUrl,
+  searchStudentParents,
+  // Admin → Offices (QR posters)
+  listOffices,
+  createOffice,
+  renameOffice,
+  setOfficeActive,
+  newOfficePoster,
 } as const;
 
 export type GateFunctions = typeof GATE_FUNCTIONS;
