@@ -2,7 +2,7 @@ import { requireRole } from "@/lib/auth/helpers";
 import { OutsidersClient } from "./client";
 
 /**
- * Visitors (Security): 4 big buttons — Show QR (the visitor fills the form on
+ * Visitors (Security): 4 big buttons — At the gate (visitors who filled the form on
  * their phone), Type it myself (New visitor), Inside now, Old records. Each
  * opens its screen in the browser (?view=qr|new|inside|log, so links to
  * ?view=new / ?view=log still work). The lists load from the gate cache

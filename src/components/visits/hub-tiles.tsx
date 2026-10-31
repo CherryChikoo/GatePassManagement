@@ -2,13 +2,14 @@
 
 /**
  * The 4-button screens of the Visitors Book and the Admission Book (Security):
- * Show QR · Type it myself · Inside now · Old records. Each button opens its
+ * At the gate · Type it myself · Inside now · Old records, plus the round QR
+ * button by the title (the check-in QR in a pop-up). Each button opens its
  * screen in place (`?view=…`, no server round trip), and every screen has the
  * same "← Buttons" control at the top to come back.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, type LucideIcon } from "lucide-react";
+import { ArrowLeft, QrCode, type LucideIcon } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { scrollPageToTop } from "@/lib/ui/scroll-top";
 import { cn } from "@/lib/utils";
@@ -21,28 +22,39 @@ export type HubTile = {
   title: string;
   /** One short line under the title */
   hint: string;
-  /** Live count next to the title (e.g. Inside now 4); hidden when null / undefined */
+  /** Live count in a pill next to the title (e.g. Inside now 4); hidden when null / undefined */
   count?: number | null;
-  /** Small coloured note (e.g. "2 waiting") */
-  badge?: string | null;
-  /** The main button (Show QR): coral */
+  /** The main button (At the gate): coral */
   primary?: boolean;
   onClick: () => void;
 };
 
-/** Big buttons, two per row (one per row on very narrow phones). */
+/**
+ * The page's first box on the 4-button screens and their screens: when a link
+ * opens the page (menu, "Open now" banner), the router scrolls this box into
+ * view; the margin keeps it, with its Back button, below the floating top bar.
+ */
+export const HUB_PAGE_TOP = "scroll-mt-[calc(var(--bar-top,4.75rem)_+_1.25rem)]";
+
+/**
+ * Big buttons, all with the same layout and top-aligned: on phones one per row
+ * (icon on the left, title + count, the hint under it); from 480 px two per row
+ * (icon on top). Buttons in a row are always the same height.
+ */
 export function HubTiles({ tiles }: { tiles: HubTile[] }) {
   return (
-    <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3 sm:gap-4">
+    <div className="grid grid-cols-1 gap-2.5 min-[480px]:grid-cols-2 sm:gap-3 lg:gap-4">
       {tiles.map((tile) => {
         const Icon = tile.icon;
+        const hasCount = tile.count !== null && tile.count !== undefined;
         return (
           <button
             key={tile.key}
             type="button"
             onClick={tile.onClick}
             className={cn(
-              "group relative flex min-h-[156px] sm:min-h-[176px] flex-col items-start justify-between gap-4 rounded-3xl border p-4 sm:p-5 text-left shadow-card transition-[background-color,transform,border-color] active:scale-[0.98]",
+              "flex h-full min-h-[84px] w-full items-start gap-3 rounded-3xl border p-3.5 text-left shadow-card transition-[background-color,transform,border-color] active:scale-[0.98]",
+              "min-[480px]:flex-col min-[480px]:gap-2.5 sm:p-5",
               tile.primary
                 ? "border-orange-600 bg-orange-600 text-white hover:bg-orange-700"
                 : "border-zinc-800 bg-zinc-900 text-zinc-100 hover:border-orange-500/40 hover:bg-zinc-950"
@@ -50,29 +62,19 @@ export function HubTiles({ tiles }: { tiles: HubTile[] }) {
           >
             <span
               className={cn(
-                "flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl",
+                "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl sm:h-14 sm:w-14",
                 tile.primary ? "bg-white/15 text-white" : "bg-orange-500/10 text-orange-500"
               )}
             >
               <Icon className="h-6 w-6 sm:h-7 sm:w-7" aria-hidden="true" />
             </span>
-            {tile.badge && (
-              <span
-                className={cn(
-                  "absolute right-3 top-3 max-w-[60%] truncate rounded-full px-2.5 py-1 text-[11px] font-semibold",
-                  tile.primary ? "bg-white text-orange-600" : "bg-amber-500/15 text-amber-600"
-                )}
-              >
-                {tile.badge}
-              </span>
-            )}
-            <span className="block min-w-0 w-full">
-              <span className="flex flex-wrap items-center gap-2">
-                <span className="text-base sm:text-lg font-semibold leading-tight break-words">{tile.title}</span>
-                {tile.count !== null && tile.count !== undefined && (
+            <span className="block min-w-0 flex-1 self-center min-[480px]:flex-none min-[480px]:self-stretch">
+              <span className="flex items-start gap-2">
+                <span className="min-w-0 text-base font-semibold leading-snug break-words sm:text-lg">{tile.title}</span>
+                {hasCount && (
                   <span
                     className={cn(
-                      "flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-xs font-semibold tabular-nums",
+                      "flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-2 text-xs font-bold tabular-nums sm:h-7 sm:min-w-7",
                       tile.primary ? "bg-white text-orange-600" : "bg-orange-600 text-white"
                     )}
                   >
@@ -80,12 +82,27 @@ export function HubTiles({ tiles }: { tiles: HubTile[] }) {
                   </span>
                 )}
               </span>
-              <span className={cn("mt-1 block text-xs leading-snug", tile.primary ? "text-white/85" : "text-zinc-500")}>{tile.hint}</span>
+              <span className={cn("mt-0.5 block text-xs leading-snug sm:text-sm", tile.primary ? "text-white/90" : "text-zinc-500")}>{tile.hint}</span>
             </span>
           </button>
         );
       })}
     </div>
+  );
+}
+
+/** The round QR button next to the page title (same as the registers list's): opens the check-in QR pop-up. */
+export function HubQrButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)] transition-[background-color,transform] hover:bg-orange-700 active:scale-95"
+    >
+      <QrCode className="h-5 w-5" aria-hidden="true" />
+    </button>
   );
 }
 

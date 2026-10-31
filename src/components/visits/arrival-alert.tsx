@@ -36,6 +36,11 @@ export function checkInQrHref(register: CheckInRegister): string {
   return register === "VISITORS" ? "/security/visitors?view=qr" : "/security/registers/admission?view=qr";
 }
 
+/** Each register's "Waiting to accept" screen: the visitors waiting there (photo, Accept / Reject) */
+export function checkInGateHref(register: CheckInRegister): string {
+  return register === "VISITORS" ? "/security/visitors?view=gate" : "/security/registers/admission?view=gate";
+}
+
 // ─── Which Show QR screen is open (the banner stays away from it) ────────────
 
 let openQr: CheckInRegister | null = null;
@@ -108,7 +113,7 @@ export function ArrivalAlert() {
           <BellRing className="h-5 w-5" aria-hidden="true" />
         </span>
         <Link
-          href={checkInQrHref(target)}
+          href={checkInGateHref(target)}
           className="flex min-w-0 flex-1 items-center gap-2 rounded-xl py-1 pr-1"
         >
           <span className="min-w-0 flex-1">

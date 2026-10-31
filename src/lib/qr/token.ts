@@ -170,7 +170,7 @@ export async function verifyScannedQr(
 //
 //   GV1.<V|A>.<guard's profile id, 32 hex>.<expiry, base36 seconds>.<signature>
 //     Check-in QR on Security's Show QR screen (V = Visitors Book, A = Admission
-//     Book), shown as <site>/v/<token>. Valid 5 minutes; the screen refreshes it.
+//     Book), shown as <site>/v/<token>. Valid 15 minutes; the screen refreshes it.
 //   GX1.<check-in request id, 32 hex>.<expiry, base36 seconds>.<signature>
 //     Exit QR on the visitor's phone, scanned by Security. Valid 2 minutes.
 //
@@ -179,7 +179,7 @@ export async function verifyScannedQr(
 // ──────────────────────────────────────────────────────────────
 
 const CHECKIN_PREFIX = "GV1";
-const CHECKIN_TTL_SECONDS = 5 * 60;
+const CHECKIN_TTL_SECONDS = 15 * 60;
 const VISIT_EXIT_PREFIX = "GX1";
 const VISIT_EXIT_TTL_SECONDS = 2 * 60;
 const EXP36 = /^[0-9a-z]{1,10}$/;

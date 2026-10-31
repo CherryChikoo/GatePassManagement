@@ -14,7 +14,8 @@ export function PhoneShell({ children }: { children: React.ReactNode }) {
       <div className="mx-auto w-full max-w-md px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))]">
         <header className="mb-5 space-y-3">
           <div className="flex justify-end">
-            <LanguageToggle />
+            {/* Bigger buttons than the staff header's: easy to tap on the visitor's own phone */}
+            <LanguageToggle className="text-sm [&>button]:min-h-10 [&>button]:px-3.5" />
           </div>
           <Image
             src="/brand/logo-full.webp"

@@ -2,17 +2,20 @@
 
 /**
  * Admission Book & Pass (Security): the same 4 buttons as the Visitors Book —
- * Show QR (the parent fills the form on their phone), Type it myself (the
- * register's own new-entry form), Inside now (today's records still waiting
- * for Out, with how long), Old records (the register's usual list).
- * Screens open in place: ?view=qr|new|inside|log.
+ * At the gate (parents who sent the form on their phone: photo and accept),
+ * Type it myself (the register's own new-entry form), Inside now (today's
+ * records still waiting for Out, with how long), Old records (the register's
+ * usual list); the round QR button by the title shows the check-in QR in a
+ * pop-up. Screens open in place: ?view=gate|new|inside|log (?view=qr: the
+ * buttons with the QR pop-up open).
  */
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, FilePlus2, History, MapPin, PencilLine, QrCode, School } from "lucide-react";
+import { BellRing, CheckCircle2, FilePlus2, History, MapPin, PencilLine, School } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { GoBackButton } from "@/components/ui/go-back-button";
 import { Card, CardContent } from "@/components/ui/card";
-import { HubBackButton, HubTiles, useHubView } from "@/components/visits/hub-tiles";
+import { HUB_PAGE_TOP, HubBackButton, HubQrButton, HubTiles, useHubView } from "@/components/visits/hub-tiles";
+import { Modal } from "@/components/ui/primitives";
 import { CheckInQrScreen } from "@/components/visits/checkin-qr-screen";
 import { ARRIVAL_COUNTS_QUERY } from "@/components/visits/arrival-alert";
 import { visitExitMessage } from "@/components/visits/visit-code";
@@ -27,16 +30,20 @@ import { useGateData } from "@/lib/gate-cache";
 import { useLiveTopics } from "@/lib/realtime/live";
 import { actionErrorMessage } from "@/lib/deployment";
 import { scrollPageToTop } from "@/lib/ui/scroll-top";
+import { cn } from "@/lib/utils";
 import type { EntryRegister } from "@/lib/registers/definitions";
 import type { ArrivalCounts } from "@/server/actions/visit-requests";
 
-const VIEWS = ["qr", "new", "inside", "log"] as const;
+/** Screens behind the 4 buttons (?view=…); "qr": the buttons with the QR pop-up open */
+const VIEWS = ["qr", "gate", "new", "inside", "log"] as const;
 
 export function AdmissionHub({ register, canCreate }: { register: EntryRegister; canCreate: boolean }) {
   const t = useT();
   // Display copy in the guard's language (saved values and validation stay on the original)
   const def = useMemo(() => localizeRegister(register, t), [register, t]);
   const { view, go, back } = useHubView(VIEWS);
+  // The 4 buttons are on screen (also under the QR pop-up)
+  const onHub = view === "hub" || view === "qr" || (view === "gate" && !canCreate);
   const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
     if (!notice) return;
@@ -46,7 +53,7 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
 
   // Parents waiting after scanning the QR (shared copy with the arrival pop-up)
   const arrivals = useGateData<ArrivalCounts | { error: string }>(
-    view === "hub" ? ARRIVAL_COUNTS_QUERY.key : null,
+    onHub ? ARRIVAL_COUNTS_QUERY.key : null,
     ARRIVAL_COUNTS_QUERY.fetch,
     ARRIVAL_COUNTS_QUERY.topics
   );
@@ -56,7 +63,7 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
   const [insideCount, setInsideCount] = useState<number | null>(null);
   const [countNo, setCountNo] = useState(0);
   useEffect(() => {
-    if (view !== "hub") return;
+    if (!onHub) return;
     let cancelled = false;
     fetchInsideEntries(register, true)
       .then((r) => !cancelled && setInsideCount(r.entries.length))
@@ -64,14 +71,14 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
     return () => {
       cancelled = true;
     };
-  }, [view, register, countNo]);
+  }, [onHub, register, countNo]);
   // Live: a record saved / let out at any gate, or a parent sent the form
   useLiveTopics(
     [`reg:${register.key}`, ...ARRIVAL_COUNTS_QUERY.topics],
     (changed) => {
       if (changed.includes("*") || changed.includes(`reg:${register.key}`)) setCountNo((n) => n + 1);
     },
-    view === "hub"
+    onHub
   );
 
   // ── Type it myself: the register's own form, on its own screen ──
@@ -115,13 +122,17 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
     </div>
   );
 
-  if (view === "qr") {
-    return <CheckInQrScreen register="ADMISSION" onBack={back} />;
+  if (view === "gate" && canCreate) {
+    return (
+      <div className={HUB_PAGE_TOP}>
+        <CheckInQrScreen register="ADMISSION" showQr={false} onBack={back} />
+      </div>
+    );
   }
 
-  if (view === "hub") {
+  if (onHub) {
     return (
-      <div className="space-y-5">
+      <div className={cn("space-y-5", HUB_PAGE_TOP)}>
         <div>
           <GoBackButton className="mb-3" />
           <div className="flex min-w-0 items-center gap-3">
@@ -129,6 +140,8 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
               <School className="h-5 w-5" />
             </span>
             <h1 className="min-w-0 text-xl sm:text-2xl font-bold tracking-tight text-zinc-100 break-words">{def.title}</h1>
+            {/* The check-in QR, as a pop-up (like the registers list's QR button) */}
+            {canCreate && <HubQrButton label={`${t("Show QR")} — ${def.title}`} onClick={() => openView("qr")} />}
           </div>
           <p className="mt-1 text-sm text-zinc-400">{def.description}</p>
         </div>
@@ -138,13 +151,13 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
             ...(canCreate
               ? [
                   {
-                    key: "qr",
-                    icon: QrCode,
-                    title: t("Show QR"),
-                    hint: t("The parent scans it and fills the form on their phone"),
-                    badge: waiting > 0 ? t("{n} waiting", { n: waiting }) : null,
+                    key: "gate",
+                    icon: BellRing,
+                    title: t("Waiting to accept"),
+                    hint: t("Parents who sent the form — photo and accept"),
+                    count: arrivals.data ? waiting : null,
                     primary: true,
-                    onClick: () => openView("qr"),
+                    onClick: () => openView("gate"),
                   },
                   {
                     key: "new",
@@ -172,12 +185,17 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
             },
           ]}
         />
+        {view === "qr" && canCreate && (
+          <Modal open onClose={back} title={`${def.title} — ${t("Show QR")}`} className="max-w-xl">
+            <CheckInQrScreen register="ADMISSION" inModal />
+          </Modal>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="space-y-5">
+    <div className={cn("space-y-5", HUB_PAGE_TOP)}>
       <div>
         <HubBackButton className="mb-3" onClick={back} />
         <div className="flex min-w-0 items-center gap-3">

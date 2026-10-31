@@ -39,8 +39,6 @@ export const PENDING_MAX_MS = 60 * 60_000;
 export const SUBMIT_GRACE_MS = 30 * 60_000;
 /** Reason on a waiting request its own phone replaced by sending the form again */
 export const SENT_AGAIN = "Sent again";
-/** People waiting from one guard's QR at once (more is a forwarded link being abused) */
-const MAX_WAITING_PER_GUARD = 25;
 /** Just accepted: the visitor record is being made (a moment) */
 const ACCEPTING_MS = 2 * 60_000;
 
@@ -291,13 +289,6 @@ export async function submitVisitRequest(body: unknown): Promise<SubmitResult> {
   if (hostProfileId && !host) return { ok: false, error: "Choose the person you are meeting from the list" };
   if (officeId && !office) return { ok: false, error: "Choose the office from the list" };
   if (!guard) return { ok: false, error: "invalid" };
-
-  // A forwarded check-in link must not bury real visitors under junk: a guard's
-  // QR holds at most this many people waiting at once
-  const waitingHere = await prisma.visitRequest.count({
-    where: { issuedById: guard.id, status: "PENDING", createdAt: { gte: new Date(Date.now() - PENDING_MAX_MS) } },
-  });
-  if (waitingHere >= MAX_WAITING_PER_GUARD) return { ok: false, error: "Too many people are waiting at the gate. Please speak to the security officer." };
 
   const { secret, hash } = newPhoneSecret();
   const fields = {

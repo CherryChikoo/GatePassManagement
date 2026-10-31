@@ -257,8 +257,8 @@ export function ArrivalReview({
         {facts.length > 0 && (
           <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {facts.map((f) => (
-              <div key={f.label} className="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                <dt className="text-xs font-medium text-zinc-500">{f.label}</dt>
+              <div key={f.label} className="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-950/60 px-3.5 py-2.5 sm:px-4 sm:py-3">
+                <dt className="break-words text-xs font-medium text-zinc-500">{f.label}</dt>
                 <dd className="mt-0.5 whitespace-pre-wrap break-words text-[15px] font-medium text-zinc-100">{f.value}</dd>
               </div>
             ))}
@@ -271,21 +271,29 @@ export function ArrivalReview({
             {t("Visitor Photo")} <span className="text-orange-400">*</span>
           </p>
           {photo ? (
-            <div className="flex items-center gap-4 rounded-3xl border border-emerald-500/30 bg-emerald-500/5 p-3">
-              <img src={photo} alt="" className="h-28 w-28 shrink-0 rounded-2xl object-cover" />
-              <div className="min-w-0 space-y-3">
+            <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-emerald-500/30 bg-emerald-500/5 p-3 sm:gap-4">
+              <img src={photo} alt="" className="h-24 w-24 shrink-0 rounded-2xl object-cover sm:h-28 sm:w-28" />
+              <div className="min-w-0 flex-1 space-y-3">
                 <p className="flex items-center gap-2 text-sm font-medium text-emerald-400">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
                   {t("Photo Captured")}
                 </p>
                 <label
                   htmlFor="arrival-photo"
-                  className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-950"
+                  className="hidden h-11 cursor-pointer items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-950 sm:inline-flex"
                 >
-                  <RotateCcw className="h-4 w-4" />
+                  <RotateCcw className="h-4 w-4 shrink-0" />
                   {t("Retake Photo")}
                 </label>
               </div>
+              {/* Phones: the button gets its own full-width row (the Telugu label does not fit beside the photo) */}
+              <label
+                htmlFor="arrival-photo"
+                className="flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-950 sm:hidden"
+              >
+                <RotateCcw className="h-4 w-4 shrink-0" />
+                {t("Retake Photo")}
+              </label>
             </div>
           ) : (
             <label

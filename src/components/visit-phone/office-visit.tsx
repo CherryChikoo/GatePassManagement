@@ -73,8 +73,9 @@ export function OfficeVisit({ posterKey }: { posterKey: string }) {
   }, [posterKey, wellFormed, attempt, router]);
 
   const heading = officeName ? (
-    <p className="mb-4 flex items-center justify-center gap-2 text-center text-base font-medium text-zinc-300">
-      <Building2 className="h-5 w-5 text-orange-500" aria-hidden="true" />
+    // The icon sits in the line, so a long office name wraps centred with it
+    <p className="mb-4 text-balance break-words text-center text-base font-medium text-zinc-300">
+      <Building2 className="-mt-0.5 mr-2 inline-block h-5 w-5 align-middle text-orange-500" aria-hidden="true" />
       {officeName}
     </p>
   ) : null;

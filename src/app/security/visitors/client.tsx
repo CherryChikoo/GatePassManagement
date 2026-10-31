@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { dt, PersonCell, RowActions, IconAction } from "@/components/ui/data-table";
 import { PagerBar } from "@/components/ui/pager-bar";
-import { formatDateTime, formatTime } from "@/lib/utils";
+import { cn, formatDateTime, formatTime } from "@/lib/utils";
 import {
   KeyRound,
   Users,
@@ -29,7 +29,7 @@ import {
   RotateCcw,
   Loader2,
   Phone,
-  QrCode,
+  BellRing,
   PencilLine,
 } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
@@ -44,7 +44,7 @@ import { BackButton } from "@/components/ui/back-button";
 import { GoBackButton } from "@/components/ui/go-back-button";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { LiveDateTime } from "@/components/registers/register-form";
-import { HubBackButton, HubTiles, insideForLabel, useHubView, useMinuteClock } from "@/components/visits/hub-tiles";
+import { HUB_PAGE_TOP, HubBackButton, HubQrButton, HubTiles, insideForLabel, useHubView, useMinuteClock } from "@/components/visits/hub-tiles";
 import { CheckInQrScreen } from "@/components/visits/checkin-qr-screen";
 import { ARRIVAL_COUNTS_QUERY } from "@/components/visits/arrival-alert";
 import { useLiveTopics } from "@/lib/realtime/live";
@@ -74,8 +74,8 @@ function forgetVisitorDraft() {
   } catch {}
 }
 
-/** Screens behind the 4 buttons (?view=…); no view = the buttons */
-const VIEWS = ["qr", "new", "inside", "log"] as const;
+/** Screens behind the 4 buttons (?view=…); no view = the buttons ("qr": the buttons with the QR pop-up open) */
+const VIEWS = ["qr", "gate", "new", "inside", "log"] as const;
 type View = (typeof VIEWS)[number];
 
 /** Photo link could not be loaded (shown instead of "Loading…" forever) */
@@ -94,22 +94,24 @@ export function OutsidersClient() {
   const formOpen = view === "new";
   const activeTab: "INSIDE" | "HISTORY" = view === "log" ? "HISTORY" : "INSIDE";
   const showList = view === "inside" || view === "log";
-  // Visitors waiting at the gate after scanning the QR (shown on the Show QR button;
+  // The 4 buttons are on screen (also under the QR pop-up)
+  const onHub = view === "hub" || view === "qr";
+  // Visitors waiting at the gate after scanning the QR (shown on the At the gate button;
   // same cached copy as the arrival pop-up, so no extra request)
   const arrivals = useGateData<ArrivalCounts | { error: string }>(
-    view === "hub" ? ARRIVAL_COUNTS_QUERY.key : null,
+    onHub ? ARRIVAL_COUNTS_QUERY.key : null,
     ARRIVAL_COUNTS_QUERY.fetch,
     ARRIVAL_COUNTS_QUERY.topics
   );
-  useLiveTopics(ARRIVAL_COUNTS_QUERY.topics, () => {}, view === "hub");
+  useLiveTopics(ARRIVAL_COUNTS_QUERY.topics, () => {}, onHub);
   const waiting = arrivals.data && "VISITORS" in arrivals.data ? arrivals.data.VISITORS : 0;
   // While the buttons show, today's Old records load quietly, so that button opens at once
   // (same key as the Old records screen: date | search | page)
   useEffect(() => {
-    if (view !== "hub") return;
+    if (!onHub) return;
     const today = istDateString();
     prefetchGateData(`visitors-log|${today}||1`, () => callGate("getVisitorsBook", [{ date: today, q: "", page: 1 }], 15_000), ["visitors"]);
-  }, [view]);
+  }, [onHub]);
   // "Inside 2 h 10 min" moves on by itself, once a minute (no requests)
   const now = useMinuteClock(view === "inside");
   // The visitor just registered: highlighted at the top of the list for a moment
@@ -506,9 +508,9 @@ export function OutsidersClient() {
   const categoryChip = "inline-flex shrink-0 items-center rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[11px] font-medium text-zinc-300";
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5 sm:space-y-6 pb-24 sm:pb-8">
+    <div className={cn("mx-auto max-w-5xl space-y-5 sm:space-y-6 pb-24 sm:pb-8", HUB_PAGE_TOP)}>
       {/* The 4 buttons; every other screen has "← Buttons" in the same place */}
-      {view === "hub" ? (
+      {onHub ? (
         <>
           <div className="min-w-0">
             <GoBackButton className="mb-3" />
@@ -516,19 +518,21 @@ export function OutsidersClient() {
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
                 <Users className="h-5 w-5" />
               </span>
-              <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">{t("Visitors")}</h1>
+              <h1 className="min-w-0 text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 break-words">{t("Visitors")}</h1>
+              {/* The check-in QR, as a pop-up (like the registers list's QR button) */}
+              <HubQrButton label={`${t("Show QR")} — ${t("Visitors Book")}`} onClick={() => openView("qr")} />
             </div>
           </div>
           <HubTiles
             tiles={[
               {
-                key: "qr",
-                icon: QrCode,
-                title: t("Show QR"),
-                hint: t("The visitor scans it and fills the form on their phone"),
-                badge: waiting > 0 ? t("{n} waiting", { n: waiting }) : null,
+                key: "gate",
+                icon: BellRing,
+                title: t("Waiting to accept"),
+                hint: t("Visitors who sent the form — photo and accept"),
+                count: arrivals.data ? waiting : null,
                 primary: true,
-                onClick: () => openView("qr"),
+                onClick: () => openView("gate"),
               },
               {
                 key: "new",
@@ -554,9 +558,14 @@ export function OutsidersClient() {
               },
             ]}
           />
+          {view === "qr" && (
+            <Modal open onClose={back} title={`${t("Visitors Book")} — ${t("Show QR")}`} className="max-w-xl">
+              <CheckInQrScreen register="VISITORS" inModal />
+            </Modal>
+          )}
         </>
-      ) : view === "qr" ? (
-        <CheckInQrScreen register="VISITORS" onBack={back} />
+      ) : view === "gate" ? (
+        <CheckInQrScreen register="VISITORS" showQr={false} onBack={back} />
       ) : (
         <div className="min-w-0">
           <HubBackButton className="mb-3" onClick={back} />
@@ -578,7 +587,7 @@ export function OutsidersClient() {
       )}
 
       {/* Messages (the form shows its own, next to the submit button) */}
-      {(view === "hub" || showList) && (errorAlert || successAlert) && (
+      {(onHub || showList) && (errorAlert || successAlert) && (
         <div className="space-y-3">
           {errorAlert}
           {successAlert}

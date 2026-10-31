@@ -215,16 +215,24 @@ export function VisitStatusView({ secret }: { secret: string }) {
   }
 
   // Inside the campus
+  const inside = (
+    <StateCard tone="ok" icon={<CheckCircle2 />} title={t("You're inside the campus")}>
+      {s.insideSince && <p className="text-sm">{t("Since {time}", { time: formatTime(s.insideSince) })}</p>}
+    </StateCard>
+  );
   return (
     <div className="space-y-4">
-      <StateCard tone="ok" icon={<CheckCircle2 />} title={t("You're inside the campus")}>
-        {s.insideSince && <p className="text-sm">{t("Since {time}", { time: formatTime(s.insideSince) })}</p>}
-      </StateCard>
-
       {s.exitQr && qrUntil ? (
-        <ExitQr s={s} value={s.exitQr} until={qrUntil} />
+        // The Exit QR first: fully on screen without scrolling while the officer scans it
+        <>
+          <ExitQr s={s} value={s.exitQr} until={qrUntil} />
+          {inside}
+        </>
       ) : (
-        <LeaveCard s={s} secret={secret} onStatus={(next) => takeRef.current(next)} onGone={() => setGone(true)} />
+        <>
+          {inside}
+          <LeaveCard s={s} secret={secret} onStatus={(next) => takeRef.current(next)} onGone={() => setGone(true)} />
+        </>
       )}
 
       <WhoCard s={s} />

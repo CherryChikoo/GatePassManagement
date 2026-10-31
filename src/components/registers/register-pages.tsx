@@ -315,7 +315,8 @@ export function RegistersHub({
         <Modal
           open
           onClose={() => setQrKey(null)}
-          title={`${t(qrKey === "VISITORS" ? "Visitors Book" : (allRegisters.find((r) => r.key === qrKey)?.title ?? "Admission Book & Pass"))} — ${t("Show QR")}`}
+          // Short, so it fits beside "Go Back" on a phone (also in Telugu)
+          title={`${t(qrKey === "VISITORS" ? "Visitors" : "Admission")} QR`}
           className="max-w-xl"
         >
           <CheckInQrScreen key={qrKey} register={qrKey} inModal />

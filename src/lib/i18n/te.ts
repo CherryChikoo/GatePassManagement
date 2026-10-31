@@ -1270,6 +1270,9 @@ export const te: Record<string, string> = {
   "{n} waiting": "{n} మంది వేచి ఉన్నారు",
   "Could not load the waiting list.": "వేచి ఉన్నవారి లిస్ట్ లోడ్ కాలేదు.",
   "No one is waiting. New visitors appear here by themselves.": "ఎవరూ వేచి లేరు. కొత్త విజిటర్స్ ఇక్కడ వాటంతట అవే కనిపిస్తారు.",
+  "No one is waiting at the gate": "గేట్ వద్ద ఎవరూ వేచి లేరు",
+  "New visitors appear here by themselves.": "కొత్త విజిటర్స్ ఇక్కడ వాటంతట అవే కనిపిస్తారు.",
+  "Use your phone's Camera or Google Lens (not PhonePe / Google Pay)": "మీ ఫోన్ కెమెరా లేదా Google Lens వాడండి (PhonePe / Google Pay కాదు)",
   "Your QR": "మీ QR",
   "Other gate": "వేరే గేట్",
   "Other gate: {gate}": "వేరే గేట్: {gate}",
@@ -1338,4 +1341,7 @@ export const te: Record<string, string> = {
   "Could not record the exit. Check the network connection and try again.": "బయటకు వెళ్ళడం నమోదు కాలేదు. నెట్‌వర్క్ కనెక్షన్ చూసి మళ్ళీ ప్రయత్నించండి.",
   "This is a visitor's exit QR — scan it at the main gate.": "ఇది విజిటర్ ఎగ్జిట్ QR — దీన్ని మెయిన్ గేట్ వద్ద స్కాన్ చేయండి.",
   Offices: "ఆఫీసులు",
+  "Waiting to accept": "అనుమతి కోసం వేచి ఉన్నవారు",
+  "Visitors who sent the form — photo and accept": "ఫారం పంపిన విజిటర్స్ — ఫోటో తీసి అనుమతించండి",
+  "Parents who sent the form — photo and accept": "ఫారం పంపిన తల్లిదండ్రులు — ఫోటో తీసి అనుమతించండి",
 };
