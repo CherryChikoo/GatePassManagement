@@ -189,6 +189,9 @@ const labourFields: FieldDef[] = [
 ];
 
 const stockFields: FieldDef[] = [
+  // Optional photos taken at the gate first, then the details (material coming in or going out)
+  { key: "materialPhoto", label: "Photo of the material", type: "photo" },
+  { key: "billPhoto", label: "Photo of the bill", type: "photo" },
   { key: "date", label: "Date", type: "date" },
   { key: "itemName", label: "Item / Material Name", type: "text" },
   { key: "quantity", label: "Quantity", type: "number" },
@@ -197,10 +200,7 @@ const stockFields: FieldDef[] = [
   { key: "supplierName", label: "Supplier Name", type: "text" },
   { key: "billNumber", label: "Bill Number", type: "text" },
   { key: "condition", label: "Condition", type: "select", options: ["Good", "Damaged", "Partially damaged"] },
-  // Optional photos taken at the gate, for material coming in or going out
-  { key: "materialPhoto", label: "Photo of the material", type: "photo" },
   { key: "billAmount", label: "Bill Amount (₹)", type: "number" },
-  { key: "billPhoto", label: "Photo of the bill", type: "photo" },
   { key: "timeCame", label: "Time Came", type: "time" },
   { key: "vehicleNumber", label: "Vehicle Number", type: "text" },
   { key: "billTakenBy", label: "Bill Taken By", type: "person" },
