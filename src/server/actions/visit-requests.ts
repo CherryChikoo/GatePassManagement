@@ -412,24 +412,27 @@ export type StudentParents = {
   parentVehicle: string | null;
 };
 
-/** Up to 10 active students by roll number (starts with) or name (contains), with their parents' details. */
+/**
+ * Up to 10 active students, with their parents' details: by roll number (starts
+ * with) when the search has a digit, otherwise by name (contains).
+ */
 export async function searchStudentParents(query: string): Promise<StudentParents[]> {
   const user = await requireRole("SECURITY", "ADMIN");
   const q = typeof query === "string" ? query.trim().slice(0, 50) : "";
+  const looksLikeRoll = /\d/.test(q);
   // Roll numbers (they have digits) from 2 characters; names from 3 letters, so
   // short searches cannot list every family's mobile number and address
-  if (q.length < (/\d/.test(q) ? 2 : 3)) return [];
-  // Normal typing at the gate stays far below this; it stops anyone collecting all parents' details
-  const limit = checkRateLimit(`parent-search:${user.profileId}`, { maxAttempts: 120, windowMs: 10 * 60_000, blockDurationMs: 10 * 60_000 });
+  if (q.length < (looksLikeRoll ? 2 : 3)) return [];
+  // Fast typing at the gate stays below this (the browser also keeps earlier
+  // answers); it stops anyone collecting all parents' details
+  const limit = checkRateLimit(`parent-search:${user.profileId}`, { maxAttempts: 300, windowMs: 10 * 60_000, blockDurationMs: 10 * 60_000 });
   if (!limit.allowed) return [];
   const rows = await prisma.student.findMany({
-    where: {
-      profile: { active: true },
-      OR: [
-        { studentRoll: { startsWith: q, mode: "insensitive" } },
-        { profile: { name: { contains: q, mode: "insensitive" } } },
-      ],
-    },
+    // Roll numbers are saved in CAPITALS: a case-sensitive "starts with" can
+    // use the roll number's index instead of reading every student
+    where: looksLikeRoll
+      ? { studentRoll: { startsWith: q.toUpperCase() }, profile: { active: true } }
+      : { profile: { active: true, name: { contains: q, mode: "insensitive" } } },
     select: {
       id: true, studentRoll: true, department: true, year: true, section: true, studentType: true,
       profile: { select: { name: true } },

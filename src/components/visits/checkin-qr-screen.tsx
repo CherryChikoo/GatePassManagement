@@ -132,7 +132,17 @@ function useCheckInQr(register: CheckInRegister, fallbackError: string) {
   };
 }
 
-export function CheckInQrScreen({ register, onBack }: { register: CheckInRegister; onBack?: () => void }) {
+export function CheckInQrScreen({
+  register,
+  onBack,
+  inModal = false,
+}: {
+  register: CheckInRegister;
+  onBack?: () => void;
+  /** Shown in a pop-up (the registers list's QR button): the pop-up's title and
+   *  "Go Back" replace this screen's heading, and the QR fills the pop-up's width. */
+  inModal?: boolean;
+}) {
   const t = useT();
   useCheckInQrOpen(register);
   const { qr, error: qrError, retry } = useCheckInQr(register, t("Could not load the QR. Check the connection and try again."));
@@ -143,7 +153,7 @@ export function CheckInQrScreen({ register, onBack }: { register: CheckInRegiste
   const arrivalsData = useGateData<Arrival[] | { error: string }>(query.key, query.fetch, query.topics);
   const arrivals = Array.isArray(arrivalsData.data) ? arrivalsData.data : [];
   // The visitor is standing at the gate: if the live connection dropped, they still appear within seconds
-  useSafetyReload(() => arrivalsData.reload(), { isLive: () => liveSince() !== null, whenLiveMs: 60_000, whenDownMs: 10_000 });
+  useSafetyReload(() => arrivalsData.reload(), { isLive: () => liveSince() !== null, whenLiveMs: 2 * 60_000, whenDownMs: 15_000 });
 
   // Kept while the review is open, even if the list refreshes without it
   const [openArrival, setOpenArrival] = useState<Arrival | null>(null);
@@ -165,9 +175,10 @@ export function CheckInQrScreen({ register, onBack }: { register: CheckInRegiste
   const title = register === "VISITORS" ? "Visitors Book" : "Admission Book & Pass";
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
-      <div className="flex flex-wrap items-center gap-3">
-        {onBack && (
+    <div className={inModal ? "space-y-4" : "mx-auto max-w-3xl space-y-5"}>
+      {/* In the pop-up only the "{n} waiting" button stays (when someone is waiting) */}
+      <div className={inModal ? (arrivals.length > 0 ? "flex justify-end" : "hidden") : "flex flex-wrap items-center gap-3"}>
+        {!inModal && onBack && (
           <button
             type="button"
             onClick={onBack}
@@ -179,10 +190,12 @@ export function CheckInQrScreen({ register, onBack }: { register: CheckInRegiste
             {t("Buttons")}
           </button>
         )}
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-light tracking-tight text-zinc-100">{t("Show QR")}</h1>
-          <p className="text-sm text-zinc-500">{t(title)}</p>
-        </div>
+        {!inModal && (
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-light tracking-tight text-zinc-100">{t("Show QR")}</h1>
+            <p className="text-sm text-zinc-500">{t(title)}</p>
+          </div>
+        )}
         {/* Someone is waiting: the list is below the big QR */}
         {arrivals.length > 0 && (
           <button
@@ -203,13 +216,20 @@ export function CheckInQrScreen({ register, onBack }: { register: CheckInRegiste
         </div>
       )}
 
-      {/* The QR: as large as the screen allows */}
-      <section className="rounded-3xl border border-zinc-800/80 bg-zinc-900 p-4 sm:p-6 shadow-card">
+      {/* The QR: as large as the screen allows (in the pop-up: the pop-up's full width, no extra card) */}
+      <section className={inModal ? undefined : "rounded-3xl border border-zinc-800/80 bg-zinc-900 p-4 sm:p-6 shadow-card"}>
         <p className="flex items-center justify-center gap-2 text-center text-lg font-semibold leading-snug text-zinc-100">
           <ScanLine className="h-5 w-5 shrink-0 text-orange-500" aria-hidden="true" />
           {t("Scan with your phone camera to fill the form")}
         </p>
-        <div className="mx-auto mt-4 aspect-square w-full max-w-[min(30rem,calc(100dvh-18rem))] min-w-[14rem]">
+        <div
+          className={
+            inModal
+              ? // The pop-up's title bar and padding take less room than the page's heading
+                "mx-auto mt-3 aspect-square w-full max-w-[min(30rem,calc(100dvh-14rem))] min-w-[14rem]"
+              : "mx-auto mt-4 aspect-square w-full max-w-[min(30rem,calc(100dvh-18rem))] min-w-[14rem]"
+          }
+        >
           {qr ? (
             <img
               src={qr}
@@ -240,7 +260,7 @@ export function CheckInQrScreen({ register, onBack }: { register: CheckInRegiste
       </section>
 
       {/* Visitors who sent the form and are waiting at the gate */}
-      <section ref={listRef} className="scroll-mt-24 space-y-3">
+      <section ref={listRef} className={inModal ? "scroll-mt-2 space-y-3" : "scroll-mt-24 space-y-3"}>
         <h2 className="flex items-center gap-2 text-lg font-semibold text-zinc-100">
           {t("Waiting at the gate")}
           {arrivals.length > 0 && (

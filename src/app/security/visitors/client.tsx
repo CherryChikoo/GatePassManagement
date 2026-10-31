@@ -33,7 +33,7 @@ import {
   PencilLine,
 } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
-import { useGateData } from "@/lib/gate-cache";
+import { prefetchGateData, useGateData } from "@/lib/gate-cache";
 import { FactList, InOutCard } from "@/components/registers/record-layout";
 import { OUTSIDERS_QUERY } from "@/lib/gate-queries";
 import { DateField } from "@/components/ui/date-field";
@@ -103,6 +103,13 @@ export function OutsidersClient() {
   );
   useLiveTopics(ARRIVAL_COUNTS_QUERY.topics, () => {}, view === "hub");
   const waiting = arrivals.data && "VISITORS" in arrivals.data ? arrivals.data.VISITORS : 0;
+  // While the buttons show, today's Old records load quietly, so that button opens at once
+  // (same key as the Old records screen: date | search | page)
+  useEffect(() => {
+    if (view !== "hub") return;
+    const today = istDateString();
+    prefetchGateData(`visitors-log|${today}||1`, () => callGate("getVisitorsBook", [{ date: today, q: "", page: 1 }], 15_000), ["visitors"]);
+  }, [view]);
   // "Inside 2 h 10 min" moves on by itself, once a minute (no requests)
   const now = useMinuteClock(view === "inside");
   // The visitor just registered: highlighted at the top of the list for a moment

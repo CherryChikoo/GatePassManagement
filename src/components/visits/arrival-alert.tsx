@@ -66,8 +66,9 @@ export function ArrivalAlert() {
   // Keeps the live connection listening for arrivals on every Security screen
   useLiveTopics([ARRIVALS_TOPIC], () => {});
   const counts = useGateData<ArrivalCounts | { error: string }>(ARRIVAL_COUNTS_QUERY.key, ARRIVAL_COUNTS_QUERY.fetch, ARRIVAL_COUNTS_QUERY.topics);
-  // Live connection dropped (phone idle at the gate): the banner still shows new visitors
-  useSafetyReload(() => counts.reload(), { isLive: () => liveSince() !== null, whenLiveMs: 3 * 60_000, whenDownMs: 30_000 });
+  // Live connection dropped (phone idle at the gate): the banner still shows new visitors.
+  // On every Security screen all day, so kept slow (free plan: about 1M requests a month)
+  useSafetyReload(() => counts.reload(), { isLive: () => liveSince() !== null, whenLiveMs: 10 * 60_000, whenDownMs: 60_000 });
   const data = counts.data && !("error" in counts.data) ? counts.data : null;
   const onScreen = useSyncExternalStore(subscribeOpenQr, () => openQr, () => null);
   // Closed with ✕: hidden until someone new arrives

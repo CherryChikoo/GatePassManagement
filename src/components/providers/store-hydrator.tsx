@@ -22,9 +22,9 @@ import {
 /** Roles with requests to approve: their list reloads the moment a request arrives */
 const APPROVER_ROLES = ["FACULTY_ADMIN", "DEAN", "WARDEN"];
 /** Approver's screen open: a safety refresh this often while live… */
-const APPROVER_SAFETY_MS = 2 * 60_000;
+const APPROVER_SAFETY_MS = 10 * 60_000;
 /** …and this often while the live connection is down */
-const APPROVER_DOWN_MS = 30_000;
+const APPROVER_DOWN_MS = 60_000;
 
 export function StoreHydrator({ user }: { user: StoreUser }) {
   const initialize = useAppStore((s) => s.initialize);

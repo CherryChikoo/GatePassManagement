@@ -19,6 +19,7 @@ import {
   HardHat,
   House,
   KeyRound,
+  Loader2,
   NotebookPen,
   Package,
   PackageOpen,
@@ -42,8 +43,10 @@ import { REGISTER_COUNTS_QUERY } from "@/lib/gate-queries";
 import { EntryRegisterView } from "./entry-register-view";
 import { prefetchEntryList } from "./entry-list-cache";
 import { useLiveTopics } from "@/lib/realtime/live";
+import dynamic from "next/dynamic";
+import { Modal } from "@/components/ui/primitives";
 import { QuickEntryModal } from "./quick-entry";
-import { checkInQrHref, type CheckInRegister } from "@/components/visits/arrival-alert";
+import type { CheckInRegister } from "@/components/visits/arrival-alert";
 import { AttendanceSheetView } from "./attendance-sheet";
 import { localizeRegister } from "./localize";
 import { FacultyBookView,
@@ -91,6 +94,18 @@ const REGISTER_ICON: Record<RegisterKey, LucideIcon> = {
 };
 
 
+/** Show QR (QR code library + visitor review): loaded only when a QR button is
+ *  touched, so the registers list itself stays light */
+const loadCheckInQrScreen = () => import("@/components/visits/checkin-qr-screen");
+const CheckInQrScreen = dynamic(() => loadCheckInQrScreen().then((m) => m.CheckInQrScreen), {
+  ssr: false,
+  loading: () => (
+    <div className="flex aspect-square w-full items-center justify-center text-zinc-500">
+      <Loader2 className="h-8 w-8 animate-spin" aria-hidden="true" />
+    </div>
+  ),
+});
+
 /** The register last opened from the list: coming back shows the list at that register */
 const LAST_OPENED_KEY = "gatepass:last-register";
 const LAST_OPENED_MAX_AGE_MS = 6 * 60 * 60_000;
@@ -131,6 +146,8 @@ export function RegistersHub({
 
   const [query, setQuery] = useState("");
   const [quickKey, setQuickKey] = useState<string | null>(null);
+  // Visitors Book / Admission Book: the check-in QR shown as a pop-up right on the list
+  const [qrKey, setQrKey] = useState<CheckInRegister | null>(null);
 
   // Back from a register: the list opens where that register is (not at the top),
   // and its row glows for a moment so the guard sees where they were
@@ -208,11 +225,8 @@ export function RegistersHub({
           // Security: the Visitors Book is the Visitors screen itself (its 4 buttons; no second visitors screen)
           const href = isSecurity && r.key === "VISITORS" ? "/security/visitors" : `${base}/registers/${slugForKey(r.key)}`;
           const n = counts[r.key] ?? 0;
-          // Visitors Book / Admission Book: a QR button opens Show QR (visitors fill the form on their phone)
-          const checkInQr =
-            isSecurity && (r.key === "VISITORS" || (r.key === "ADMISSION" && creatable.includes(r.key)))
-              ? checkInQrHref(r.key as CheckInRegister)
-              : null;
+          // Visitors Book / Admission Book: a QR button shows the check-in QR here (visitors fill the form on their phone)
+          const checkInQr = isSecurity && (r.key === "VISITORS" || (r.key === "ADMISSION" && creatable.includes(r.key)));
           // "+": entry registers open their form here
           // Attendance opens its monthly sheet instead of a form
           const quickAdd = isEntryRegister(r) && creatable.includes(r.key) && r.key !== "SECURITY_ATTENDANCE";
@@ -257,14 +271,17 @@ export function RegistersHub({
                 </span>
               </Link>
               {checkInQr ? (
-                <Link
-                  href={checkInQr}
-                  onPointerDown={() => router.prefetch(checkInQr)}
+                <button
+                  type="button"
+                  // The QR screen's code starts loading while the tap completes
+                  onPointerDown={() => void loadCheckInQrScreen()}
+                  onFocus={() => void loadCheckInQrScreen()}
+                  onClick={() => setQrKey(r.key as CheckInRegister)}
                   aria-label={`${t("Show QR")} — ${r.key === "VISITORS" ? t("Visitors Book") : t(r.title)}`}
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)] hover:bg-orange-700 active:scale-95 transition-[background-color,transform]"
                 >
                   <QrCode className="h-5 w-5" />
-                </Link>
+                </button>
               ) : quickAdd ? (
                 <button
                   type="button"
@@ -292,6 +309,17 @@ export function RegistersHub({
           onClose={() => setQuickKey(null)}
           onSaved={() => void countsData.reload()}
         />
+      )}
+
+      {qrKey && (
+        <Modal
+          open
+          onClose={() => setQrKey(null)}
+          title={`${t(qrKey === "VISITORS" ? "Visitors Book" : (allRegisters.find((r) => r.key === qrKey)?.title ?? "Admission Book & Pass"))} — ${t("Show QR")}`}
+          className="max-w-xl"
+        >
+          <CheckInQrScreen key={qrKey} register={qrKey} inModal />
+        </Modal>
       )}
     </div>
   );
