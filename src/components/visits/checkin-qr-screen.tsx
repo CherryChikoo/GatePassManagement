@@ -16,12 +16,12 @@
  *
  * The QR is a signed token valid 15 minutes, fetched again a minute before it
  * runs out, and only while this screen is visible (no requests in the
- * background). The waiting list is fetched again only when the server pings
+ * background). The last QR is kept in this tab (checkin-qr-cache.ts): opening
+ * it again shows it at once, without asking the server. The waiting list is fetched again only when the server pings
  * "arrivals" (a request sent / accepted / rejected at any gate).
  */
 import { useEffect, useRef, useState } from "react";
-import QRCode from "qrcode";
-import { AlertCircle, ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Clock, Loader2, RefreshCw, ScanLine, UserRound, Users } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Clock, Loader2, RefreshCw, UserRound, Users } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { callGate } from "@/lib/gate-call";
 import { useGateData } from "@/lib/gate-cache";
@@ -32,10 +32,9 @@ import { cn, formatTime } from "@/lib/utils";
 import type { Arrival } from "@/server/actions/visit-requests";
 import { ARRIVALS_TOPIC, useCheckInQrOpen, type CheckInRegister } from "./arrival-alert";
 import { ArrivalReview } from "./arrival-review";
+import { REFRESH_BEFORE_MS, checkInQrImage, getCheckInQr, readyCheckInQrImage } from "./checkin-qr-cache";
+import { CheckInQrFrame, CheckInQrPlaceholder } from "./checkin-qr-frame";
 
-/** The token lives 15 minutes (src/lib/qr/token.ts); a new one is fetched this long before it runs out */
-const REFRESH_BEFORE_MS = 60_000;
-const DEFAULT_TTL_MS = 15 * 60_000;
 /** After a failed load (no network): try again this much later, while visible */
 const RETRY_MS = 30_000;
 
@@ -52,9 +51,13 @@ export const arrivalsQuery = (register: CheckInRegister) => ({
   topics: [ARRIVALS_TOPIC],
 });
 
-/** The check-in QR, refreshed before it expires while the screen is visible. */
+/**
+ * The check-in QR, refreshed before it expires while the screen is visible.
+ * A QR kept from an earlier pop-up (checkin-qr-cache.ts) shows at once, with no
+ * request, while it has more than 2 minutes left.
+ */
 function useCheckInQr(register: CheckInRegister, fallbackError: string) {
-  const [qr, setQr] = useState<string | null>(null);
+  const [qr, setQr] = useState<string | null>(() => readyCheckInQrImage(register));
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
 
@@ -79,7 +82,8 @@ function useCheckInQr(register: CheckInRegister, fallbackError: string) {
       if (cancelled || loading || document.visibilityState !== "visible") return;
       loading = true;
       try {
-        const res = await callGate("getCheckInQr", [register], 15_000);
+        // The kept QR (no request), or a new one when it is about to run out
+        const res = await getCheckInQr(register);
         if (cancelled) return;
         if ("error" in res) {
           setError(res.error);
@@ -87,20 +91,13 @@ function useCheckInQr(register: CheckInRegister, fallbackError: string) {
           later(RETRY_MS);
           return;
         }
-        // Timed on this phone's clock (the phone's clock may be off from the server's)
-        let ttl = Date.parse(res.expiresAt) - Date.now();
-        if (!(ttl > 2 * REFRESH_BEFORE_MS && ttl <= 2 * DEFAULT_TTL_MS)) ttl = DEFAULT_TTL_MS;
-        const image = await QRCode.toDataURL(`${window.location.origin}/v/${res.token}`, {
-          width: 720, // drawn large: crisp dots scan faster from a screen
-          margin: 4, // the standard white border scanners need
-          color: { dark: "#000000", light: "#ffffff" },
-          errorCorrectionLevel: "M",
-        });
+        // Drawn once per token, then reused
+        const image = await checkInQrImage(res);
         if (cancelled) return;
-        expiresAt = Date.now() + ttl;
+        expiresAt = res.expiresAt;
         setQr(image);
         setError(null);
-        later(ttl - REFRESH_BEFORE_MS);
+        later(expiresAt - Date.now() - REFRESH_BEFORE_MS);
       } catch (err) {
         if (cancelled) return;
         setError(actionErrorMessage(err, fallbackError));
@@ -166,54 +163,32 @@ function QrPanel({ register, inModal = false }: { register: CheckInRegister; inM
   const { qr, error: qrError, retry } = useCheckInQr(register, t("Could not load the QR. Check the connection and try again."));
 
   return (
-    // The QR: as large as the screen allows (in the pop-up: the pop-up's full width, no extra card)
-    <section className={inModal ? undefined : "rounded-3xl border border-zinc-800/80 bg-zinc-900 p-4 sm:p-6 shadow-card"}>
-      <p className="text-balance text-center text-lg font-semibold leading-snug text-zinc-100">
-        {/* In the line, so a wrapped instruction stays centred with its icon */}
-        <ScanLine className="-mt-0.5 mr-2 inline-block h-5 w-5 align-middle text-orange-500" aria-hidden="true" />
-        {t("Scan with your phone camera to fill the form")}
-      </p>
-      <div
-        className={
-          inModal
-            ? // Room left by the pop-up's title bar, its padding and the lines of text
-              "mx-auto mt-3 aspect-square w-full max-w-[min(32rem,calc(100dvh-20rem))] min-w-[14rem]"
-            : // Room left by the top bar, this screen's heading, the card's padding, the text and the bottom bar
-              "mx-auto mt-4 aspect-square w-full max-w-[min(30rem,calc(100dvh-24rem))] min-w-[14rem]"
-        }
-      >
-        {qr ? (
-          <img
-            src={qr}
-            alt={t("Check-in QR code")}
-            className="h-full w-full rounded-2xl bg-white [image-rendering:pixelated]"
-          />
-        ) : qrError ? (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/5 p-6 text-center">
-            <AlertCircle className="h-8 w-8 text-red-400" />
-            <p className="text-sm font-medium text-red-400">{t(qrError)}</p>
-            <button
-              type="button"
-              onClick={retry}
-              className="inline-flex h-11 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-5 text-sm font-medium text-zinc-100 hover:bg-zinc-950"
-            >
-              <RefreshCw className="h-4 w-4" />
-              {t("Try again")}
-            </button>
-          </div>
-        ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-2xl bg-zinc-950/60 text-zinc-500">
-            <Loader2 className="h-8 w-8 animate-spin" />
-            <p className="text-sm">{t("Getting the QR…")}</p>
-          </div>
-        )}
-      </div>
-      {/* UPI apps treat the link as a payment and fail: say which scanner to use */}
-      <p className="mt-3 text-balance text-center text-sm font-medium leading-snug text-zinc-200">
-        {t("Use your phone's Camera or Google Lens (not PhonePe / Google Pay)")}
-      </p>
-      <p className="mt-1.5 text-balance text-center text-xs text-zinc-500">{t("The QR changes by itself every few minutes. Keep this screen open.")}</p>
-    </section>
+    // Same frame the registers list shows while this code loads (nothing moves)
+    <CheckInQrFrame inModal={inModal}>
+      {qr ? (
+        <img
+          src={qr}
+          alt={t("Check-in QR code")}
+          className="h-full w-full rounded-2xl bg-white [image-rendering:pixelated]"
+        />
+      ) : qrError ? (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/5 p-6 text-center">
+          <AlertCircle className="h-8 w-8 text-red-400" />
+          <p className="text-sm font-medium text-red-400">{t(qrError)}</p>
+          <button
+            type="button"
+            onClick={retry}
+            className="inline-flex h-11 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-5 text-sm font-medium text-zinc-100 hover:bg-zinc-950"
+          >
+            <RefreshCw className="h-4 w-4" />
+            {t("Try again")}
+          </button>
+        </div>
+      ) : (
+        // QR-shaped, the same size as the QR: nothing moves when it arrives
+        <CheckInQrPlaceholder />
+      )}
+    </CheckInQrFrame>
   );
 }
 

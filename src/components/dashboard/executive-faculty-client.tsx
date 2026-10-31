@@ -3,10 +3,11 @@ import { ThemedSelect } from "@/components/ui/themed-select";
 import { PassHistoryPanel } from "@/components/passes/pass-history-panel";
 import { oversightRoleMeta, type OversightRole } from "@/components/dashboard/oversight-role";
 
-import React, { useState, useMemo } from "react";
-import { useAppStore } from "@/stores/app-store";
-import { useStoreReady } from "@/components/providers/store-hydrator";
+import React, { useState } from "react";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
+import type { getExecutiveFaculty } from "@/server/actions/executive";
+import { callGate } from "@/lib/gate-call";
+import { useDebounced, usePagedList } from "@/hooks/use-paged-list";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge, EmptyState, Modal, StatCard } from "@/components/ui/primitives";
@@ -32,91 +33,39 @@ interface ExecutiveFacultyClientProps {
   role: OversightRole;
 }
 
-export function ExecutiveFacultyClient({ role }: ExecutiveFacultyClientProps) {
-  const isReady = useStoreReady();
-  const rawAllFaculty = useAppStore((s) => s.data.allFaculty);
-  const allFaculty = rawAllFaculty || [];
+type FacultyPage = Awaited<ReturnType<typeof getExecutiveFaculty>>;
 
+export function ExecutiveFacultyClient({ role }: ExecutiveFacultyClientProps) {
   const [search, setSearch] = useState("");
   const [selectedDept, setSelectedDept] = useState("ALL");
   const [selectedRole, setSelectedRole] = useState<string>("ALL");
   const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
   const [selectedFaculty, setSelectedFaculty] = useState<any | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 15;
+  const pageSize = 20;
 
-  // Extract unique departments
-  const departments: string[] = useMemo(() => {
-    const rawList = allFaculty
-      .map((f: any) => f.faculty?.department)
-      .filter(Boolean) as string[];
-    const fromData = Array.from(new Set<string>(rawList));
-    return fromData.length > 0 ? fromData.sort() : DEPARTMENTS.map((d) => d.name);
-  }, [allFaculty]);
+  // One page at a time from the server (search and filters run in the database);
+  // a page seen before shows at once, the last one stays on screen while the next loads
+  const debouncedSearch = useDebounced(search);
+  const params = {
+    page: currentPage,
+    pageSize,
+    q: debouncedSearch,
+    department: selectedDept,
+    role: selectedRole,
+    status: selectedStatus,
+  };
+  const dir = usePagedList<FacultyPage>("exec-faculty", params, () => callGate("getExecutiveFaculty", [params], 20_000));
+  const data = dir.data;
 
-  // Filter faculty members
-  const filteredFaculty = useMemo(() => {
-    return allFaculty.filter((f: any) => {
-      // Department filter
-      if (selectedDept !== "ALL" && f.faculty?.department !== selectedDept) {
-        return false;
-      }
+  const paginatedFaculty: any[] = data?.rows ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const metrics = data?.metrics ?? { total: 0, active: 0, hods: 0, teachingFaculty: 0 };
+  const departments: string[] =
+    data && data.departments.length > 0 ? data.departments : DEPARTMENTS.map((d) => d.name);
 
-      // Role filter (HOD vs Regular Faculty)
-      if (selectedRole === "HOD" && f.role !== "FACULTY_ADMIN") {
-        return false;
-      }
-      if (selectedRole === "FACULTY" && f.role === "FACULTY_ADMIN") {
-        return false;
-      }
-
-      // Status filter
-      if (selectedStatus === "ACTIVE" && f.active === false) {
-        return false;
-      }
-      if (selectedStatus === "DISABLED" && f.active !== false) {
-        return false;
-      }
-
-      // Search query
-      if (search.trim()) {
-        const q = search.toLowerCase().trim();
-        const name = f.name?.toLowerCase() || "";
-        const email = f.email?.toLowerCase() || "";
-        const phone = f.phone?.toLowerCase() || "";
-        const dept = f.faculty?.department?.toLowerCase() || "";
-        const desig = f.faculty?.designation?.toLowerCase() || "";
-        const empId = f.faculty?.employeeId?.toLowerCase() || "";
-
-        return (
-          name.includes(q) ||
-          email.includes(q) ||
-          phone.includes(q) ||
-          dept.includes(q) ||
-          desig.includes(q) ||
-          empId.includes(q)
-        );
-      }
-
-      return true;
-    });
-  }, [allFaculty, selectedDept, selectedRole, selectedStatus, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredFaculty.length / pageSize));
-  const paginatedFaculty = useMemo(() => {
-    return filteredFaculty.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  }, [filteredFaculty, currentPage, pageSize]);
-
-  // Summary Metrics
-  const metrics = useMemo(() => {
-    const total = allFaculty.length;
-    const active = allFaculty.filter((f: any) => f.active !== false).length;
-    const hods = allFaculty.filter((f: any) => f.role === "FACULTY_ADMIN").length;
-    const teachingFaculty = total - hods;
-    return { total, active, hods, teachingFaculty };
-  }, [allFaculty]);
-
-  if (!isReady) {
+  if (!data && !dir.error) {
     return <DashboardSkeleton />;
   }
 
@@ -241,8 +190,14 @@ export function ExecutiveFacultyClient({ role }: ExecutiveFacultyClientProps) {
           </div>
         </div>
 
-        {/* Faculty Data Table */}
-        {filteredFaculty.length === 0 ? (
+        {dir.error && (
+          <div role="alert" className="mx-4 my-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">
+            {dir.error}
+          </div>
+        )}
+        {/* Faculty Data Table (dimmed while the next page loads) */}
+        <div className={dir.busy ? "opacity-60 transition-opacity" : "transition-opacity"}>
+        {total === 0 ? (
           <EmptyState
             title="No Faculty Members Found"
             description={
@@ -391,13 +346,14 @@ export function ExecutiveFacultyClient({ role }: ExecutiveFacultyClientProps) {
             </div>
           </>
         )}
+        </div>
       </Card>
 
       {/* Pagination (docked at the bottom of the screen) */}
       <PagerBar
         page={currentPage}
         pageSize={pageSize}
-        total={filteredFaculty.length}
+        total={total}
         onPageChange={(p) => setCurrentPage(Math.min(totalPages, Math.max(1, p)))}
         itemLabel="faculty members"
       />

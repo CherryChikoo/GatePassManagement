@@ -34,16 +34,9 @@ interface ExecutiveHodsClientProps {
 export function ExecutiveHodsClient({ role }: ExecutiveHodsClientProps) {
   const isReady = useStoreReady();
   const rawAllHODs = useAppStore((s) => s.data.allHODs);
-  const rawAllFaculty = useAppStore((s) => s.data.allFaculty);
 
-  // Fallback to filtering allFaculty if allHODs array is somehow empty
-  const allHODs = useMemo(() => {
-    if (rawAllHODs && rawAllHODs.length > 0) return rawAllHODs;
-    if (rawAllFaculty && rawAllFaculty.length > 0) {
-      return rawAllFaculty.filter((f: any) => f.role === "FACULTY_ADMIN");
-    }
-    return [];
-  }, [rawAllHODs, rawAllFaculty]);
+  // HODs: one per department, so the whole (small) list comes with the dashboard data
+  const allHODs: any[] = useMemo(() => rawAllHODs ?? [], [rawAllHODs]);
 
   const [search, setSearch] = useState("");
   const [selectedDept, setSelectedDept] = useState("ALL");

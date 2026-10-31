@@ -3,8 +3,9 @@
 /**
  * Admission Book & Pass (Security): the same 4 buttons as the Visitors Book —
  * At the gate (parents who sent the form on their phone: photo and accept),
- * Type it myself (the register's own new-entry form), Inside now (today's
- * records still waiting for Out, with how long), Old records (the register's
+ * Type it myself (the register's own new-entry form), Inside now (today's and
+ * yesterday's records still waiting for Out, with how long; 20 per page,
+ * picked by the server), Old records (the register's
  * usual list); the round QR button by the title shows the check-in QR in a
  * pop-up. Screens open in place: ?view=gate|new|inside|log (?view=qr: the
  * buttons with the QR pop-up open).
@@ -22,7 +23,7 @@ import { visitExitMessage } from "@/components/visits/visit-code";
 import { EntryRegisterView } from "@/components/registers/entry-register-view";
 import { RegisterForm, clearRegisterDraft } from "@/components/registers/register-form";
 import { invalidateEntryLists } from "@/components/registers/entry-list-cache";
-import { fetchInsideEntries } from "@/components/registers/inside-entries";
+import { fetchInsideEntries, invalidateInsideEntries } from "@/components/registers/inside-entries";
 import { localizeRegister } from "@/components/registers/localize";
 import { newClientToken } from "@/components/registers/format";
 import { callGate } from "@/lib/gate-call";
@@ -59,14 +60,14 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
   );
   const waiting = arrivals.data && "ADMISSION" in arrivals.data ? arrivals.data.ADMISSION : 0;
 
-  // "Inside now (n)": from the same list pages the register shows (usually cached)
+  // "Inside now (n)": the total sent with Inside now's first page (kept, so opening it is instant)
   const [insideCount, setInsideCount] = useState<number | null>(null);
   const [countNo, setCountNo] = useState(0);
   useEffect(() => {
     if (!onHub) return;
     let cancelled = false;
-    fetchInsideEntries(register, true)
-      .then((r) => !cancelled && setInsideCount(r.entries.length))
+    fetchInsideEntries(register, true, 1)
+      .then((r) => !cancelled && setInsideCount(r.total))
       .catch(() => {});
     return () => {
       cancelled = true;
@@ -103,6 +104,7 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
       } else {
         clearRegisterDraft(register.key);
         invalidateEntryLists(register.key);
+        invalidateInsideEntries(register.key);
         setToken(newClientToken());
         setFormKey((k) => k + 1);
         setNotice(t("Record saved."));
@@ -141,7 +143,7 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
             </span>
             <h1 className="min-w-0 text-xl sm:text-2xl font-bold tracking-tight text-zinc-100 break-words">{def.title}</h1>
             {/* The check-in QR, as a pop-up (like the registers list's QR button) */}
-            {canCreate && <HubQrButton label={`${t("Show QR")} — ${def.title}`} onClick={() => openView("qr")} />}
+            {canCreate && <HubQrButton register="ADMISSION" label={`${t("Show QR")} — ${def.title}`} onClick={() => openView("qr")} />}
           </div>
           <p className="mt-1 text-sm text-zinc-400">{def.description}</p>
         </div>

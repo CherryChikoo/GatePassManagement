@@ -1,62 +1,56 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search, ClipboardCheck } from "lucide-react";
 import { EmptyState } from "@/components/ui/primitives";
 import { Card, CardContent } from "@/components/ui/card";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
-import { useStoreReady } from "@/components/providers/store-hydrator";
 import { useAppStore } from "@/stores/app-store";
-import { RequestCard, statusGroup } from "../request-card";
+import { RequestCard } from "../request-card";
 import { PagerBar } from "@/components/ui/pager-bar";
+import type { getSupervisorRequests } from "@/server/actions/executive";
+import { callGate } from "@/lib/gate-call";
+import { useDebounced, usePagedList } from "@/hooks/use-paged-list";
 
 type StatusTab = "PENDING" | "APPROVED" | "REJECTED" | "ALL";
 type WhoTab = "ALL" | "STUDENTS" | "FACULTY";
 
 const PAGE_SIZE = 20;
 
-export function SupervisorRequestsClient() {
-  const isReady = useStoreReady();
-  const requests = useAppStore((s) => s.data.requests) as any[] | undefined;
+type RequestsPage = Awaited<ReturnType<typeof getSupervisorRequests>>;
 
+export function SupervisorRequestsClient() {
   const [statusTab, setStatusTab] = useState<StatusTab>("PENDING");
   const [whoTab, setWhoTab] = useState<WhoTab>("ALL");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
-  const list = useMemo(() => requests ?? [], [requests]);
+  // One page at a time from the server (filters and search run in the database);
+  // a page seen before shows at once, the last one stays on screen while the next loads
+  const q = useDebounced(search);
+  const params = { page, pageSize: PAGE_SIZE, status: statusTab, who: whoTab, q };
+  const list = usePagedList<RequestsPage>("sup-requests", params, () => callGate("getSupervisorRequests", [params], 20_000));
 
-  const byWho = useMemo(
-    () =>
-      list.filter((r) =>
-        whoTab === "ALL" ? true : whoTab === "FACULTY" ? !!r.facultyId : !!r.studentId
-      ),
-    [list, whoTab]
-  );
+  // Kept as current as before: when the dashboard data refreshes (every few
+  // minutes while visible, on returning to the tab), the page on screen does too.
+  // No extra timer: it follows the refresh that already runs.
+  const lastSyncAt = useAppStore((s) => s.lastSyncAt);
+  const seenSync = useRef(lastSyncAt);
+  const reloadAll = list.reloadAll;
+  useEffect(() => {
+    if (lastSyncAt === seenSync.current) return;
+    seenSync.current = lastSyncAt;
+    void reloadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastSyncAt]);
 
-  const counts = useMemo(() => {
-    const c = { PENDING: 0, APPROVED: 0, REJECTED: 0, ALL: byWho.length };
-    byWho.forEach((r) => c[statusGroup(r.status)]++);
-    return c;
-  }, [byWho]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return byWho.filter((r) => {
-      if (statusTab !== "ALL" && statusGroup(r.status) !== statusTab) return false;
-      if (!q) return true;
-      const p = r.facultyId ? r.faculty : r.student;
-      return [p?.profile?.name, p?.studentRoll, p?.employeeId, p?.department, r.purpose, r.destination]
-        .filter(Boolean)
-        .some((v: string) => v.toLowerCase().includes(q));
-    });
-  }, [byWho, statusTab, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const counts = list.data?.counts ?? { PENDING: 0, APPROVED: 0, REJECTED: 0, ALL: 0 };
+  const pageItems: any[] = list.data?.rows ?? [];
+  const total = list.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
-  const pageItems = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  if (!isReady || requests === undefined) return <DashboardSkeleton />;
+  if (!list.data && !list.error) return <DashboardSkeleton />;
 
   const tabBtn = (active: boolean) =>
     `inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap ${
@@ -153,7 +147,13 @@ export function SupervisorRequestsClient() {
         </div>
       </div>
 
-      <Card>
+      {list.error && (
+        <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">
+          {list.error}
+        </div>
+      )}
+
+      <Card className={list.busy ? "opacity-60 transition-opacity" : "transition-opacity"}>
         <CardContent className="p-3 sm:p-4">
           {pageItems.length === 0 ? (
             <EmptyState
@@ -174,7 +174,7 @@ export function SupervisorRequestsClient() {
       <PagerBar
         page={currentPage}
         pageSize={PAGE_SIZE}
-        total={filtered.length}
+        total={total}
         onPageChange={setPage}
         itemLabel="requests"
       />

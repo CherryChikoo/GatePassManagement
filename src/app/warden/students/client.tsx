@@ -32,6 +32,12 @@ import { PagerBar } from "@/components/ui/pager-bar";
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
+import { callGate } from "@/lib/gate-call";
+import { useDebounced, usePagedList } from "@/hooks/use-paged-list";
+import type { getExecutiveStudents } from "@/server/actions/executive";
+
+type StudentsPage = Awaited<ReturnType<typeof getExecutiveStudents>>;
+const PAGE_SIZE = 20;
 
 interface Props {
   user: { name: string; email: string; role: string; profileId: string };
@@ -40,9 +46,7 @@ interface Props {
 export function WardenStudentsClient({ user }: Props) {
   const router = useRouter();
   const isReady = useStoreReady();
-  const studentsData = useAppStore((s) => s.data.students);
   const wardensData = useAppStore((s) => s.data.wardens);
-  const updateData = useAppStore((s) => s.updateData);
   const refreshStore = useAppStore((s) => s.refresh);
 
   const [search, setSearch] = useState("");
@@ -59,10 +63,14 @@ export function WardenStudentsClient({ user }: Props) {
   const [success, setSuccess] = useState<string | null>(null);
   const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 15;
+  const pageSize = PAGE_SIZE;
 
-  // Filter students by search term
-  
+  // One page at a time from the server (search runs in the database; only this
+  // warden's hostellers). A page seen before shows at once.
+  const debouncedSearch = useDebounced(search);
+  const params = { page: currentPage, pageSize, q: debouncedSearch };
+  const list = usePagedList<StudentsPage>("my-students", params, () => callGate("getExecutiveStudents", [params], 15_000));
+
   async function handleBatchGrant(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (selectedStudents.size === 0) return;
@@ -87,7 +95,7 @@ export function WardenStudentsClient({ user }: Props) {
       setSuccess("Passes granted successfully for " + selectedStudents.size + " students!");
       setShowBatchModal(false);
       setSelectedStudents(new Set());
-      refreshStore(true, true);
+      refreshStore(true);
       
       setTimeout(() => setSuccess(null), 4000);
     } catch (err: any) {
@@ -113,25 +121,14 @@ export function WardenStudentsClient({ user }: Props) {
     setSelectedStudents(newSet);
   }
 
-  const filteredStudents = (studentsData || []).filter((s: any) => {
-    const q = search.toLowerCase();
-    return (
-      s.profile.name.toLowerCase().includes(q) ||
-      s.studentRoll.toLowerCase().includes(q) ||
-      (s.hostelBlock && s.hostelBlock.toLowerCase().includes(q)) ||
-      s.profile.email.toLowerCase().includes(q)
-    );
-  });
-
-  if (!isReady || !studentsData) {
+  if (!isReady || (!list.data && !list.error)) {
     return <DashboardSkeleton />;
   }
 
   const wardens = wardensData || [];
-  const students = studentsData || [];
-
-  const total = filteredStudents.length;
-  const paginatedStudents = filteredStudents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const paginatedStudents: any[] = list.data?.rows ?? [];
+  const total = list.data?.total ?? 0;
+  const studentsTotal = list.data?.metrics.total ?? 0;
 
   function handleOpenEdit(student: any) {
     setEditingStudent(student);
@@ -168,7 +165,8 @@ export function WardenStudentsClient({ user }: Props) {
 
       setSuccess(`Student ${formData.get("name")} updated successfully!`);
       setEditingStudent(null);
-      refreshStore(true, true); // Silent update
+      void list.reloadAll(); // The list pages are fetched again
+      refreshStore(true);
       // Clear success message after 4s
       setTimeout(() => setSuccess(null), 4000);
     } catch (err: any) {
@@ -305,7 +303,7 @@ export function WardenStudentsClient({ user }: Props) {
             <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span>My Students</span>
               <span className="rounded-full bg-orange-500/10 px-2.5 py-0.5 text-xs font-medium text-orange-400">
-                {students.length} Total
+                {studentsTotal} Total
               </span>
             </h1>
             <p className="mt-1 text-sm text-zinc-500">
@@ -334,8 +332,17 @@ export function WardenStudentsClient({ user }: Props) {
           </div>
         )}
 
-        {/* Students list */}
-        <Card className="overflow-hidden">
+        {list.error && (
+          <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 flex items-center justify-between gap-3 text-red-300 text-sm">
+            <span>{list.error}</span>
+            <Button size="sm" variant="outline" onClick={() => void list.reload()}>
+              Try again
+            </Button>
+          </div>
+        )}
+
+        {/* Students list (dimmed while the next page loads) */}
+        <Card className={`overflow-hidden transition-opacity ${list.busy ? "opacity-60" : ""}`}>
           <CardContent className="p-0 sm:p-0">
             {/* Phones: stacked rows (tap to expand) */}
             <ul className={`sm:hidden ${dt.mobileList}`}>
@@ -470,7 +477,7 @@ export function WardenStudentsClient({ user }: Props) {
               </table>
             </div>
 
-            {filteredStudents.length === 0 && (
+            {total === 0 && !list.error && (
               <EmptyState
                 icon={<Users className="h-8 w-8" />}
                 title="No students found"

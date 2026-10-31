@@ -23,9 +23,8 @@ interface Props {
   offices: OfficeRow[] | null;
 }
 
-/** Active first, then A–Z (same order as the server) */
-const sortOffices = (rows: OfficeRow[]) =>
-  [...rows].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
+/** A–Z only (same order as the server): switching an office on / off never moves its card */
+const sortOffices = (rows: OfficeRow[]) => [...rows].sort((a, b) => a.name.localeCompare(b.name));
 
 /** callGate throws Errors whose message is meant for the person */
 const errorText = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);

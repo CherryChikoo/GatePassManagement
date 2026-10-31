@@ -1,55 +1,97 @@
 /**
- * "Inside now" for an entry register with In / Out (the Admission Book):
- * records from today and yesterday whose Out is not recorded yet (someone let
- * in late in the evening must not vanish at midnight). Built from the same list
- * pages the register shows (browser cache, entry-list-cache.ts), so opening it
- * right after the register usually sends no request.
+ * "Inside now" for an entry register with In / Out (the Admission Book): one
+ * page (20, newest first) of today's and yesterday's records whose Out is not
+ * recorded yet, and how many there are in all. The server picks the records
+ * (listInsideRegisterEntries); only the page shown is sent.
+ *
+ * Pages are kept in the browser (memory only), like the register lists
+ * (entry-list-cache.ts): the hub's "Inside now (n)" and the Inside now screen
+ * share page 1, so opening the screen after the buttons sends no request. A
+ * kept page is asked for again only when the register changed (live ping), or
+ * when it is old.
  */
-import { pendingActions, type EntryRegister } from "@/lib/registers/definitions";
-import { istDateString } from "@/lib/time/ist";
-import { fetchEntryList } from "./entry-list-cache";
-
-/** At most this many pages of today's records are read (25 each) */
-const MAX_PAGES = 8;
-/** Yesterday: only its latest records can still be inside */
-const YESTERDAY_PAGES = 2;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Came in and Out is still to be recorded */
-export function isStillInside(def: EntryRegister, current: Record<string, unknown>) {
-  return pendingActions(def, current).next?.direction === "OUT";
-}
+import type { EntryRegister } from "@/lib/registers/definitions";
+import { callGate } from "@/lib/gate-call";
+import { liveSince, onGatePing } from "@/lib/realtime/live";
 
 export type InsideEntries = {
   entries: any[];
+  /** Records still inside, on every page */
+  total: number;
+  /** The page returned (the last one when the page asked for is now past the end) */
+  page: number;
+  pageSize: number;
   canOverrideVisit: boolean;
-  /** Today had more records than were read (very busy day): the list may miss the earliest ones */
-  partial: boolean;
 };
 
-/** One day's pages (up to maxPages) */
-async function readDay(def: EntryRegister, date: string, maxPages: number, useCache: boolean) {
-  const base = { register: def.key, date, q: "", shift: "" };
-  const first = await fetchEntryList({ ...base, page: 1 }, useCache);
-  const pages = Math.min(Math.ceil(first.total / Math.max(1, first.pageSize)), maxPages);
-  const rest =
-    pages > 1
-      ? await Promise.all(Array.from({ length: pages - 1 }, (_, i) => fetchEntryList({ ...base, page: i + 2 }, useCache)))
-      : [];
-  return { lists: [first, ...rest], first, partial: first.total > pages * first.pageSize };
+type Hit = { data: InsideEntries; at: number };
+
+/** Loaded while live updates were on: trusted this long unless the register changes */
+const MAX_TRUSTED_AGE_MS = 5 * 60_000;
+/** Without live updates: asked for again when older than this */
+const MAX_UNTRUSTED_AGE_MS = 15_000;
+const MAX_KEYS = 20;
+
+const cache = new Map<string, Hit>();
+const inFlight = new Map<string, Promise<InsideEntries>>();
+/** When each register (or "*": any) was last reported changed */
+const changedAt = new Map<string, number>();
+
+const keyOf = (register: string, page: number) => `${register}|${page}`;
+
+function isFresh(register: string, hit: Hit) {
+  const changed = Math.max(changedAt.get(register) ?? 0, changedAt.get("*") ?? 0);
+  if (changed >= hit.at) return false;
+  const since = liveSince();
+  const age = Date.now() - hit.at;
+  return since !== null && hit.at >= since ? age < MAX_TRUSTED_AGE_MS : age < MAX_UNTRUSTED_AGE_MS;
 }
 
-/** useCache: a cached page that is still good is used without a request (see fetchEntryList). */
-export async function fetchInsideEntries(def: EntryRegister, useCache: boolean): Promise<InsideEntries> {
-  const now = new Date();
-  const [today, yesterday] = await Promise.all([
-    readDay(def, istDateString(now), MAX_PAGES, useCache),
-    readDay(def, istDateString(new Date(now.getTime() - DAY_MS)), YESTERDAY_PAGES, useCache),
-  ]);
-  // A record saved between two pages can show on both: once only
-  const seen = new Set<string>();
-  const entries = [...today.lists, ...yesterday.lists]
-    .flatMap((r) => r.entries)
-    .filter((e) => !seen.has(e.id) && (seen.add(e.id), isStillInside(def, e.current)));
-  return { entries, canOverrideVisit: !!today.first.canOverrideVisit, partial: today.partial };
+function keep(key: string, data: InsideEntries, at: number) {
+  if (cache.size >= MAX_KEYS && !cache.has(key)) cache.delete(cache.keys().next().value!);
+  cache.set(key, { data, at });
 }
+
+/**
+ * One page of the register's Inside now list. useCache: a kept page that is
+ * still good is returned without a request; false always asks the server.
+ */
+export function fetchInsideEntries(def: EntryRegister, useCache: boolean, page = 1): Promise<InsideEntries> {
+  const key = keyOf(def.key, page);
+  const hit = cache.get(key);
+  if (useCache && hit && isFresh(def.key, hit)) return Promise.resolve(hit.data);
+  const running = inFlight.get(key);
+  if (running) return running;
+
+  const startedAt = Date.now();
+  const req = callGate("listInsideRegisterEntries", [{ register: def.key, page }], 15_000)
+    .then((res) => {
+      if (!res || "error" in res) throw new Error((res && res.error) || "Could not load the register.");
+      const data: InsideEntries = {
+        entries: res.entries,
+        total: res.total,
+        page: res.page,
+        pageSize: res.pageSize,
+        canOverrideVisit: !!res.canOverrideVisit,
+      };
+      keep(key, data, startedAt);
+      // Asked past the end: the page returned is kept under its own number too
+      if (res.page !== page) keep(keyOf(def.key, res.page), data, startedAt);
+      return data;
+    })
+    .finally(() => inFlight.delete(key));
+  inFlight.set(key, req);
+  return req;
+}
+
+/** Forget a register's kept pages (it was just changed on this phone). */
+export function invalidateInsideEntries(register: string) {
+  for (const key of [...cache.keys()]) if (key.startsWith(`${register}|`)) cache.delete(key);
+}
+
+// Every register change on the gate channel, whichever screen is open
+onGatePing((changed) => {
+  const now = Date.now();
+  if (changed.includes("*")) return void changedAt.set("*", now);
+  for (const c of changed) if (c.startsWith("reg:")) changedAt.set(c.slice(4), now);
+});

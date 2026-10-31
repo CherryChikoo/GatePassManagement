@@ -24,7 +24,7 @@ import { displayValue } from "./localize";
 import { FactList, InOutCard, RecordHeader, type Fact, type MoveSide } from "./record-layout";
 import type { Translate } from "@/lib/i18n";
 import { RegisterToolbar, useRegisterFilters } from "./toolbar";
-import { fetchInsideEntries } from "./inside-entries";
+import { fetchInsideEntries, invalidateInsideEntries } from "./inside-entries";
 import { insideForLabel, useMinuteClock } from "@/components/visits/hub-tiles";
 
 type Supplement = {
@@ -87,14 +87,15 @@ export function EntryRegisterView({
   /** Security on registers they may edit (e.g. Cooli Book): edit, saved as a correction */
   canEdit?: boolean;
   /**
-   * "Inside now" (Admission Book buttons): only today's records still waiting
-   * for Out, with how long each has been inside; no date filter or pages.
+   * "Inside now" (Admission Book buttons): only today's and yesterday's records
+   * still waiting for Out, with how long each has been inside; no date filter,
+   * 20 per page.
    */
   insideOnly?: boolean;
 }) {
   const t = useT();
   const filters = useRegisterFilters();
-  const [data, setData] = useState<{ entries: Entry[]; total: number; pageSize: number; canOverrideVisit?: boolean; partial?: boolean } | null>(null);
+  const [data, setData] = useState<{ entries: Entry[]; total: number; pageSize: number; canOverrideVisit?: boolean } | null>(null);
   // "Inside 2 h 10 min" moves on once a minute (no requests)
   const now = useMinuteClock(insideOnly);
   const [error, setError] = useState<string | null>(null);
@@ -125,15 +126,21 @@ export function EntryRegisterView({
   const load = useCallback(async (fresh = false, silent = false) => {
     const no = ++loadNo.current;
     if (insideOnly) {
-      if (fresh) invalidateEntryLists(def.key);
+      if (fresh) {
+        invalidateEntryLists(def.key);
+        invalidateInsideEntries(def.key);
+      }
       if (!silent) {
         setLoading(true);
         setError(null);
       }
       try {
-        const res = await withTimeout(fetchInsideEntries(def, !fresh && !silent));
+        // One page (20) of the records still inside; the server picks them
+        const res = await withTimeout(fetchInsideEntries(def, !fresh && !silent, filters.page));
         if (no !== loadNo.current) return;
-        setData({ entries: res.entries, total: res.entries.length, pageSize: Math.max(1, res.entries.length), canOverrideVisit: res.canOverrideVisit, partial: res.partial });
+        setData({ entries: res.entries, total: res.total, pageSize: res.pageSize, canOverrideVisit: res.canOverrideVisit });
+        // The page's last records just went out: its last page was sent instead
+        if (res.page !== filters.page) filters.setPage(res.page);
         if (silent) setError(null);
         return res.entries as Entry[];
       } catch (err) {
@@ -528,10 +535,7 @@ export function EntryRegisterView({
         {!data && !error && <p className="px-4 py-12 text-center text-sm text-zinc-500">{t("Loading…")}</p>}
       </Card>
 
-      {insideOnly && data?.partial && (
-        <p className="px-1 text-xs text-zinc-500">{t("A very busy day: only the latest 200 records are checked. See Old records for the rest.")}</p>
-      )}
-      {data && !insideOnly && <PagerBar page={filters.page} pageSize={data.pageSize} total={data.total} onPageChange={filters.setPage} itemLabel={t("records")} />}
+      {data && <PagerBar page={filters.page} pageSize={data.pageSize} total={data.total} onPageChange={filters.setPage} itemLabel={t("records")} />}
 
       {/* Details */}
       <Modal open={!!selected && mode === null} onClose={() => setSelected(null)} title={def.title} className="max-w-2xl">

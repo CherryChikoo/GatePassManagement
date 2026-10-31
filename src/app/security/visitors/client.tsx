@@ -33,9 +33,9 @@ import {
   PencilLine,
 } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
-import { prefetchGateData, useGateData } from "@/lib/gate-cache";
+import { loadGateData, prefetchGateData, seedGateData, useGateData } from "@/lib/gate-cache";
 import { FactList, InOutCard } from "@/components/registers/record-layout";
-import { OUTSIDERS_QUERY } from "@/lib/gate-queries";
+import { OUTSIDERS_QUERY, outsidersQuery } from "@/lib/gate-queries";
 import { DateField } from "@/components/ui/date-field";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { istDateString } from "@/lib/time/ist";
@@ -83,12 +83,6 @@ const PHOTO_FAILED = "__failed__";
 
 export function OutsidersClient() {
   const t = useT();
-  // Visitors on campus + today's exits: shown at once from the last load, fetched
-  // again only when a visitor is registered / let out (live), at any gate
-  const outsiders = useGateData<any>(OUTSIDERS_QUERY.key, OUTSIDERS_QUERY.fetch, OUTSIDERS_QUERY.topics);
-  const inside: any[] = outsiders.data?.inside ?? [];
-  /** Head Security: may let a visitor out without the meeting code */
-  const canOverrideVisit = !!outsiders.data?.canOverrideVisit;
   // The 4 buttons (Show QR · Type it myself · Inside now · Old records); each opens its screen
   const { view, go, back } = useHubView(VIEWS);
   const formOpen = view === "new";
@@ -135,6 +129,38 @@ export function OutsidersClient() {
   useEffect(() => {
     setPage(1);
   }, [activeTab, searchQuery]);
+  // The search sent to the server (both lists): after a short pause in typing; cleared at once
+  const [listQuery, setListQuery] = useState("");
+  useEffect(() => {
+    const q = searchQuery.trim();
+    const timer = setTimeout(() => setListQuery(q), q ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // "Inside now (n)" on the buttons: the total sent with Inside now's first page
+  // (same cached copy, so that screen opens at once); fetched again only when a
+  // visitor is registered / let out (live), at any gate
+  const insideFirst = useGateData<any>(onHub ? OUTSIDERS_QUERY.key : null, OUTSIDERS_QUERY.fetch, OUTSIDERS_QUERY.topics);
+  // Inside now: one page (20, newest first) of the visitors on campus; each search / page is kept
+  const insideQuery = outsidersQuery(listQuery, page);
+  const insideList = useGateData<any>(view === "inside" ? insideQuery.key : null, insideQuery.fetch, insideQuery.topics);
+  const insidePage: { rows: any[]; total: number; pageSize: number; page: number } | null = insideList.data?.success
+    ? { rows: insideList.data.inside ?? [], total: insideList.data.total, pageSize: insideList.data.pageSize, page: insideList.data.page }
+    : null;
+  /** Head Security: may let a visitor out without the meeting code */
+  const canOverrideVisit = !!insideList.data?.canOverrideVisit;
+  // The page's last visitors left: the server sent the last page; show it under its own number
+  const servedPage = insidePage?.page;
+  useEffect(() => {
+    if (!servedPage || servedPage === page) return;
+    seedGateData(outsidersQuery(listQuery, servedPage).key, insideList.data, Date.now(), OUTSIDERS_QUERY.topics);
+    setPage(servedPage);
+  }, [servedPage, page, listQuery, insideList.data]);
+  /** After a visitor was let out here: the list on screen fetched again now */
+  const reloadLists = () => {
+    void insideList.reload();
+    void visitorsLog.reload();
+  };
   const [selectedOutsider, setSelectedOutsider] = useState<any>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   
@@ -400,8 +426,8 @@ export function OutsidersClient() {
       if (result.success) {
         setSuccess(t("Visitor registered successfully!")); setTimeout(() => setSuccess(null), 4000);
         clearVisitorForm();
-        // Back to the list, with the new visitor at the top (highlighted)
-        void outsiders.reload();
+        // Back to the list's first page, with the new visitor at the top (highlighted)
+        loadGateData(OUTSIDERS_QUERY.key, OUTSIDERS_QUERY.fetch, OUTSIDERS_QUERY.topics).catch(() => {});
         if (result.outsiderId) setHighlightId(String(result.outsiderId));
         setSearchQuery("");
         setPage(1);
@@ -437,7 +463,7 @@ export function OutsidersClient() {
       const res: any = await callGate("markOutsiderExited", [person.id], 20_000);
       if (res?.success) {
         setSuccess(t("Marked as exited")); setTimeout(() => setSuccess(null), 3000);
-        void outsiders.reload();
+        reloadLists();
       } else {
         setError(t(res?.error || "Failed to mark exited")); setTimeout(() => setError(null), 4000);
       }
@@ -449,19 +475,15 @@ export function OutsidersClient() {
   };
 
   
-  const ITEMS_PER_PAGE = 10;
+  /** Pager size until the first page arrives (the server sends its own page size) */
+  const ITEMS_PER_PAGE = 20;
 
   // Entry/Exit Log: pick a day (default today); every visitor who came that day
   const [logDate, setLogDate] = useState(() => istDateString());
-  const [logQuery, setLogQuery] = useState("");
-  useEffect(() => {
-    const timer = setTimeout(() => setLogQuery(searchQuery.trim()), 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
   // Only while the Log tab is open; each day / search / page is kept, so going back is instant
   const visitorsLog = useGateData<any>(
-    activeTab === "HISTORY" ? `visitors-log|${logDate}|${logQuery}|${page}` : null,
-    () => callGate("getVisitorsBook", [{ date: logDate, q: logQuery, page }], 15_000),
+    activeTab === "HISTORY" ? `visitors-log|${logDate}|${listQuery}|${page}` : null,
+    () => callGate("getVisitorsBook", [{ date: logDate, q: listQuery, page }], 15_000),
     ["visitors"]
   );
   const log: { rows: any[]; total: number; pageSize: number } | null = visitorsLog.data?.success
@@ -479,14 +501,8 @@ export function OutsidersClient() {
     : null;
   const logLoading = visitorsLog.loading || visitorsLog.refreshing;
 
-  const filteredInside = inside.filter(
-    (p) =>
-      p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.phone?.includes(searchQuery) ||
-      (p.vehicleNumber && p.vehicleNumber.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (p.purpose && p.purpose.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-  const paginatedInside = filteredInside.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+  // Inside now: this page only (the server searched and paged)
+  const paginatedInside: any[] = insidePage ? insidePage.rows : [];
 
   // Log tab: the chosen day only (nothing from another day while it loads)
   const paginatedHistory = log ? log.rows : [];
@@ -520,7 +536,7 @@ export function OutsidersClient() {
               </span>
               <h1 className="min-w-0 text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 break-words">{t("Visitors")}</h1>
               {/* The check-in QR, as a pop-up (like the registers list's QR button) */}
-              <HubQrButton label={`${t("Show QR")} — ${t("Visitors Book")}`} onClick={() => openView("qr")} />
+              <HubQrButton register="VISITORS" label={`${t("Show QR")} — ${t("Visitors Book")}`} onClick={() => openView("qr")} />
             </div>
           </div>
           <HubTiles
@@ -546,7 +562,7 @@ export function OutsidersClient() {
                 icon: MapPin,
                 title: t("Inside now"),
                 hint: t("Who is inside, and Mark exit"),
-                count: outsiders.data ? inside.length : null,
+                count: insideFirst.data?.success ? insideFirst.data.total : null,
                 onClick: () => openView("inside"),
               },
               {
@@ -576,9 +592,10 @@ export function OutsidersClient() {
             <h1 className="min-w-0 text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 break-words">
               {view === "new" ? t("New visitor") : view === "inside" ? t("Inside now") : t("Old records")}
             </h1>
-            {view === "inside" && outsiders.data && (
+            {/* Everyone inside (hidden while searching: the pager shows the matches) */}
+            {view === "inside" && insidePage && !listQuery && (
               <span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-orange-600 px-2 text-sm font-semibold tabular-nums text-white">
-                {inside.length}
+                {insidePage.total}
               </span>
             )}
           </div>
@@ -930,17 +947,17 @@ export function OutsidersClient() {
       {/* Inside now */}
       {view === "inside" && (
         <>
-          <LoadingPill active={outsiders.loading} />
+          <LoadingPill active={insideList.loading || insideList.refreshing} />
           <Card className="overflow-hidden">
-            {outsiders.error ? (
+            {insideList.error ? (
               <div role="alert" className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
                 <AlertCircle className="h-6 w-6 text-red-400" />
-                <p className="text-sm font-medium text-red-400">{t(outsiders.error)}</p>
-                <Button variant="outline" className="h-11" onClick={() => void outsiders.reload()}>
+                <p className="text-sm font-medium text-red-400">{t(insideList.error)}</p>
+                <Button variant="outline" className="h-11" onClick={() => void insideList.reload()}>
                   <RotateCcw className="h-4 w-4" /> {t("Try Again")}
                 </Button>
               </div>
-            ) : outsiders.loading ? (
+            ) : !insidePage ? (
               <div className="flex items-center justify-center gap-2 px-6 py-12 text-sm text-zinc-500">
                 <Loader2 className="h-4 w-4 animate-spin" /> {t("Loading…")}
               </div>
@@ -1057,7 +1074,13 @@ export function OutsidersClient() {
               </>
             )}
           </Card>
-          <PagerBar page={page} pageSize={ITEMS_PER_PAGE} total={filteredInside.length} onPageChange={setPage} itemLabel={t("visitors")} />
+          <PagerBar
+            page={page}
+            pageSize={insidePage ? insidePage.pageSize : ITEMS_PER_PAGE}
+            total={insidePage ? insidePage.total : 0}
+            onPageChange={setPage}
+            itemLabel={t("visitors")}
+          />
         </>
       )}
 
@@ -1302,7 +1325,7 @@ export function OutsidersClient() {
             }));
             if (res.success) {
               setSuccess(t("Marked as exited")); setTimeout(() => setSuccess(null), 3000);
-              void outsiders.reload();
+              reloadLists();
             }
             return res;
           }}

@@ -24,8 +24,7 @@ import {
 export function DirectorOversightClient() {
   const isReady = useStoreReady();
   const dashboardData = useAppStore((s) => s.data.dashboard);
-  const rawAllFaculty = useAppStore((s) => s.data.allFaculty);
-  const allFaculty = rawAllFaculty || [];
+  const facultyDeptCountsData = useAppStore((s) => s.data.facultyDeptCounts) as Record<string, number> | undefined;
   const rawAllHODs = useAppStore((s) => s.data.allHODs);
   const allHODs = rawAllHODs || [];
   const rawAllMovements = useAppStore((s) => s.data.allMovements);
@@ -48,12 +47,8 @@ export function DirectorOversightClient() {
     pendingFacultyPasses: 0,
   };
 
-  // Group faculty count by department
-  const deptFacultyCounts: Record<string, number> = {};
-  allFaculty.forEach((f: any) => {
-    const d = f.faculty?.department || "General";
-    deptFacultyCounts[d] = (deptFacultyCounts[d] || 0) + 1;
-  });
+  // Faculty per department (counted on the server; the directory itself is paged)
+  const deptFacultyCounts: Record<string, number> = facultyDeptCountsData ?? {};
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">

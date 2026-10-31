@@ -40,18 +40,13 @@ export function DeanDashboardClient({ user, title }: Props & { title?: string })
   const isReady = useStoreReady();
   const dashboardData = useAppStore((s) => s.data.dashboard);
   const requests = useAppStore((s) => s.data.requests);
-  const rawAllFaculty = useAppStore((s) => s.data.allFaculty);
-  const allFaculty = rawAllFaculty || [];
+  const facultyDeptCountsData = useAppStore((s) => s.data.facultyDeptCounts) as Record<string, number> | undefined;
   // Students per department (counted on the server; the list itself is paged)
   const studentDeptCountsData = useAppStore((s) => s.data.studentDeptCounts) as Record<string, number> | undefined;
   const rawStudentPasses = useAppStore((s) => s.data.recentStudentPasses) || dashboardData?.recentStudentPasses || [];
 
-  // Group faculty count by department
-  const deptFacultyCounts: Record<string, number> = {};
-  allFaculty.forEach((f: any) => {
-    const d = f.faculty?.department || "General";
-    deptFacultyCounts[d] = (deptFacultyCounts[d] || 0) + 1;
-  });
+  // Faculty per department (counted on the server; the directory itself is paged)
+  const deptFacultyCounts: Record<string, number> = facultyDeptCountsData ?? {};
 
   // Student count by department
   const deptStudentCounts: Record<string, number> = studentDeptCountsData ?? {};

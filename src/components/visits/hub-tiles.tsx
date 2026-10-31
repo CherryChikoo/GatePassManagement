@@ -14,6 +14,8 @@ import { useT } from "@/components/providers/language-provider";
 import { scrollPageToTop } from "@/lib/ui/scroll-top";
 import { cn } from "@/lib/utils";
 import type { Translate } from "@/lib/i18n";
+import type { CheckInRegister } from "./arrival-alert";
+import { loadQrLib, warmCheckInQr } from "./checkin-qr-cache";
 
 export type HubTile = {
   key: string;
@@ -37,13 +39,13 @@ export type HubTile = {
 export const HUB_PAGE_TOP = "scroll-mt-[calc(var(--bar-top,4.75rem)_+_1.25rem)]";
 
 /**
- * Big buttons, all with the same layout and top-aligned: on phones one per row
- * (icon on the left, title + count, the hint under it); from 480 px two per row
- * (icon on top). Buttons in a row are always the same height.
+ * Big buttons in a 2 × 2 grid at every width (phones too), all with the same
+ * layout and top-aligned: icon top-left, the title (+ count pill) under it, the
+ * hint under the title. Buttons in a row are always the same height.
  */
 export function HubTiles({ tiles }: { tiles: HubTile[] }) {
   return (
-    <div className="grid grid-cols-1 gap-2.5 min-[480px]:grid-cols-2 sm:gap-3 lg:gap-4">
+    <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:gap-4">
       {tiles.map((tile) => {
         const Icon = tile.icon;
         const hasCount = tile.count !== null && tile.count !== undefined;
@@ -53,8 +55,7 @@ export function HubTiles({ tiles }: { tiles: HubTile[] }) {
             type="button"
             onClick={tile.onClick}
             className={cn(
-              "flex h-full min-h-[84px] w-full items-start gap-3 rounded-3xl border p-3.5 text-left shadow-card transition-[background-color,transform,border-color] active:scale-[0.98]",
-              "min-[480px]:flex-col min-[480px]:gap-2.5 sm:p-5",
+              "flex h-full w-full min-w-0 flex-col items-start justify-start gap-2.5 rounded-3xl border p-4 text-left shadow-card transition-[background-color,transform,border-color] active:scale-[0.98] sm:p-5",
               tile.primary
                 ? "border-orange-600 bg-orange-600 text-white hover:bg-orange-700"
                 : "border-zinc-800 bg-zinc-900 text-zinc-100 hover:border-orange-500/40 hover:bg-zinc-950"
@@ -62,13 +63,13 @@ export function HubTiles({ tiles }: { tiles: HubTile[] }) {
           >
             <span
               className={cn(
-                "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl sm:h-14 sm:w-14",
+                "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl sm:h-12 sm:w-12",
                 tile.primary ? "bg-white/15 text-white" : "bg-orange-500/10 text-orange-500"
               )}
             >
-              <Icon className="h-6 w-6 sm:h-7 sm:w-7" aria-hidden="true" />
+              <Icon className="h-5 w-5 sm:h-6 sm:w-6" aria-hidden="true" />
             </span>
-            <span className="block min-w-0 flex-1 self-center min-[480px]:flex-none min-[480px]:self-stretch">
+            <span className="block w-full min-w-0">
               <span className="flex items-start gap-2">
                 <span className="min-w-0 text-base font-semibold leading-snug break-words sm:text-lg">{tile.title}</span>
                 {hasCount && (
@@ -91,11 +92,23 @@ export function HubTiles({ tiles }: { tiles: HubTile[] }) {
   );
 }
 
-/** The round QR button next to the page title (same as the registers list's): opens the check-in QR pop-up. */
-export function HubQrButton({ onClick, label }: { onClick: () => void; label: string }) {
+/**
+ * The round QR button next to the page title (same as the registers list's):
+ * opens the check-in QR pop-up. Touching it gets the QR ready while the tap
+ * completes (no request when one is already kept in this tab, see
+ * checkin-qr-cache.ts); the QR drawing code loads with the buttons (a file, no
+ * server call).
+ */
+export function HubQrButton({ onClick, label, register }: { onClick: () => void; label: string; register: CheckInRegister }) {
+  useEffect(() => {
+    void loadQrLib().catch(() => {});
+  }, []);
+  const warm = () => warmCheckInQr(register);
   return (
     <button
       type="button"
+      onPointerDown={warm}
+      onFocus={warm}
       onClick={onClick}
       aria-label={label}
       title={label}
@@ -138,6 +151,19 @@ export function useHubView<V extends string>(views: readonly V[]) {
   // The screen opened from the buttons on this page (so Back returns to them).
   // A link that opens another screen (the "Open now" banner) makes it stale.
   const pushed = useRef<string | null>(null);
+  // Opened from a link: the router scrolls the page under the floating top bar
+  // (back button and title hidden). Show it from the very top instead, once the
+  // router has finished its own scroll (two frames later).
+  useEffect(() => {
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => scrollPageToTop());
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, []);
   useEffect(() => {
     const onPop = () => {
       pushed.current = null;

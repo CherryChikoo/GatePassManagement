@@ -38,10 +38,10 @@ async function nameTaken(name: string, exceptId?: string) {
   return !!o;
 }
 
-/** Every office, active first, A-Z. */
+/** Every office, A-Z (a card keeps its place when switched on / off). */
 export async function listOffices(): Promise<OfficeRow[]> {
   await requireRole("ADMIN");
-  const rows = await prisma.office.findMany({ select: SELECT, orderBy: [{ active: "desc" }, { name: "asc" }], take: 500 });
+  const rows = await prisma.office.findMany({ select: SELECT, orderBy: { name: "asc" }, take: 500 });
   return rows.map(toRow);
 }
 

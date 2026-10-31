@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
+import type { Prisma } from "@prisma/client";
 import { notifyLive, notifyPassHolder } from "@/lib/realtime/notify";
 import { requireRole, getAuthUser, type AuthUser } from "@/lib/auth/helpers";
 import { isVisitExitQr, verifyScannedQr } from "@/lib/qr/token";
@@ -734,53 +735,90 @@ export async function getSecurityDashboard() {
   return result;
 }
 
-/** Most rows per list on the Gate Log screen (a whole day stays far below this) */
-const LOG_DAY_LIMIT = 1500;
+/** Rows per page on the Gate Log screen */
+const LOG_PAGE_SIZE = 20;
 
-export async function getSecurityLogData(dateStr?: string) {
+type LogTab = "ENTRIES" | "EXITS" | "OUTSIDERS";
+
+/**
+ * Gate Log (Security): one IST day, one page at a time (search runs in the database).
+ *
+ * - Without `opts` (the screen as it opens, and the Security warm-up): the first
+ *   page of each list (entries, exits, visitor visits) and the day's counts.
+ * - With `opts.tab`: that list only, the asked-for page, filtered by `opts.q`,
+ *   with `total` = how many rows match (for the pager).
+ *
+ * `counts` are always the whole day's (the tab badges). Before, every row of
+ * the day (up to 1,500 per list) was sent each time the log opened.
+ */
+export async function getSecurityLogData(dateStr?: string, opts?: { tab?: string; q?: string; page?: number }) {
   await requireRole("SECURITY", "ADMIN");
 
   const { start: targetDate, end: endOfDay, dateStr: selectedDate } = istDayRangeFromParam(dateStr);
+  const tab: LogTab | null = opts?.tab === "ENTRIES" || opts?.tab === "EXITS" || opts?.tab === "OUTSIDERS" ? opts.tab : null;
+  const q = tab && typeof opts?.q === "string" ? opts.q.trim().slice(0, 100) : "";
+  const page = tab ? Math.max(1, Math.floor(Number(opts?.page) || 1)) : 1;
+  const skip = (page - 1) * LOG_PAGE_SIZE;
 
-  const [studentEntries, studentExits, outsiderVisits] = await Promise.all([
-    prisma.movement.findMany({
-      where: { type: "ENTRY", createdAt: { gte: targetDate, lt: endOfDay } },
-      orderBy: { createdAt: "desc" },
-      take: LOG_DAY_LIMIT,
-      select: {
-        id: true, type: true, createdAt: true, notes: true,
-        student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
-        faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } } },
-        gate: { select: { name: true } },
-        permission: { select: { purpose: true, destination: true } },
-      },
-    }),
-    prisma.movement.findMany({
-      where: { type: "EXIT", createdAt: { gte: targetDate, lt: endOfDay } },
-      orderBy: { createdAt: "desc" },
-      take: LOG_DAY_LIMIT,
-      select: {
-        id: true, type: true, createdAt: true, notes: true,
-        student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
-        faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } } },
-        gate: { select: { name: true } },
-        permission: { select: { purpose: true, destination: true } },
-      },
-    }),
-    prisma.outsider.findMany({
-      where: { entryTime: { gte: targetDate, lt: endOfDay } },
-      orderBy: { entryTime: "desc" },
-      take: LOG_DAY_LIMIT,
-    }),
+  const contains = { contains: q, mode: "insensitive" as const };
+  const movementWhere = (type: "ENTRY" | "EXIT", search: boolean): Prisma.MovementWhereInput => ({
+    type,
+    createdAt: { gte: targetDate, lt: endOfDay },
+    ...(search && q
+      ? {
+          OR: [
+            { student: { profile: { name: contains } } },
+            { student: { studentRoll: contains } },
+            { faculty: { profile: { name: contains } } },
+            { faculty: { employeeId: contains } },
+          ],
+        }
+      : {}),
+  });
+  const outsiderWhere = (search: boolean): Prisma.OutsiderWhereInput => ({
+    entryTime: { gte: targetDate, lt: endOfDay },
+    ...(search && q ? { OR: [{ name: contains }, { phone: { contains: q } }, { vehicleNumber: contains }] } : {}),
+  });
+  const movementSelect = {
+    id: true, type: true, createdAt: true, notes: true,
+    student: { select: { studentRoll: true, profile: { select: { name: true, phone: true } } } },
+    faculty: { select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } } },
+    gate: { select: { name: true } },
+    permission: { select: { purpose: true, destination: true } },
+  } satisfies Prisma.MovementSelect;
+  const want = (t: LogTab) => !tab || tab === t;
+  const listMovements = (type: "ENTRY" | "EXIT") =>
+    prisma.movement.findMany({ where: movementWhere(type, true), orderBy: { createdAt: "desc" }, skip, take: LOG_PAGE_SIZE, select: movementSelect });
+
+  const [studentEntries, studentExits, outsiderVisits, entries, exits, visits, matching] = await Promise.all([
+    want("ENTRIES") ? listMovements("ENTRY") : null,
+    want("EXITS") ? listMovements("EXIT") : null,
+    want("OUTSIDERS")
+      ? prisma.outsider.findMany({ where: outsiderWhere(true), orderBy: { entryTime: "desc" }, skip, take: LOG_PAGE_SIZE })
+      : null,
+    prisma.movement.count({ where: movementWhere("ENTRY", false) }),
+    prisma.movement.count({ where: movementWhere("EXIT", false) }),
+    prisma.outsider.count({ where: outsiderWhere(false) }),
+    // Rows matching the search in the chosen list (without a search: the day's count)
+    tab && q
+      ? tab === "OUTSIDERS"
+        ? prisma.outsider.count({ where: outsiderWhere(true) })
+        : prisma.movement.count({ where: movementWhere(tab === "ENTRIES" ? "ENTRY" : "EXIT", true) })
+      : null,
   ]);
 
-  const result = { 
-    studentEntries, 
-    studentExits, 
-    outsiderVisits, 
+  const dayTotal = tab === "ENTRIES" ? entries : tab === "EXITS" ? exits : visits;
+  const result = {
+    studentEntries: studentEntries ?? [],
+    studentExits: studentExits ?? [],
+    outsiderVisits: outsiderVisits ?? [],
+    counts: { entries, exits, visits },
+    total: tab ? matching ?? dayTotal : null,
+    page,
+    pageSize: LOG_PAGE_SIZE,
     selectedDate,
   };
-  
+
   fillMovementPeople(result);
   return result;
 }

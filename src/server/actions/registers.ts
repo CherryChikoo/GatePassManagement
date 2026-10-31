@@ -49,6 +49,7 @@ import { canOverrideVisitExit, checkVisitExit, closeVisitPass, newVisitCode, not
 import {
   REGISTER_PAGE_SIZE,
   REGISTER_VIEW_ROLES,
+  queryInsideRegisterEntries,
   queryRegisterEntries,
   registerDayFilter,
   type RegisterListParams,
@@ -301,6 +302,12 @@ export async function completeRegisterEntry(entryId: string, payload: Completion
 export async function listRegisterEntries(params: RegisterListParams) {
   const user = await requireRole(...REGISTER_VIEW_ROLES);
   return queryRegisterEntries(user, params);
+}
+
+/** "Inside now" (Admission Book): one page of today's and yesterday's records still waiting for Out */
+export async function listInsideRegisterEntries(params: { register: string; page?: number }) {
+  const user = await requireRole(...REGISTER_VIEW_ROLES);
+  return queryInsideRegisterEntries(user, params);
 }
 
 // ──────────────────────────────────────────────────────────────

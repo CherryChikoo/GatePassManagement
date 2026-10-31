@@ -6,12 +6,15 @@
  */
 import { callGate } from "@/lib/gate-call";
 
-/** Visitors on campus + today's exits (Visitors screen) */
-export const OUTSIDERS_QUERY = {
-  key: "outsiders",
-  fetch: () => callGate("getOutsiders", [], 15_000),
+/** Visitors → Inside now: one page (20) of the visitors on campus, with a search and the total */
+export const outsidersQuery = (q: string, page: number) => ({
+  key: `outsiders|${q}|${page}`,
+  fetch: () => callGate("getOutsiders", [{ q, page }], 15_000),
   topics: ["visitors"],
-};
+});
+
+/** Its first page, no search (the hub's "Inside now" count is this page's total) */
+export const OUTSIDERS_QUERY = outsidersQuery("", 1);
 
 /** Today's entry count per register (Registers home) */
 export const REGISTER_COUNTS_QUERY = {

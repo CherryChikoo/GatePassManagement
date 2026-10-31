@@ -19,7 +19,6 @@ import {
   HardHat,
   House,
   KeyRound,
-  Loader2,
   NotebookPen,
   Package,
   PackageOpen,
@@ -47,6 +46,8 @@ import dynamic from "next/dynamic";
 import { Modal } from "@/components/ui/primitives";
 import { QuickEntryModal } from "./quick-entry";
 import type { CheckInRegister } from "@/components/visits/arrival-alert";
+import { warmCheckInQr } from "@/components/visits/checkin-qr-cache";
+import { CheckInQrFrame, CheckInQrPlaceholder } from "@/components/visits/checkin-qr-frame";
 import { AttendanceSheetView } from "./attendance-sheet";
 import { localizeRegister } from "./localize";
 import { FacultyBookView,
@@ -95,16 +96,23 @@ const REGISTER_ICON: Record<RegisterKey, LucideIcon> = {
 
 
 /** Show QR (QR code library + visitor review): loaded only when a QR button is
- *  touched, so the registers list itself stays light */
+ *  touched, so the registers list itself stays light. Meanwhile the pop-up shows
+ *  the QR's own frame with a QR-shaped placeholder (nothing moves when it loads). */
 const loadCheckInQrScreen = () => import("@/components/visits/checkin-qr-screen");
 const CheckInQrScreen = dynamic(() => loadCheckInQrScreen().then((m) => m.CheckInQrScreen), {
   ssr: false,
   loading: () => (
-    <div className="flex aspect-square w-full items-center justify-center text-zinc-500">
-      <Loader2 className="h-8 w-8 animate-spin" aria-hidden="true" />
-    </div>
+    <CheckInQrFrame inModal>
+      <CheckInQrPlaceholder />
+    </CheckInQrFrame>
   ),
 });
+
+/** A QR button was touched: its code, the QR (only if none is kept) and the drawing code start loading */
+function warmQr(register: CheckInRegister) {
+  void loadCheckInQrScreen().catch(() => {});
+  warmCheckInQr(register);
+}
 
 /** The register last opened from the list: coming back shows the list at that register */
 const LAST_OPENED_KEY = "gatepass:last-register";
@@ -273,9 +281,10 @@ export function RegistersHub({
               {checkInQr ? (
                 <button
                   type="button"
-                  // The QR screen's code starts loading while the tap completes
-                  onPointerDown={() => void loadCheckInQrScreen()}
-                  onFocus={() => void loadCheckInQrScreen()}
+                  // The QR screen's code and the QR start loading while the tap completes
+                  // (no request when a usable QR is already kept in this tab)
+                  onPointerDown={() => warmQr(r.key as CheckInRegister)}
+                  onFocus={() => warmQr(r.key as CheckInRegister)}
                   onClick={() => setQrKey(r.key as CheckInRegister)}
                   aria-label={`${t("Show QR")} — ${r.key === "VISITORS" ? t("Visitors Book") : t(r.title)}`}
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)] hover:bg-orange-700 active:scale-95 transition-[background-color,transform]"

@@ -8,7 +8,8 @@ import { invalidateSecurityCache } from "./security";
 import { invalidateAdminCaches } from "./admin";
 import { outsiderSchema } from "@/lib/validation/schemas";
 import { isSafeStoragePath } from "@/lib/storage/storage-admin";
-import { istStartOfDay } from "@/lib/time/ist";
+import type { Prisma } from "@prisma/client";
+import { parsePageParam } from "@/lib/time/ist";
 import { canOverrideVisitExit, checkVisitExit, closeVisitPass, newVisitCode, notifyHost, resolveHost } from "@/lib/visits/passes";
 
 /** What Security sees about a visitor's meeting (never the code itself) */
@@ -157,33 +158,64 @@ export async function markOutsiderExited(id: string, opts?: { code?: string; ove
   return { success: true };
 }
 
-export async function getOutsiders() {
+/** Visitors per page on the Inside now screen (not exported: a "use server" file exports only actions) */
+const INSIDE_PAGE_SIZE = 20;
+
+/** What the Inside now list and its details pop-up show of a visitor */
+const INSIDE_SELECT = {
+  id: true, name: true, phone: true, category: true, purpose: true, visitingStudent: true, gate: true,
+  vehicleNumber: true, photoUrl: true, status: true, entryTime: true, exitTime: true, address: true,
+  department: true, remarks: true, recordedByName: true, visitPass: MEETING_SELECT,
+} satisfies Prisma.OutsiderSelect;
+
+/**
+ * Visitors still on campus (including ones who arrived on earlier days), one
+ * page at a time, newest first; `q` searches name, phone, vehicle and purpose.
+ * `total` is how many match on every page (the hub's "Inside now" count is
+ * page 1's total).
+ */
+export async function getOutsiders(params?: { q?: string; page?: number }) {
   const user = await requireRole("SECURITY", "ADMIN");
+  const requested = parsePageParam(String(params?.page ?? 1));
+  const q = typeof params?.q === "string" ? params.q.trim().slice(0, 100) : "";
 
   try {
-    // Who may let a visitor out without the meeting code: per guard, so not in the shared cache
-    const canOverrideVisit = await canOverrideVisitExit(user);
+    const where: Prisma.OutsiderWhereInput = {
+      status: "INSIDE",
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: "insensitive" } },
+              { phone: { contains: q } },
+              { vehicleNumber: { contains: q, mode: "insensitive" } },
+              { purpose: { contains: q, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    };
+    const findPage = (page: number) =>
+      prisma.outsider.findMany({ where, orderBy: { entryTime: "desc" }, skip: (page - 1) * INSIDE_PAGE_SIZE, take: INSIDE_PAGE_SIZE, select: INSIDE_SELECT });
 
-    const today = istStartOfDay();
+    let page = requested;
+    let inside: Awaited<ReturnType<typeof findPage>>;
+    let total: number;
+    // Who may let a visitor out without the meeting code: per guard
+    let canOverrideVisit: boolean;
+    if (page === 1) {
+      // Usually everyone fits on the first page: then no count query
+      [inside, canOverrideVisit] = await Promise.all([findPage(1), canOverrideVisitExit(user)]);
+      total = inside.length < INSIDE_PAGE_SIZE ? inside.length : await prisma.outsider.count({ where });
+    } else {
+      [inside, total, canOverrideVisit] = await Promise.all([findPage(page), prisma.outsider.count({ where }), canOverrideVisitExit(user)]);
+      // The page's last visitors just left: the last page instead
+      const last = Math.max(1, Math.ceil(total / INSIDE_PAGE_SIZE));
+      if (page > last) {
+        page = last;
+        inside = await findPage(page);
+      }
+    }
 
-    const [inside, history] = await Promise.all([
-      // Everyone still on campus, including visitors who arrived on earlier days
-      prisma.outsider.findMany({
-        where: { status: "INSIDE" },
-        orderBy: { entryTime: "desc" },
-        take: 500,
-        include: { visitPass: MEETING_SELECT },
-      }),
-      prisma.outsider.findMany({
-        where: { status: "EXITED", exitTime: { gte: today } },
-        orderBy: { exitTime: "desc" },
-        take: 500,
-        include: { visitPass: MEETING_SELECT },
-      }),
-    ]);
-
-    const result = { success: true, inside, history };
-    return { ...result, canOverrideVisit };
+    return { success: true, page, pageSize: INSIDE_PAGE_SIZE, total, inside, canOverrideVisit };
   } catch (error: any) {
     console.error("Failed to fetch outsiders:", error?.message);
     return { success: false, error: "Failed to fetch outsiders." };

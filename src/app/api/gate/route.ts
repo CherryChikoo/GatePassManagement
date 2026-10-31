@@ -10,6 +10,7 @@ import {
   getRegisterStaffOptions,
   getRegisterPeopleOptions,
   getRegisterCountsToday,
+  listInsideRegisterEntries,
   getFacultyBook,
   getStudentBook,
   getVisitorsBook,
@@ -27,7 +28,7 @@ import { uploadOutsiderPhoto, uploadRegisterPhoto, getRegisterPhotoUrl, getExitP
 import { getVisitHostOptions, listMyVisits } from "@/server/actions/visits";
 import { generateLiveQrToken } from "@/server/actions/permissions";
 import { getUsers, getActivityData } from "@/server/actions/admin";
-import { getCampusActivity, getExecutiveStudents } from "@/server/actions/executive";
+import { getCampusActivity, getExecutiveFaculty, getExecutiveStudents, getSupervisorRequests } from "@/server/actions/executive";
 import { getHodActivity } from "@/server/actions/hod-activity";
 import { confirmHostelArrival, getHostelPassesToday, verifyHostelPass } from "@/server/actions/warden-scan";
 import { listCustomRegisters } from "@/server/actions/custom-registers";
@@ -83,6 +84,7 @@ const GATE_FUNCTIONS = {
   getVisitHostOptions,
   // Screen data (read only)
   getOutsiders,
+  listInsideRegisterEntries,
   getSecurityLogData,
   getFacultyBook,
   getStudentBook,
@@ -104,6 +106,8 @@ const GATE_FUNCTIONS = {
   listMyVisits,
   // Director / Dean / Supervisor student directory (one page at a time)
   getExecutiveStudents,
+  getExecutiveFaculty,
+  getSupervisorRequests,
   // Director / Dean / Supervisor activity (one day)
   getCampusActivity,
   getHodActivity,

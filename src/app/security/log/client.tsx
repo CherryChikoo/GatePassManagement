@@ -14,34 +14,68 @@ import { GoBackButton } from "@/components/ui/go-back-button";
 import { Input } from "@/components/ui/input";
 import { useGateData } from "@/lib/gate-cache";
 import { gateLogQuery } from "@/lib/gate-queries";
+import { callGate } from "@/lib/gate-call";
+import { useDebounced } from "@/hooks/use-paged-list";
 import { istDateString } from "@/lib/time/ist";
 import { Modal } from "@/components/ui/primitives";
 import { dt, IconAction, PersonCell, RowActions } from "@/components/ui/data-table";
 import { PagerBar } from "@/components/ui/pager-bar";
 import { cn } from "@/lib/utils";
 
+type LogTab = "ENTRIES" | "EXITS" | "OUTSIDERS";
+
 export function SecurityLogClient({ initialDate }: { initialDate?: string }) {
   const t = useT();
-  // The chosen day's log from the gate cache: shown at once when seen before,
-  // fetched again only after a gate scan / visitor change (live)
   const [selectedDate, setSelectedDate] = useState(() => initialDate || istDateString());
-  const logQuery = gateLogQuery(selectedDate);
-  const day = useGateData<any>(logQuery.key, logQuery.fetch, logQuery.topics);
-  const studentEntries: any[] = day.data?.studentEntries ?? [];
-  const studentExits: any[] = day.data?.studentExits ?? [];
-  const outsiderVisits: any[] = day.data?.outsiderVisits ?? [];
-  const navigating = day.loading || day.refreshing;
-  const [activeTab, setActiveTab] = useState<"ENTRIES" | "EXITS" | "OUTSIDERS">("ENTRIES");
+  const [activeTab, setActiveTab] = useState<LogTab>("ENTRIES");
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     setPage(1);
-  }, [activeTab, searchQuery]);
+  }, [activeTab, searchQuery, selectedDate]);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
 
-
-  const ITEMS_PER_PAGE = 10;
+  // The log is paged on the server. As it opens: the day's counts and the first
+  // page of each list (the same request the Security warm-up already made).
+  // Another page, or a search: that list's page only. A page seen before shows
+  // at once; both refresh after a gate scan / visitor change (live).
+  const logQuery = gateLogQuery(selectedDate);
+  const day = useGateData<any>(logQuery.key, logQuery.fetch, logQuery.topics);
+  const q = useDebounced(searchQuery);
+  const paged = page > 1 || q !== "";
+  const pageQuery = { tab: activeTab, q, page };
+  const pageData = useGateData<any>(
+    paged ? `gate-log|${selectedDate}|${activeTab}|${q}|${page}` : null,
+    () => callGate("getSecurityLogData", [selectedDate, pageQuery], 15_000),
+    logQuery.topics
+  );
+  const current = paged ? pageData.data : day.data;
+  // The page on screen stays (dimmed) while the next page of the same list loads
+  const [shown, setShown] = useState<{ tab: LogTab; date: string; data: any } | null>(null);
+  useEffect(() => {
+    if (current) setShown({ tab: activeTab, date: selectedDate, data: current });
+  }, [current, activeTab, selectedDate]);
+  const visible = current ?? (shown && shown.tab === activeTab && shown.date === selectedDate ? shown.data : null);
+  const counts = (pageData.data ?? day.data)?.counts ?? { entries: 0, exits: 0, visits: 0 };
+  const listOf = (d: any): any[] =>
+    (activeTab === "ENTRIES" ? d?.studentEntries : activeTab === "EXITS" ? d?.studentExits : d?.outsiderVisits) ?? [];
+  const rows = listOf(visible);
+  // A list page (another page / a search) carries its own total; the opening view uses the day counts
+  const total: number = !visible
+    ? 0
+    : typeof visible.total === "number"
+    ? visible.total
+    : activeTab === "ENTRIES"
+    ? counts.entries
+    : activeTab === "EXITS"
+    ? counts.exits
+    : counts.visits;
+  const ITEMS_PER_PAGE: number = visible?.pageSize ?? 20;
+  const navigating = day.loading || day.refreshing || pageData.loading || pageData.refreshing;
+  const listError = paged ? (visible ? null : pageData.error) : day.error;
+  const listLoading = !visible && (paged ? pageData.loading : day.loading);
+  const reloadList = () => void (paged ? pageData.reload() : day.reload());
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newDate = e.target.value;
@@ -59,13 +93,7 @@ export function SecurityLogClient({ initialDate }: { initialDate?: string }) {
     </div>
   );
 
-  const renderMovementList = (movements: any[], type: "ENTRY" | "EXIT") => {
-    const filtered = movements.filter(m =>
-      m.student?.profile?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.student?.studentRoll?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+  const renderMovementList = (paginated: any[], type: "ENTRY" | "EXIT") => {
     const DirIcon = type === "EXIT" ? DoorOpen : DoorClosed;
     const dirTone = type === "EXIT" ? "bg-sky-500/10 text-sky-400" : "bg-emerald-500/10 text-emerald-400";
     const facultyBadge = (
@@ -78,7 +106,7 @@ export function SecurityLogClient({ initialDate }: { initialDate?: string }) {
 
     return (
       <>
-        {filtered.length === 0 ? (
+        {total === 0 ? (
           emptyState(
             <DirIcon className="h-5 w-5" />,
             type === "EXIT" ? t("No exits found for this date.") : t("No entries found for this date.")
@@ -172,25 +200,18 @@ export function SecurityLogClient({ initialDate }: { initialDate?: string }) {
             </div>
           </>
         )}
-        <PagerBar page={page} pageSize={ITEMS_PER_PAGE} total={filtered.length} onPageChange={setPage} itemLabel={t("records")} />
+        <PagerBar page={page} pageSize={ITEMS_PER_PAGE} total={total} onPageChange={setPage} itemLabel={t("records")} />
       </>
     );
   };
 
-  const renderOutsidersList = () => {
-    const filtered = outsiderVisits.filter(o =>
-      o.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.phone.includes(searchQuery) ||
-      o.vehicleNumber?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+  const renderOutsidersList = (paginated: any[]) => {
     const purposeLine = (outsider: any) =>
       `${outsider.purpose} ${outsider.visitingStudent ? `(${t("Visiting")}: ${outsider.visitingStudent})` : ""}`.trim();
 
     return (
       <>
-        {filtered.length === 0 ? (
+        {total === 0 ? (
           emptyState(<Users className="h-5 w-5" />, t("No visitor visits found for this date."))
         ) : (
           <>
@@ -294,15 +315,15 @@ export function SecurityLogClient({ initialDate }: { initialDate?: string }) {
             </div>
           </>
         )}
-        <PagerBar page={page} pageSize={ITEMS_PER_PAGE} total={filtered.length} onPageChange={setPage} itemLabel={t("records")} />
+        <PagerBar page={page} pageSize={ITEMS_PER_PAGE} total={total} onPageChange={setPage} itemLabel={t("records")} />
       </>
     );
   };
 
   const tabs = [
-    { key: "ENTRIES" as const, label: t("Entries"), count: studentEntries.length, icon: <DoorClosed className="h-4 w-4" /> },
-    { key: "EXITS" as const, label: t("Exits"), count: studentExits.length, icon: <DoorOpen className="h-4 w-4" /> },
-    { key: "OUTSIDERS" as const, label: t("Visitor Visits"), count: outsiderVisits.length, icon: <Users className="h-4 w-4" /> },
+    { key: "ENTRIES" as const, label: t("Entries"), count: counts.entries, icon: <DoorClosed className="h-4 w-4" /> },
+    { key: "EXITS" as const, label: t("Exits"), count: counts.exits, icon: <DoorOpen className="h-4 w-4" /> },
+    { key: "OUTSIDERS" as const, label: t("Visitor Visits"), count: counts.visits, icon: <Users className="h-4 w-4" /> },
   ];
 
   return (
@@ -313,7 +334,7 @@ export function SecurityLogClient({ initialDate }: { initialDate?: string }) {
           <GoBackButton className="mb-3" />
           <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">{t("Entries & Exits")}</h1>
           <p className="text-sm text-zinc-500 mt-1">
-            {t("{entries} entries, {exits} exits, {visits} visitor visits", { entries: studentEntries.length, exits: studentExits.length, visits: outsiderVisits.length })}
+            {t("{entries} entries, {exits} exits, {visits} visitor visits", { entries: counts.entries, exits: counts.exits, visits: counts.visits })}
           </p>
         </div>
 
@@ -371,25 +392,25 @@ export function SecurityLogClient({ initialDate }: { initialDate?: string }) {
         })}
       </div>
 
-      <Card className="overflow-hidden">
-        {day.error ? (
+      <Card className={cn("overflow-hidden transition-opacity", visible && navigating && "opacity-60")}>
+        {listError ? (
           <div role="alert" className="flex flex-col items-center gap-3 px-4 py-14 text-center">
-            <p className="text-sm font-medium text-red-400">{t(day.error)}</p>
+            <p className="text-sm font-medium text-red-400">{t(listError)}</p>
             <button
               type="button"
-              onClick={() => void day.reload()}
+              onClick={reloadList}
               className="h-11 rounded-full border border-zinc-800 bg-zinc-900 px-5 text-sm font-medium text-zinc-200 hover:bg-zinc-950"
             >
               {t("Try Again")}
             </button>
           </div>
-        ) : day.loading ? (
+        ) : listLoading || !visible ? (
           <p className="px-4 py-14 text-center text-sm text-zinc-500">{t("Loading…")}</p>
         ) : (
           <>
-            {activeTab === "ENTRIES" && renderMovementList(studentEntries, "ENTRY")}
-            {activeTab === "EXITS" && renderMovementList(studentExits, "EXIT")}
-            {activeTab === "OUTSIDERS" && renderOutsidersList()}
+            {activeTab === "ENTRIES" && renderMovementList(rows, "ENTRY")}
+            {activeTab === "EXITS" && renderMovementList(rows, "EXIT")}
+            {activeTab === "OUTSIDERS" && renderOutsidersList(rows)}
           </>
         )}
       </Card>

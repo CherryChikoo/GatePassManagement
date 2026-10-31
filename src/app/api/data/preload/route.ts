@@ -11,6 +11,7 @@ import { getAdminMonitorCounts } from "@/lib/dashboard/admin-monitor";
 import { canScanReturn, OPEN_TRIP_WHERE } from "@/lib/passes/return-scan";
 import { closeAllSupersededTrips } from "@/lib/passes/close-trips";
 import { passSig } from "@/lib/passes/pass-sig";
+import { SUPERVISOR_REQUEST_SELECT, supervisorRequestsScope } from "@/lib/passes/supervisor-requests";
 
 /**
  * Unified preload endpoint — returns ALL data the logged-in user needs
@@ -51,10 +52,10 @@ export async function GET(req: Request) {
       STUDENT: () => preloadStudent(user.profileId),
       SECURITY: () => preloadSecurity(),
       FACULTY_ADMIN: () => preloadFacultyAdmin(user.profileId, light),
-      ADMIN: () => preloadAdmin(light),
+      ADMIN: () => preloadAdmin(),
       DIRECTOR: () => preloadDirector(user.profileId, light),
       DEAN: () => preloadDean(user.profileId, light),
-      SECURITY_SUPERVISOR: () => preloadSupervisor(light),
+      SECURITY_SUPERVISOR: () => preloadSupervisor(),
     };
     const loader = loaders[user.role];
     if (!loader) {
@@ -126,10 +127,8 @@ async function preloadFacultyAdmin(profileId: string, light = false) {
     facultyPending,
     studentPending,
     allRequests,
-    studentsData,
     departmentFaculty,
     wardens,
-    allMovements,
   ] = await Promise.all([
     prisma.student.count({
       where: {
@@ -207,27 +206,8 @@ async function preloadFacultyAdmin(profileId: string, light = false) {
         qr: { select: { usedForExit: true, usedForEntry: true, expiresAt: true } },
       },
     }),
-    // Department students (no department configured → none)
-    light ? undefined : prisma.student.findMany({
-      where: {
-        OR: [
-          { facultyId: faculty.id },
-          ...deptCondition,
-        ],
-      },
-      orderBy: { studentRoll: "asc" },
-      include: {
-        profile: {
-          select: { id: true, name: true, email: true, phone: true, active: true },
-        },
-        faculty: {
-          select: { id: true, profile: { select: { name: true } } },
-        },
-        warden: {
-          select: { id: true, profile: { select: { name: true } } },
-        },
-      },
-    }),
+    // Department students are not sent here: the Students screen loads one page
+    // at a time (getExecutiveStudents) — a department can have 1,000+ students.
     // Department faculty members
     light ? undefined : prisma.profile.findMany({
       where: {
@@ -252,31 +232,6 @@ async function preloadFacultyAdmin(profileId: string, light = false) {
       select: { id: true, hostelBlock: true, profile: { select: { name: true } } },
       orderBy: { profile: { name: "asc" } },
     }),
-    // Department movements (students + faculty)
-    prisma.movement.findMany({
-      where: {
-        OR: [...studentDeptCondition, ...facultyDeptCondition],
-      },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-      include: {
-        student: {
-          select: {
-            studentRoll: true,
-            department: true,
-            profile: { select: { name: true } },
-          },
-        },
-        faculty: {
-          select: {
-            department: true,
-            designation: true,
-            profile: { select: { name: true } },
-          },
-        },
-        gate: { select: { name: true } },
-      },
-    }),
   ]);
 
   const recentActivity = allRequests.slice(0, 10);
@@ -295,12 +250,9 @@ async function preloadFacultyAdmin(profileId: string, light = false) {
       },
       recentActivity,
     },
-    requests: allRequests,
+    // Sent once (the screens read allRequests; "requests" was the same list again)
     allRequests,
-    students: studentsData,
     allUsers: departmentFaculty,
-    faculty: departmentFaculty,
-    allMovements,
     wardens,
   };
 }
@@ -326,7 +278,6 @@ async function preloadFaculty(profileId: string, light = false) {
     exitsToday,
     entriesToday,
     recentApprovals,
-    studentsData,
     wardens,
     myPasses,
   ] = await Promise.all([
@@ -379,22 +330,7 @@ async function preloadFaculty(profileId: string, light = false) {
         qr: { select: { usedForExit: true, usedForEntry: true, expiresAt: true } },
       },
     }),
-    // Students list: only the students assigned to this faculty member
-    light ? undefined : prisma.student.findMany({
-      where: { facultyId: faculty.id },
-      orderBy: { studentRoll: "asc" },
-      include: {
-        profile: {
-          select: { id: true, name: true, email: true, phone: true, active: true },
-        },
-        faculty: {
-          select: { id: true, profile: { select: { name: true } } },
-        },
-        warden: {
-          select: { id: true, profile: { select: { name: true } } },
-        },
-      },
-    }),
+    // Assigned students: the Students screen loads them one page at a time (getExecutiveStudents)
     // Wardens list (for student assignment dropdowns)
     light ? undefined : prisma.warden.findMany({
       select: { id: true, hostelBlock: true, profile: { select: { name: true } } },
@@ -431,7 +367,6 @@ async function preloadFaculty(profileId: string, light = false) {
       stats: { totalStudents, approvedToday, rejectedToday, exitsToday, entriesToday },
       recentActivity: recentApprovals,
     },
-    students: studentsData,
     wardens,
     myPasses,
   };
@@ -460,7 +395,6 @@ async function preloadWarden(profileId: string, light = false) {
     entriesToday,
     recentApprovals,
     allRequests,
-    studentsRaw,
     wardens,
   ] = await Promise.all([
     prisma.student.count({ where: { wardenId: warden.id } }),
@@ -525,32 +459,12 @@ async function preloadWarden(profileId: string, light = false) {
         qr: { select: { usedForExit: true, usedForEntry: true } },
       },
     }),
-    light ? undefined : prisma.student.findMany({
-      where: { wardenId: warden.id },
-      include: {
-        profile: { select: { id: true, name: true, email: true, phone: true, active: true } },
-        faculty: { select: { id: true, profile: { select: { name: true } } } },
-        warden: { select: { id: true, profile: { select: { name: true } } } },
-        permissions: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          select: { id: true, status: true, type: true, purpose: true, createdAt: true },
-        },
-      },
-      orderBy: { studentRoll: "asc" },
-    }),
+    // Hostellers: the Students screen loads them one page at a time (getExecutiveStudents)
     light ? undefined : prisma.warden.findMany({
       select: { id: true, hostelBlock: true, profile: { select: { name: true } } },
       orderBy: { profile: { name: "asc" } },
     }),
   ]);
-
-  // Same shape as the faculty/HOD student lists (the warden client reads s.profile.*),
-  // plus the latest pass for quick status display.
-  const students = studentsRaw?.map(({ permissions, ...s }) => ({
-    ...s,
-    lastPermission: permissions[0] || null,
-  }));
 
   return {
     dashboard: {
@@ -559,7 +473,6 @@ async function preloadWarden(profileId: string, light = false) {
       recentActivity: recentApprovals,
     },
     requests: allRequests,
-    students,
     wardens,
     warden: warden,
   };
@@ -741,7 +654,7 @@ async function preloadSecurity() {
 // ADMIN PRELOAD
 // ──────────────────────────────────────────────────────────────
 
-async function preloadAdmin(light = false) {
+async function preloadAdmin() {
   const today = istStartOfDay();
 
   const endOfDay = new Date(today);
@@ -756,9 +669,6 @@ async function preloadAdmin(light = false) {
     totalStudents, totalFaculty, totalWardens, totalSecurity,
     outsidersCount, approvedToday, rejectedToday, entryToday, exitToday,
     recentMovements, gatesList,
-    // Sub-page data
-    usersData, usersTotal,
-    adminGates, faculty, wardens, allGates,
   ] = await Promise.all([
     prisma.student.count(),
     prisma.faculty.count(),
@@ -786,57 +696,8 @@ async function preloadAdmin(light = false) {
       },
     }),
     prisma.gate.findMany({ select: { id: true, name: true, active: true } }),
-    // Users page (first page, STUDENT filter — most common)
-    prisma.profile.findMany({
-      where: { role: "STUDENT" as any },
-      orderBy: { createdAt: "desc" },
-      take: 15,
-      include: {
-        student: {
-          select: {
-            id: true, studentRoll: true, department: true, year: true,
-            section: true, studentType: true, status: true,
-            roomNumber: true, hostelBlock: true, facultyId: true, wardenId: true,
-            faculty: { select: { id: true, profile: { select: { name: true } } } },
-            warden: { select: { id: true, profile: { select: { name: true } } } },
-          },
-        },
-        faculty: {
-          select: {
-            id: true, employeeId: true, department: true, designation: true,
-            _count: { select: { assignedStudents: true } },
-          },
-        },
-        warden: {
-          select: {
-            id: true, employeeId: true, hostelBlock: true,
-            _count: { select: { assignedHostellers: true } },
-          },
-        },
-        securityStaff: {
-          select: {
-            id: true, employeeId: true,
-            gate: { select: { id: true, name: true } },
-          },
-        },
-      },
-    }),
-    prisma.profile.count({ where: { role: "STUDENT" as any } }),
-    // Admin gates management
-    prisma.gate.findMany({
-      orderBy: { createdAt: "desc" },
-      select: { id: true, name: true, location: true, active: true, createdAt: true },
-    }),
-    // Reference data for forms
-    light ? undefined : prisma.faculty.findMany({
-      select: { id: true, department: true, profile: { select: { name: true } } },
-      orderBy: { profile: { name: "asc" } },
-    }),
-    light ? undefined : prisma.warden.findMany({
-      select: { id: true, hostelBlock: true, profile: { select: { name: true } } },
-      orderBy: { profile: { name: "asc" } },
-    }),
-    prisma.gate.findMany({ select: { id: true, name: true, active: true } }),
+    // The Users and Gates screens load their own data (Users one page at a time);
+    // the users page, faculty / warden lists and gate lists once sent here were never read.
   ]);
 
   return {
@@ -849,11 +710,6 @@ async function preloadAdmin(light = false) {
       recentMovements,
       gates: gatesList,
     },
-    users: { users: usersData, total: usersTotal },
-    adminGates,
-    faculty,
-    wardens,
-    allGates,
   };
 }
 
@@ -873,18 +729,25 @@ function toDeptCounts(rows: { department: string | null; _count: { _all: number 
   return out;
 }
 
-async function preloadSupervisor(light = false) {
+/**
+ * Faculty + HODs per department, for the dashboards' department breakdown. The
+ * faculty directory itself is paged on the server (getExecutiveFaculty), so the
+ * whole faculty list (hundreds of rows) is no longer sent here.
+ */
+async function facultyDeptCounts(): Promise<Record<string, number>> {
+  const rows = await prisma.faculty.groupBy({
+    by: ["department"],
+    where: { profile: { role: { in: ["FACULTY", "FACULTY_ADMIN"] } } },
+    _count: { _all: true },
+  });
+  return toDeptCounts(rows);
+}
+
+async function preloadSupervisor() {
   const today = istStartOfDay();
 
   // Requests view = today's work + anything still pending (history is in Activity)
-  const requestsWhere = {
-    OR: [
-      { createdAt: { gte: today } },
-      { approvedAt: { gte: today } },
-      { rejectedAt: { gte: today } },
-      { status: "PENDING" as const },
-    ],
-  };
+  const requestsWhere = supervisorRequestsScope(today);
 
   const [
     totalStudents,
@@ -897,9 +760,9 @@ async function preloadSupervisor(light = false) {
     exitsToday,
     entriesToday,
     visitorsInside,
-    requests,
+    recentRequests,
     students,
-    allFaculty,
+    facultyByDept,
   ] = await Promise.all([
     prisma.student.count(),
     prisma.profile.count({ where: { role: { in: ["FACULTY", "FACULTY_ADMIN"] } } }),
@@ -913,57 +776,20 @@ async function preloadSupervisor(light = false) {
     prisma.movement.count({ where: { type: "EXIT", createdAt: { gte: today } } }),
     prisma.movement.count({ where: { type: "ENTRY", createdAt: { gte: today } } }),
     prisma.outsider.count({ where: { status: "INSIDE" } }),
+    // Dashboard: the 8 most recent. The Requests screen loads its own pages
+    // (getSupervisorRequests) instead of up to 500 requests on every refresh.
     prisma.permission.findMany({
       where: requestsWhere,
       orderBy: { createdAt: "desc" },
-      take: 500,
-      select: {
-        id: true, type: true, status: true, purpose: true, destination: true,
-        exitDate: true, expectedExit: true, expectedReturn: true, contactNumber: true, remarks: true,
-        requestType: true, endDate: true, numberOfDays: true, parentInformed: true, videoCallNumber: true,
-        guardianName: true, guardianRelation: true, hostelInchargeDetails: true, wardenDetails: true,
-        createdAt: true, approvedAt: true, rejectedAt: true, rejectionReason: true,
-        approverType: true, approvalMode: true, hodApprovedAt: true, deanApprovedAt: true,
-        studentId: true, facultyId: true,
-        student: {
-          select: {
-            studentRoll: true, department: true, year: true, section: true, studentType: true,
-            profile: { select: { name: true, phone: true } },
-          },
-        },
-        faculty: {
-          select: {
-            employeeId: true, department: true, designation: true,
-            profile: { select: { name: true, phone: true, role: true } },
-          },
-        },
-        approval: {
-          select: {
-            approved: true,
-            approverType: true,
-            faculty: { select: { profile: { select: { name: true } } } },
-            warden: { select: { profile: { select: { name: true } } } },
-          },
-        },
-        movements: {
-          select: { type: true, createdAt: true, gate: { select: { name: true } } },
-          orderBy: { createdAt: "asc" },
-        },
-      },
+      take: 8,
+      select: SUPERVISOR_REQUEST_SELECT,
     }),
     // Student directory (same shape as the Director/Dean directory)
     // Student counts per department; the student directory itself is paged on the
     // server (getExecutiveStudents), so the 45-second poll no longer ships every student.
     prisma.student.groupBy({ by: ["department"], _count: { _all: true } }),
-    // Faculty & HOD directory
-    light ? undefined : prisma.profile.findMany({
-      where: { role: { in: ["FACULTY", "FACULTY_ADMIN"] } },
-      orderBy: { name: "asc" },
-      select: {
-        id: true, name: true, email: true, phone: true, active: true, role: true,
-        faculty: { select: { id: true, department: true, designation: true, employeeId: true, maxApprovals: true } },
-      },
-    }),
+    // Faculty per department (the faculty directory is paged: getExecutiveFaculty)
+    facultyDeptCounts(),
   ]);
 
   return {
@@ -980,11 +806,10 @@ async function preloadSupervisor(light = false) {
         entriesToday,
         visitorsInside,
       },
-      recentRequests: requests.slice(0, 8),
+      recentRequests,
     },
-    requests,
     studentDeptCounts: toDeptCounts(students),
-    allFaculty,
+    facultyDeptCounts: facultyByDept,
   };
 }
 
@@ -1022,7 +847,7 @@ async function preloadDirector(profileId: string, light = false) {
     entriesToday,
     pendingFacultyPasses,
     allFacultyPasses,
-    allFaculty,
+    facultyByDept,
     allHODs,
     recentMovements,
     campusStudents,
@@ -1082,22 +907,8 @@ async function preloadDirector(profileId: string, light = false) {
         qr: { select: { usedForExit: true, usedForEntry: true, expiresAt: true } },
       },
     }),
-    // All faculty members
-    light ? undefined : prisma.profile.findMany({
-      where: { role: { in: ["FACULTY", "FACULTY_ADMIN"] } },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        active: true,
-        role: true,
-        faculty: {
-          select: { id: true, department: true, designation: true, employeeId: true, maxApprovals: true },
-        },
-      },
-    }),
+    // Faculty per department (the faculty directory is paged: getExecutiveFaculty)
+    facultyDeptCounts(),
     // All HODs specifically
     light ? undefined : prisma.profile.findMany({
       where: { role: "FACULTY_ADMIN" },
@@ -1188,7 +999,7 @@ async function preloadDirector(profileId: string, light = false) {
       recentStudentPasses,
     },
     requests: allFacultyPasses,
-    allFaculty,
+    facultyDeptCounts: facultyByDept,
     allHODs,
     allMovements: recentMovements,
     studentDeptCounts: toDeptCounts(campusStudents),
@@ -1241,7 +1052,7 @@ async function preloadDean(profileId: string, light = false) {
     entriesToday,
     pendingFacultyPasses,
     allFacultyPasses,
-    allFaculty,
+    facultyByDept,
     allHODs,
     recentMovements,
     campusStudents,
@@ -1293,22 +1104,8 @@ async function preloadDean(profileId: string, light = false) {
         qr: { select: { usedForExit: true, usedForEntry: true, expiresAt: true } },
       },
     }),
-    // All faculty (no wardens, no security)
-    light ? undefined : prisma.profile.findMany({
-      where: { role: { in: ["FACULTY", "FACULTY_ADMIN"] } },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        active: true,
-        role: true,
-        faculty: {
-          select: { id: true, department: true, designation: true, employeeId: true, maxApprovals: true },
-        },
-      },
-    }),
+    // Faculty per department, no wardens / security (the faculty directory is paged: getExecutiveFaculty)
+    facultyDeptCounts(),
     // All HODs specifically
     light ? undefined : prisma.profile.findMany({
       where: { role: "FACULTY_ADMIN" },
@@ -1393,7 +1190,7 @@ async function preloadDean(profileId: string, light = false) {
       recentStudentPasses,
     },
     requests: allFacultyPasses,
-    allFaculty,
+    facultyDeptCounts: facultyByDept,
     allHODs,
     allMovements: recentMovements,
     studentDeptCounts: toDeptCounts(campusStudents),
