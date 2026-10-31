@@ -23,6 +23,7 @@ import { getDepartmentVariants, listedDepartmentCode } from "@/lib/constants";
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { fillMovementPeople } from "@/lib/people";
+import { PARENT_FIELDS, PARENT_SELECT, cleanParentDetails, parentDetailsProblem } from "@/lib/students/parents";
 
 // In-memory caches to make frequent admin dashboard, gates, and user navigation blazing fast
 // No in-memory copies of lists here: the portal runs on several server
@@ -78,6 +79,7 @@ export async function createUser(formData: FormData) {
     hostelBlock: (formData.get("hostelBlock") as string) || "",
     designation: (formData.get("designation") as string) || "",
     wardenHostelBlock: (formData.get("wardenHostelBlock") as string) || "",
+    ...Object.fromEntries(PARENT_FIELDS.map((k) => [k, (formData.get(k) as string) || ""])),
   };
 
   const parsed = createUserSchema.safeParse(raw);
@@ -99,6 +101,9 @@ export async function createUser(formData: FormData) {
     const code = listedDepartmentCode(data.department);
     if (!code) return { error: "Choose the student's department from the list." };
     data.department = code;
+    // A new student needs a parent (name + mobile) and the home address
+    const parentProblem = parentDetailsProblem(data, true);
+    if (parentProblem) return { error: parentProblem };
   }
 
   // Explicitly validate uniqueness before hitting Auth
@@ -184,6 +189,7 @@ export async function createUser(formData: FormData) {
             wardenId: data.studentType === "HOSTELLER" ? wardenId || null : null,
             roomNumber: data.studentType === "HOSTELLER" ? data.roomNumber || null : null,
             hostelBlock: data.studentType === "HOSTELLER" ? data.hostelBlock || null : null,
+            ...cleanParentDetails(data),
           },
         });
         break;
@@ -591,6 +597,7 @@ export async function getUsers(
             hostelBlock: true,
             facultyId: true,
             wardenId: true,
+            ...PARENT_SELECT,
             faculty: {
               select: {
                 id: true,
@@ -671,6 +678,13 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
   const parsed = (canEditRecord ? adminStudentUpdateSchema : staffStudentUpdateSchema).safeParse(data ?? {});
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const input = parsed.data as Record<string, any>;
+
+  // Parent details sent with this edit (older edit windows send none: kept as they are)
+  const parentsSent = PARENT_FIELDS.some((k) => input[k] !== undefined);
+  if (parentsSent) {
+    const parentProblem = parentDetailsProblem(input, false);
+    if (parentProblem) return { error: parentProblem };
+  }
 
   if (!canEditRecord) {
     const current: Record<string, unknown> = {
@@ -770,6 +784,7 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
           ...(input.wardenId !== undefined ? { wardenId: input.wardenId || null } : {}),
           ...(input.roomNumber !== undefined ? { roomNumber: input.roomNumber || null } : {}),
           ...(input.hostelBlock !== undefined ? { hostelBlock: input.hostelBlock || null } : {}),
+          ...(parentsSent ? cleanParentDetails(input) : {}),
           // A day scholar has no hostel: warden, hostel, block and room are always cleared
           ...((input.studentType || student.studentType) === "DAY_SCHOLAR"
             ? { wardenId: null, hostelType: null, hostelBlock: null, roomNumber: null }

@@ -10,6 +10,7 @@ import { actionErrorMessage } from "@/lib/deployment";
 import { DEPARTMENTS, departmentLabel } from "@/lib/constants";
 import { createUser } from "@/server/actions/admin";
 import { Part, PasswordField, DeanOfField } from "./form-part";
+import { ParentFields } from "./parent-fields";
 
 /** Roles an Admin can create, with a line on what each one does here */
 const ROLES: { value: string; label: string; hint: string }[] = [
@@ -190,6 +191,10 @@ function CreateForm({
                 <Input label="Room number" name="roomNumber" placeholder="e.g. 204" />
               </>
             )}
+          </Part>
+
+          <Part no={next()} title="Parents" hint="Fills the Visitors Book at the gate">
+            <ParentFields isNew />
           </Part>
 
           <Part no={next()} title="Approvals" hint="Who approves their passes">

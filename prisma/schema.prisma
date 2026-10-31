@@ -63,6 +63,18 @@ model Student {
   roomNumber  String?               @map("room_number")
   hostelBlock String?               @map("hostel_block")
   status      StudentMovementStatus @default(INSIDE)
+  /// Parents / guardian: fill the Visitors Book form when they come to the gate
+  /// (src/lib/students/parents.ts). New students need one parent and the address.
+  fatherName       String? @map("father_name")
+  fatherPhone      String? @map("father_phone")
+  motherName       String? @map("mother_name")
+  motherPhone      String? @map("mother_phone")
+  guardianName     String? @map("guardian_name")
+  guardianRelation String? @map("guardian_relation")
+  guardianPhone    String? @map("guardian_phone")
+  homeAddress      String? @map("home_address")
+  /// The family's usual vehicle (Security confirms it at each visit)
+  parentVehicle    String? @map("parent_vehicle")
   createdAt   DateTime              @default(now()) @map("created_at")
   movements   Movement[]
   permissions Permission[]

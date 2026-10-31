@@ -25,6 +25,21 @@ const phoneField = z
   .trim()
   .regex(/^\+?[0-9][0-9\s-]{8,16}[0-9]$/, "Enter a valid phone number (10–15 digits)");
 
+/** A student's parents / guardian (rules between fields: src/lib/students/parents.ts) */
+const parentText = (max: number) => z.string().trim().max(max).optional().nullable();
+const parentPhone = phoneField.optional().nullable().or(z.literal(""));
+const parentDetailFields = {
+  fatherName: parentText(100),
+  fatherPhone: parentPhone,
+  motherName: parentText(100),
+  motherPhone: parentPhone,
+  guardianName: parentText(100),
+  guardianRelation: parentText(50),
+  guardianPhone: parentPhone,
+  homeAddress: parentText(300),
+  parentVehicle: parentText(30),
+};
+
 export const permissionRequestSchema = z.object({
   purpose: z
     .string()
@@ -123,6 +138,7 @@ export const createUserSchema = z.object({
   hostelType: z.enum(["BOYS", "LADIES"]).optional(),
   roomNumber: z.string().trim().max(20).optional().or(z.literal("")),
   hostelBlock: z.string().trim().max(50).optional().or(z.literal("")),
+  ...parentDetailFields,
   // Faculty-specific
   designation: z.string().trim().max(100).optional().or(z.literal("")),
   // Warden-specific
@@ -145,6 +161,7 @@ export const staffStudentUpdateSchema = z.object({
   section: optionalText(10),
   roomNumber: optionalText(20),
   hostelBlock: optionalText(50),
+  ...parentDetailFields,
 });
 
 /** Additional fields only an ADMIN may change. */

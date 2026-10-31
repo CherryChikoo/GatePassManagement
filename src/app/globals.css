@@ -235,17 +235,6 @@ html.security-text .glass:not(.loading-pill) {
 .animate-loading-bar {
   animation: loading-bar 1s ease-out forwards;
 }
-
-/* "Signing in…" bar: a short coral piece sliding across, over and over */
-@keyframes signing-in-bar {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(300%); }
-}
-
-.animate-signing-in-bar {
-  animation: signing-in-bar 1.1s ease-in-out infinite;
-}
-
 /* Staggered children */
 .stagger-children > * {
   opacity: 0;

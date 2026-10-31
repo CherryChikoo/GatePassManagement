@@ -9,6 +9,8 @@ import { actionErrorMessage } from "@/lib/deployment";
 import { DEPARTMENTS, departmentLabel } from "@/lib/constants";
 import { updateStudentDetails, updateUserDetails, resetUserPassword } from "@/server/actions/admin";
 import { Part, PasswordField, DeanOfField } from "./form-part";
+import { ParentFields } from "./parent-fields";
+import { PARENT_FIELDS } from "@/lib/students/parents";
 
 const ROLE_NAME: Record<string, string> = {
   STUDENT: "Student",
@@ -144,6 +146,7 @@ function EditForm({
           wardenId: get("wardenId") || null,
           roomNumber: get("roomNumber") || null,
           hostelBlock: get("hostelBlock") || null,
+          ...Object.fromEntries(PARENT_FIELDS.map((k) => [k, get(k)])),
         });
       } else {
         res = await updateUserDetails(user.id, {
@@ -243,6 +246,10 @@ function EditForm({
                 <Input label="Room number" name="roomNumber" defaultValue={user.student?.roomNumber || ""} placeholder="e.g. 204" />
               </>
             )}
+          </Part>
+
+          <Part no={next()} title="Parents" hint="Fills the Visitors Book at the gate">
+            <ParentFields defaults={user.student ?? undefined} isNew={false} />
           </Part>
 
           <Part no={next()} title="Approvals" hint="Who approves their passes">

@@ -8,8 +8,6 @@ import { useRouter } from "next/navigation";
 import { broadcastSessionEvent, hardNavigate, prefetchPreload } from "@/stores/app-store";
 import { SigningInOverlay, type SigningInStep } from "@/components/ui/signing-in-overlay";
 
-/** Signing in takes longer than this: the full-screen "Signing in…" shows (a quick one never flashes it) */
-const SIGNING_IN_OVERLAY_MS = 500;
 /** Signed in but the dashboard has not opened after this long: open it as a full page */
 const SIGNED_IN_FALLBACK_MS = 5_000;
 
@@ -64,19 +62,12 @@ export function LoginForm() {
   }, []);
   const [showPassword, setShowPassword] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
-  // "Signing in…" screen: which step, and whether it is taking long enough to show it
+  // "Signing in…" screen: shown at once while signing in, says which step
   const [step, setStep] = useState<SigningInStep>("checking");
-  const [slow, setSlow] = useState(false);
-  useEffect(() => {
-    if (!loading) return;
-    const timer = setTimeout(() => setSlow(true), SIGNING_IN_OVERLAY_MS);
-    return () => clearTimeout(timer);
-  }, [loading]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
-    setSlow(false);
     setStep("checking");
     setError(null);
     const formData = new FormData(e.currentTarget);
@@ -110,7 +101,7 @@ export function LoginForm() {
 
   return (
     <>
-    {loading && slow && <SigningInOverlay step={step} />}
+    {loading && <SigningInOverlay step={step} />}
     <div className="relative min-h-[100dvh] overflow-hidden bg-[#f2f2f3] flex items-center justify-center px-4 py-6 sm:py-10">
       {/* Soft grey page with a faint grid fading out from the centre */}
       <div

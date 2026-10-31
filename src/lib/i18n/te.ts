@@ -686,6 +686,8 @@ export const te: Record<string, string> = {
   Damaged: "దెబ్బతిన్నది",
   "Partially damaged": "కొంత దెబ్బతిన్నది",
   "Bill Amount (₹)": "బిల్ మొత్తం (₹)",
+  "Photo of the material": "సామాను ఫోటో",
+  "Photo of the bill": "బిల్ ఫోటో",
   "Time Came": "వచ్చిన సమయం",
   "Bill Taken By": "బిల్ తీసుకున్నవారు",
   "Inventory Stored Details": "నిల్వ చేసిన వివరాలు",
