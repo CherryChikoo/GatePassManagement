@@ -105,6 +105,23 @@ export function OfficePosterClient({ office }: { office: OfficeRow | null }) {
   // The portal target only exists in the browser
   const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
 
+  // Fresh from the server when the page opens: the browser may hold an older copy
+  // of this page, and an old poster QR (replaced by "Make new QR") must never be printed
+  const officeId = office?.id;
+  useEffect(() => {
+    if (!officeId) return;
+    let cancelled = false;
+    callGate("listOffices", [], 15_000)
+      .then((rows) => {
+        const fresh = Array.isArray(rows) ? rows.find((o) => o.id === officeId) : null;
+        if (!cancelled && fresh) setPosterKey(fresh.posterKey);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [officeId]);
+
   useEffect(() => {
     if (!posterKey) return;
     let cancelled = false;

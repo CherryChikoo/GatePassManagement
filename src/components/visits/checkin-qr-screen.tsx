@@ -17,7 +17,8 @@ import { AlertCircle, ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Clock,
 import { useT } from "@/components/providers/language-provider";
 import { callGate } from "@/lib/gate-call";
 import { useGateData } from "@/lib/gate-cache";
-import { useLiveTopics } from "@/lib/realtime/live";
+import { liveSince, useLiveTopics } from "@/lib/realtime/live";
+import { useSafetyReload } from "@/lib/realtime/safety-reload";
 import { actionErrorMessage } from "@/lib/deployment";
 import { formatTime } from "@/lib/utils";
 import type { Arrival } from "@/server/actions/visit-requests";
@@ -141,6 +142,8 @@ export function CheckInQrScreen({ register, onBack }: { register: CheckInRegiste
   const query = arrivalsQuery(register);
   const arrivalsData = useGateData<Arrival[] | { error: string }>(query.key, query.fetch, query.topics);
   const arrivals = Array.isArray(arrivalsData.data) ? arrivalsData.data : [];
+  // The visitor is standing at the gate: if the live connection dropped, they still appear within seconds
+  useSafetyReload(() => arrivalsData.reload(), { isLive: () => liveSince() !== null, whenLiveMs: 60_000, whenDownMs: 10_000 });
 
   // Kept while the review is open, even if the list refreshes without it
   const [openArrival, setOpenArrival] = useState<Arrival | null>(null);

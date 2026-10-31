@@ -43,10 +43,11 @@ export function OfficesClient({ offices }: Props) {
   // A switch on/off that was refused or failed (shown above the list)
   const [listError, setListError] = useState<string | null>(null);
 
+  // Always fetched fresh when the page opens: the page drawn by the server can
+  // be an older copy kept by the browser (an office added a moment ago missing)
   useEffect(() => {
-    setList(offices);
-    setLoadError(offices === null);
-  }, [offices]);
+    void reload();
+  }, []);
 
   async function reload() {
     setReloading(true);

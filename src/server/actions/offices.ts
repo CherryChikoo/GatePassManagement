@@ -7,7 +7,6 @@
  * Offices have no logins.
  */
 import { randomBytes } from "crypto";
-import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/helpers";
 
@@ -39,10 +38,6 @@ async function nameTaken(name: string, exceptId?: string) {
   return !!o;
 }
 
-function afterOfficeChange() {
-  revalidatePath("/admin/offices");
-}
-
 /** Every office, active first, A-Z. */
 export async function listOffices(): Promise<OfficeRow[]> {
   await requireRole("ADMIN");
@@ -56,7 +51,6 @@ export async function createOffice(name: string): Promise<{ success: true; offic
   if ("error" in n) return n;
   if (await nameTaken(n.name)) return { error: "An office with this name already exists" };
   const office = await prisma.office.create({ data: { name: n.name, posterKey: newPosterKey() }, select: SELECT });
-  afterOfficeChange();
   return { success: true, office: toRow(office) };
 }
 
@@ -68,7 +62,6 @@ export async function renameOffice(id: string, name: string): Promise<{ success:
   if (await nameTaken(n.name, id)) return { error: "An office with this name already exists" };
   const res = await prisma.office.updateMany({ where: { id }, data: { name: n.name } });
   if (res.count !== 1) return { error: "Office not found" };
-  afterOfficeChange();
   return { success: true };
 }
 
@@ -78,7 +71,6 @@ export async function setOfficeActive(id: string, active: boolean): Promise<{ su
   if (typeof id !== "string" || !UUID_RE.test(id) || typeof active !== "boolean") return { error: "Office not found" };
   const res = await prisma.office.updateMany({ where: { id }, data: { active } });
   if (res.count !== 1) return { error: "Office not found" };
-  afterOfficeChange();
   return { success: true };
 }
 
@@ -89,6 +81,5 @@ export async function newOfficePoster(id: string): Promise<{ success: true; post
   const posterKey = newPosterKey();
   const res = await prisma.office.updateMany({ where: { id }, data: { posterKey } });
   if (res.count !== 1) return { error: "Office not found" };
-  afterOfficeChange();
   return { success: true, posterKey };
 }

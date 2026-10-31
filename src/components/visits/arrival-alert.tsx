@@ -16,7 +16,8 @@ import { BellRing, ChevronRight, X } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { callGate } from "@/lib/gate-call";
 import { useGateData } from "@/lib/gate-cache";
-import { useLiveTopics } from "@/lib/realtime/live";
+import { liveSince, useLiveTopics } from "@/lib/realtime/live";
+import { useSafetyReload } from "@/lib/realtime/safety-reload";
 import type { ArrivalCounts } from "@/server/actions/visit-requests";
 
 export type CheckInRegister = "VISITORS" | "ADMISSION";
@@ -65,6 +66,8 @@ export function ArrivalAlert() {
   // Keeps the live connection listening for arrivals on every Security screen
   useLiveTopics([ARRIVALS_TOPIC], () => {});
   const counts = useGateData<ArrivalCounts | { error: string }>(ARRIVAL_COUNTS_QUERY.key, ARRIVAL_COUNTS_QUERY.fetch, ARRIVAL_COUNTS_QUERY.topics);
+  // Live connection dropped (phone idle at the gate): the banner still shows new visitors
+  useSafetyReload(() => counts.reload(), { isLive: () => liveSince() !== null, whenLiveMs: 3 * 60_000, whenDownMs: 30_000 });
   const data = counts.data && !("error" in counts.data) ? counts.data : null;
   const onScreen = useSyncExternalStore(subscribeOpenQr, () => openQr, () => null);
   // Closed with ✕: hidden until someone new arrives
