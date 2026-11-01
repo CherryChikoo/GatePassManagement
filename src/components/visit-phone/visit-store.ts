@@ -15,12 +15,14 @@ export type CheckInRegister = "VISITORS" | "ADMISSION";
 /** The confirmation shown after sending the form */
 export type SentVisit = {
   register: CheckInRegister;
-  /** The visitor's name as sent */
+  /** The visitor's name as sent (a parent found by roll number: the student's name, see forStudent) */
   name: string;
   /** When the server received it (ISO) */
   at: string;
   /** The faculty / staff member chosen in "Who are you meeting?" (they give the exit code) */
   hostName: string | null;
+  /** `name` is the student the parent came to see (the parent's own details never reach the phone) */
+  forStudent?: boolean;
 };
 
 const SENT_KEY = "gp_visit_sent";
@@ -49,6 +51,7 @@ export function readSentVisit(): SentVisit | null {
       name: v.name.slice(0, 100),
       at: v.at,
       hostName: typeof v.hostName === "string" && v.hostName ? v.hostName.slice(0, 100) : null,
+      forStudent: v.forStudent === true,
     };
   } catch {
     return null;

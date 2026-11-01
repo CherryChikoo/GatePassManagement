@@ -11,6 +11,7 @@ import { isSafeStoragePath } from "@/lib/storage/storage-admin";
 import type { Prisma } from "@prisma/client";
 import { parsePageParam } from "@/lib/time/ist";
 import { canOverrideVisitExit, checkVisitExit, closeVisitPass, newVisitCode, notifyHost, resolveHost } from "@/lib/visits/passes";
+import { isVisitorCategory, missingVisitorDetail } from "@/lib/visits/visitor-categories";
 
 /** What Security sees about a visitor's meeting (never the code itself) */
 const MEETING_SELECT = { select: { hostName: true, status: true, attempts: true, exitMethod: true } } as const;
@@ -53,13 +54,24 @@ export async function registerOutsider(data: Record<string, unknown>) {
   // Entry time is always the live time of registration (never typed in)
   const entryTime = new Date();
 
-  // Name, mobile number and a photo are mandatory; every other input is optional
+  // Name, mobile number, vehicle (or on foot) and a photo are mandatory
   if (!input.name || input.name.trim().length < 2) return { success: false, error: "Visitor name is required" };
   if (!input.phone) return { success: false, error: "Mobile number is required" };
   if (!input.vehicleNumber || !input.vehicleNumber.trim()) {
     return { success: false, error: "Enter the vehicle number, or tap No vehicle" };
   }
   if (!input.photoUrl) return { success: false, error: "Take the visitor's photo before registering" };
+  // Address, and a purpose or a person to visit / meet: the same rules as Security's form
+  // and the visitor's phone form (QR arrivals come here too). Main Admin's own
+  // add-visitor tool (Activity) has no address box, so it keeps the older checks.
+  if (user.role !== "ADMIN") {
+    const missing = missingVisitorDetail({
+      ...input,
+      // The category is not newly checked here (an empty one is saved as Guest, as before)
+      category: isVisitorCategory(input.category) ? input.category : "GUEST",
+    });
+    if (missing) return { success: false, error: missing };
+  }
 
   // Meeting a faculty / staff member: they get a code to give the visitor after the meeting
   const host = input.hostProfileId ? await resolveHost(input.hostProfileId) : null;

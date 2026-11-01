@@ -16,6 +16,7 @@ import { FACULTY_REQUEST_TYPES, facultyRequestDays, facultyRequestTypeLabel } fr
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/stores/app-store";
 import { EmptyState, StatusBadge, Modal } from "@/components/ui/primitives";
+import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { PagerBar } from "@/components/ui/pager-bar";
 import { formatDateTime, formatDate } from "@/lib/utils";
 import { useStoreReady } from "@/components/providers/store-hydrator";
@@ -145,6 +146,21 @@ export function FacultyApplyClient() {
   }, [success]);
   const [loading, setLoading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
+
+  async function doCancel(id: string) {
+    setCancelling(true);
+    setError(null);
+    try {
+      const res: any = await cancelFacultyPermissionRequest(id);
+      if (res?.error) setError(res.error);
+      useAppStore.getState().refresh(true);
+    } catch {
+      setError("Could not cancel the request. Please try again.");
+    }
+    setCancelling(false);
+    setConfirmCancelId(null);
+  }
   
   const [type, setType] = useState<"EXIT" | "ENTRY">("EXIT");
 
@@ -320,6 +336,17 @@ export function FacultyApplyClient() {
           ? "Dean"
           : "HOD";
       return (
+        <>
+        <ConfirmDialog
+          open={confirmCancelId !== null}
+          onClose={() => setConfirmCancelId(null)}
+          title="Cancel request"
+          description="Are you sure you want to cancel this request? This cannot be undone."
+          confirmText="Yes, cancel request"
+          cancelText="Keep request"
+          onConfirm={() => confirmCancelId && doCancel(confirmCancelId)}
+          variant="danger"
+        />
         <Card className={pendingPass ? "border-amber-500/25" : "border-emerald-500/25"}>
           <CardContent className="p-5 sm:p-6 space-y-5">
             <div className="flex items-start gap-3 sm:gap-4">
@@ -366,22 +393,11 @@ export function FacultyApplyClient() {
                   <QrCode className="h-4 w-4" /> View QR
                 </Button>
               )}
-              {pendingPass && (
+              {(pendingPass || (activeApprovedPass && !activeApprovedPass.movements?.length && !activeApprovedPass.qr?.usedForExit)) && (
                 <Button
                   variant="outline"
                   disabled={cancelling}
-                  onClick={async () => {
-                    setCancelling(true);
-                    setError(null);
-                    try {
-                      const res: any = await cancelFacultyPermissionRequest(pendingPass.id);
-                      if (res?.error) setError(res.error);
-                      useAppStore.getState().refresh(true);
-                    } catch {
-                      setError("Could not cancel the request. Please try again.");
-                    }
-                    setCancelling(false);
-                  }}
+                  onClick={() => setConfirmCancelId(pass.id)}
                   className="h-12 w-full sm:h-11 sm:w-auto"
                 >
                   {cancelling ? "Cancelling…" : "Cancel request"}
@@ -395,6 +411,7 @@ export function FacultyApplyClient() {
             )}
           </CardContent>
         </Card>
+        </>
       );
     }
 

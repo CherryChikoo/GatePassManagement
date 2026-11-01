@@ -11,11 +11,14 @@ import type { VoiceFill } from "@/lib/voice/spec";
 import { CalendarDays, Camera, CheckCircle2, ChevronDown, Clock, History, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
 import { DepartmentSelect } from "@/components/ui/department-select";
+import { ComboInput, useVehicleOptions, type ComboItem } from "./combo-input";
 import { compressPhoto } from "@/lib/images/compress-photo";
 import type { Direction, EntryRegister, FieldDef, GroupDef } from "@/lib/registers/definitions";
 import { pendingActions, yesNoWords } from "@/lib/registers/definitions";
 import { formatDate } from "@/lib/utils";
 import { displayValue } from "./localize";
+import { peekEntryList } from "./entry-list-cache";
+import { istDateString } from "@/lib/time/ist";
 
 export type StaffOption = { id: string; name: string; employeeId: string | null };
 type Values = Record<string, any>;
@@ -56,7 +59,7 @@ function hasTyped(values: Values, rows: Record<string, Values[]>, visitHost: str
 }
 
 // text-base on phones keeps iOS from zooming into the field
-const inputCls =
+export const inputCls =
   "flex h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 [color-scheme:light] outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 disabled:opacity-60";
 
 export type PersonOption = { name: string; employeeId: string | null; designation: string | null; department: string | null };
@@ -292,15 +295,17 @@ export function LiveDateTime() {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
     setNow(new Date());
-    const t = setInterval(() => setNow(new Date()), 1000);
+    // Minutes only: a ticking seconds display changed width and made the form below jump
+    const t = setInterval(() => setNow(new Date()), 15_000);
     return () => clearInterval(t);
   }, []);
   const time = now
-    ? now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Kolkata" })
+    ? now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" })
     : "—";
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
+      {/* Fixed layout (never re-wraps): date and time side by side */}
+      <div className="flex items-center gap-x-5 whitespace-nowrap">
         <span className="flex items-center gap-2 text-sm font-medium text-zinc-200">
           <CalendarDays className="h-4 w-4 text-orange-400" /> {now ? formatDate(now) : "—"}
         </span>
@@ -311,6 +316,92 @@ export function LiveDateTime() {
       <p className="mt-1 text-xs text-zinc-500">{tr("Date and time are recorded automatically when you save.")}</p>
     </div>
   );
+}
+
+/** Date and time on one small line ("1 Nov · 11:27 pm"). The server records its own time when saving. */
+function CompactDateTime() {
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 15_000);
+    return () => clearInterval(id);
+  }, []);
+  const text = now
+    ? `${now.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" })} · ${now.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" })}`
+    : "—";
+  return (
+    <p className="flex items-center gap-1.5 whitespace-nowrap text-sm font-medium text-zinc-300 tabular-nums">
+      <Clock className="h-4 w-4 text-orange-400" aria-hidden="true" /> {text}
+    </p>
+  );
+}
+
+/** Fields the new-entry form shows (no date / time boxes, only the chosen side's reading) */
+function visibleFields(def: EntryRegister, direction: Direction | null): FieldDef[] {
+  const m = def.movement;
+  const side = m && direction ? (direction === "IN" ? m.in : m.out) : null;
+  const readingKeys = new Set([m?.in.readingKey, m?.out.readingKey].filter(Boolean) as string[]);
+  return def.fields.filter(
+    (f) => f.type !== "date" && f.type !== "time" && f.key !== m?.directionField && (!readingKeys.has(f.key) || f.key === side?.readingKey) && !f.formHidden
+  );
+}
+
+/**
+ * Required fields (and photos at the very top of the definition) show first;
+ * everything else folds under "More details".
+ */
+function splitFields(def: EntryRegister, direction: Direction | null): { primary: FieldDef[]; more: FieldDef[] } {
+  const all = visibleFields(def, direction);
+  const topPhotos = new Set<string>();
+  for (const f of all) {
+    if (f.type !== "photo") break;
+    topPhotos.add(f.key);
+  }
+  const anyOf = new Set((def.requiredAny ?? []).flat());
+  let primary = all.filter((f) => def.required.includes(f.key) || anyOf.has(f.key) || topPhotos.has(f.key));
+  // Nothing required: show the first few so the form is not just a toggle
+  if (primary.length === 0) primary = all.slice(0, 3);
+  const keys = new Set(primary.map((f) => f.key));
+  return { primary, more: all.filter((f) => !keys.has(f.key)) };
+}
+
+const RECENT_TYPES: readonly string[] = ["text", "select", "phone", "number", "person", "department"];
+
+/** Up to 6 chips from today's newest records of this register already cached in the browser. */
+function recentChips(def: EntryRegister, t: (s: string) => string): { key: string; label: string; values: Values }[] {
+  const list = peekEntryList({ register: def.key, date: istDateString(), q: "", page: 1, shift: "" });
+  if (!list) return [];
+  const readings = new Set([def.movement?.in.readingKey, def.movement?.out.readingKey].filter(Boolean) as string[]);
+  const byKey = new Map(def.fields.map((f) => [f.key, f]));
+  const out: { key: string; label: string; values: Values }[] = [];
+  const seen = new Set<string>();
+  for (const e of list.entries) {
+    const cur: Values = e?.current ?? {};
+    const first = String(cur[def.listFields[0]] ?? "").trim().toLowerCase();
+    if (!first || seen.has(first)) continue;
+    seen.add(first);
+    const values: Values = {};
+    for (const f of def.fields) {
+      if (!RECENT_TYPES.includes(f.type) || f.key === def.movement?.directionField || readings.has(f.key)) continue;
+      const v = String(cur[f.key] ?? "").trim();
+      if (!v) continue;
+      if (f.type === "select" && !f.allowOther && !(f.options ?? []).includes(v)) continue;
+      values[f.key] = v;
+    }
+    const label = def.listFields
+      .slice(0, 2)
+      .map((k) => {
+        const f = byKey.get(k);
+        const v = cur[k];
+        return f && filledIn(v) ? String(displayValue(f, v, t as any)) : "";
+      })
+      .filter(Boolean)
+      .join(" · ");
+    if (!label || Object.keys(values).length === 0) continue;
+    out.push({ key: `${e.id ?? out.length}`, label, values });
+    if (out.length >= 6) break;
+  }
+  return out;
 }
 
 function emptyRow(g: GroupDef): Values {
@@ -397,6 +488,7 @@ function FieldInput({
   required = false,
   registerKey = "",
   onPickPerson,
+  combo,
 }: {
   f: FieldDef;
   id: string;
@@ -407,8 +499,26 @@ function FieldInput({
   registerKey?: string;
   /** "person" fields: the picked faculty / staff member (to fill designation etc.) */
   onPickPerson?: (p: PersonOption) => void;
+  /** Driver / car / faculty boxes (Car Book, Auto Book): the list behind the "Select" button */
+  combo?: { items: ComboItem[]; loading: boolean; onPick?: (item: ComboItem) => void };
 }) {
   const t = useT();
+  if (f.combo && combo) {
+    return (
+      <ComboInput
+        id={id}
+        value={value ?? ""}
+        onChange={onChange}
+        onPick={combo.onPick}
+        items={combo.items}
+        loading={combo.loading}
+        required={required}
+        placeholder={f.placeholder}
+        title={f.label}
+        inputClassName={inputCls}
+      />
+    );
+  }
   switch (f.type) {
     case "person":
       return <PersonInput id={id} value={value ?? ""} onChange={onChange} onPick={onPickPerson} required={required} />;
@@ -494,7 +604,7 @@ function FieldBlock({
         {missing && <span className="ml-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-500">{t("Not heard — fill in")}</span>}
       </label>
       <div className={voice ? "rounded-2xl ring-2 ring-amber-400/60" : missing ? "rounded-2xl ring-2 ring-red-400/60" : undefined}>{children}</div>
-      {f.hint && <p className="text-xs text-zinc-500">{f.hint}</p>}
+      {f.hint && <p className="text-[11px] leading-snug text-zinc-500">{f.hint}</p>}
     </div>
   );
 }
@@ -503,14 +613,48 @@ function DirectionPicker({
   def,
   value,
   onChange,
+  compact = false,
 }: {
   def: EntryRegister;
   value: Direction | null;
   onChange: (d: Direction) => void;
+  /** Small two-button control (the new-entry form) */
+  compact?: boolean;
 }) {
   const t = useT();
   const m = def.movement!;
   const choices = (["IN", "OUT"] as Direction[]).filter((d) => m.firstDirections.includes(d));
+  if (compact)
+    return (
+      <fieldset>
+        <legend className="sr-only">{t("In or Out")}</legend>
+        <div className={`grid gap-1 rounded-xl border border-zinc-800 bg-zinc-950 p-0.5 ${choices.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+          {choices.map((d) => {
+            const side = d === "IN" ? m.in : m.out;
+            const active = value === d;
+            const Icon = d === "IN" ? LogIn : LogOut;
+            return (
+              <button
+                key={d}
+                type="button"
+                onClick={() => onChange(d)}
+                aria-pressed={active}
+                className={`flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-semibold leading-tight transition-colors ${
+                  active
+                    ? d === "IN"
+                      ? "bg-emerald-500/15 text-emerald-500 ring-1 ring-emerald-500/60"
+                      : "bg-sky-500/15 text-sky-500 ring-1 ring-sky-500/60"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 text-center">{side.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
+    );
   return (
     <fieldset>
       <legend className="block text-sm font-medium text-zinc-200 mb-2">{t("In or Out")}</legend>
@@ -569,7 +713,29 @@ export function RegisterForm({
   const m = def.movement;
   // What was typed here before and not saved (the form only opens on a tap, so this runs in the browser)
   const [draft] = useState(() => readDraft(def.key));
-  const startDirection: Direction | null = m && m.firstDirections.length === 1 ? m.firstDirections[0] : null;
+  const startDirection: Direction | null = m ? m.startWith ?? (m.firstDirections.length === 1 ? m.firstDirections[0] : null) : null;
+  // Car Book / Auto Book: drivers, cars and faculty behind the "Select" buttons (one request, kept for the session)
+  const vehicleOpts = useVehicleOptions(def.key, def.fields.some((f) => !!f.combo));
+  const comboFor = (f: FieldDef) => {
+    if (!f.combo) return undefined;
+    const o = vehicleOpts;
+    const items: ComboItem[] =
+      f.combo === "driver"
+        ? (o?.drivers ?? []).map((d) => ({ fill: d.name, sub: d.phone ?? undefined }))
+        : f.combo === "vehicle"
+        ? (o?.vehicles ?? []).map((v) => ({
+            fill: v.number || v.name,
+            label: v.name && v.number ? `${v.name} · ${v.number}` : v.number || v.name,
+            extra: v.number ? v.name : "",
+          }))
+        : (o?.people ?? []).map((p) => ({ fill: p }));
+    return {
+      items,
+      loading: o === null,
+      // Picking a car / auto fills its name too; typing over it forgets the name
+      onPick: f.comboFills ? (item: ComboItem) => setValues((s) => ({ ...s, [f.comboFills!]: item.extra ?? "" })) : undefined,
+    };
+  };
   // "Meeting (faculty / staff)" (registers with def.visitHost): that person gets a meeting code
   const [visitHost, setVisitHost] = useState(draft?.visitHost ?? "");
   const [direction, setDirection] = useState<Direction | null>(draft?.direction ?? startDirection);
@@ -589,6 +755,10 @@ export function RegisterForm({
   // Bumped by "Clear form" so pickers and photo boxes start empty too
   const [clearNo, setClearNo] = useState(0);
   const typedSomething = hasTyped(values, rows, visitHost);
+  // "More details": closed until something inside it is filled (brought-back draft, voice, a recent entry)
+  const [moreOpen, setMoreOpen] = useState(() =>
+    !!draft && splitFields(def, draft.direction ?? startDirection).more.some((f) => filledIn(draft.values[f.key]))
+  );
 
   // Keep the typed details for this tab (removed once nothing is typed)
   useEffect(() => {
@@ -634,6 +804,7 @@ export function RegisterForm({
       latestForm.current = { ...latestForm.current, values: next };
       setValues(next);
       setVoiceKeys((ks) => [...new Set([...ks, ...changed])]);
+      if (changed.some((k) => splitFields(def, latestForm.current.direction).more.some((f) => f.key === k))) setMoreOpen(true);
       setVoiceVer((vv) => Object.fromEntries([...Object.entries(vv), ...changed.map((k) => [k, (vv[k] ?? 0) + 1])]));
     }
     // Lists (e.g. coolies): filled while the guard has not edited them; afterwards only extra items are added
@@ -713,14 +884,72 @@ export function RegisterForm({
   };
 
   const side = m && direction ? (direction === "IN" ? m.in : m.out) : null;
-  const readingKeys = new Set([m?.in.readingKey, m?.out.readingKey].filter(Boolean) as string[]);
-  const visible = def.fields.filter(
-    (f) =>
-      f.type !== "date" &&
-      f.type !== "time" &&
-      f.key !== m?.directionField &&
-      (!readingKeys.has(f.key) || f.key === side?.readingKey)
+  const { primary, more } = splitFields(def, direction);
+  const showMore = moreOpen && more.length > 0;
+
+  const renderField = (f: FieldDef) => (
+    <FieldBlock
+      key={f.key}
+      f={f}
+      id={`rf-${f.key}`}
+      required={def.required.includes(f.key)}
+      voice={voiceKeys.includes(f.key)}
+      missing={voiceDone && def.required.includes(f.key) && String(values[f.key] ?? "").trim() === ""}
+    >
+      <FieldInput
+        key={`${f.key}-${clearNo}-${fillTargets.has(f.key) ? fillNo : 0}-${voiceVer[f.key] ?? 0}`}
+        registerKey={def.key}
+        f={f}
+        id={`rf-${f.key}`}
+        value={values[f.key] ?? ""}
+        combo={comboFor(f)}
+        onChange={(v) => {
+          setValues((s) => ({ ...s, [f.key]: v, ...(f.comboFills ? { [f.comboFills]: "" } : {}) }));
+          // The guard checked / changed it: no longer marked as voice
+          if (voiceKeys.includes(f.key)) setVoiceKeys((ks) => ks.filter((k) => k !== f.key));
+        }}
+        staff={staff}
+        required={def.required.includes(f.key)}
+        onPickPerson={
+          f.fills
+            ? (p) => {
+                // Fill their designation / department. A box keeps what the guard
+                // typed; one filled by an earlier pick follows the new person.
+                const filled: Values = {};
+                const pairs: [string | undefined, string | null][] = [
+                  [f.fills?.designation, p.designation],
+                  [f.fills?.department, p.department],
+                ];
+                for (const [target, val] of pairs) {
+                  if (!target) continue;
+                  const cur = String(values[target] ?? "").trim();
+                  if (cur && cur !== autoFilled.current[target]) continue;
+                  filled[target] = val ?? "";
+                  autoFilled.current[target] = val ?? "";
+                }
+                setValues((s) => ({ ...s, ...filled }));
+                setFillNo((n) => n + 1);
+              }
+            : undefined
+        }
+      />
+      {f.comboFills && String(values[f.comboFills] ?? "").trim() !== "" && (
+        <p className="mt-1.5 text-xs font-medium text-zinc-400">{String(values[f.comboFills])}</p>
+      )}
+    </FieldBlock>
   );
+
+  // Recent entries of this register already in the browser (no request): tap to reuse their details
+  const [recent] = useState(() => recentChips(def, t));
+  const fillFromRecent = (vals: Values) => {
+    const keys = Object.keys(vals);
+    setValues((s) => ({ ...s, ...vals }));
+    setVoiceKeys((ks) => ks.filter((k) => !keys.includes(k)));
+    setVoiceVer((vv) => Object.fromEntries([...Object.entries(vv), ...keys.map((k) => [k, (vv[k] ?? 0) + 1])]));
+    for (const k of keys) delete voiceSet.current[k];
+    if (keys.some((k) => more.some((f) => f.key === k))) setMoreOpen(true);
+    setLocalError(null);
+  };
 
   return (
     <form
@@ -730,23 +959,47 @@ export function RegisterForm({
           setLocalError(t("Choose In or Out"));
           return;
         }
+        const lacking = (def.requiredAny ?? []).find((keys) => keys.every((k) => !filledIn(values[k])));
+        if (lacking) {
+          setLocalError(
+            t("{names}: fill at least one", { names: lacking.map((k) => def.fields.find((f) => f.key === k)?.label ?? k).join(" / ") })
+          );
+          return;
+        }
         setLocalError(null);
         onSubmit({
           fields: values,
           groups: rows,
           direction: direction ?? undefined,
-          oneWay: !!m && !m.single && oneWay,
+          oneWay: !!m && !m.single && !m.noOneWay && oneWay,
           ...(def.visitHost && visitHost ? { visitHost } : {}),
         });
       }}
       className="space-y-5"
     >
+      {/* One small line: date and time, and the mic (speak everything once; the form fills itself) */}
+      <div className="flex items-center justify-between gap-2">
+        <CompactDateTime />
+        {voice.status === "idle" && (
+          <button
+            type="button"
+            onClick={() => void voice.start()}
+            aria-label={t("Speak the details")}
+            title={t("Speak the details")}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_6px_14px_-8px_rgba(207,62,37,0.7)] transition-[background-color,transform] hover:bg-orange-700 active:scale-95"
+          >
+            <Mic className="h-[18px] w-[18px]" />
+          </button>
+        )}
+      </div>
+      {voice.status !== "idle" && <VoicePanel voice={voice} onUndo={undoVoice} />}
+
       {/* Brought-back details, and one place to start again */}
       {(restored || typedSomething) && (
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2">
           {restored ? (
             <p className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-emerald-600">
-              <History className="h-4 w-4 shrink-0" aria-hidden="true" /> {t("Your unsaved details were kept.")}
+              <History className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {t("Your unsaved details were kept.")}
             </p>
           ) : (
             <span />
@@ -755,26 +1008,21 @@ export function RegisterForm({
             <button
               type="button"
               onClick={clearAll}
-              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full border-2 border-red-500/50 bg-red-500/10 px-5 text-sm font-semibold text-red-600 transition-[background-color,transform] hover:bg-red-500/15 active:scale-[0.97]"
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-red-500/50 bg-red-500/10 px-3.5 text-xs font-semibold text-red-600 transition-[background-color,transform] hover:bg-red-500/15 active:scale-[0.97]"
             >
-              <RotateCcw className="h-[18px] w-[18px]" aria-hidden="true" />
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
               {t("Clear form")}
             </button>
           )}
         </div>
       )}
 
-      <LiveDateTime />
+      {m && !m.fixedStart && <DirectionPicker compact def={def} value={direction} onChange={(d) => { setDirection(d); setLocalError(null); }} />}
 
-      {/* Speak everything once: the form fills itself (checked before saving) */}
-      <VoicePanel voice={voice} onUndo={undoVoice} />
-
-      {m && !m.fixedStart && <DirectionPicker def={def} value={direction} onChange={(d) => { setDirection(d); setLocalError(null); }} />}
-
-      {m && !m.single && !m.fixedStart && side && (
+      {m && !m.single && !m.fixedStart && !m.noOneWay && side && (
         <fieldset>
           <legend className="sr-only">{t("Record type")}</legend>
-          <div className="grid grid-cols-2 gap-2 rounded-2xl border border-zinc-800 bg-zinc-950 p-1">
+          <div className="grid grid-cols-2 gap-1 rounded-xl border border-zinc-800 bg-zinc-950 p-0.5">
             {[
               { value: false, label: t("{side} now, {other} later", { side: side.label, other: (direction === "IN" ? m.out : m.in).label }) },
               { value: true, label: t("{side} only", { side: side.label }) },
@@ -784,7 +1032,7 @@ export function RegisterForm({
                 type="button"
                 aria-pressed={oneWay === o.value}
                 onClick={() => setOneWay(o.value)}
-                className={`min-h-11 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+                className={`min-h-9 rounded-lg px-2 py-1.5 text-xs font-medium leading-tight transition-colors ${
                   oneWay === o.value ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
                 }`}
               >
@@ -815,10 +1063,22 @@ export function RegisterForm({
         </div>
       )}
 
-      {(def.required.length > 0 || (def.groups ?? []).some((g) => !!g.required?.length)) && (
-        <p className="flex items-center gap-1 text-xs text-zinc-500">
-          <span className="text-base leading-none font-semibold text-orange-500" aria-hidden="true">*</span> {t("Required")}
-        </p>
+      {recent.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-zinc-500">{t("Recent")}</p>
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+            {recent.map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                onClick={() => fillFromRecent(r.values)}
+                className="inline-flex h-10 max-w-[75%] shrink-0 items-center rounded-full border border-zinc-800 bg-zinc-950 px-3.5 text-sm font-medium text-zinc-200 transition-[background-color,transform] hover:bg-zinc-900 active:scale-[0.97]"
+              >
+                <span className="truncate">{r.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {def.visitHost && direction !== "OUT" && (
@@ -835,55 +1095,22 @@ export function RegisterForm({
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {visible.map((f) => (
-          <FieldBlock
-            key={f.key}
-            f={f}
-            id={`rf-${f.key}`}
-            required={def.required.includes(f.key)}
-            voice={voiceKeys.includes(f.key)}
-            missing={voiceDone && def.required.includes(f.key) && String(values[f.key] ?? "").trim() === ""}
+      {primary.length > 0 && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{primary.map(renderField)}</div>}
+
+      {more.length > 0 && (
+        <div className="space-y-4">
+          <button
+            type="button"
+            onClick={() => setMoreOpen((o) => !o)}
+            aria-expanded={showMore}
+            className="inline-flex h-10 items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-900"
           >
-            <FieldInput
-              key={`${f.key}-${clearNo}-${fillTargets.has(f.key) ? fillNo : 0}-${voiceVer[f.key] ?? 0}`}
-              registerKey={def.key}
-              f={f}
-              id={`rf-${f.key}`}
-              value={values[f.key] ?? ""}
-              onChange={(v) => {
-                setValues((s) => ({ ...s, [f.key]: v }));
-                // The guard checked / changed it: no longer marked as voice
-                if (voiceKeys.includes(f.key)) setVoiceKeys((ks) => ks.filter((k) => k !== f.key));
-              }}
-              staff={staff}
-              required={def.required.includes(f.key)}
-              onPickPerson={
-                f.fills
-                  ? (p) => {
-                      // Fill their designation / department. A box keeps what the guard
-                      // typed; one filled by an earlier pick follows the new person.
-                      const filled: Values = {};
-                      const pairs: [string | undefined, string | null][] = [
-                        [f.fills?.designation, p.designation],
-                        [f.fills?.department, p.department],
-                      ];
-                      for (const [target, val] of pairs) {
-                        if (!target) continue;
-                        const cur = String(values[target] ?? "").trim();
-                        if (cur && cur !== autoFilled.current[target]) continue;
-                        filled[target] = val ?? "";
-                        autoFilled.current[target] = val ?? "";
-                      }
-                      setValues((s) => ({ ...s, ...filled }));
-                      setFillNo((n) => n + 1);
-                    }
-                  : undefined
-              }
-            />
-          </FieldBlock>
-        ))}
-      </div>
+            {t("More details")}
+            <ChevronDown className={`h-4 w-4 transition-transform ${showMore ? "rotate-180" : ""}`} aria-hidden="true" />
+          </button>
+          {showMore && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{more.map(renderField)}</div>}
+        </div>
+      )}
 
       {(def.groups ?? []).map((g) => {
         const list = rows[g.key] ?? [];

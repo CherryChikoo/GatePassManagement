@@ -1,6 +1,5 @@
 "use client";
 import { ThemedSelect } from "@/components/ui/themed-select";
-import { DepartmentSelect } from "@/components/ui/department-select";
 import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
 
@@ -44,17 +43,14 @@ import { BackButton } from "@/components/ui/back-button";
 import { GoBackButton } from "@/components/ui/go-back-button";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { LiveDateTime } from "@/components/registers/register-form";
-import { HUB_PAGE_TOP, HubQrButton, HubScreenHeader, HubTiles, insideForLabel, useHubView, useMinuteClock } from "@/components/visits/hub-tiles";
+import { HUB_PAGE_TOP, HubQrButton, HubScreenHeader, HubTiles, useHubView, useMinuteClock } from "@/components/visits/hub-tiles";
 import { ListEmpty, ListError, ListLoading, PersonCard, PersonCardAction } from "@/components/visits/person-card";
 import { CheckInQrScreen } from "@/components/visits/checkin-qr-screen";
 import { ARRIVAL_COUNTS_QUERY } from "@/components/visits/arrival-alert";
 import { useLiveTopics } from "@/lib/realtime/live";
 import type { ArrivalCounts, StudentParents } from "@/server/actions/visit-requests";
 import { ParentSearch, parentOf, type ParentWho } from "./parent-search";
-
-/** Reasons in the Purpose dropdown (saved in English; shown in the guard's language) */
-const VISIT_PURPOSES = ["Meeting", "Parent Visit", "Admission Enquiry", "Delivery", "Maintenance / Repair", "Event", "Interview"];
-const OTHER_PURPOSE = "__other__";
+import { COMING_FOR, COMING_FOR_KEYS, comingForFields, isComingFor, missingComingForDetail } from "@/lib/visits/visitor-categories";
 
 /**
  * What was typed in the new-visitor form, kept for this browser tab until it is
@@ -63,11 +59,23 @@ const OTHER_PURPOSE = "__other__";
  */
 const VISITOR_DRAFT_KEY = "gatepass:visitor-draft";
 const VISITOR_DRAFT_MAX_AGE_MS = 12 * 60 * 60_000;
+// Nothing chosen at first: the guard picks "Coming for", then the rest of the form shows
 const EMPTY_VISITOR = {
-  name: "", phone: "", category: "GUEST", purpose: "", visitingStudent: "", gate: "", vehicleNumber: "", entryTime: "",
-  address: "", department: "", remarks: "", hostProfileId: "",
+  comingFor: "", name: "", phone: "", address: "", vehicleNumber: "", detail: "", hostProfileId: "", visitingStudent: "",
 };
-type VisitorDraft = { formData: typeof EMPTY_VISITOR; onFoot: boolean; purposeOther: boolean; photo: string | null; at: number };
+type VisitorDraft = { formData: typeof EMPTY_VISITOR; onFoot: boolean; photo: string | null; at: number };
+
+/** "5 min" / "2 h 10 min" / "3 d 7 h": how long they have been inside */
+function insideDuration(t: ReturnType<typeof useT>, since: string | Date | null | undefined, now: number): string | null {
+  if (!since) return null;
+  const start = new Date(since).getTime();
+  if (!Number.isFinite(start)) return null;
+  const mins = Math.max(0, Math.floor((now - start) / 60_000));
+  if (mins < 60) return t("{m} min", { m: mins });
+  const h = Math.floor(mins / 60);
+  if (h < 24) return t("{h} h {m} min", { h, m: mins % 60 });
+  return t("{d} d {h} h", { d: Math.floor(h / 24), h: h % 24 });
+}
 
 function forgetVisitorDraft() {
   try {
@@ -170,8 +178,6 @@ export function OutsidersClient() {
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   
-  // Purpose: "Other" picked (a box to type the reason)
-  const [purposeOther, setPurposeOther] = useState(false);
   // Visitor on foot: no vehicle number needed
   const [onFoot, setOnFoot] = useState(false);
   // Bumped after each registration so the department picker clears too
@@ -182,8 +188,6 @@ export function OutsidersClient() {
   // ── Voice filling ──────────────────────────────────────────
   // Fills empty boxes (or ones voice filled before) — never what the guard typed.
   const [voiceVals, setVoiceVals] = useState<Record<string, string>>({});
-  const [deptVoiceNo, setDeptVoiceNo] = useState(0);
-  const categoryTapped = useRef(false);
   const latestVisitor = useRef({ formData, onFoot, voiceVals });
   useEffect(() => {
     latestVisitor.current = { formData, onFoot, voiceVals };
@@ -195,12 +199,11 @@ export function OutsidersClient() {
     const next: Record<string, string> = { ...cur.formData };
     const set: Record<string, string> = {};
     for (const [k, raw] of Object.entries(fill.fields ?? {})) {
-      if (k === "onFoot" || !(k in next)) continue;
+      // Only the boxes this form still has (not Coming for, host or student)
+      if (!["name", "phone", "address", "vehicleNumber"].includes(k)) continue;
       const v = k === "vehicleNumber" ? raw.toUpperCase() : raw;
       const now = String(next[k] ?? "");
-      // "Guest" is only the starting choice: voice may change it until the guard taps a category
-      const startingCategory = k === "category" && now === "GUEST" && !categoryTapped.current;
-      if ((now !== "" && now !== cur.voiceVals[k] && !startingCategory) || now === v) continue;
+      if ((now !== "" && now !== cur.voiceVals[k]) || now === v) continue;
       next[k] = v;
       set[k] = v;
     }
@@ -209,7 +212,6 @@ export function OutsidersClient() {
       latestVisitor.current = { ...cur, formData: next as typeof formData, voiceVals: vals };
       setFormData(next as typeof formData);
       setVoiceVals(vals);
-      if ("department" in set) setDeptVoiceNo((n) => n + 1);
     }
     if (fill.fields?.onFoot === "yes" && !cur.onFoot && !next.vehicleNumber) setOnFoot(true);
   };
@@ -217,7 +219,6 @@ export function OutsidersClient() {
   const resetVoice = () => {
     setVoiceVals({});
     beforeVoice.current = null;
-    categoryTapped.current = false;
     voice.reset();
   };
   const undoVoice = () => {
@@ -226,15 +227,18 @@ export function OutsidersClient() {
       setFormData(b.formData);
       setOnFoot(b.onFoot);
     }
-    setDeptVoiceNo((n) => n + 1);
     resetVoice();
   };
   /** Highlight for a box filled by voice and not yet changed by the guard */
   const voiceRing = (k: keyof typeof formData) =>
     voiceVals[k] !== undefined && formData[k] === voiceVals[k] ? " ring-2 ring-amber-400/60" : "";
 
-  // ── Parent of a student: picked from the box at the top, the form fills itself ──
+  // ── Parent of a student: found by roll no / name, the form fills itself ──
   const [parentNote, setParentNote] = useState<string | null>(null);
+  // Parent picked from the search (their student is the person to visit: no box for it)
+  const [parentPicked, setParentPicked] = useState(false);
+  // Student not found: "Type details instead" shows the normal boxes
+  const [parentTyping, setParentTyping] = useState(false);
   const fillFromParent = (s: StudentParents, who: ParentWho) => {
     const p = parentOf(s, who);
     if (!p) return;
@@ -247,17 +251,11 @@ export function OutsidersClient() {
       address: s.homeAddress?.trim() || f.address,
       // Their usual vehicle (the guard can change it, or tap No vehicle)
       vehicleNumber: vehicle && !walks ? vehicle : f.vehicleNumber,
-      category: "PARENT",
-      purpose: "Parent Visit",
       visitingStudent: `${s.name} (${s.roll})`,
-      department: s.department ?? f.department,
     }));
     if (walks) setOnFoot(true);
     else if (vehicle) setOnFoot(false);
-    categoryTapped.current = true;
-    setPurposeOther(false);
-    // The department picker shows the new value
-    setDeptVoiceNo((n) => n + 1);
+    setParentPicked(true);
     const whoLabel = who === "FATHER" ? t("Father") : who === "MOTHER" ? t("Mother") : t("Guardian");
     setParentNote(t("Filled from {student}'s {who}. Check the details and take the photo.", { student: s.name, who: whoLabel }));
   };
@@ -267,7 +265,7 @@ export function OutsidersClient() {
 
   // ── Unsaved details kept for this tab (see VISITOR_DRAFT_KEY) ──
   const typedSomething =
-    !!photo || onFoot || Object.entries(formData).some(([k, v]) => (k === "category" ? v !== "GUEST" : String(v ?? "").trim() !== ""));
+    !!photo || onFoot || Object.values(formData).some((v) => String(v ?? "").trim() !== "");
   const [restoredDraft, setRestoredDraft] = useState(false);
   const draftChecked = useRef(false);
   // Opening the form: bring back what was typed before (read after the page is up, never while it is drawn on the server)
@@ -279,9 +277,15 @@ export function OutsidersClient() {
       d = JSON.parse(sessionStorage.getItem(VISITOR_DRAFT_KEY) || "null");
     } catch {}
     if (!d || Date.now() - d.at > VISITOR_DRAFT_MAX_AGE_MS) return;
-    setFormData({ ...EMPTY_VISITOR, ...d.formData });
+    // Only the boxes this form has (an older kept copy may hold others)
+    const kept: Record<string, string> = { ...EMPTY_VISITOR };
+    for (const k of Object.keys(EMPTY_VISITOR)) {
+      const v = (d.formData as Record<string, unknown> | undefined)?.[k];
+      if (typeof v === "string") kept[k] = v;
+    }
+    if (!isComingFor(kept.comingFor)) kept.comingFor = "";
+    setFormData(kept as typeof EMPTY_VISITOR);
     setOnFoot(!!d.onFoot);
-    setPurposeOther(!!d.purposeOther);
     setPhoto(d.photo ?? null);
     setFormNonce((n) => n + 1);
     setRestoredDraft(true);
@@ -291,17 +295,17 @@ export function OutsidersClient() {
     if (!formOpen || !draftChecked.current) return;
     try {
       if (typedSomething) {
-        sessionStorage.setItem(VISITOR_DRAFT_KEY, JSON.stringify({ formData, onFoot, purposeOther, photo, at: Date.now() }));
+        sessionStorage.setItem(VISITOR_DRAFT_KEY, JSON.stringify({ formData, onFoot, photo, at: Date.now() }));
       } else {
         sessionStorage.removeItem(VISITOR_DRAFT_KEY);
       }
     } catch {
       // A large photo can be over the browser's limit: keep the details without it
       try {
-        sessionStorage.setItem(VISITOR_DRAFT_KEY, JSON.stringify({ formData, onFoot, purposeOther, photo: null, at: Date.now() }));
+        sessionStorage.setItem(VISITOR_DRAFT_KEY, JSON.stringify({ formData, onFoot, photo: null, at: Date.now() }));
       } catch {}
     }
-  }, [formOpen, typedSomething, formData, onFoot, purposeOther, photo]);
+  }, [formOpen, typedSomething, formData, onFoot, photo]);
 
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -383,8 +387,9 @@ export function OutsidersClient() {
     setPhoto(null);
     setOnFoot(false);
     setFormNonce((n) => n + 1);
-    setPurposeOther(false);
     setParentNote(null);
+    setParentPicked(false);
+    setParentTyping(false);
     setRestoredDraft(false);
     resetVoice();
     photoUpload.current = null;
@@ -395,20 +400,25 @@ export function OutsidersClient() {
     e.preventDefault();
     if (loading) return;
 
+    // Checked here first, in the form's order (the server checks the same)
+    const stop = (message: string) => {
+      setError(t(message));
+      setTimeout(() => setError(null), 4000);
+    };
+    if (!isComingFor(formData.comingFor)) return stop("Choose what they are coming for");
+    const coming = formData.comingFor;
+    const comingOpts = { detail: formData.detail, hostProfileId: formData.hostProfileId, student: formData.visitingStudent };
+    const missingComing = missingComingForDetail(coming, comingOpts);
+    if (missingComing) return stop(missingComing);
+    if (!photo) return stop("Take the visitor's photo before registering");
+    if (!formData.name.trim()) return stop("Enter the full name");
+    if (!formData.phone.trim()) return stop("Enter the phone number");
+    if (!formData.address.trim()) return stop("Enter the address");
+    // Vehicle number is required unless the visitor came on foot
+    if (!onFoot && !formData.vehicleNumber.trim()) return stop("Enter the vehicle number, or tap No vehicle");
+
     setLoading(true);
     try {
-      // Vehicle number is required unless the visitor came on foot
-      if (!onFoot && !formData.vehicleNumber.trim()) {
-        setError(t("Enter the vehicle number, or tap No vehicle")); setTimeout(() => setError(null), 4000);
-        setLoading(false);
-        return;
-      }
-      // The visitor's photo is mandatory
-      if (!photo) {
-        setError(t("Take the visitor's photo before registering")); setTimeout(() => setError(null), 4000);
-        setLoading(false);
-        return;
-      }
       let path: string | undefined;
       if (photo) {
         // The upload started when the photo was taken; retried once here if it failed
@@ -422,7 +432,14 @@ export function OutsidersClient() {
         path = upload.path;
       }
 
-      const result: any = await callGate("registerOutsider", [{ ...formData, vehicleNumber: onFoot ? "On foot" : formData.vehicleNumber.trim(), photoUrl: path }], 20_000);
+      const result: any = await callGate("registerOutsider", [{
+        name: formData.name.trim(),
+        phone: formData.phone.trim(),
+        address: formData.address.trim(),
+        vehicleNumber: onFoot ? "On foot" : formData.vehicleNumber.trim(),
+        photoUrl: path,
+        ...comingForFields(coming, comingOpts),
+      }], 20_000);
       
       if (result.success) {
         setSuccess(t("Visitor registered successfully!")); setTimeout(() => setSuccess(null), 4000);
@@ -434,7 +451,7 @@ export function OutsidersClient() {
         setPage(1);
         closeForm();
       } else {
-        setError(result.error || t("Failed to register")); setTimeout(() => setError(null), 3000);
+        setError(t(result.error || "Failed to register")); setTimeout(() => setError(null), 4000);
       }
     } catch (err: any) {
       setError(actionErrorMessage(err, t("Failed to register visitor"))); setTimeout(() => setError(null), 3000);
@@ -523,6 +540,25 @@ export function OutsidersClient() {
 
   const labelCls = "field-label block text-sm font-medium text-zinc-300";
   const categoryChip = "inline-flex shrink-0 items-center rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[11px] font-medium text-zinc-300";
+  const selectCls =
+    "flex h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 [&>option]:bg-zinc-900";
+  const requiredMark = <span className="text-orange-400">*</span>;
+  const optionalTag = <span className="font-normal text-zinc-500">({t("optional")})</span>;
+
+  // ── New visitor form: "Coming for" first, then the boxes ──
+  const comingFor = isComingFor(formData.comingFor) ? formData.comingFor : null;
+  const isParent = comingFor === "PARENT";
+  // A parent's boxes show once their student is picked, or after "Type details
+  // instead" (or when a kept draft already filled them)
+  const showDetails =
+    !!comingFor && (!isParent || parentPicked || parentTyping || !!(formData.name.trim() || formData.visitingStudent.trim()));
+  const pickComingFor = (value: string) => {
+    if (value === formData.comingFor) return;
+    setFormData({ ...formData, comingFor: value, detail: "", hostProfileId: "", visitingStudent: "" });
+    setParentPicked(false);
+    setParentTyping(false);
+    setParentNote(null);
+  };
 
   return (
     // Lists of people (Waiting to accept, Inside now): one readable column on tablets / desktops
@@ -594,7 +630,7 @@ export function OutsidersClient() {
         <HubScreenHeader
           onBack={back}
           title={view === "new" ? t("New visitor") : view === "inside" ? t("Inside now") : t("Old records")}
-          subtitle={formOpen ? t("Photo first, then the details. Saving lets the visitor in.") : t("Visitors Book")}
+          subtitle={formOpen ? t("Choose what they are coming for first, then the photo and details. Saving lets the visitor in.") : t("Visitors Book")}
           // Everyone inside (hidden while searching: the pager shows the matches)
           count={view === "inside" && insidePage && !listQuery ? insidePage.total : null}
           busy={view === "inside" && insideList.refreshing}
@@ -703,236 +739,193 @@ export function OutsidersClient() {
                   </div>
                 )}
 
-                {/* A student's parent: pick the student and who came; the boxes fill from the saved details */}
-                <div className="space-y-2">
-                  <ParentSearch onPick={fillFromParent} />
-                  {parentNote && (
-                    <p role="status" className="flex items-start gap-2 px-1 text-sm font-medium text-emerald-500">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> {parentNote}
-                    </p>
-                  )}
-                </div>
-
                 {/* Speak the visitor's details once: the boxes fill themselves (photo still needed) */}
                 <VoicePanel voice={voice} onUndo={undoVoice} />
 
-                {/* Photo Capture (mandatory) */}
-                <div className="space-y-2">
-                  <p className={labelCls}>
-                    {t("Visitor Photo")} <span className="text-orange-400">*</span>
-                  </p>
-                  {photo ? (
-                    <div className="flex items-center gap-4 rounded-3xl border border-emerald-500/30 bg-emerald-500/5 p-3">
-                      <img src={photo} alt="Captured" className="h-28 w-28 shrink-0 rounded-2xl object-cover" />
-                      <div className="min-w-0 space-y-3">
-                        <p className="flex items-center gap-2 text-sm font-medium text-emerald-400">
-                          <CheckCircle2 className="h-4 w-4 shrink-0" />
-                          {t("Photo Captured")}
-                        </p>
-                        <label
-                          htmlFor="photo-upload"
-                          className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-950"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                          {t("Retake Photo")}
-                        </label>
-                      </div>
-                    </div>
-                  ) : (
-                    <label
-                      htmlFor="photo-upload"
-                      className="flex cursor-pointer flex-col items-center justify-center gap-2.5 rounded-3xl border-2 border-dashed border-orange-500/40 bg-orange-500/5 px-4 py-7 text-center transition-colors hover:bg-orange-500/10 active:bg-orange-500/10"
-                    >
-                      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-600 text-white">
-                        <Camera className="h-7 w-7" />
-                      </span>
-                      <span className="text-base font-medium text-zinc-100">{t("Take Photo")}</span>
-                      <span className="text-xs text-zinc-500">
-                        {t("Capture the visitor's face with the device camera.")}
-                      </span>
-                    </label>
-                  )}
-                  <input
-                    id="photo-upload"
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    onChange={handlePhotoCapture}
-                  />
-                </div>
-
-                {/* Who */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label htmlFor="visitor-name" className={labelCls}>
-                      {t("Full Name")} <span className="text-orange-400">*</span>
-                    </label>
-                    <Input id="visitor-name" required autoComplete="off" autoCapitalize="words" placeholder={t("Enter full name")} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className={`text-base sm:text-sm${voiceRing("name")}`} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label htmlFor="visitor-phone" className={labelCls}>
-                      {t("Phone Number")} <span className="text-orange-400">*</span>
-                    </label>
-                    <Input id="visitor-phone" required type="tel" inputMode="tel" autoComplete="off" maxLength={15} placeholder={t("Enter phone")} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className={`text-base sm:text-sm${voiceRing("phone")}`} />
-                  </div>
-
-                {/* Vehicle number: required ("No vehicle" for visitors on foot) */}
+                {/* 1. Coming for, first: the rest of the form follows it */}
                 <div className="space-y-1.5">
-                  <label htmlFor="visitor-vehicle" className={labelCls}>
-                    {t("Vehicle Number")} <span className="text-orange-400">*</span>
+                  <label htmlFor="visitor-coming-for" className={labelCls}>
+                    {t("Coming for")} {requiredMark}
                   </label>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    {/* The box takes the rest of the row (it shrank to its placeholder beside the long Telugu button) */}
-                    <div className="min-w-0 flex-1">
-                    <Input
-                      id="visitor-vehicle"
-                      required={!onFoot}
-                      disabled={onFoot}
-                      autoComplete="off"
-                      autoCapitalize="characters"
-                      placeholder={onFoot ? t("No vehicle") : t("E.g., TS 09 EA 1234")}
-                      value={onFoot ? "" : formData.vehicleNumber}
-                      onChange={(e) => setFormData({ ...formData, vehicleNumber: e.target.value.toUpperCase() })}
-                      className={`text-base sm:text-sm disabled:opacity-60${voiceRing("vehicleNumber")}`}
-                    />
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={onFoot}
-                      onClick={() => setOnFoot((v) => !v)}
-                      className={`h-12 shrink-0 whitespace-nowrap rounded-2xl border px-4 text-sm font-medium transition-colors ${
-                        onFoot
-                          ? "border-orange-500/50 bg-orange-500/10 text-orange-400"
-                          : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
-                      }`}
-                    >
-                      {onFoot ? "✓ " : ""}{t("No vehicle (on foot)")}
-                    </button>
-                  </div>
-                </div>
-                </div>
-
-                {/* Category: one tap */}
-                <div className="space-y-1.5">
-                  <p id="visitor-category" className={labelCls}>{t("Category")}</p>
-                  <div role="radiogroup" aria-labelledby="visitor-category" className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                    {(
-                      [
-                        ["GUEST", t("Guest / Visitor")],
-                        ["PARENT", t("Parent / Guardian")],
-                        ["VENDOR", t("Vendor / Delivery")],
-                        ["WORKER", t("Worker / Staff")],
-                      ] as const
-                    ).map(([value, label]) => {
-                      const selected = formData.category === value;
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          role="radio"
-                          aria-checked={selected}
-                          onClick={() => {
-                            categoryTapped.current = true;
-                            setFormData({ ...formData, category: value });
-                          }}
-                          className={`flex min-h-14 items-center justify-center rounded-2xl border px-3 py-2 text-center text-sm font-medium leading-snug transition-colors ${
-                            selected
-                              ? "border-orange-500/50 bg-orange-500/10 text-orange-400"
-                              : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label htmlFor="visitor-purpose" className={labelCls}>{t("Reason / Purpose of Visit")}</label>
-                  {/* A real dropdown (a typed-suggestion list hid the other choices once one was
-                      picked); "Other" opens a box to type any reason. Voice can fill either. */}
                   <ThemedSelect
-                    id="visitor-purpose"
-                    value={VISIT_PURPOSES.includes(formData.purpose) ? formData.purpose : purposeOther || formData.purpose ? OTHER_PURPOSE : ""}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setPurposeOther(v === OTHER_PURPOSE);
-                      setFormData({ ...formData, purpose: v === OTHER_PURPOSE ? "" : v });
-                    }}
-                    className="flex h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 [&>option]:bg-zinc-900"
+                    id="visitor-coming-for"
+                    value={comingFor ?? ""}
+                    onChange={(e) => pickComingFor(e.target.value)}
+                    className={selectCls}
                   >
                     <option value="">{t("— Select —")}</option>
-                    {VISIT_PURPOSES.map((p) => (
-                      <option key={p} value={p}>{t(p)}</option>
+                    {COMING_FOR_KEYS.map((k) => (
+                      <option key={k} value={k}>{t(COMING_FOR[k].label)}</option>
                     ))}
-                    <option value={OTHER_PURPOSE}>{t("Other (type the reason)")}</option>
                   </ThemedSelect>
-                  {(purposeOther || (formData.purpose !== "" && !VISIT_PURPOSES.includes(formData.purpose))) && (
-                    <Input
-                      id="visitor-purpose-other"
-                      autoFocus={purposeOther && !formData.purpose}
-                      maxLength={200}
-                      placeholder={t("Type the reason")}
-                      value={formData.purpose}
-                      onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
-                      className={`text-base sm:text-sm${voiceRing("purpose")}`}
-                    />
-                  )}
+                  {!comingFor && <p className="text-xs text-zinc-500">{t("Choose what they are coming for to see the form.")}</p>}
                 </div>
 
-                {/* Meeting a faculty / staff member: they get a code the visitor needs to go out */}
-                <div className="space-y-1.5">
-                  <label htmlFor="visitor-host" className={`${labelCls} flex items-center gap-1.5`}>
-                    <KeyRound className="h-4 w-4 text-orange-500" aria-hidden="true" /> {t("Meeting (faculty / staff)")}
-                  </label>
-                  <HostPicker
-                    key={`host-${formNonce}`}
-                    id="visitor-host"
-                    value={formData.hostProfileId}
-                    onChange={(v) => setFormData({ ...formData, hostProfileId: v })}
-                  />
-                  <p className="text-xs text-zinc-500">
-                    {formData.hostProfileId
-                      ? t("They get a meeting code; the visitor needs it from them to go out.")
-                      : t("Optional. Leave it empty if they came to meet a student or for other work — then no code is needed.")}
-                  </p>
-                </div>
-
-                {/* Other (optional) details */}
-                <div className="space-y-4 border-t border-zinc-800/70 pt-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">{t("More details (optional)")}</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label htmlFor="visitor-visiting" className={labelCls}>{t("Person to Visit")}</label>
-                      <Input id="visitor-visiting" placeholder={t("Name or Roll No of the person")} value={formData.visitingStudent} onChange={e => setFormData({...formData, visitingStudent: e.target.value})} className={`text-base sm:text-sm${voiceRing("visitingStudent")}`} />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label htmlFor="visitor-department" className={labelCls}>{t("Department")}</label>
-                      <DepartmentSelect key={`dept-${formNonce}-${deptVoiceNo}`} allowOther id="visitor-department" placeholder="Department being visited" value={formData.department} onChange={(v) => setFormData({ ...formData, department: v })} />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label htmlFor="visitor-address" className={labelCls}>{t("Address")}</label>
-                      <Input id="visitor-address" placeholder={t("Visitor's address")} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className={`text-base sm:text-sm${voiceRing("address")}`} />
-                    </div>
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <label htmlFor="visitor-remarks" className={labelCls}>{t("Remarks")}</label>
-                      <Input id="visitor-remarks" placeholder={t("Any notes")} value={formData.remarks} onChange={e => setFormData({...formData, remarks: e.target.value})} className={`text-base sm:text-sm${voiceRing("remarks")}`} />
-                    </div>
+                {/* Parent / Guardian: find the student; picking who came fills the boxes from the saved details */}
+                {isParent && (
+                  <div className="space-y-2">
+                    <ParentSearch onPick={fillFromParent} label={t("Find the student: roll no or name")} />
+                    {parentNote && (
+                      <p role="status" className="flex items-start gap-2 px-1 text-sm font-medium text-emerald-500">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> {parentNote}
+                      </p>
+                    )}
+                    {!showDetails && (
+                      <p className="px-1 text-sm text-zinc-500">
+                        {t("Student not found?")}{" "}
+                        <button
+                          type="button"
+                          onClick={() => setParentTyping(true)}
+                          className="inline-flex min-h-11 items-center font-medium text-orange-500 underline underline-offset-4 hover:text-orange-400"
+                        >
+                          {t("Type details instead")}
+                        </button>
+                      </p>
+                    )}
                   </div>
-                </div>
+                )}
 
-                <LiveDateTime />
+                {showDetails && (
+                  <>
+                    {/* Photo Capture (mandatory) */}
+                    <div className="space-y-2">
+                      <p className={labelCls}>
+                        {t("Visitor Photo")} {requiredMark}
+                      </p>
+                      {photo ? (
+                        <div className="flex items-center gap-4 rounded-3xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+                          <img src={photo} alt="Captured" className="h-28 w-28 shrink-0 rounded-2xl object-cover" />
+                          <div className="min-w-0 space-y-3">
+                            <p className="flex items-center gap-2 text-sm font-medium text-emerald-400">
+                              <CheckCircle2 className="h-4 w-4 shrink-0" />
+                              {t("Photo Captured")}
+                            </p>
+                            <label
+                              htmlFor="photo-upload"
+                              className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-950"
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                              {t("Retake Photo")}
+                            </label>
+                          </div>
+                        </div>
+                      ) : (
+                        <label
+                          htmlFor="photo-upload"
+                          className="flex cursor-pointer flex-col items-center justify-center gap-2.5 rounded-3xl border-2 border-dashed border-orange-500/40 bg-orange-500/5 px-4 py-7 text-center transition-colors hover:bg-orange-500/10 active:bg-orange-500/10"
+                        >
+                          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-600 text-white">
+                            <Camera className="h-7 w-7" />
+                          </span>
+                          <span className="text-base font-medium text-zinc-100">{t("Take Photo")}</span>
+                          <span className="text-xs text-zinc-500">
+                            {t("Capture the visitor's face with the device camera.")}
+                          </span>
+                        </label>
+                      )}
+                      <input
+                        id="photo-upload"
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={handlePhotoCapture}
+                      />
+                    </div>
+
+                    {/* Who: name, phone, address (all needed) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label htmlFor="visitor-name" className={labelCls}>
+                          {t("Full Name")} {requiredMark}
+                        </label>
+                        <Input id="visitor-name" required autoComplete="off" autoCapitalize="words" placeholder={t("Enter full name")} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className={`text-base sm:text-sm${voiceRing("name")}`} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="visitor-phone" className={labelCls}>
+                          {t("Phone Number")} {requiredMark}
+                        </label>
+                        <Input id="visitor-phone" required type="tel" inputMode="tel" autoComplete="off" maxLength={15} placeholder={t("Enter phone")} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className={`text-base sm:text-sm${voiceRing("phone")}`} />
+                      </div>
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <label htmlFor="visitor-address" className={labelCls}>
+                          {t("Address / Company")} {requiredMark}
+                        </label>
+                        <Input id="visitor-address" required maxLength={300} placeholder={t("Address or company name")} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className={`text-base sm:text-sm${voiceRing("address")}`} />
+                      </div>
+                    </div>
+
+                    {/* Vehicle number: required, full width; "No vehicle" on its own line for visitors on foot */}
+                    <div className="space-y-2">
+                      <label htmlFor="visitor-vehicle" className={labelCls}>
+                        {t("Vehicle Number")} {requiredMark}
+                      </label>
+                      <Input
+                        id="visitor-vehicle"
+                        required={!onFoot}
+                        disabled={onFoot}
+                        autoComplete="off"
+                        autoCapitalize="characters"
+                        maxLength={30}
+                        placeholder={onFoot ? t("No vehicle") : t("E.g., TS 09 EA 1234")}
+                        value={onFoot ? "" : formData.vehicleNumber}
+                        onChange={(e) => setFormData({ ...formData, vehicleNumber: e.target.value.toUpperCase() })}
+                        className={`w-full text-base sm:text-sm disabled:opacity-60${voiceRing("vehicleNumber")}`}
+                      />
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={onFoot}
+                        onClick={() => setOnFoot((v) => !v)}
+                        className={`flex min-h-12 w-full items-center justify-center rounded-2xl border px-4 py-2 text-center text-sm font-medium leading-snug transition-colors ${
+                          onFoot
+                            ? "border-orange-500/50 bg-orange-500/10 text-orange-400"
+                            : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+                        }`}
+                      >
+                        {onFoot ? "✓ " : ""}{t("No vehicle (on foot)")}
+                      </button>
+                    </div>
+
+                    {/* The one extra box for what they are coming for (a parent needs none) */}
+                    {comingFor === "MEETING" && (
+                      <div className="space-y-1.5">
+                        <label htmlFor="visitor-host" className={`${labelCls} flex items-center gap-1.5`}>
+                          <KeyRound className="h-4 w-4 text-orange-500" aria-hidden="true" /> {t(COMING_FOR.MEETING.detailLabel)} {requiredMark}
+                        </label>
+                        <HostPicker
+                          key={`host-${formNonce}`}
+                          id="visitor-host"
+                          value={formData.hostProfileId}
+                          onChange={(v) => setFormData({ ...formData, hostProfileId: v })}
+                        />
+                        {formData.hostProfileId && (
+                          <p className="text-xs text-zinc-500">{t("They get a meeting code; the visitor needs it from them to go out.")}</p>
+                        )}
+                      </div>
+                    )}
+                    {(comingFor === "DELIVERY" || comingFor === "OTHER") && (
+                      <div className="space-y-1.5">
+                        <label htmlFor="visitor-detail" className={labelCls}>
+                          {t(COMING_FOR[comingFor].detailLabel)} {comingFor === "OTHER" ? requiredMark : optionalTag}
+                        </label>
+                        <Input id="visitor-detail" maxLength={200} autoComplete="off" value={formData.detail} onChange={(e) => setFormData({ ...formData, detail: e.target.value })} className="text-base sm:text-sm" />
+                      </div>
+                    )}
+
+                    <LiveDateTime />
+                  </>
+                )}
 
                 {errorAlert}
                 {successAlert}
 
-                <Button type="submit" className="h-14 w-full whitespace-normal text-center text-base leading-tight" size="lg" disabled={loading}>
-                  {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <UserPlus className="h-5 w-5" />}
-                  {loading ? t("Registering…") : t("Save & let in")}
-                </Button>
+                {showDetails && (
+                  <Button type="submit" className="h-14 w-full whitespace-normal text-center text-base leading-tight" size="lg" disabled={loading}>
+                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <UserPlus className="h-5 w-5" />}
+                    {loading ? t("Registering…") : t("Save & let in")}
+                  </Button>
+                )}
                 <Button type="button" variant="ghost" className="h-12 w-full" onClick={back} disabled={loading}>
                   {t("Cancel")}
                 </Button>
@@ -965,19 +958,16 @@ export function OutsidersClient() {
                     <PersonCard
                       name={person.name || "—"}
                       phone={person.phone}
-                      details={[person.category && t(person.category), person.purpose && t(person.purpose)].filter(Boolean).join(" · ")}
+                      details={meeting ? undefined : person.purpose ? t(person.purpose) : undefined}
                       chips={
                         meeting && (
-                          <span className="inline-flex max-w-full items-start gap-1 rounded-xl bg-orange-500/10 px-2.5 py-0.5 text-xs font-semibold text-orange-600">
-                            <KeyRound className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-                            <span className="min-w-0 break-words">
-                              {t("Meeting: {name}", { name: meeting.hostName })} · {t("code needed to exit")}
-                            </span>
+                          <span className="inline-flex max-w-full items-start gap-1.5 text-sm text-zinc-500">
+                            <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-500" aria-hidden="true" />
+                            <span className="min-w-0 break-words">{t("Meeting {name}", { name: meeting.hostName })}</span>
                           </span>
                         )
                       }
-                      time={`${t("In")} ${formatTime(person.entryTime)}`}
-                      since={insideForLabel(t, person.entryTime, now)}
+                      time={`${t("In")} ${formatTime(person.entryTime)}${insideDuration(t, person.entryTime, now) ? ` · ${insideDuration(t, person.entryTime, now)}` : ""}`}
                       highlight={highlightId === person.id}
                       onOpen={() => openOutsiderDetails(person)}
                       action={

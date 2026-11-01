@@ -60,6 +60,16 @@ export type FieldDef = {
    * change is kept in the record history. Only "yesno", "text" and "textarea".
    */
   updatable?: boolean;
+  /**
+   * Plain text box with a "Select" button beside it that lists known values
+   * (drivers, cars, autos, faculty: getVehicleOptions in
+   * src/server/actions/registers.ts); typing is always free. Stored as ordinary text.
+   */
+  combo?: "driver" | "vehicle" | "faculty";
+  /** "vehicle" combos: the field that also gets the picked vehicle's name (e.g. vehicleName) */
+  comboFills?: string;
+  /** Kept in the record but not shown on the new-entry form (filled by a pick above) */
+  formHidden?: boolean;
 };
 
 /** Field types that can be updatable (changed later from the record) */
@@ -104,6 +114,10 @@ export type MovementDef = {
    * "In only" option (e.g. Admission Book: visitors come in, then go out).
    */
   fixedStart?: boolean;
+  /** The side the new-entry form starts on (the guard may switch when firstDirections has both) */
+  startWith?: Direction;
+  /** No "Out only" / "In only" choice: the other side is always recorded later on the same record */
+  noOneWay?: boolean;
   /** Field that shows the chosen direction as "In" / "Out" */
   directionField?: string;
 };
@@ -119,6 +133,8 @@ export type EntryRegister = {
   movement?: MovementDef;
   /** The important details that must be filled in; every other input is optional */
   required: string[];
+  /** Groups of fields where at least one of each group must be filled (e.g. person using the car OR purpose) */
+  requiredAny?: string[][];
   /** Fixed values printed on the form (e.g. the "To" block of Form 19) */
   /** Shown above the form: fixed details, or a one-line note (note: true) */
   fixed?: { label: string; value: string; note?: boolean }[];
@@ -165,6 +181,8 @@ export const REGISTER_KEYS = [
   "AUTO_IN_OUT",
   "KEYS",
   "RETURNABLE",
+  /** Drivers / cars / autos registered at the Car Book and Auto Book (never listed as a register) */
+  "VEHICLE_FLEET",
 ] as const;
 
 export type RegisterKey = (typeof REGISTER_KEYS)[number];
@@ -322,16 +340,22 @@ export const REGISTERS: RegisterDef[] = [
     title: "Car Book",
     description: "College cars going out and coming back, with odometer readings.",
     required: ["driverName", "vehicleNumber"],
+    // The faculty using the car, or the purpose: one of them is needed
+    requiredAny: [["usedBy", "purpose"]],
     movement: {
       in: { label: "In", timeKey: "timeIn", readingKey: "inReading" },
       out: { label: "Out", timeKey: "timeOut", readingKey: "outReading" },
       firstDirections: BOTH,
+      // The car leaves first and comes back later (switchable); never "Out only"
+      startWith: "OUT",
+      noOneWay: true,
     },
     listFields: ["vehicleNumber", "driverName", "usedBy", "timeOut", "timeIn"],
     fields: [
-      { key: "driverName", label: "Driver Name", type: "text" },
-      { key: "vehicleNumber", label: "Vehicle Number", type: "text" },
-      { key: "usedBy", label: "Person / Department Using the Car", type: "person" },
+      { key: "driverName", label: "Driver", type: "text", combo: "driver" },
+      { key: "vehicleNumber", label: "Car", type: "text", combo: "vehicle", comboFills: "vehicleName" },
+      { key: "vehicleName", label: "Car Name", type: "text", formHidden: true },
+      { key: "usedBy", label: "Faculty using", type: "text", combo: "faculty", hint: "Faculty using the car, or the purpose: one of the two is needed" },
       { key: "purpose", label: "Purpose", type: "text" },
       { key: "date", label: "Date", type: "date" },
       { key: "timeOut", label: "Time Out", type: "time" },
@@ -566,12 +590,20 @@ export const REGISTERS: RegisterDef[] = [
     title: "Auto Book",
     description: "Autos coming in and going out: auto number, driver and any other details.",
     required: ["autoNumber", "driverName"],
-    movement: { in: { label: "In", timeKey: "inTime" }, out: { label: "Out", timeKey: "outTime" }, firstDirections: BOTH },
+    // The auto comes in first and goes out later (switchable); never "In only"
+    movement: {
+      in: { label: "In", timeKey: "inTime" },
+      out: { label: "Out", timeKey: "outTime" },
+      firstDirections: BOTH,
+      startWith: "IN",
+      noOneWay: true,
+    },
     listFields: ["autoNumber", "driverName", "inTime", "outTime"],
     fields: [
       { key: "date", label: "Date", type: "date" },
-      { key: "autoNumber", label: "Auto Number", type: "text", placeholder: "e.g. AP 39 T 1234" },
-      { key: "driverName", label: "Driver Name", type: "text" },
+      { key: "autoNumber", label: "Auto", type: "text", placeholder: "e.g. AP 39 T 1234", combo: "vehicle", comboFills: "vehicleName" },
+      { key: "vehicleName", label: "Auto Name", type: "text", formHidden: true },
+      { key: "driverName", label: "Driver", type: "text", combo: "driver" },
       { key: "inTime", label: "In-Time", type: "time" },
       { key: "outTime", label: "Out-Time", type: "time" },
       // Older records called this "Purpose / Remarks" (same box)
@@ -644,6 +676,25 @@ export const REGISTERS: RegisterDef[] = [
           { key: "remarks", label: "Remarks", type: "text" },
         ],
       },
+    ],
+  },
+  {
+    kind: "entry",
+    key: "VEHICLE_FLEET",
+    number: 20,
+    // Hidden from every register list (src/lib/registers/access.ts): filled only
+    // from "New driver / car" in the Car Book and Auto Book.
+    title: "Drivers & Vehicles",
+    description: "Drivers, cars and autos registered at the Car Book and Auto Book.",
+    required: [],
+    requiredAny: [["driverName", "vehicleName", "vehicleNumber"]],
+    listFields: ["driverName", "vehicleName", "vehicleNumber", "vehicleType"],
+    fields: [
+      { key: "driverName", label: "Driver Name", type: "text" },
+      { key: "driverPhone", label: "Driver Phone", type: "phone" },
+      { key: "vehicleName", label: "Vehicle Name", type: "text" },
+      { key: "vehicleNumber", label: "Vehicle Number", type: "text" },
+      { key: "vehicleType", label: "Vehicle Type", type: "select", options: ["Car", "Auto"] },
     ],
   },
 ];

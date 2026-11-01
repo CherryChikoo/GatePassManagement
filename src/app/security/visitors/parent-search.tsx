@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * "Parent of a student?" box at the top of the Visitors form: type a roll
- * number or name, pick the student, then tap Father / Mother / Guardian and
- * the form fills itself from the student's saved parent details.
+ * Student search of the Visitors form (category Parent / Guardian): type a
+ * roll number or name, pick the student, then tap Father / Mother / Guardian
+ * and the form fills itself from the student's saved parent details.
  */
 import { useEffect, useReducer, useState } from "react";
 import { GraduationCap, Loader2, Search, UserRound, X } from "lucide-react";
@@ -88,7 +88,14 @@ function fromAnswers(s: { key: string; roll: boolean }): { rows: StudentParents[
 
 // ─── The box ─────────────────────────────────────────────────────────────────
 
-export function ParentSearch({ onPick }: { onPick: (student: StudentParents, who: ParentWho) => void }) {
+export function ParentSearch({
+  onPick,
+  label,
+}: {
+  onPick: (student: StudentParents, who: ParentWho) => void;
+  /** The box's heading (already translated); "Parent of a student? …" when not given */
+  label?: string;
+}) {
   const t = useT();
   const [query, setQuery] = useState("");
   const [student, setStudent] = useState<StudentParents | null>(null);
@@ -159,7 +166,7 @@ export function ParentSearch({ onPick }: { onPick: (student: StudentParents, who
     <div className="space-y-2 rounded-3xl border border-orange-500/25 bg-orange-500/5 p-3 sm:p-4">
       <label htmlFor="parent-search" className="field-label flex items-center gap-1.5 text-sm font-medium text-zinc-300">
         <GraduationCap className="h-4 w-4 shrink-0 text-orange-500" aria-hidden="true" />
-        {t("Parent of a student? Type roll no / name")}
+        {label ?? t("Parent of a student? Type roll no / name")}
       </label>
 
       {student ? (

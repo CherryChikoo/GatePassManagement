@@ -633,7 +633,7 @@ export function EntryRegisterView({
         onClose={() => !busy && setMode(null)}
         title={
           mode === "new"
-            ? `${t("New entry")} — ${def.title}`
+            ? def.title
             : mode === "edit"
             ? `${t("Edit record")} — ${def.title}`
             : mode === "close"

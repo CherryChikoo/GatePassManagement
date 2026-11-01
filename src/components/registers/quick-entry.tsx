@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { Modal } from "@/components/ui/primitives";
 import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
@@ -84,7 +84,7 @@ export function QuickEntryModal({
   }
 
   return (
-    <Modal open onClose={() => !busy && onClose()} title={`${t("New entry")} — ${def.title}`} className="max-w-2xl" scrollTopKey={resultNo}>
+    <Modal open onClose={() => !busy && onClose()} title={def.title} className="max-w-2xl" scrollTopKey={resultNo}>
       <div className="space-y-4">
         {savedCount > 0 && (
           <div role="status" className="flex items-center gap-2.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
@@ -136,9 +136,11 @@ export function QuickEntryModal({
           type="button"
           onClick={onClose}
           disabled={busy}
-          className="w-full h-12 rounded-full border border-zinc-800 bg-zinc-900 text-sm font-medium text-zinc-200 hover:bg-zinc-950 transition-colors disabled:opacity-50"
+          aria-label={t("Go Back")}
+          title={t("Go Back")}
+          className="flex w-full h-11 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950 transition-colors disabled:opacity-50"
         >
-          {t("Go Back")}
+          <ArrowLeft className="h-5 w-5" aria-hidden="true" />
         </button>
       </div>
     </Modal>

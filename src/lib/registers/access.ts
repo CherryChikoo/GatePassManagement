@@ -13,6 +13,8 @@ import type { RegisterKey } from "./definitions";
 
 const ATTENDANCE: RegisterKey = "SECURITY_ATTENDANCE";
 /** Replaced registers: Security no longer sees them; Admin / Supervisor can still read the old records */
+/** Drivers / cars / autos saved from the Car Book and Auto Book screens: no register page for anyone */
+const FLEET: RegisterKey = "VEHICLE_FLEET";
 const RETIRED: RegisterKey[] = ["AUTO_BOOK", "SIROS_LABOUR_CONTRACT"];
 
 export type RegisterAccess = {
@@ -42,14 +44,16 @@ export async function getRegisterAccess(user: AuthUser): Promise<RegisterAccess>
   const isHeadSecurity = user.role === "SECURITY" ? await isHeadSecurityStaff(user.profileId) : false;
   const viewer = user.role === "SECURITY" || user.role === "ADMIN" || user.role === "SECURITY_SUPERVISOR";
   const hidden: RegisterKey[] =
-    user.role === "SECURITY" ? [...(isHeadSecurity ? [] : [ATTENDANCE]), ...RETIRED] : [];
+    user.role === "SECURITY" ? [...(isHeadSecurity ? [] : [ATTENDANCE]), ...RETIRED, FLEET] : [FLEET];
 
   return {
     isHeadSecurity,
     hidden,
     canView: (key) => viewer && !hidden.includes(key as RegisterKey),
     canCreate: (key) =>
-      RETIRED.includes(key as RegisterKey)
+      key === FLEET
+        ? user.role === "SECURITY"
+        : RETIRED.includes(key as RegisterKey)
         ? false
         : key === ATTENDANCE
         ? user.role === "ADMIN" || isHeadSecurity

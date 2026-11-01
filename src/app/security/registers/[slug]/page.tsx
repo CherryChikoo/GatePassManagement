@@ -5,6 +5,7 @@ import { getRegisterBySlug } from "@/lib/registers/catalog";
 import { isEntryRegister } from "@/lib/registers/definitions";
 import { RegisterPage } from "@/components/registers/register-pages";
 import { AdmissionHub } from "./admission-hub";
+import { VehicleHub } from "./vehicle-hub";
 
 export default async function RegisterDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const user = await requireRole("SECURITY");
@@ -16,5 +17,7 @@ export default async function RegisterDetailPage({ params }: { params: Promise<{
   if (def.key === "VISITORS") redirect("/security/visitors");
   // Admission Book: the same 4 buttons (Show QR · Type it myself · Inside now · Old records)
   if (def.key === "ADMISSION" && isEntryRegister(def)) return <AdmissionHub register={def} canCreate={access.canCreate(def.key)} />;
+  // Car Book / Auto Book: 3 buttons (New trip · New driver / car · Old records)
+  if ((def.key === "CAR_BOOK" || def.key === "AUTO_IN_OUT") && isEntryRegister(def)) return <VehicleHub register={def} canCreate={access.canCreate(def.key)} />;
   return <RegisterPage registerKey={def.key} register={def} viewer="SECURITY" canCreate={access.canCreate(def.key)} />;
 }

@@ -1311,3 +1311,83 @@ export async function getMovementDetails(movementId: string) {
     },
   };
 }
+
+// ──────────────────────────────────────────────────────────────
+// Car Book / Auto Book: choices for Driver, Car / Auto and Faculty using
+// ──────────────────────────────────────────────────────────────
+
+export type VehicleOptions = {
+  drivers: { name: string; phone: string | null }[];
+  vehicles: { name: string; number: string }[];
+  /** Faculty / staff names ("Name (employee ID)"); Car Book only */
+  people: string[];
+};
+
+const VEHICLE_BOOKS: Record<string, { type: "Car" | "Auto"; numberKey: string }> = {
+  CAR_BOOK: { type: "Car", numberKey: "vehicleNumber" },
+  AUTO_IN_OUT: { type: "Auto", numberKey: "autoNumber" },
+};
+const VEHICLE_OPTION_CAP = 100;
+const VEHICLE_LEARN_DAYS = 90;
+
+/**
+ * One request when a Car Book / Auto Book form opens: drivers and vehicles
+ * registered for this book (VEHICLE_FLEET), then the ones seen in the book's
+ * own entries of the last ~90 days (distinct, newest first, about 100 each),
+ * plus faculty names for the Car Book's "Faculty using". Read only.
+ */
+export async function getVehicleOptions(registerKey: string): Promise<VehicleOptions | { error: string }> {
+  await requireRole("SECURITY", "ADMIN", "SECURITY_SUPERVISOR");
+  const book = VEHICLE_BOOKS[registerKey];
+  if (!book) return { error: "Unknown register" };
+  const since = new Date(Date.now() - VEHICLE_LEARN_DAYS * 86_400_000);
+  const [fleet, learned, people] = await Promise.all([
+    prisma.registerEntry.findMany({
+      where: { register: "VEHICLE_FLEET", kind: "ORIGINAL" },
+      orderBy: { createdAt: "desc" },
+      select: { data: true },
+      take: 400,
+    }),
+    prisma.registerEntry.findMany({
+      where: { register: registerKey, kind: "ORIGINAL", createdAt: { gte: since } },
+      orderBy: { createdAt: "desc" },
+      select: { data: true },
+      take: 600,
+    }),
+    registerKey === "CAR_BOOK" ? getRegisterPeopleOptions() : Promise.resolve([]),
+  ]);
+
+  const text = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 200) : "");
+  const drivers = new Map<string, { name: string; phone: string | null }>();
+  const vehicles = new Map<string, { name: string; number: string }>();
+  const addDriver = (name: string, phone: string) => {
+    const k = name.toLowerCase().replace(/\s+/g, " ");
+    if (!k) return;
+    const have = drivers.get(k);
+    if (!have) drivers.set(k, { name, phone: phone || null });
+    else if (!have.phone && phone) have.phone = phone;
+  };
+  const addVehicle = (name: string, number: string) => {
+    const k = (number || name).toUpperCase().replace(/\s+/g, "");
+    if (!k) return;
+    const have = vehicles.get(k);
+    if (!have) vehicles.set(k, { name, number });
+    else if (!have.name && name) have.name = name;
+  };
+  for (const row of fleet) {
+    const d = (row.data ?? {}) as Record<string, unknown>;
+    if (d.vehicleType !== undefined && d.vehicleType !== null && d.vehicleType !== book.type) continue;
+    addDriver(text(d.driverName), text(d.driverPhone));
+    addVehicle(text(d.vehicleName), text(d.vehicleNumber));
+  }
+  for (const row of learned) {
+    const d = (row.data ?? {}) as Record<string, unknown>;
+    addDriver(text(d.driverName), "");
+    addVehicle(text(d.vehicleName), text(d[book.numberKey]));
+  }
+  return {
+    drivers: [...drivers.values()].slice(0, VEHICLE_OPTION_CAP),
+    vehicles: [...vehicles.values()].slice(0, VEHICLE_OPTION_CAP),
+    people: people.map((p) => (p.employeeId ? `${p.name} (${p.employeeId})` : p.name)),
+  };
+}

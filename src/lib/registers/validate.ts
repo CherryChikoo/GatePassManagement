@@ -221,7 +221,7 @@ export async function validateNewRecord(
     if (otherSide.readingKey && otherSide.readingKey !== side.readingKey) data[otherSide.readingKey] = null;
     if (m.directionField) data[m.directionField] = direction === "IN" ? "In" : "Out";
     data.direction = direction;
-    if (payload?.oneWay === true && !m.single) data.oneWay = true;
+    if (payload?.oneWay === true && !m.single && !m.noOneWay) data.oneWay = true;
   }
 
   for (const g of def.groups ?? []) {
@@ -253,6 +253,12 @@ export async function validateNewRecord(
   }
 
   if (details === 0) return { error: "Enter at least one detail" };
+  for (const anyOf of def.requiredAny ?? []) {
+    if (anyOf.every((k) => data[k] === null || data[k] === undefined || data[k] === "")) {
+      const names = anyOf.map((k) => def.fields.find((f) => f.key === k)?.label ?? k);
+      return { error: `${names.join(" or ")} is required` };
+    }
+  }
 
   if (isSirosLabour(def.key)) {
     const total = typeof data.totalWorkers === "number" ? data.totalWorkers : null;

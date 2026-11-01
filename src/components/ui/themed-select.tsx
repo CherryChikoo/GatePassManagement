@@ -113,7 +113,7 @@ export function ThemedSelect({
   };
   const close = (focusBack = true) => {
     setOpen(false);
-    if (focusBack) triggerRef.current?.focus();
+    if (focusBack) triggerRef.current?.focus({ preventScroll: true });
   };
 
   /** Swipe the sheet down to close it (handle and title row) */
@@ -174,7 +174,13 @@ export function ThemedSelect({
   // Keep the highlighted row in view
   React.useEffect(() => {
     if (!open) return;
-    listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
+    const list = listRef.current;
+    const row = list?.querySelector<HTMLElement>(`[data-index="${active}"]`);
+    if (!list || !row) return;
+    if (row.offsetTop < list.scrollTop) list.scrollTop = row.offsetTop;
+    else if (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight) {
+      list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight;
+    }
   }, [open, active]);
 
   const move = (dir: 1 | -1) => {
@@ -221,7 +227,7 @@ export function ThemedSelect({
   const sheetTitle = (items.find((i) => i.value === "")?.label ?? "").replace(/^[\s—–-]+|[\s—–-]+$/g, "");
 
   const list = (
-    <ul ref={listRef} id={listId} role="listbox" aria-labelledby={ariaLabelledBy} className={cn("overflow-y-auto overscroll-contain", sheet ? "px-2 pb-4" : "p-1.5")} style={{ maxHeight: sheet ? "60dvh" : pos?.maxH }}>
+    <ul ref={listRef} id={listId} role="listbox" aria-labelledby={ariaLabelledBy} className={cn("relative overflow-y-auto overscroll-contain", sheet ? "px-2 pb-4" : "p-1.5")} style={{ maxHeight: sheet ? "60dvh" : pos?.maxH }}>
       {shown.length === 0 && <li className="px-3 py-3 text-sm text-zinc-500">{t("Nothing matches.")}</li>}
       {shown.map((item, i) => {
         // A group heading above the first row of each group
@@ -315,7 +321,7 @@ export function ThemedSelect({
         required={required}
         disabled={disabled}
         onChange={() => {}}
-        onFocus={() => triggerRef.current?.focus()}
+        onFocus={() => triggerRef.current?.focus({ preventScroll: true })}
         className="pointer-events-none absolute bottom-0 left-1/2 h-px w-px opacity-0"
       />
 

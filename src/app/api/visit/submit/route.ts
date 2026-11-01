@@ -2,7 +2,10 @@ import { clientIp, overLimit, readJsonBody, submitVisitRequest, TOO_MANY, VISIT_
 
 /**
  * POST /api/visit/submit { t, data, hostProfileId? } (public: the visitor's phone)
- * -> { ok:true, name, at } | { ok:false, error }
+ * -> { ok:true, name, at, forStudent? } | { ok:false, error }
+ * A parent found by roll number sends data.studentRoll + data.parentWho (or their
+ * typed details); the server fills the rest from the student's record and
+ * answers with the student's name (forStudent: true), never the parent's.
  * The phone just shows "Your details are sent" with the name and time (kept on
  * the phone); it never asks the server again. See src/lib/visits/requests.ts.
  */

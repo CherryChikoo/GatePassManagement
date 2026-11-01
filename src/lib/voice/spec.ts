@@ -30,7 +30,7 @@ export function voiceSpecForRegister(def: EntryRegister): VoiceSpec {
   return {
     key: def.key,
     title: def.title,
-    fields: def.fields.filter((f) => SPEAKABLE.has(f.type) && f.key !== m?.directionField),
+    fields: def.fields.filter((f) => SPEAKABLE.has(f.type) && !f.formHidden && f.key !== m?.directionField),
     groups: (def.groups ?? [])
       .map((g) => ({ ...g, fields: g.fields.filter((f) => SPEAKABLE.has(f.type)) }))
       .filter((g) => g.fields.length > 0),

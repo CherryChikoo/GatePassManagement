@@ -5,7 +5,7 @@
  * this phone's own storage (no server call, no checking for news), so a reload
  * shows it again. The security officer does the rest at the gate.
  */
-import { CheckCircle2, Clock, FilePlus2, KeyRound, LogOut, UserRound } from "lucide-react";
+import { CheckCircle2, Clock, FilePlus2, GraduationCap, KeyRound, LogOut, UserRound } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { Card } from "@/components/ui/card";
 import { formatTime } from "@/lib/utils";
@@ -31,11 +31,20 @@ export function VisitSent({ sent, onAnother }: { sent: SentVisit; onAnother: () 
         </div>
 
         <dl className="divide-y divide-zinc-800/70 px-6">
-          <div className="flex items-center gap-3 py-4">
-            <UserRound className="h-5 w-5 shrink-0 text-zinc-500" aria-hidden="true" />
-            <dt className="sr-only">{t("Name")}</dt>
-            <dd className="min-w-0 break-words text-lg font-semibold text-zinc-100">{sent.name}</dd>
-          </div>
+          {sent.forStudent ? (
+            /* A parent: the student they came to see (their own details never reach the phone) */
+            <div className="grid grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-3 py-4">
+              <GraduationCap className="row-span-2 h-5 w-5 text-zinc-500" aria-hidden="true" />
+              <dt className="text-xs font-medium text-zinc-500">{t("Visiting")}</dt>
+              <dd className="break-words text-lg font-semibold text-zinc-100">{sent.name}</dd>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 py-4">
+              <UserRound className="h-5 w-5 shrink-0 text-zinc-500" aria-hidden="true" />
+              <dt className="sr-only">{t("Name")}</dt>
+              <dd className="min-w-0 break-words text-lg font-semibold text-zinc-100">{sent.name}</dd>
+            </div>
+          )}
           <div className="flex items-center gap-3 py-4">
             <Clock className="h-5 w-5 shrink-0 text-zinc-500" aria-hidden="true" />
             <dt className="sr-only">{t("Time")}</dt>

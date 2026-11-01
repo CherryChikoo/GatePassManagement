@@ -12,7 +12,11 @@
  * who met a faculty / staff member says that person's meeting code and
  * Security types it, exactly as for a visitor typed in by hand.
  *
- * Parents may scan the QR too (Security can also register them with the parent search).
+ * Parents may scan the QR too: they type the student's roll number, the phone
+ * shows only the student's name / class and which parents are saved (never
+ * their names, mobiles or address), and the server fills the parent's details
+ * from the student's record when the form is sent (Security can also register
+ * them with the parent search).
  *
  * Used by the public routes under src/app/api/visit/ (no login, rate limited).
  * Never gives out a host's phone / email or the meeting code.
@@ -28,6 +32,16 @@ import { verifyCheckInToken, type CheckInRegister } from "@/lib/qr/token";
 import { HOST_ROLES, resolveHost } from "@/lib/visits/passes";
 import { REGISTER_BY_KEY, type EntryRegister } from "@/lib/registers/definitions";
 import { validateNewRecord } from "@/lib/registers/validate";
+import { PATTERNS } from "@/lib/constants";
+import { PARENT_SELECT } from "@/lib/students/parents";
+import {
+  VISITOR_CATEGORY_KEYS,
+  VISITOR_CATEGORY_RULES,
+  comingForFields,
+  isComingFor,
+  missingComingForDetail,
+  missingVisitorDetail,
+} from "@/lib/visits/visitor-categories";
 
 export type { CheckInRegister } from "@/lib/qr/token";
 
@@ -45,7 +59,7 @@ export const SENT_AGAIN = "Sent again";
 export const ARRIVALS_TOPIC = "arrivals";
 
 /** Who can check in from the phone (the Visitors Book's categories) */
-export const VISITOR_CATEGORIES = ["GUEST", "PARENT", "VENDOR", "WORKER"] as const;
+export const VISITOR_CATEGORIES = VISITOR_CATEGORY_KEYS;
 const PHONE_RE = /^\+?[0-9][0-9\s-]{8,16}[0-9]$/;
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
@@ -83,6 +97,9 @@ export const VISIT_LIMITS = {
   formIp: windowOf(1000),
   submitIp: windowOf(300),
   submitToken: windowOf(40),
+  /** A parent's roll-number search (one per tap of Find) */
+  studentIp: windowOf(300),
+  studentToken: windowOf(60),
 } as const;
 
 /** True when any of these limits is used up (every one is counted). */
@@ -173,6 +190,79 @@ async function checkInGuard(profileId: string) {
   return { id: p.id, gate: p.securityStaff?.gate?.name ?? null };
 }
 
+// ─── Parents: the student by roll number ─────────────────────────────────────
+
+export const PARENT_WHO = ["FATHER", "MOTHER", "GUARDIAN"] as const;
+export type ParentWho = (typeof PARENT_WHO)[number];
+const isParentWho = (v: unknown): v is ParentWho => typeof v === "string" && (PARENT_WHO as readonly string[]).includes(v);
+
+const NO_STUDENT = "No student found with this roll number";
+const BAD_ROLL = "Enter a valid roll number";
+
+/** A roll number as saved (CAPITALS, no spaces), or null when it cannot be one */
+function cleanRoll(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const roll = v.replace(/\s+/g, "").toUpperCase();
+  return PATTERNS.STUDENT_ROLL.test(roll) ? roll : null;
+}
+
+/** An active student by exact roll number (unique index), with the parents' details (server only) */
+function findStudentForVisit(roll: string) {
+  return prisma.student.findFirst({
+    where: { studentRoll: roll, profile: { active: true } },
+    select: { studentRoll: true, department: true, year: true, profile: { select: { name: true } }, ...PARENT_SELECT },
+  });
+}
+type StudentForVisit = NonNullable<Awaited<ReturnType<typeof findStudentForVisit>>>;
+
+/**
+ * The parent's saved details, only when the form can be filled from them
+ * completely (name, a valid mobile and the home address); otherwise the parent
+ * types their own details.
+ */
+function savedParent(s: StudentForVisit, who: ParentWho): { name: string; phone: string; address: string } | null {
+  const [name, phone] =
+    who === "FATHER" ? [s.fatherName, s.fatherPhone] : who === "MOTHER" ? [s.motherName, s.motherPhone] : [s.guardianName, s.guardianPhone];
+  const n = name?.trim() ?? "";
+  const p = phone?.trim() ?? "";
+  const address = s.homeAddress?.trim() ?? "";
+  if (n.length < 2 || n.length > 100 || !PHONE_RE.test(p) || !address || address.length > 300) return null;
+  return { name: n, phone: p, address };
+}
+
+/**
+ * GET /api/visit/student: what a parent's phone may know about the student.
+ * NEVER the parents' names, mobiles or address: only which of them are saved.
+ */
+export type VisitStudentResult =
+  | {
+      ok: true;
+      studentName: string;
+      department: string | null;
+      year: number | null;
+      has: { father: boolean; mother: boolean; guardian: boolean };
+    }
+  | { ok: false; error: string };
+
+export async function lookupVisitStudent(token: unknown, roll: unknown): Promise<VisitStudentResult> {
+  // Same check as sending the form (time to fill it in after opening it)
+  const t = verifyCheckInToken(token, SUBMIT_GRACE_MS);
+  if (!t.ok) return { ok: false, error: t.error };
+  if (t.register !== "VISITORS") return { ok: false, error: "invalid" };
+  const r = cleanRoll(roll);
+  if (!r) return { ok: false, error: BAD_ROLL };
+  const [s, guard] = await Promise.all([findStudentForVisit(r), checkInGuard(t.guardProfileId)]);
+  if (!guard) return { ok: false, error: "invalid" };
+  if (!s) return { ok: false, error: NO_STUDENT };
+  return {
+    ok: true,
+    studentName: s.profile.name,
+    department: s.department,
+    year: s.year,
+    has: { father: !!savedParent(s, "FATHER"), mother: !!savedParent(s, "MOTHER"), guardian: !!savedParent(s, "GUARDIAN") },
+  };
+}
+
 // ─── Sending the form ────────────────────────────────────────────────────────
 
 const LONG = "Some details are too long. Please shorten them.";
@@ -204,10 +294,79 @@ export type VisitorsFormData = {
   remarks: string;
 };
 
-type CleanForm = { data: Record<string, unknown>; name: string; phone: string };
+/**
+ * `name` / `phone`: the visitor's (kept on the request for Security).
+ * `shownName`: what the phone may show on its "sent" screen when it is not the
+ * visitor's own name (a parent picked from the student's record: the student).
+ */
+type CleanForm = { data: Record<string, unknown>; name: string; phone: string; shownName?: string };
 
-function cleanVisitorsForm(raw: unknown): CleanForm | { error: string } {
-  const parsed = visitorsFormSchema.safeParse(raw ?? {});
+/**
+ * Visitors Book from the phone. A parent sends the student's roll number and
+ * either `parentWho` (Father / Mother / Guardian: name, mobile, address and the
+ * usual vehicle come from the student's record) or their own typed details;
+ * the student, department and purpose are always filled here.
+ */
+async function cleanVisitorsForm(raw: unknown, hostId: string | null): Promise<CleanForm | { error: string }> {
+  const input: Record<string, unknown> = raw && typeof raw === "object" && !Array.isArray(raw) ? { ...(raw as Record<string, unknown>) } : {};
+  const hostProfileId = hostId;
+  let studentName: string | undefined;
+  // The simple phone form: "Coming for" decides category / purpose / person to visit
+  const comingFor = isComingFor(input.comingFor) ? input.comingFor : null;
+  if (comingFor === "PARENT") input.category = "PARENT";
+
+  if (input.category === "PARENT") {
+    input.purpose = VISITOR_CATEGORY_RULES.PARENT.defaultPurpose;
+    const rollGiven = typeof input.studentRoll === "string" && input.studentRoll.trim() !== "";
+    const who = input.parentWho;
+    if (rollGiven) {
+      const roll = cleanRoll(input.studentRoll);
+      if (!roll) return { error: BAD_ROLL };
+      const s = await findStudentForVisit(roll);
+      if (!s) return { error: NO_STUDENT };
+      if (who !== undefined && who !== null && who !== "") {
+        const parent = isParentWho(who) ? savedParent(s, who) : null;
+        if (!parent) return { error: "Your details are not saved for this student. Please type them." };
+        input.name = parent.name;
+        input.phone = parent.phone;
+        input.address = parent.address;
+        // Today's answer on the phone (vehicle or on foot) wins; the usual vehicle on
+        // record only fills in when the phone gave neither
+        const typedVehicle = typeof input.vehicleNumber === "string" ? input.vehicleNumber.trim() : "";
+        const usual = (s.parentVehicle ?? "").trim().toUpperCase();
+        if (!input.onFoot && !typedVehicle && usual) {
+          if (usual === "ON FOOT") {
+            input.onFoot = true;
+            input.vehicleNumber = "";
+          } else if (usual.length <= 30) {
+            input.vehicleNumber = usual;
+          }
+        }
+      }
+      input.visitingStudent = `${s.profile.name} (${s.studentRoll})`;
+      input.department = s.department ?? "";
+      studentName = s.profile.name;
+    } else if (who !== undefined && who !== null && who !== "") {
+      return { error: "Find the student first" };
+    }
+  }
+
+  if (comingFor) {
+    const detail = typeof input.detail === "string" ? input.detail : "";
+    const host = hostProfileId || (typeof input.hostProfileId === "string" ? input.hostProfileId : "");
+    const student = typeof input.visitingStudent === "string" && input.visitingStudent.trim() ? input.visitingStudent : detail;
+    const lacking = missingComingForDetail(comingFor, { detail, hostProfileId: host, student });
+    if (lacking) return { error: lacking };
+    const f = comingForFields(comingFor, { detail, hostProfileId: host, student });
+    input.category = f.category;
+    input.purpose = f.purpose;
+    input.visitingStudent = f.visitingStudent;
+    input.remarks = "";
+  }
+
+  const missing = missingVisitorDetail({ ...input, hostProfileId });
+  if (missing) return { error: missing };
+  const parsed = visitorsFormSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message || "Please check the details" };
   const f = parsed.data;
   const vehicle = f.onFoot ? "On foot" : (f.vehicleNumber ?? "").toUpperCase();
@@ -223,7 +382,7 @@ function cleanVisitorsForm(raw: unknown): CleanForm | { error: string } {
     address: f.address ?? "",
     remarks: f.remarks ?? "",
   };
-  return { data, name: f.name, phone: f.phone };
+  return { data, name: f.name, phone: f.phone, shownName: studentName };
 }
 
 /** Admission Book: checked exactly like Security's own form (date / times are set at Accept) */
@@ -242,8 +401,12 @@ const submitSchema = z.object({
   hostProfileId: z.string().regex(UUID_RE).nullish().or(z.literal("")),
 });
 
-/** `at`: when the request was saved (ISO), for the phone's "sent" screen */
-export type SubmitResult = { ok: true; name: string; at: string } | { ok: false; error: string };
+/**
+ * `at`: when the request was saved (ISO), for the phone's "sent" screen.
+ * `forStudent`: `name` is the student's (a parent found by roll number: their own
+ * saved details are never sent to the phone).
+ */
+export type SubmitResult = { ok: true; name: string; at: string; forStudent?: true } | { ok: false; error: string };
 
 /** POST /api/visit/submit: the visitor's form -> a waiting request for Security. */
 export async function submitVisitRequest(body: unknown): Promise<SubmitResult> {
@@ -254,7 +417,8 @@ export async function submitVisitRequest(body: unknown): Promise<SubmitResult> {
   const token = verifyCheckInToken(t, SUBMIT_GRACE_MS);
   if (!token.ok) return { ok: false, error: token.error === "expired" ? "expired" : "invalid" };
 
-  const form = token.register === "VISITORS" ? cleanVisitorsForm(data) : await cleanAdmissionForm(data);
+  const form =
+    token.register === "VISITORS" ? await cleanVisitorsForm(data, hostProfileId || null) : await cleanAdmissionForm(data);
   if ("error" in form) return { ok: false, error: form.error };
 
   const [host, guard] = await Promise.all([
@@ -286,5 +450,7 @@ export async function submitVisitRequest(body: unknown): Promise<SubmitResult> {
   }
 
   notifyLive(ARRIVALS_TOPIC);
-  return { ok: true, name: form.name, at: createdAt.toISOString() };
+  return form.shownName
+    ? { ok: true, name: form.shownName, at: createdAt.toISOString(), forStudent: true }
+    : { ok: true, name: form.name, at: createdAt.toISOString() };
 }

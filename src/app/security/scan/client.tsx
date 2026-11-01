@@ -535,14 +535,20 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
                     <h2 className="text-xl font-semibold leading-tight text-zinc-100 break-words">
                       {verifyResult.student.profile.name}
                     </h2>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                      <span className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-0.5 font-mono text-sm font-semibold text-zinc-100">
-                        {verifyResult.student.studentRoll}
-                      </span>
-                      <span className="inline-flex items-center rounded-full bg-orange-500/10 px-2.5 py-0.5 text-xs font-semibold text-orange-500">
-                        {t(PERSON_TYPE[verifyResult.student.studentType] ?? verifyResult.student.studentType)}
-                      </span>
-                    </div>
+                    <p className="mt-1 break-all text-xl font-bold tabular-nums leading-tight text-zinc-100">
+                      {verifyResult.student.studentRoll}
+                    </p>
+                    <span
+                      className={`mt-1.5 inline-flex items-center rounded-full px-3 py-1 text-base font-bold ${
+                        verifyResult.student.studentType === "HOSTELLER"
+                          ? "bg-sky-500/15 text-sky-700"
+                          : verifyResult.student.studentType === "DAY_SCHOLAR"
+                          ? "bg-amber-500/20 text-amber-700"
+                          : "bg-orange-500/10 text-orange-500"
+                      }`}
+                    >
+                      {t(PERSON_TYPE[verifyResult.student.studentType] ?? verifyResult.student.studentType)}
+                    </span>
                   </div>
                   {verifyResult.student.profile.phone && (
                     <a
@@ -818,7 +824,7 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
 }
 
 /** Readable person type for the guard */
-const PERSON_TYPE: Record<string, string> = { DAY_SCHOLAR: "Day scholar", HOSTELLER: "Hosteller", FACULTY: "Faculty" };
+const PERSON_TYPE: Record<string, string> = { DAY_SCHOLAR: "Day Scholar", HOSTELLER: "Hosteller", FACULTY: "Faculty" };
 
 /** Ready-made notes the guard can tap instead of typing */
 const EXIT_NOTES = ["All details checked", "Left with parent / guardian", "Medical reason", "ID card not shown"];

@@ -7,7 +7,7 @@ import { facultyRequestSchema } from "@/lib/validation/schemas";
 import { revalidatePath } from "next/cache";
 import { OPEN_TRIP_WHERE } from "@/lib/passes/return-scan";
 import { closeAllSupersededTrips } from "@/lib/passes/close-trips";
-import { notifyApprovers } from "@/lib/realtime/notify";
+import { notifyApprovers, notifyPassHolder } from "@/lib/realtime/notify";
 import { resolveFacultyActivePass } from "@/lib/permissions/auto-expire";
 import { getDepartmentVariants } from "@/lib/constants";
 import { istDateToInstant, istStartOfDay, parseDateParam } from "@/lib/time/ist";
@@ -183,12 +183,23 @@ export async function cancelFacultyPermissionRequest(permissionId: string) {
 
   if (!faculty) return { error: "Faculty not found" };
 
+  // Pending, or approved but not yet used at the gate (no exit scan)
   const updated = await prisma.permission.updateMany({
-    where: { id: permissionId, facultyId: faculty.id, status: "PENDING" },
+    where: {
+      id: permissionId,
+      facultyId: faculty.id,
+      OR: [
+        { status: "PENDING" },
+        { status: "APPROVED", movements: { none: {} }, OR: [{ qr: null }, { qr: { usedForExit: false, usedForEntry: false } }] },
+      ],
+    },
     data: { status: "CANCELLED", cancelledAt: new Date() },
   });
 
   if (updated.count !== 1) return { error: "Request not found or can no longer be cancelled" };
+
+  // The pass can no longer be shown at the gate
+  await prisma.qrCredential.updateMany({ where: { permissionId }, data: { active: false } });
 
   revalidatePath("/faculty");
   revalidatePath("/faculty-admin");
@@ -197,6 +208,7 @@ export async function cancelFacultyPermissionRequest(permissionId: string) {
   revalidatePath("/dean");
   revalidatePath("/dean/requests");
   notifyApprovers(permissionId);
+  notifyPassHolder(permissionId);
   return { success: true };
 }
 

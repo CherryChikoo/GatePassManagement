@@ -62,8 +62,8 @@ const BASE: Record<RegisterViewer, string> = {
 };
 
 /** One recognisable icon per register (the list is long; icons make it scannable). */
-/** Pass books shown first on the registers list (lower = earlier); everything else keeps its order */
-const PASS_BOOK_ORDER = ["BOYS_HOSTEL_OUTING", "LADIES_HOSTEL_OUTING", "FACULTY_BOOK", "STUDENT_BOOK"];
+/** Pass books (then Car Book and Auto Book) shown first on the registers list (lower = earlier); everything else keeps its order */
+const PASS_BOOK_ORDER = ["BOYS_HOSTEL_OUTING", "LADIES_HOSTEL_OUTING", "FACULTY_BOOK", "STUDENT_BOOK", "CAR_BOOK", "AUTO_IN_OUT"];
 const passBookRank = (key: string) => {
   const i = PASS_BOOK_ORDER.indexOf(key);
   return i < 0 ? PASS_BOOK_ORDER.length : i;
@@ -92,6 +92,7 @@ const REGISTER_ICON: Record<RegisterKey, LucideIcon> = {
   AUTO_IN_OUT: ArrowLeftRight,
   KEYS: KeyRound,
   RETURNABLE: Undo2,
+  VEHICLE_FLEET: Car,
 };
 
 
