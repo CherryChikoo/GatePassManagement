@@ -11,11 +11,11 @@
  * buttons with the QR pop-up open).
  */
 import { useEffect, useMemo, useState } from "react";
-import { BellRing, CheckCircle2, FilePlus2, History, MapPin, PencilLine, School } from "lucide-react";
+import { BellRing, CheckCircle2, History, MapPin, PencilLine, School } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { GoBackButton } from "@/components/ui/go-back-button";
 import { Card, CardContent } from "@/components/ui/card";
-import { HUB_PAGE_TOP, HubBackButton, HubQrButton, HubTiles, useHubView } from "@/components/visits/hub-tiles";
+import { HUB_PAGE_TOP, HubQrButton, HubScreenHeader, HubTiles, useHubView } from "@/components/visits/hub-tiles";
 import { Modal } from "@/components/ui/primitives";
 import { CheckInQrScreen } from "@/components/visits/checkin-qr-screen";
 import { ARRIVAL_COUNTS_QUERY } from "@/components/visits/arrival-alert";
@@ -197,19 +197,14 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
   }
 
   return (
-    <div className={cn("space-y-5", HUB_PAGE_TOP)}>
-      <div>
-        <HubBackButton className="mb-3" onClick={back} />
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
-            {view === "new" ? <FilePlus2 className="h-5 w-5" /> : view === "inside" ? <MapPin className="h-5 w-5" /> : <History className="h-5 w-5" />}
-          </span>
-          <h1 className="min-w-0 text-xl sm:text-2xl font-bold tracking-tight text-zinc-100 break-words">
-            {view === "new" ? t("New entry") : view === "inside" ? t("Inside now") : t("Old records")}
-          </h1>
-        </div>
-        <p className="mt-1 text-sm text-zinc-400">{def.title}</p>
-      </div>
+    // Inside now (a list of people): one readable column on tablets / desktops
+    <div className={cn("space-y-5", view === "inside" && "mx-auto max-w-[720px]", HUB_PAGE_TOP)}>
+      <HubScreenHeader
+        onBack={back}
+        title={view === "new" ? t("New entry") : view === "inside" ? t("Inside now") : t("Old records")}
+        subtitle={def.title}
+        count={view === "inside" ? insideCount : null}
+      />
 
       {view === "new" &&
         (canCreate ? (
@@ -232,7 +227,7 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
       {view === "inside" && (
         <>
           {noticeBox}
-          <EntryRegisterView def={def} canCreate={canCreate} insideOnly />
+          <EntryRegisterView def={def} canCreate={canCreate} insideOnly onInsideTotal={setInsideCount} />
         </>
       )}
 

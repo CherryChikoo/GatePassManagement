@@ -25,7 +25,8 @@ import Link from "next/link";
 import { BackButton } from "@/components/ui/back-button";
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
-import { useStoreReady } from "@/components/providers/store-hydrator";
+import { callList } from "@/lib/gate-call";
+import { usePagedList } from "@/hooks/use-paged-list";
 import { PassExtraDetails } from "@/components/passes/pass-extra";
 import { PagerBar } from "@/components/ui/pager-bar";
 
@@ -33,34 +34,39 @@ interface Props {
   user: { name: string; email: string; role: string; profileId: string };
 }
 
-/** The request lists as they are now, to put back if an optimistic approve / reject fails */
-function snapshotRequests() {
-  const d = useAppStore.getState().data;
-  return { allRequests: d.allRequests, requests: d.requests };
-}
-function restoreRequests(snap: { allRequests: any; requests: any }) {
-  const st = useAppStore.getState();
-  if (snap.allRequests !== undefined) st.setData("allRequests", snap.allRequests);
-  if (snap.requests !== undefined) st.setData("requests", snap.requests);
-}
+type Tab = "ALL" | "PENDING" | "ACCEPTED" | "REJECTED";
+const PAGE_SIZE = 20;
+/** One page of the queue (getWardenRequests) */
+type RequestsPage = {
+  rows?: any[];
+  total?: number;
+  page?: number;
+  counts?: Record<Tab, number>;
+  error?: string;
+};
+const NO_ROWS: any[] = [];
 
 export function WardenRequestsClient({ user }: Props) {
-  const isReady = useStoreReady();
-  const requestsData = useAppStore((s) => s.data.requests);
-  const updateData = useAppStore((s) => s.updateData);
   // Result of an approve / reject that needs attention (shown above the list)
   const [notice, setNotice] = useState<{ tone: "error" | "info"; text: string } | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"ALL" | "PENDING" | "ACCEPTED" | "REJECTED">("PENDING");
+  const [activeTab, setActiveTab] = useState<Tab>("PENDING");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 15;
   const [processing, setProcessing] = useState<string | null>(null);
   const [rejectModal, setRejectModal] = useState<{ id: string; name: string } | null>(null);
   const [approveModal, setApproveModal] = useState<{ id: string; name: string } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [expiryMinutes, setExpiryMinutes] = useState<number>(60);
   const [batchProcessing, setBatchProcessing] = useState(false);
+  // Approved / rejected here, shown at once until the reloaded page arrives
+  const [decided, setDecided] = useState<Record<string, { status: string; rejectionReason?: string }>>({});
+
+  // Only the page on screen is downloaded; the tab counts come from the server.
+  // A new, cancelled or decided request reloads it at once (live "requests" ping,
+  // see StoreHydrator); a page seen before shows at once.
+  const params = { tab: activeTab, page: currentPage, pageSize: PAGE_SIZE };
+  const list = usePagedList<RequestsPage>("warden-requests", params, () => callList("getWardenRequests", [params], 20_000), ["requests"]);
 
   const toggleSelect = (id: string) => {
     const next = new Set(selected);
@@ -69,19 +75,14 @@ export function WardenRequestsClient({ user }: Props) {
     setSelected(next);
   };
 
-  if (!isReady || requestsData === undefined) {
+  if (!list.data && !list.error) {
     return <DashboardSkeleton />;
   }
 
-  const requests = requestsData || [];
-
-  const filteredRequests = requests.filter((item: any) => {
-    if (activeTab === "ALL") return true;
-    if (activeTab === "PENDING") return item.status === "PENDING";
-    if (activeTab === "ACCEPTED") return item.status === "APPROVED" || item.status === "COMPLETED" || item.status === "EXITED";
-    if (activeTab === "REJECTED") return item.status === "REJECTED";
-    return true;
-  });
+  const counts: Record<Tab, number> = list.data?.counts ?? { ALL: 0, PENDING: 0, ACCEPTED: 0, REJECTED: 0 };
+  const total = list.data?.total ?? 0;
+  const shownPage = list.data?.page ?? currentPage;
+  const filteredRequests: any[] = (list.data?.rows ?? NO_ROWS).map((r: any) => (decided[r.id] ? { ...r, ...decided[r.id] } : r));
 
   const pendingItems = filteredRequests.filter((r: any) => r.status === "PENDING");
 
@@ -93,26 +94,41 @@ export function WardenRequestsClient({ user }: Props) {
     }
   };
 
+  /** Shown as decided at once; the queue (and the dashboard counts) reload from the server */
+  function markDecided(ids: string[], change: { status: string; rejectionReason?: string }) {
+    setDecided((d) => ({ ...d, ...Object.fromEntries(ids.map((id) => [id, change])) }));
+  }
+  function forget(ids: string[]) {
+    setDecided((d) => {
+      const next = { ...d };
+      for (const id of ids) delete next[id];
+      return next;
+    });
+  }
+  async function reloadQueue(ids: string[]) {
+    useAppStore.getState().refresh(true);
+    try {
+      await list.reloadAll();
+    } finally {
+      forget(ids);
+    }
+  }
+
   async function handleSingleApprove() {
     if (!approveModal) return;
     const requestId = approveModal.id;
     setProcessing(requestId);
-    const before = snapshotRequests();
-
-    // Optimistic UI Update (put back if the server refuses)
-    updateData("requests", (old: any) =>
-      (old || []).map((r: any) => r.id === requestId ? { ...r, status: "APPROVED" } : r)
-    );
+    markDecided([requestId], { status: "APPROVED" });
 
     try {
       const res = await handleApproval(requestId, "APPROVE", undefined, expiryMinutes);
       if (res?.error) {
-        restoreRequests(before);
+        forget([requestId]);
         setNotice({ tone: "error", text: res.error });
       }
-      useAppStore.getState().refresh(true);
+      void reloadQueue([requestId]);
     } catch {
-      restoreRequests(before);
+      forget([requestId]);
       setNotice({ tone: "error", text: "Could not approve. Check the connection and try again." });
     } finally {
       setProcessing(null);
@@ -127,22 +143,17 @@ export function WardenRequestsClient({ user }: Props) {
     if (!rejectReason.trim()) return;
     const requestId = rejectModal.id;
     setProcessing(requestId);
-    const before = snapshotRequests();
-
-    // Optimistic Update (put back if the server refuses)
-    updateData("requests", (old: any) =>
-      (old || []).map((r: any) => r.id === requestId ? { ...r, status: "REJECTED", rejectionReason: rejectReason } : r)
-    );
+    markDecided([requestId], { status: "REJECTED", rejectionReason: rejectReason });
 
     try {
       const res = await handleApproval(requestId, "REJECT", rejectReason);
       if (res?.error) {
-        restoreRequests(before);
+        forget([requestId]);
         setNotice({ tone: "error", text: res.error });
       }
-      useAppStore.getState().refresh(true);
+      void reloadQueue([requestId]);
     } catch {
-      restoreRequests(before);
+      forget([requestId]);
       setNotice({ tone: "error", text: "Could not reject. Check the connection and try again." });
     } finally {
       setProcessing(null);
@@ -156,22 +167,18 @@ export function WardenRequestsClient({ user }: Props) {
     setBatchProcessing(true);
 
     const selectedIds = Array.from(selected);
-    const before = snapshotRequests();
-
-    updateData("requests", (old: any) =>
-      (old || []).map((r: any) => selectedIds.includes(r.id) ? { ...r, status: "APPROVED" } : r)
-    );
+    markDecided(selectedIds, { status: "APPROVED" });
 
     try {
       const res: any = await batchApproval(selectedIds, "APPROVE");
       if (!res?.success) {
-        // Back to the saved state; the refresh shows the ones that did go through
-        restoreRequests(before);
+        // Back to the saved state; the reload shows the ones that did go through
+        forget(selectedIds);
         setNotice({ tone: "error", text: res?.error || "Some requests could not be approved." });
       }
-      useAppStore.getState().refresh(true);
+      void reloadQueue(selectedIds);
     } catch {
-      restoreRequests(before);
+      forget(selectedIds);
       setNotice({ tone: "error", text: "Could not save. Check the connection and try again." });
     } finally {
       setBatchProcessing(false);
@@ -217,12 +224,19 @@ export function WardenRequestsClient({ user }: Props) {
                 key={tab}
                 role="tab"
                 aria-selected={activeTab === tab}
-                onClick={() => { setActiveTab(tab); setCurrentPage(1); }}
-                className={`text-xs font-medium px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap ${
+                onClick={() => { setActiveTab(tab); setCurrentPage(1); setSelected(new Set()); }}
+                className={`inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap ${
                   activeTab === tab ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
                 }`}
               >
                 {tab === "ALL" ? "All Requests" : tab.charAt(0) + tab.slice(1).toLowerCase()}
+                <span
+                  className={`tabular-nums text-[11px] font-semibold ${
+                    tab === "PENDING" && counts.PENDING > 0 ? "rounded-full bg-amber-500/10 px-1.5 text-amber-500" : "text-zinc-500"
+                  }`}
+                >
+                  {counts[tab]}
+                </span>
               </button>
             ))}
           </div>
@@ -256,7 +270,16 @@ export function WardenRequestsClient({ user }: Props) {
           </div>
         </div>
 
-        {filteredRequests.length === 0 ? (
+        {list.error ? (
+          <Card>
+            <div role="alert" className="flex flex-col items-center gap-3 py-12 px-4 text-center">
+              <p className="text-sm font-medium text-red-400">{list.error}</p>
+              <Button variant="outline" className="h-11" onClick={() => void list.reload()}>
+                Try again
+              </Button>
+            </div>
+          </Card>
+        ) : filteredRequests.length === 0 ? (
           <Card>
             <EmptyState
               icon={<ClipboardCheck className="h-8 w-8" />}
@@ -269,11 +292,10 @@ export function WardenRequestsClient({ user }: Props) {
             />
           </Card>
         ) : (
-          <Card className="overflow-hidden">
+          <Card className={`overflow-hidden transition-opacity ${list.busy ? "opacity-70" : ""}`}>
             <ul className="divide-y divide-zinc-800/70">
               {(() => {
-                const totalPages = Math.ceil(filteredRequests.length / PAGE_SIZE) || 1;
-                const paginatedRequests = filteredRequests.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+                const paginatedRequests = filteredRequests;
                 return (
                   <>
                     {paginatedRequests.map((req: any) => (
@@ -398,10 +420,13 @@ export function WardenRequestsClient({ user }: Props) {
         )}
 
         <PagerBar
-          page={currentPage}
+          page={shownPage}
           pageSize={PAGE_SIZE}
-          total={filteredRequests.length}
-          onPageChange={setCurrentPage}
+          total={total}
+          onPageChange={(p) => {
+            setCurrentPage(p);
+            setSelected(new Set());
+          }}
           itemLabel="requests"
         />
       </div>

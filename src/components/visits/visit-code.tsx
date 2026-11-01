@@ -35,7 +35,7 @@ export function VisitCodeFields({
     <div className="space-y-3 rounded-2xl border border-orange-500/30 bg-orange-500/5 p-4">
       <p className="flex items-start gap-2 text-sm font-medium text-zinc-200">
         <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
-        <span>{t("Ask the visitor for the 4-digit meeting code {name} gave them.", { name: hostName })}</span>
+        <span>{t("Ask the visitor for the 4-digit code {name} gave them.", { name: hostName })}</span>
       </p>
       {!overriding && !locked && (
         <input

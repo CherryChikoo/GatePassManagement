@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { formatDateTime, formatDate, getRelativeTime } from "@/lib/utils";
 import { logoutAction } from "@/server/actions/auth";
 import { callGate } from "@/lib/gate-call";
-import { useGateData } from "@/lib/gate-cache";
+import { useDebounced, usePagedList } from "@/hooks/use-paged-list";
 import { registerOutsider, markOutsiderExited } from "@/server/actions/outsiders";
 import { istDateString } from "@/lib/time/ist";
 import { getExitPhotoUrl, uploadOutsiderPhoto } from "@/lib/storage/image-upload";
@@ -51,18 +51,23 @@ interface Props {
   user: { name: string; email: string; role: string };
 }
 
-type ActivityData = {
-  stats: {
+/** One page of the day (getActivityData): the rows of the open tab and the day's counts */
+type ActivityPage = {
+  stats?: {
     entriesToday: number;
     exitsToday: number;
+    outsidersOnCampus: number;
+    outsidersTotal: number;
   };
-  recentEntries: any[];
-  recentExits: any[];
-  recentPermissions?: any[];
+  counts?: { entries: number; exits: number; outsiders: number };
+  tab?: string;
+  rows?: any[];
+  total?: number;
+  page?: number;
+  error?: string;
 };
 
-/** Shown until the first copy of a day arrives */
-const NO_ACTIVITY = {} as ActivityData;
+const NO_ROWS: any[] = [];
 
 interface OutsiderRecord {
   id: string;
@@ -78,20 +83,49 @@ interface OutsiderRecord {
   status: "INSIDE" | "EXITED";
 }
 
-
+/** Rows per page (one page is downloaded at a time) */
+const PAGE_SIZE = 20;
 
 export function ActivityClient({ user }: Props) {
   const [date, setDate] = useState(() => istDateString());
   const [actionError, setActionError] = useState<string | null>(null);
-  // The page opens at once; the chosen day loads here (cached per day: a day seen
-  // before shows at once and is refreshed quietly; gate / visitor changes reload it)
-  const day = useGateData<ActivityData>(`admin-activity|${date}`, () => callGate("getActivityData", [date], 20_000), ["gate", "visitors"]);
-  const data = day.data ?? NO_ACTIVITY;
+  const [activeTab, setActiveTab] = useState<"entries" | "exits" | "outsiders">("entries");
+
+  // Search states
+  const [entrySearch, setEntrySearch] = useState("");
+  const [exitSearch, setExitSearch] = useState("");
+  const [outsiderSearch, setOutsiderSearch] = useState("");
+  const [outsiderCategory, setOutsiderCategory] = useState("ALL");
+
+  // Back to page 1 whenever the tab, a search, the category or the date changes
+  const [page, setPage] = useState(1);
+  const pageKey = `${activeTab}|${entrySearch}|${exitSearch}|${outsiderSearch}|${outsiderCategory}|${date}`;
+  const [lastPageKey, setLastPageKey] = useState(pageKey);
+  if (lastPageKey !== pageKey) {
+    setLastPageKey(pageKey);
+    setPage(1);
+  }
+
+  // Only the page on screen is downloaded (a busy day has 1,000+ records): the
+  // search, the category and the counts run in the database. The page opens at
+  // once; a page seen before shows at once and is refreshed quietly (gate /
+  // visitor changes reload it); the last page stays on screen while the next loads.
+  const q = useDebounced(activeTab === "entries" ? entrySearch : activeTab === "exits" ? exitSearch : outsiderSearch);
+  const params = { tab: activeTab, page, pageSize: PAGE_SIZE, q, category: activeTab === "outsiders" ? outsiderCategory : "ALL" };
+  const day = usePagedList<ActivityPage>(
+    `admin-activity|${date}`,
+    params,
+    () => callGate("getActivityData", [date, params], 20_000),
+    ["gate", "visitors"]
+  );
+  const data: ActivityPage = day.data ?? {};
+  // The rows on screen belong to the open tab (the previous tab's page stays only while loading)
+  const tabRows: any[] = data.tab === activeTab ? data.rows ?? NO_ROWS : NO_ROWS;
   // Nothing to show for this day yet
-  const loading = day.loading;
+  const loading = !day.data && !day.error;
 
   async function reloadData(_forDate: string) {
-    await day.reload();
+    await day.reloadAll();
   }
 
   function handleDateChange(newDate: string) {
@@ -109,32 +143,14 @@ export function ActivityClient({ user }: Props) {
   };
   const isToday = date === istDateString();
 
-  const stats = data?.stats || {
+  const stats = data.stats || {
     entriesToday: 0,
     exitsToday: 0,
     outsidersOnCampus: 0,
+    outsidersTotal: 0,
   };
+  const counts = data.counts || { entries: 0, exits: 0, outsiders: 0 };
 
-  const recentEntries: any[] = Array.isArray(data?.recentEntries)
-    ? data.recentEntries
-    : Array.isArray((data as any)?.recentGateLogs)
-    ? (data as any).recentGateLogs.filter((m: any) => m.type === "ENTRY")
-    : [];
-
-  const recentExits: any[] = Array.isArray(data?.recentExits)
-    ? data.recentExits
-    : Array.isArray((data as any)?.recentGateLogs)
-    ? (data as any).recentGateLogs.filter((m: any) => m.type === "EXIT")
-    : [];
-
-  const recentPermissions: any[] = data?.recentPermissions || [];
-
-  const [activeTab, setActiveTab] = useState<"entries" | "exits" | "outsiders">("entries");
-
-  // Search states
-  const [entrySearch, setEntrySearch] = useState("");
-  const [exitSearch, setExitSearch] = useState("");
-  const [outsiderSearch, setOutsiderSearch] = useState("");
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [signedPhotoUrl, setSignedPhotoUrl] = useState<string | null>(null);
 
@@ -152,70 +168,20 @@ export function ActivityClient({ user }: Props) {
       setSignedPhotoUrl(null);
     }
   }, [selectedRecord]);
-  const [outsiderCategory, setOutsiderCategory] = useState("ALL");
 
-  // Outsiders state
-  const [outsiders, setOutsiders] = useState<OutsiderRecord[]>((data as any).outsiders || []);
-
-  useEffect(() => {
-    if ((data as any).outsiders) {
-      setOutsiders((data as any).outsiders);
-    }
-  }, [data]);
-  const [showAddModal, setShowAddModal] = useState(false);
-
-  // Filtered Entries (server already filtered by date)
-  const filteredEntries = (recentEntries || []).filter((m) => {
-    const q = entrySearch.trim().toLowerCase();
-    return (
-      !q ||
-      m.student?.profile?.name?.toLowerCase().includes(q) ||
-      m.student?.studentRoll?.toLowerCase().includes(q) ||
-      m.gate?.name?.toLowerCase().includes(q) ||
-      m.permission?.purpose?.toLowerCase().includes(q)
-    );
-  });
-
-  // Filtered Exits (server already filtered by date)
-  const filteredExits = (recentExits || []).filter((m) => {
-    const q = exitSearch.trim().toLowerCase();
-    return (
-      !q ||
-      m.student?.profile?.name?.toLowerCase().includes(q) ||
-      m.student?.studentRoll?.toLowerCase().includes(q) ||
-      m.gate?.name?.toLowerCase().includes(q) ||
-      m.permission?.purpose?.toLowerCase().includes(q) ||
-      m.permission?.destination?.toLowerCase().includes(q)
-    );
-  });
-
-  // Filtered Outsiders
-  const filteredOutsiders = (outsiders || []).filter((o) => {
-    const matchesCat = outsiderCategory === "ALL" ? true : o.category === outsiderCategory;
-    const q = outsiderSearch.trim().toLowerCase();
-    const matchesSearch =
-      !q ||
-      o.name.toLowerCase().includes(q) ||
-      o.visitingStudent.toLowerCase().includes(q) ||
-      o.purpose.toLowerCase().includes(q) ||
-      o.phone.toLowerCase().includes(q);
-
-    return matchesCat && matchesSearch;
-  });
-
-  // 10 rows per page; back to page 1 whenever the tab, a search, the category or the date changes
-  const PAGE_SIZE = 10;
-  const [page, setPage] = useState(1);
-  const pageKey = `${activeTab}|${entrySearch}|${exitSearch}|${outsiderSearch}|${outsiderCategory}|${date}`;
-  const [lastPageKey, setLastPageKey] = useState(pageKey);
-  if (lastPageKey !== pageKey) {
-    setLastPageKey(pageKey);
-    setPage(1);
-  }
-  const pageSlice = <T,>(list: T[]): T[] => list.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // The open tab's page (search and filters were applied by the server)
+  const filteredEntries: any[] = activeTab === "entries" ? tabRows : NO_ROWS;
+  const filteredExits: any[] = activeTab === "exits" ? tabRows : NO_ROWS;
+  const outsiders: OutsiderRecord[] = activeTab === "outsiders" ? tabRows : NO_ROWS;
+  const filteredOutsiders = outsiders;
+  // Rows matching the search / filter in the open tab (all pages)
+  const filteredTotal = data.tab === activeTab ? data.total ?? 0 : 0;
+  const shownPage = data.tab === activeTab ? data.page ?? page : page;
+  const pageSlice = <T,>(list: T[]): T[] => list;
 
   // Count active outsiders inside campus for this date
-  const activeOutsidersCount = (outsiders || []).filter((o) => o.status === "INSIDE").length;
+  const activeOutsidersCount = stats.outsidersOnCampus;
+  const [showAddModal, setShowAddModal] = useState(false);
 
   // Add new outsider (persisted)
   const [savingOutsider, setSavingOutsider] = useState(false);
@@ -479,7 +445,7 @@ export function ActivityClient({ user }: Props) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            {(loading || day.refreshing) && (
+            {(loading || day.busy) && (
               <div className="flex items-center text-sm text-zinc-500 gap-2">
                 <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
                 <span className="hidden sm:inline">Loading data...</span>
@@ -539,7 +505,7 @@ export function ActivityClient({ user }: Props) {
               />
               <StatCard
                 title="Total Visitor Visits"
-                value={(outsiders || []).length}
+                value={stats.outsidersTotal}
                 icon={<Users />}
               />
               <StatCard
@@ -561,21 +527,21 @@ export function ActivityClient({ user }: Props) {
               <button role="tab" aria-selected={activeTab === "entries"} onClick={() => setActiveTab("entries")} className={tabClass(activeTab === "entries")}>
                 <ArrowDownLeft className="h-4 w-4" />
                 Campus Entries
-                <span className={countChipClass(activeTab === "entries")}>{recentEntries.length}</span>
+                <span className={countChipClass(activeTab === "entries")}>{counts.entries}</span>
               </button>
 
               {/* Tab 2: Exits */}
               <button role="tab" aria-selected={activeTab === "exits"} onClick={() => setActiveTab("exits")} className={tabClass(activeTab === "exits")}>
                 <ArrowUpRight className="h-4 w-4" />
                 Campus Exits
-                <span className={countChipClass(activeTab === "exits")}>{recentExits.length}</span>
+                <span className={countChipClass(activeTab === "exits")}>{counts.exits}</span>
               </button>
 
               {/* Tab 3: Visitors (Parents, Guests & Vendors) */}
               <button role="tab" aria-selected={activeTab === "outsiders"} onClick={() => setActiveTab("outsiders")} className={tabClass(activeTab === "outsiders")}>
                 <UserCheck className="h-4 w-4" />
                 Visitors (Parents, Guests & Vendors)
-                <span className={countChipClass(activeTab === "outsiders")}>{(outsiders || []).length}</span>
+                <span className={countChipClass(activeTab === "outsiders")}>{counts.outsiders}</span>
               </button>
             </div>
 
@@ -595,7 +561,7 @@ export function ActivityClient({ user }: Props) {
                   </div>
                   <div className="flex items-center gap-2 text-xs text-zinc-500">
                     <span>
-                      Showing <strong className="font-medium text-zinc-200">{filteredEntries.length}</strong> of {recentEntries.length} entry logs
+                      Showing <strong className="font-medium text-zinc-200">{filteredTotal}</strong> of {counts.entries} entry logs
                     </span>
                     {entrySearch && (
                       <button
@@ -630,9 +596,9 @@ export function ActivityClient({ user }: Props) {
                     </table>
                   </div>
 
-                  <PagerBar page={page} pageSize={PAGE_SIZE} total={filteredEntries.length} onPageChange={setPage} itemLabel="entries" />
+                  <PagerBar page={shownPage} pageSize={PAGE_SIZE} total={filteredTotal} onPageChange={setPage} itemLabel="entries" />
 
-                  {filteredEntries.length === 0 && (
+                  {!day.busy && filteredTotal === 0 && (
                     <EmptyState
                       icon={<Search className="h-6 w-6" />}
                       title={entrySearch ? "No matching entries" : "No entry records found"}
@@ -670,7 +636,7 @@ export function ActivityClient({ user }: Props) {
                   </div>
                   <div className="flex items-center gap-2 text-xs text-zinc-500">
                     <span>
-                      Showing <strong className="font-medium text-zinc-200">{filteredExits.length}</strong> of {recentExits.length} exit logs
+                      Showing <strong className="font-medium text-zinc-200">{filteredTotal}</strong> of {counts.exits} exit logs
                     </span>
                     {exitSearch && (
                       <button
@@ -705,9 +671,9 @@ export function ActivityClient({ user }: Props) {
                     </table>
                   </div>
 
-                  <PagerBar page={page} pageSize={PAGE_SIZE} total={filteredExits.length} onPageChange={setPage} itemLabel="exits" />
+                  <PagerBar page={shownPage} pageSize={PAGE_SIZE} total={filteredTotal} onPageChange={setPage} itemLabel="exits" />
 
-                  {filteredExits.length === 0 && (
+                  {!day.busy && filteredTotal === 0 && (
                     <EmptyState
                       icon={<Search className="h-6 w-6" />}
                       title={exitSearch ? "No matching exits" : "No exit records found"}
@@ -896,9 +862,9 @@ export function ActivityClient({ user }: Props) {
                       </table>
                     </div>
 
-                    <PagerBar page={page} pageSize={PAGE_SIZE} total={filteredOutsiders.length} onPageChange={setPage} itemLabel="visitors" />
+                    <PagerBar page={shownPage} pageSize={PAGE_SIZE} total={filteredTotal} onPageChange={setPage} itemLabel="visitors" />
 
-                    {filteredOutsiders.length === 0 && (
+                    {!day.busy && filteredTotal === 0 && (
                       <EmptyState
                         icon={<UserCheck className="h-6 w-6" />}
                         title="No visitor records found"

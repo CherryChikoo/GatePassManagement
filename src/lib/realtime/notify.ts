@@ -26,6 +26,7 @@
  */
 import { after } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { getDepartmentVariants } from "@/lib/constants";
 import { LIVE_CHANNEL, LIVE_EVENT, personalTopic } from "./topics";
 
 type Message = { topic: string; topics: string[] };
@@ -106,7 +107,9 @@ export function notifyPassHolder(...permissionIds: string[]) {
  * request, cancelled, or decided by the other approver), on their own private
  * topic — their open screens reload just the requests, without polling.
  * Who: the routed approver (warden / HOD / faculty), plus for faculty passes the
- * Dean and the HODs of that faculty member's department (who also see them).
+ * Dean and the HODs of that faculty member's department, and for student passes
+ * routed to an HOD every HOD of that student's department (all of them see and
+ * can decide those requests).
  */
 export function notifyApprovers(...permissionIds: string[]) {
   const ids = [...new Set(permissionIds.filter(Boolean))];
@@ -115,12 +118,23 @@ export function notifyApprovers(...permissionIds: string[]) {
     try {
       const rows = await prisma.permission.findMany({
         where: { id: { in: ids } },
-        select: { approverType: true, approverId: true, faculty: { select: { department: true } } },
+        select: {
+          approverType: true,
+          approverId: true,
+          faculty: { select: { department: true } },
+          student: { select: { department: true } },
+        },
       });
       const userIds = new Set<string>();
       const wardenIds = rows.filter((r) => r.approverType === "WARDEN").map((r) => r.approverId);
       const otherIds = rows.filter((r) => r.approverType !== "WARDEN").map((r) => r.approverId);
       const facultyDepts = [...new Set(rows.map((r) => r.faculty?.department).filter((d): d is string => !!d))];
+      // HODs see their whole department: faculty passes, and student passes routed to an HOD
+      const studentDepts = rows
+        .filter((r) => r.approverType === "FACULTY_ADMIN")
+        .map((r) => r.student?.department)
+        .filter((d): d is string => !!d);
+      const hodDepts = [...new Set([...facultyDepts, ...studentDepts].flatMap((d) => [d, ...getDepartmentVariants(d)]))];
       const [wardens, approvers, deansAndHods] = await Promise.all([
         wardenIds.length
           ? prisma.warden.findMany({ where: { id: { in: wardenIds } }, select: { profile: { select: { userId: true } } } })
@@ -132,11 +146,14 @@ export function notifyApprovers(...permissionIds: string[]) {
               select: { userId: true },
             })
           : [],
-        facultyDepts.length
+        hodDepts.length
           ? prisma.profile.findMany({
               where: {
                 active: true,
-                OR: [{ role: "DEAN" }, { role: "FACULTY_ADMIN", faculty: { department: { in: facultyDepts } } }],
+                OR: [
+                  ...(facultyDepts.length ? [{ role: "DEAN" as const }] : []),
+                  { role: "FACULTY_ADMIN" as const, faculty: { department: { in: hodDepts } } },
+                ],
               },
               select: { userId: true },
             })

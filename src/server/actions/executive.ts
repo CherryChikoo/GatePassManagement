@@ -1,6 +1,6 @@
 "use server";
 
-import { loadCampusActivity } from "@/lib/activity/campus-activity";
+import { loadActivityPage, type ActivityPageParams } from "@/lib/activity/campus-activity";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole, type AuthUser } from "@/lib/auth/helpers";
@@ -273,10 +273,11 @@ export async function getSupervisorRequests(params: {
 }
 
 /**
- * One IST day of campus activity (Director, Dean, Security Supervisor). Loaded by
- * the Activity screen in the browser (cached per day), so the page opens at once.
+ * One page of one IST day's campus activity (Director, Dean, Security
+ * Supervisor) with the day's counts per tab. Loaded by the Activity screen in
+ * the browser (cached per day and page), so the page opens at once.
  */
-export async function getCampusActivity(dateParam?: string) {
+export async function getCampusActivity(dateParam?: string, params?: ActivityPageParams) {
   await requireRole("DIRECTOR", "DEAN", "SECURITY_SUPERVISOR");
-  return loadCampusActivity(typeof dateParam === "string" ? dateParam : undefined);
+  return loadActivityPage(typeof dateParam === "string" ? dateParam : undefined, params, { departments: null, studentMovements: true });
 }

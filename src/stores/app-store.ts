@@ -16,7 +16,7 @@ export interface StoreUser {
  * Each role uses the keys it needs:
  *
  * FACULTY:  dashboard, requests, students, wardens
- * WARDEN:   dashboard, requests, students, wardens
+ * WARDEN:   dashboard, wardens (the request queue is paged: getWardenRequests)
  * STUDENT:  dashboard, formData, history
  * SECURITY: dashboard, log, outsiders, gates
  * ADMIN:    dashboard, users, gates, activity, faculty, wardens, allGates

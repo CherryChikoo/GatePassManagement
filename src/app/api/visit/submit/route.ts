@@ -1,9 +1,10 @@
 import { clientIp, overLimit, readJsonBody, submitVisitRequest, TOO_MANY, VISIT_LIMITS, visitJson } from "@/lib/visits/requests";
 
 /**
- * POST /api/visit/submit { t, data, hostProfileId?, officeId? } (public: the visitor's phone)
- * -> { ok:true, secret } | { ok:false, error }
- * The phone keeps `secret` to follow its visit. See src/lib/visits/requests.ts.
+ * POST /api/visit/submit { t, data, hostProfileId? } (public: the visitor's phone)
+ * -> { ok:true, name, at } | { ok:false, error }
+ * The phone just shows "Your details are sent" with the name and time (kept on
+ * the phone); it never asks the server again. See src/lib/visits/requests.ts.
  */
 export const dynamic = "force-dynamic";
 

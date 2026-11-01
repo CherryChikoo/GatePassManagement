@@ -4,14 +4,16 @@
  * The check-in form on the visitor's own phone (opened by scanning the QR on
  * Security's screen). The same fields, order and choices as the guard's own
  * form for that register, minus the photo (Security takes it when letting the
- * visitor in), the gate and the times (automatic). Plus "Who are you meeting?",
- * which decides how the visitor leaves (meeting code, office poster, or
- * Security marks the exit).
+ * visitor in), the gate and the times (automatic). Plus "Who are you meeting?":
+ * a faculty / staff member gives a 4-digit code the visitor tells Security when
+ * leaving; otherwise Security just marks the exit.
+ *
+ * The Visitors form has the same categories as Security's form (parents too).
+ * After sending, the phone shows a confirmation
+ * kept on the phone (see visit-sent.tsx): no more calls to the server.
  */
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Building2, Clock, KeyRound, Loader2, QrCode, RotateCcw, Send, UserRound, Users } from "lucide-react";
+import { Clock, KeyRound, Loader2, QrCode, RotateCcw, Send, UserRound, Users } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,28 +22,32 @@ import { DepartmentSelect } from "@/components/ui/department-select";
 import { REGISTER_BY_KEY, type EntryRegister, type FieldDef } from "@/lib/registers/definitions";
 import { DEPARTMENTS, departmentLabel, listedDepartmentCode } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { fetchVisitForm, submitVisit, visitMessage, type VisitFormOk } from "@/components/visit-phone/visit-api";
+import { fetchVisitForm, submitVisit, visitMessage, type VisitFormOk, type VisitHost } from "@/components/visit-phone/visit-api";
 import {
   clearDraft,
+  clearSentVisit,
   readDraft,
-  readSavedVisit,
+  readSentVisit,
   saveDraft,
-  saveVisit,
+  saveSentVisit,
   type CheckInRegister,
-  type SavedVisit,
+  type SentVisit,
 } from "@/components/visit-phone/visit-store";
-import { PhoneAlert, PhoneLoading, StateCard, bigButtonCls, plainButtonCls } from "@/components/visit-phone/parts";
+import { PhoneAlert, PhoneLoading, StateCard, bigButtonCls } from "@/components/visit-phone/parts";
+import { VisitSent } from "@/components/visit-phone/visit-sent";
 
-/** Reasons in the Purpose dropdown: the same as Security's Visitors form (sent in English) */
-const VISIT_PURPOSES = ["Meeting", "Parent Visit", "Admission Enquiry", "Delivery", "Maintenance / Repair", "Event", "Interview"];
+/** Reasons in the Purpose dropdown: Security's Visitors form without "Parent Visit" (sent in English) */
+const VISIT_PURPOSES = ["Meeting", "Admission Enquiry", "Delivery", "Maintenance / Repair", "Event", "Interview"];
 const OTHER_PURPOSE = "__other__";
 
+/** Who fills this form (parents are registered by Security, not here) */
 const CATEGORIES = [
   ["GUEST", "Guest / Visitor"],
   ["PARENT", "Parent / Guardian"],
   ["VENDOR", "Vendor / Delivery"],
   ["WORKER", "Worker / Staff"],
 ] as const;
+const CATEGORY_VALUES: readonly string[] = CATEGORIES.map(([v]) => v);
 
 const ADMISSION = REGISTER_BY_KEY.ADMISSION as EntryRegister;
 /** Admission Book fields typed on the phone (date and times are set when Security lets them in) */
@@ -76,9 +82,9 @@ const EMPTY_VISITORS: VisitorsValues = {
   remarks: "",
 };
 
-/** Who the visitor came for: a faculty / staff member (meeting code), an office (its QR poster), or nobody specific */
-type Meeting = { kind: "" | "HOST" | "OFFICE" | "NONE"; hostGroup: string; hostId: string; officeId: string };
-const EMPTY_MEETING: Meeting = { kind: "", hostGroup: "", hostId: "", officeId: "" };
+/** Who the visitor came for: a faculty / staff member (they give the exit code), or nobody specific */
+type Meeting = { kind: "" | "HOST" | "NONE"; hostGroup: string; hostId: string };
+const EMPTY_MEETING: Meeting = { kind: "", hostGroup: "", hostId: "" };
 
 type Draft = { visitors: VisitorsValues; admission: Record<string, string>; meeting: Meeting };
 
@@ -91,21 +97,20 @@ const fieldCls =
   "flex h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-base text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10";
 const chipCls = (selected: boolean) =>
   cn(
-    "flex min-h-14 items-center justify-center rounded-2xl border px-3 py-2 text-center text-sm font-medium leading-snug transition-colors",
+    "flex min-h-14 items-center justify-center rounded-2xl border px-2 py-2 text-center text-sm font-medium leading-snug transition-colors",
     selected ? "border-orange-500/50 bg-orange-500/10 text-orange-500" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
   );
 
 export function CheckInForm({ token }: { token: string }) {
   const t = useT();
-  const router = useRouter();
-  // Anything that is not a check-in QR (e.g. /v/me) is not worth asking the server about
+  // Anything that is not a check-in QR is not worth asking the server about
   const wellFormed = token.startsWith("GV1.");
 
+  /** The confirmation of a form this phone sent (undefined: not read from the phone yet) */
+  const [sent, setSent] = useState<SentVisit | null | undefined>(undefined);
   const [form, setForm] = useState<VisitFormOk | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(wellFormed ? null : "invalid");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loadNo, setLoadNo] = useState(0);
-  /** A visit this phone already sent (offered at the top) */
-  const [saved, setSaved] = useState<SavedVisit | null>(null);
 
   const [visitors, setVisitors] = useState<VisitorsValues>(EMPTY_VISITORS);
   const [admission, setAdmission] = useState<Record<string, string>>({});
@@ -115,12 +120,18 @@ export function CheckInForm({ token }: { token: string }) {
   /** The QR is too old to send the form: scan again (what was typed is kept) */
   const [tooLate, setTooLate] = useState(false);
 
+  // Already sent from this phone (a reload): show the confirmation, ask nothing
   useEffect(() => {
-    setSaved(readSavedVisit());
+    setSent(readSentVisit());
   }, []);
 
+  const showForm = sent === null;
   useEffect(() => {
-    if (!wellFormed) return;
+    if (!showForm) return;
+    if (!wellFormed) {
+      setLoadError("invalid");
+      return;
+    }
     let cancelled = false;
     setLoadError(null);
     void fetchVisitForm(token).then((res) => {
@@ -132,31 +143,32 @@ export function CheckInForm({ token }: { token: string }) {
       // A reload, or the QR scanned again: bring back what was typed
       const draft = readDraft<Draft>(res.register);
       if (draft) {
-        setVisitors({ ...EMPTY_VISITORS, ...draft.visitors });
+        const v = { ...EMPTY_VISITORS, ...draft.visitors };
+        // A choice no longer on the form is chosen again
+        if (!CATEGORY_VALUES.includes(v.category)) v.category = EMPTY_VISITORS.category;
+        setVisitors(v);
         setAdmission(draft.admission ?? {});
-        // A person / office no longer in the lists is chosen again
         const m = { ...EMPTY_MEETING, ...draft.meeting };
         const gone =
-          (m.kind === "HOST" && !res.hosts.some((h) => h.id === m.hostId)) ||
-          (m.kind === "OFFICE" && !res.offices.some((o) => o.id === m.officeId));
-        setMeeting(gone ? EMPTY_MEETING : m);
+          (m.kind !== "" && m.kind !== "HOST" && m.kind !== "NONE") ||
+          (m.kind === "HOST" && !!m.hostId && !res.hosts.some((h) => h.id === m.hostId));
+        setMeeting(gone ? EMPTY_MEETING : { kind: m.kind, hostGroup: m.hostGroup, hostId: m.hostId });
       }
       setForm(res);
     });
     return () => {
       cancelled = true;
     };
-  }, [token, wellFormed, loadNo]);
+  }, [token, wellFormed, loadNo, showForm]);
 
   // Keep a draft while typing (a page reload must not lose it)
   const register: CheckInRegister | null = form?.register ?? null;
   useEffect(() => {
-    if (!register || sending) return;
+    if (!register || sending || !showForm) return;
     saveDraft(register, { visitors, admission, meeting } satisfies Draft);
-  }, [register, visitors, admission, meeting, sending]);
+  }, [register, visitors, admission, meeting, sending, showForm]);
 
   const hosts = useMemo(() => form?.hosts ?? [], [form]);
-  const offices = form?.offices ?? [];
 
   // Faculty / staff grouped by department (or their title when they have none):
   // college departments first, in the usual order, then the rest A–Z
@@ -176,15 +188,29 @@ export function CheckInForm({ token }: { token: string }) {
   };
   const groupHosts = hosts.filter((h) => hostGroupKey(h) === meeting.hostGroup);
 
+  /** "Fill another form": forget the confirmation and open an empty form */
+  function fillAnother() {
+    clearSentVisit();
+    setVisitors(EMPTY_VISITORS);
+    setAdmission({});
+    setMeeting(EMPTY_MEETING);
+    setError(null);
+    setTooLate(false);
+    setForm(null);
+    setLoadNo((n) => n + 1);
+    setSent(null);
+    window.scrollTo({ top: 0 });
+  }
+
+  if (sent === undefined) return <PhoneLoading />;
+  if (sent) return <VisitSent sent={sent} onAnother={fillAnother} />;
+
   if (loadError) {
     if (loadError === "expired" || loadError === "invalid") {
       return (
-        <div className="space-y-4">
-          <StateCard tone="info" icon={<QrCode />} title={loadError === "expired" ? t("This QR has expired") : t("This QR is not valid")}>
-            <p>{t("Please scan the QR shown by the security officer at the gate again.")}</p>
-          </StateCard>
-          <SavedVisitLink saved={saved} />
-        </div>
+        <StateCard tone="info" icon={<QrCode />} title={loadError === "expired" ? t("This QR has expired") : t("This QR is not valid")}>
+          <p>{t("Please scan the QR shown by the security officer at the gate again.")}</p>
+        </StateCard>
       );
     }
     return (
@@ -196,7 +222,6 @@ export function CheckInForm({ token }: { token: string }) {
           <RotateCcw className="h-5 w-5" aria-hidden="true" />
           {t("Try again")}
         </button>
-        <SavedVisitLink saved={saved} />
       </div>
     );
   }
@@ -205,12 +230,10 @@ export function CheckInForm({ token }: { token: string }) {
 
   if (tooLate) {
     return (
-      <div className="space-y-4">
-        <StateCard tone="info" icon={<Clock />} title={t("This QR has expired")}>
-          <p>{t("Please scan the QR shown by the security officer at the gate again.")}</p>
-          <p className="text-sm">{t("What you typed is kept on this phone.")}</p>
-        </StateCard>
-      </div>
+      <StateCard tone="info" icon={<Clock />} title={t("This QR has expired")}>
+        <p>{t("Please scan the QR shown by the security officer at the gate again.")}</p>
+        <p className="text-sm">{t("What you typed is kept on this phone.")}</p>
+      </StateCard>
     );
   }
 
@@ -226,45 +249,43 @@ export function CheckInForm({ token }: { token: string }) {
       setError(t("Enter the vehicle number, or choose On foot"));
       return;
     }
-    if (!meeting.kind) {
+    if (!meeting.kind && hosts.length > 0) {
       setError(t("Choose who you are meeting"));
       return;
     }
-    if (meeting.kind === "HOST" && !meeting.hostId) {
+    const host = meeting.kind === "HOST" ? hosts.find((h) => h.id === meeting.hostId) : undefined;
+    if (meeting.kind === "HOST" && !host) {
       setError(t("Choose the person you are meeting from the list"));
-      return;
-    }
-    if (meeting.kind === "OFFICE" && !meeting.officeId) {
-      setError(t("Choose the office from the list"));
       return;
     }
 
     let data: Record<string, unknown>;
+    let typedName: string;
     if (isVisitors) {
       const { onFoot, purposeOther: _other, vehicleNumber, ...rest } = visitors;
       data = { ...rest, vehicleNumber: onFoot ? "" : vehicleNumber.trim().toUpperCase(), onFoot };
+      typedName = visitors.name.trim();
     } else {
       data = Object.fromEntries(ADMISSION_FIELDS.map((f) => [f.key, (admission[f.key] ?? "").trim()]));
+      typedName = (admission.parentName ?? "").trim();
     }
 
     setSending(true);
-    // Sending again from this phone: its own waiting request is replaced (not someone else's)
-    const previous = readSavedVisit();
-    const res = await submitVisit({
-      t: token,
-      s: previous && previous.register === form.register ? previous.secret : undefined,
-      data,
-      hostProfileId: meeting.kind === "HOST" ? meeting.hostId : "",
-      officeId: meeting.kind === "OFFICE" ? meeting.officeId : "",
-    });
+    const res = await submitVisit({ t: token, data, ...(host ? { hostProfileId: host.id } : {}) });
+    setSending(false);
     if (res.ok) {
-      saveVisit({ secret: res.secret, register: form.register, at: Date.now() });
+      const confirmation: SentVisit = {
+        register: form.register,
+        name: (typeof res.name === "string" && res.name.trim()) || typedName,
+        at: typeof res.at === "string" && !Number.isNaN(Date.parse(res.at)) ? res.at : new Date().toISOString(),
+        hostName: host?.name ?? null,
+      };
+      saveSentVisit(confirmation);
       clearDraft(form.register);
-      // Stays "sending" until the visit page opens
-      router.replace(`/v/me/${res.secret}`);
+      setSent(confirmation);
+      window.scrollTo({ top: 0 });
       return;
     }
-    setSending(false);
     if (res.error === "expired" || res.error === "invalid") {
       setTooLate(true);
       return;
@@ -280,8 +301,6 @@ export function CheckInForm({ token }: { token: string }) {
 
   return (
     <div className="space-y-4">
-      <SavedVisitLink saved={saved} />
-
       <div className="px-1">
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">{t("Fill in your details")}</h1>
         <p className="mt-1 text-sm text-zinc-500">
@@ -375,7 +394,7 @@ export function CheckInForm({ token }: { token: string }) {
                   <p id="v-category" className={labelCls}>
                     {t("Category")}
                   </p>
-                  <div role="radiogroup" aria-labelledby="v-category" className="grid grid-cols-2 gap-2">
+                  <div role="radiogroup" aria-labelledby="v-category" className="grid grid-cols-3 gap-2">
                     {CATEGORIES.map(([value, label]) => (
                       <button
                         key={value}
@@ -431,7 +450,6 @@ export function CheckInForm({ token }: { token: string }) {
                   hostGroups={hostGroups}
                   groupLabel={groupLabel}
                   groupHosts={groupHosts}
-                  offices={offices}
                   hasHosts={hosts.length > 0}
                 />
 
@@ -518,7 +536,6 @@ export function CheckInForm({ token }: { token: string }) {
                   hostGroups={hostGroups}
                   groupLabel={groupLabel}
                   groupHosts={groupHosts}
-                  offices={offices}
                   hasHosts={hosts.length > 0}
                 />
               </>
@@ -533,20 +550,6 @@ export function CheckInForm({ token }: { token: string }) {
           </form>
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-/** "You already sent your details" with a way back to that visit */
-function SavedVisitLink({ saved }: { saved: SavedVisit | null }) {
-  const t = useT();
-  if (!saved) return null;
-  return (
-    <div className="rounded-3xl border border-orange-500/30 bg-orange-500/5 p-4">
-      <p className="text-sm font-medium text-zinc-200">{t("You already sent your details from this phone.")}</p>
-      <Link href={`/v/me/${saved.secret}`} className={cn(plainButtonCls, "mt-3 h-12")}>
-        {t("Open my visit")}
-      </Link>
     </div>
   );
 }
@@ -639,28 +642,25 @@ function AdmissionField({
   );
 }
 
-/** "Who are you meeting?": faculty / staff (Department → name), an office, or nobody specific */
+/** "Who are you meeting?": faculty / staff (Department → name) or nobody specific */
 function MeetingChoice({
   meeting,
   setMeeting,
   hostGroups,
   groupLabel,
   groupHosts,
-  offices,
   hasHosts,
 }: {
   meeting: Meeting;
   setMeeting: React.Dispatch<React.SetStateAction<Meeting>>;
   hostGroups: string[];
   groupLabel: (key: string) => string;
-  groupHosts: VisitFormOk["hosts"];
-  offices: VisitFormOk["offices"];
+  groupHosts: VisitHost[];
   hasHosts: boolean;
 }) {
   const t = useT();
   const choices = [
     hasHosts && { kind: "HOST" as const, icon: UserRound, label: t("Faculty / staff") },
-    offices.length > 0 && { kind: "OFFICE" as const, icon: Building2, label: t("An office") },
     { kind: "NONE" as const, icon: Users, label: t("Nobody specific") },
   ].filter(Boolean) as { kind: Meeting["kind"]; icon: typeof Users; label: string }[];
 
@@ -668,7 +668,7 @@ function MeetingChoice({
     <div className="space-y-3 rounded-3xl border border-zinc-800 bg-zinc-950/60 p-4">
       <p id="v-meeting" className={cn(labelCls, "flex items-center gap-1.5")}>
         <KeyRound className="h-4 w-4 text-orange-500" aria-hidden="true" />
-        {t("Who are you meeting?")} <span className="text-orange-500">*</span>
+        {t("Who are you meeting?")} {hasHosts && <span className="text-orange-500">*</span>}
       </p>
       <div role="radiogroup" aria-labelledby="v-meeting" className="grid grid-cols-1 gap-2">
         {choices.map(({ kind, icon: Icon, label }) => (
@@ -727,33 +727,7 @@ function MeetingChoice({
             </div>
           )}
           <p className="text-xs leading-relaxed text-zinc-500">
-            {t("After the meeting, they give you a 4-digit code. Type it on this phone to leave.")}
-          </p>
-        </div>
-      )}
-
-      {meeting.kind === "OFFICE" && (
-        <div className="space-y-3 pt-1">
-          <div className="space-y-1.5">
-            <label htmlFor="v-office" className={labelCls}>
-              {t("Office")}
-            </label>
-            <ThemedSelect
-              id="v-office"
-              value={meeting.officeId}
-              onChange={(e) => setMeeting((m) => ({ ...m, officeId: e.target.value }))}
-              className={fieldCls}
-            >
-              <option value="">{t("— Select —")}</option>
-              {offices.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </ThemedSelect>
-          </div>
-          <p className="text-xs leading-relaxed text-zinc-500">
-            {t("When your work is done, scan the QR poster in that office with this phone to leave.")}
+            {t("After the meeting, they give you a 4-digit code. Tell it to the security officer when you leave.")}
           </p>
         </div>
       )}

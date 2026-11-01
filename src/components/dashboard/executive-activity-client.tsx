@@ -2,7 +2,7 @@
 import { PassFullDetails } from "@/components/passes/pass-full-details";
 import { DateField } from "@/components/ui/date-field";
 import { callGate } from "@/lib/gate-call";
-import { useGateData } from "@/lib/gate-cache";
+import { useDebounced, usePagedList } from "@/hooks/use-paged-list";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { istDateString } from "@/lib/time/ist";
 import { scheduledNote } from "@/lib/pass-dates";
@@ -31,7 +31,7 @@ import {
   Eye,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { BackButton } from "@/components/ui/back-button";
 import { PagerBar } from "@/components/ui/pager-bar";
 
@@ -45,111 +45,58 @@ interface ExecutiveActivityClientProps {
   initialDate?: string;
 }
 
-const NO_ROWS: any[] = [];
+const PAGE_SIZE = 20;
+
+type Counts = { all: number; pending: number; entries: number; exits: number };
+const NO_COUNTS: Counts = { all: 0, pending: 0, entries: 0, exits: 0 };
+type ActivityItem = { kind: "student-permission" | "student-movement" | "faculty-permission" | "faculty-movement"; data: any };
+const NO_ITEMS: ActivityItem[] = [];
+/** One page of the day (getCampusActivity): the rows on screen and the day's counts per tab */
+type ActivityPage = {
+  counts?: { students: Counts; faculty: Counts };
+  items?: ActivityItem[];
+  total?: number;
+  page?: number;
+  error?: string;
+};
 
 export function ExecutiveActivityClient({ role, user, initialDate }: ExecutiveActivityClientProps) {
   const router = useRouter();
-  // The page opens at once; the chosen day's activity loads here (cached per
-  // day: a day seen before shows at once, refreshed quietly when older than 15 s)
   const [selectedDate, setSelectedDate] = useState(() =>
     initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? initialDate : istDateString()
   );
-  const day = useGateData<any>(`campus-activity|${selectedDate}`, () => callGate("getCampusActivity", [selectedDate], 20_000), ["gate"]);
-  const permissions: any[] = day.data?.permissions ?? NO_ROWS; // student permissions
-  const facultyPermissions: any[] = day.data?.facultyPermissions ?? NO_ROWS;
-  const facultyMovements: any[] = day.data?.facultyMovements ?? NO_ROWS; // standalone faculty movements
-  const studentMovements: any[] = day.data?.studentMovements ?? NO_ROWS; // standalone student movements
-  const navigating = day.loading || day.refreshing;
   const [selectedPermission, setSelectedPermission] = useState<any>(null);
   const [selectedMovement, setSelectedMovement] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<Tab>("STUDENTS");
   const [subTab, setSubTab] = useState<SubTab>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 12;
+  const pageSize = PAGE_SIZE;
 
-  // Search filter predicate
-  const q = search.toLowerCase().trim();
+  // Only the page on screen is downloaded (a busy day has 1,500+ records): the
+  // search, the tabs and the counts run in the database. The page opens at once;
+  // a page seen before shows at once and is refreshed quietly when older than
+  // 15 s (the last one stays on screen while the next loads).
+  const q = useDebounced(search);
+  const params = { page: currentPage, pageSize: PAGE_SIZE, q, who: activeTab, filter: subTab };
+  const day = usePagedList<ActivityPage>(
+    `campus-activity|${selectedDate}`,
+    params,
+    () => callGate("getCampusActivity", [selectedDate, params], 20_000),
+    ["gate"]
+  );
+  const dayLoading = !day.data && !day.error;
+  const navigating = day.busy;
 
-  const studentMatchesSearch = (p: any) => {
-    if (!q) return true;
-    return (
-      p.student?.profile?.name?.toLowerCase().includes(q) ||
-      p.student?.studentRoll?.toLowerCase().includes(q) ||
-      p.student?.department?.toLowerCase().includes(q) ||
-      p.purpose?.toLowerCase().includes(q) ||
-      p.destination?.toLowerCase().includes(q)
-    );
-  };
-
-  const facultyPermMatchesSearch = (p: any) => {
-    if (!q) return true;
-    return (
-      p.faculty?.profile?.name?.toLowerCase().includes(q) ||
-      p.faculty?.employeeId?.toLowerCase().includes(q) ||
-      p.faculty?.department?.toLowerCase().includes(q) ||
-      p.faculty?.designation?.toLowerCase().includes(q) ||
-      p.purpose?.toLowerCase().includes(q) ||
-      p.destination?.toLowerCase().includes(q)
-    );
-  };
-
-  const facultyMovMatchesSearch = (m: any) => {
-    if (!q) return true;
-    return (
-      m.faculty?.profile?.name?.toLowerCase().includes(q) ||
-      m.faculty?.employeeId?.toLowerCase().includes(q) ||
-      m.faculty?.department?.toLowerCase().includes(q) ||
-      m.faculty?.designation?.toLowerCase().includes(q) ||
-      m.gate?.name?.toLowerCase().includes(q)
-    );
-  };
-
-  const studentMovMatchesSearch = (m: any) => {
-    if (!q) return true;
-    return (
-      m.student?.profile?.name?.toLowerCase().includes(q) ||
-      m.student?.studentRoll?.toLowerCase().includes(q) ||
-      m.student?.department?.toLowerCase().includes(q) ||
-      m.gate?.name?.toLowerCase().includes(q)
-    );
-  };
-
-  // Base search-filtered lists
-  const searchStudents = useMemo(() => permissions.filter(studentMatchesSearch), [permissions, q]);
-  const searchFacultyPerms = useMemo(() => facultyPermissions.filter(facultyPermMatchesSearch), [facultyPermissions, q]);
-  const searchFacultyMovements = useMemo(() => facultyMovements.filter(facultyMovMatchesSearch), [facultyMovements, q]);
-  const searchStudentMovements = useMemo(() => studentMovements.filter(studentMovMatchesSearch), [studentMovements, q]);
-
-  // Sub-tab counts calculation
-  const studentCounts = useMemo(() => ({
-    all: searchStudents.length + searchStudentMovements.length,
-    pending: searchStudents.filter((p) => p.status === "PENDING").length,
-    entries:
-      searchStudents.filter((p) => p.type === "ENTRY").length +
-      searchStudentMovements.filter((m) => m.type === "ENTRY").length,
-    exits:
-      searchStudents.filter((p) => p.type === "EXIT").length +
-      searchStudentMovements.filter((m) => m.type === "EXIT").length,
-  }), [searchStudents, searchStudentMovements]);
-
-  const facultyCounts = useMemo(() => ({
-    all: searchFacultyPerms.length + searchFacultyMovements.length,
-    pending: searchFacultyPerms.filter((p) => p.status === "PENDING").length,
-    entries:
-      searchFacultyPerms.filter((p) => p.type === "ENTRY").length +
-      searchFacultyMovements.filter((m) => m.type === "ENTRY").length,
-    exits:
-      searchFacultyPerms.filter((p) => p.type === "EXIT").length +
-      searchFacultyMovements.filter((m) => m.type === "EXIT").length,
-  }), [searchFacultyPerms, searchFacultyMovements]);
-
-  const combinedCounts = useMemo(() => ({
+  // Counts per tab for the day (with the search)
+  const studentCounts = day.data?.counts?.students ?? NO_COUNTS;
+  const facultyCounts = day.data?.counts?.faculty ?? NO_COUNTS;
+  const combinedCounts = {
     all: studentCounts.all + facultyCounts.all,
     pending: studentCounts.pending + facultyCounts.pending,
     entries: studentCounts.entries + facultyCounts.entries,
     exits: studentCounts.exits + facultyCounts.exits,
-  }), [studentCounts, facultyCounts]);
+  };
 
   const activeSubCounts =
     activeTab === "STUDENTS"
@@ -158,99 +105,10 @@ export function ExecutiveActivityClient({ role, user, initialDate }: ExecutiveAc
       ? facultyCounts
       : combinedCounts;
 
-  // Filter students by subTab
-  const filteredStudents = useMemo(() => searchStudents.filter((p) => {
-    if (subTab === "PENDING") return p.status === "PENDING";
-    if (subTab === "ENTRIES") return p.type === "ENTRY";
-    if (subTab === "EXITS") return p.type === "EXIT";
-    return true;
-  }), [searchStudents, subTab]);
-
-  const filteredStudentMovements = useMemo(() => searchStudentMovements.filter((m) => {
-    if (subTab === "PENDING") return false;
-    if (subTab === "ENTRIES") return m.type === "ENTRY";
-    if (subTab === "EXITS") return m.type === "EXIT";
-    return true;
-  }), [searchStudentMovements, subTab]);
-
-  // Filter faculty permissions by subTab
-  const filteredFacultyPerms = useMemo(() => searchFacultyPerms.filter((p) => {
-    if (subTab === "PENDING") return p.status === "PENDING";
-    if (subTab === "ENTRIES") return p.type === "ENTRY";
-    if (subTab === "EXITS") return p.type === "EXIT";
-    return true;
-  }), [searchFacultyPerms, subTab]);
-
-  // Filter faculty movements by subTab
-  const filteredFacultyMovements = useMemo(() => searchFacultyMovements.filter((m) => {
-    if (subTab === "PENDING") return false;
-    if (subTab === "ENTRIES") return m.type === "ENTRY";
-    if (subTab === "EXITS") return m.type === "EXIT";
-    return true;
-  }), [searchFacultyMovements, subTab]);
-
-  // Build combined items list
-  type ActivityItem =
-    | { kind: "student-permission"; data: any; sortKey: number }
-    | { kind: "student-movement"; data: any; sortKey: number }
-    | { kind: "faculty-permission"; data: any; sortKey: number }
-    | { kind: "faculty-movement"; data: any; sortKey: number };
-
-  const visibleItems: ActivityItem[] = useMemo(() => {
-    const list: ActivityItem[] = [];
-
-    if (activeTab === "ALL" || activeTab === "STUDENTS") {
-      filteredStudents.forEach((p) =>
-        list.push({
-          kind: "student-permission",
-          data: p,
-          sortKey: p.createdAt ? new Date(p.createdAt).getTime() : 0,
-        })
-      );
-      filteredStudentMovements.forEach((m) =>
-        list.push({
-          kind: "student-movement",
-          data: m,
-          sortKey: m.createdAt ? new Date(m.createdAt).getTime() : 0,
-        })
-      );
-    }
-
-    if (activeTab === "ALL" || activeTab === "FACULTY") {
-      filteredFacultyPerms.forEach((p) =>
-        list.push({
-          kind: "faculty-permission",
-          data: p,
-          sortKey: p.createdAt ? new Date(p.createdAt).getTime() : 0,
-        })
-      );
-      filteredFacultyMovements.forEach((m) =>
-        list.push({
-          kind: "faculty-movement",
-          data: m,
-          sortKey: m.createdAt ? new Date(m.createdAt).getTime() : 0,
-        })
-      );
-    }
-
-    list.sort((a, b) => b.sortKey - a.sortKey);
-    return list;
-  }, [
-    activeTab,
-    filteredStudents,
-    filteredStudentMovements,
-    filteredFacultyPerms,
-    filteredFacultyMovements,
-  ]);
-
-  const displayTotal = visibleItems.length;
+  const displayTotal = day.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(displayTotal / pageSize));
-  const paginatedItems = useMemo(() => {
-    return visibleItems.slice(
-      (currentPage - 1) * pageSize,
-      currentPage * pageSize
-    );
-  }, [visibleItems, currentPage, pageSize]);
+  const paginatedItems = day.data?.items ?? NO_ITEMS;
+  const shownPage = day.data?.page ?? currentPage;
 
   const { path: rolePath, title: roleTitle, accent: roleAccent } = oversightRoleMeta(role);
 
@@ -444,7 +302,7 @@ export function ExecutiveActivityClient({ role, user, initialDate }: ExecutiveAc
                 Try again
               </Button>
             </div>
-          ) : day.loading ? (
+          ) : dayLoading ? (
             <p className="py-14 px-4 text-center text-sm text-zinc-500">Loading the day&apos;s activity…</p>
           ) : paginatedItems.length === 0 ? (
             <div className="flex flex-col items-center text-center py-14 px-4">
@@ -532,7 +390,7 @@ export function ExecutiveActivityClient({ role, user, initialDate }: ExecutiveAc
 
         {/* Pagination (docked at the bottom of the screen) */}
         <PagerBar
-          page={currentPage}
+          page={shownPage}
           pageSize={pageSize}
           total={displayTotal}
           onPageChange={(p) => setCurrentPage(Math.min(totalPages, Math.max(1, p)))}

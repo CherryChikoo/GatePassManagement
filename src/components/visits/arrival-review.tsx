@@ -174,7 +174,6 @@ export function ArrivalReview({
     add("Reason / Purpose of Visit", str(data.purpose) && t(str(data.purpose)));
   }
   add("Meeting (faculty / staff)", arrival.hostName ?? "");
-  add("Office work", arrival.officeName ?? "");
   if (isVisitors) {
     add("Person to Visit", str(data.visitingStudent));
     add("Department", str(data.department));

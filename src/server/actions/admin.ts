@@ -17,6 +17,14 @@ import {
 } from "@/lib/validation/schemas";
 import { getStaffScope, canAccessStudent, canViewProfile } from "@/lib/auth/scope";
 import { istDayRangeFromParam } from "@/lib/time/ist";
+import {
+  NEWEST_FIRST,
+  containsText,
+  pageMerged,
+  pageOf as activityPageOf,
+  pageSizeOf as activityPageSizeOf,
+  textOf as activityTextOf,
+} from "@/lib/activity/paged";
 import { getSyncReport, reconcilePortalWithLogins, deleteLoginWithoutPortal } from "@/lib/accounts/sync";
 import { deanTitle } from "@/lib/auth/titles";
 import { getDepartmentVariants, listedDepartmentCode } from "@/lib/constants";
@@ -1052,7 +1060,6 @@ export async function getUserFullHistory(profileId: string): Promise<any> {
     gate: { select: { name: true, location: true } },
     securityUser: nameOnly,
   } as const;
-  const assignedPerson = { include: { profile: { select: { id: true, name: true, email: true, phone: true, active: true } } } } as const;
   const approvalsOf = (who: "faculty" | "warden") =>
     prisma.permissionApproval.findMany({
       where: { [who]: { profileId: pid } },
@@ -1085,7 +1092,8 @@ export async function getUserFullHistory(profileId: string): Promise<any> {
       ]).then(([permissions, movements]) => ({ permissions, movements })),
     faculty: () =>
       Promise.all([
-        prisma.student.findMany({ where: { faculty: { profileId: pid } }, ...assignedPerson }),
+        // Only how many (the screen shows the number; a warden can have 2,000 hostellers)
+        prisma.student.count({ where: { faculty: { profileId: pid } } }),
         prisma.permission.findMany({
           where: { faculty: { profileId: pid } },
           orderBy: { createdAt: "desc" },
@@ -1096,10 +1104,10 @@ export async function getUserFullHistory(profileId: string): Promise<any> {
           },
         }),
         approvalsOf("faculty"),
-      ]).then(([assignedStudents, permissions, permissionApprovals]) => ({ assignedStudents, permissions, permissionApprovals })),
+      ]).then(([assignedStudentsCount, permissions, permissionApprovals]) => ({ assignedStudentsCount, permissions, permissionApprovals })),
     warden: () =>
-      Promise.all([prisma.student.findMany({ where: { warden: { profileId: pid } }, ...assignedPerson }), approvalsOf("warden")]).then(
-        ([assignedHostellers, permissionApprovals]) => ({ assignedHostellers, permissionApprovals })
+      Promise.all([prisma.student.count({ where: { warden: { profileId: pid } } }), approvalsOf("warden")]).then(
+        ([assignedHostellersCount, permissionApprovals]) => ({ assignedHostellersCount, permissionApprovals })
       ),
     securityStaff: () =>
       prisma.movement
@@ -1279,111 +1287,60 @@ export async function assignGateToSecurity(securityId: string, gateId: string) {
 }
 
 /**
- * Get comprehensive activity logs for the admin Activity tab
+ * One page of one IST day for the admin Activity tab: gate entries / exits
+ * (scans and pass requests, merged newest first) or visitors, with the day's
+ * counts. Only the page on screen is sent; search and filters run in the database.
  */
-export async function getActivityData(dateString?: string) {
+export async function getActivityData(
+  dateString?: string,
+  params?: { tab?: string; page?: number; pageSize?: number; q?: string; category?: string }
+) {
   await requireRole("ADMIN");
   const { start: today, end: endOfDay } = istDayRangeFromParam(dateString);
+  const tab = params?.tab === "exits" || params?.tab === "outsiders" ? params.tab : "entries";
+  const page = activityPageOf(params?.page);
+  const pageSize = activityPageSizeOf(params?.pageSize);
+  const q = activityTextOf(params?.q);
+  const category = activityTextOf(params?.category).toUpperCase();
+  const has = containsText(q);
+  const day = { gte: today, lt: endOfDay };
 
-  // Fetch Movement Data and Stats in parallel
-  const [
-    entriesToday,
-    exitsToday,
-    recentEntries,
-    recentExits,
-    outsidersCount,
-    outsiders,
-    entryPermissions,
-    exitPermissions
-  ] = await Promise.all([
-    prisma.movement.count({
-      where: {
-        type: "ENTRY",
-        createdAt: { gte: today, lt: endOfDay },
-      },
-    }),
-    prisma.movement.count({
-      where: {
-        type: "EXIT",
-        createdAt: { gte: today, lt: endOfDay },
-      },
-    }),
-    prisma.movement.findMany({
-      where: { type: "ENTRY", createdAt: { gte: today, lt: endOfDay } },
-      take: 60,
-      orderBy: { createdAt: "desc" },
-      include: {
-        permission: {
-          select: { purpose: true, destination: true },
-        },
-        student: {
-          include: {
-            profile: { select: { id: true, name: true, email: true, phone: true } },
-          },
-        },
-        faculty: {
-          select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } },
-        },
-        gate: { select: { name: true, location: true } },
-        securityUser: {
-          include: { profile: { select: { name: true } } },
-        },
-      },
-    }),
-    prisma.movement.findMany({
-      where: { type: "EXIT", createdAt: { gte: today, lt: endOfDay } },
-      take: 60,
-      orderBy: { createdAt: "desc" },
-      include: {
-        permission: {
-          select: { purpose: true, destination: true },
-        },
-        student: {
-          include: {
-            profile: { select: { id: true, name: true, email: true, phone: true } },
-          },
-        },
-        faculty: {
-          select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } },
-        },
-        gate: { select: { name: true, location: true } },
-        securityUser: {
-          include: { profile: { select: { name: true } } },
-        },
-      },
-    }),
-    prisma.outsider.count({ where: { status: "INSIDE", entryTime: { gte: today, lt: endOfDay } } }),
-    prisma.outsider.findMany({
-      where: { entryTime: { gte: today, lt: endOfDay } },
-      orderBy: { entryTime: "desc" },
-      take: 500,
-      // Meeting a faculty / staff member (the code itself is never sent)
-      include: { visitPass: { select: { hostName: true, status: true, attempts: true } } },
-    })
-  ,
-    prisma.permission.findMany({
-      where: { type: "ENTRY", createdAt: { gte: today, lt: endOfDay } },
-      take: 60,
-      orderBy: { createdAt: "desc" },
-      include: {
-        student: { include: { profile: { select: { id: true, name: true, email: true, phone: true } } } },
-        faculty: {
-          select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } },
-        },
-      }
-    }),
-    prisma.permission.findMany({
-      where: { type: "EXIT", createdAt: { gte: today, lt: endOfDay } },
-      take: 60,
-      orderBy: { createdAt: "desc" },
-      include: {
-        student: { include: { profile: { select: { id: true, name: true, email: true, phone: true } } } },
-        faculty: {
-          select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } },
-        },
-      }
-    })
+  // The day's counts (cards and tab chips)
+  const [entriesToday, exitsToday, entryRequestsToday, exitRequestsToday, outsidersTotal, outsidersOnCampus] = await Promise.all([
+    prisma.movement.count({ where: { type: "ENTRY", createdAt: day } }),
+    prisma.movement.count({ where: { type: "EXIT", createdAt: day } }),
+    prisma.permission.count({ where: { type: "ENTRY", createdAt: day } }),
+    prisma.permission.count({ where: { type: "EXIT", createdAt: day } }),
+    prisma.outsider.count({ where: { entryTime: day } }),
+    prisma.outsider.count({ where: { status: "INSIDE", entryTime: day } }),
   ]);
+  const stats = { entriesToday, exitsToday, entryRequestsToday, exitRequestsToday, outsidersOnCampus, outsidersTotal };
+  const counts = { entries: entriesToday + entryRequestsToday, exits: exitsToday + exitRequestsToday, outsiders: outsidersTotal };
+
+  if (tab === "outsiders") {
+    const where: Prisma.OutsiderWhereInput = {
+      AND: [
+        { entryTime: day },
+        category && category !== "ALL" ? { category } : {},
+        q
+          ? { OR: [{ name: has }, { visitingStudent: has }, { purpose: has }, { phone: has }] }
+          : {},
+      ],
+    };
+    const total = q || (category && category !== "ALL") ? await prisma.outsider.count({ where }) : outsidersTotal;
+    const current = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
+    const rows = total
+      ? await prisma.outsider.findMany({
+          where,
+          orderBy: [{ entryTime: "desc" }, { id: "desc" }],
+          skip: (current - 1) * pageSize,
+          take: pageSize,
+          // Meeting a faculty / staff member (the code itself is never sent)
+          include: { visitPass: { select: { hostName: true, status: true, attempts: true } } },
+        })
+      : [];
+    return { stats, counts, tab, rows, total, page: current, pageSize };
+  }
 
   // A record belongs to a student or a faculty member. Faculty records are sent in
   // the same shape (name, ID, email, phone) so the page shows the right person.
@@ -1398,47 +1355,92 @@ export async function getActivityData(dateString?: string) {
           profile: r.faculty.profile,
         }
       : null);
-
-  // Pass *requests* are listed alongside gate scans but flagged and NOT counted as movements.
-  const formattedEntryPerms = entryPermissions.map((p: any) => ({
-    id: p.id,
-    isRequest: true,
-    type: "ENTRY",
-    createdAt: p.createdAt,
-    student: personOf(p),
-    gate: { name: "Not scanned yet", location: "Pass request" },
-    permission: { purpose: p.purpose, destination: p.destination },
-    securityUser: null
-  }));
-
-  const formattedExitPerms = exitPermissions.map((p: any) => ({
-    id: p.id,
-    isRequest: true,
-    type: "EXIT",
-    createdAt: p.createdAt,
-    student: personOf(p),
-    gate: { name: "Not scanned yet", location: "Pass request" },
-    permission: { purpose: p.purpose, destination: p.destination },
-    securityUser: null
-  }));
-
-  const mergedEntries = [...recentEntries.map((m: any) => ({ ...m, student: personOf(m) })), ...formattedEntryPerms].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  const mergedExits = [...recentExits.map((m: any) => ({ ...m, student: personOf(m) })), ...formattedExitPerms].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-
-  const activityData = {
-    stats: {
-      entriesToday,
-      exitsToday,
-      entryRequestsToday: entryPermissions.length,
-      exitRequestsToday: exitPermissions.length,
-      outsidersOnCampus: outsidersCount,
+  const personSelect = {
+    student: { include: { profile: { select: { id: true, name: true, email: true, phone: true } } } },
+    faculty: {
+      select: { employeeId: true, department: true, designation: true, profile: { select: { id: true, name: true, email: true, phone: true } } },
     },
-    recentEntries: mergedEntries, 
-    recentExits: mergedExits, 
-    outsiders 
-  };
+  } as const;
 
-  return activityData;
+  const type = tab === "exits" ? ("EXIT" as const) : ("ENTRY" as const);
+  const personSearch = q
+    ? [
+        { student: { profile: { name: has } } },
+        { student: { studentRoll: has } },
+        { faculty: { profile: { name: has } } },
+        { faculty: { employeeId: has } },
+      ]
+    : [];
+  const movementWhere: Prisma.MovementWhereInput = {
+    type,
+    createdAt: day,
+    ...(q
+      ? {
+          OR: [
+            ...personSearch,
+            { gate: { name: has } },
+            { permission: { purpose: has } },
+            ...(type === "EXIT" ? [{ permission: { destination: has } }] : []),
+          ],
+        }
+      : {}),
+  };
+  // Pass *requests* are listed alongside gate scans but flagged and NOT counted as movements.
+  const requestWhere: Prisma.PermissionWhereInput = {
+    type,
+    createdAt: day,
+    ...(q ? { OR: [...personSearch, { purpose: has }, ...(type === "EXIT" ? [{ destination: has }] : [])] } : {}),
+  };
+  const [movementTotal, requestTotal] = q
+    ? await Promise.all([prisma.movement.count({ where: movementWhere }), prisma.permission.count({ where: requestWhere })])
+    : type === "EXIT"
+    ? [exitsToday, exitRequestsToday]
+    : [entriesToday, entryRequestsToday];
+
+  const merged = await pageMerged<"movement" | "request">(
+    [
+      {
+        kind: "movement",
+        total: movementTotal,
+        heads: (take) => prisma.movement.findMany({ where: movementWhere, orderBy: NEWEST_FIRST, take, select: { id: true, createdAt: true } }),
+        rows: (ids) =>
+          prisma.movement.findMany({
+            where: { id: { in: ids } },
+            include: {
+              permission: { select: { purpose: true, destination: true } },
+              ...personSelect,
+              gate: { select: { name: true, location: true } },
+              securityUser: { include: { profile: { select: { name: true } } } },
+            },
+          }),
+      },
+      {
+        kind: "request",
+        total: requestTotal,
+        heads: (take) => prisma.permission.findMany({ where: requestWhere, orderBy: NEWEST_FIRST, take, select: { id: true, createdAt: true } }),
+        rows: (ids) => prisma.permission.findMany({ where: { id: { in: ids } }, include: personSelect }),
+      },
+    ],
+    page,
+    pageSize
+  );
+
+  const rows = merged.items.map(({ kind, data: r }) =>
+    kind === "movement"
+      ? { ...r, student: personOf(r) }
+      : {
+          id: r.id,
+          isRequest: true,
+          type: r.type,
+          createdAt: r.createdAt,
+          student: personOf(r),
+          gate: { name: "Not scanned yet", location: "Pass request" },
+          permission: { purpose: r.purpose, destination: r.destination },
+          securityUser: null,
+        }
+  );
+
+  return { stats, counts, tab, rows, total: merged.total, page: merged.page, pageSize };
 }
 
 

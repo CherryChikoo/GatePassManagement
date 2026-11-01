@@ -367,47 +367,72 @@ export async function getFacultyAllRequests() {
   });
 }
 
+/** Warden's request queue tabs (Student Requests screen) */
+const WARDEN_TAB_STATUS = {
+  PENDING: ["PENDING"],
+  ACCEPTED: ["APPROVED", "COMPLETED", "EXITED"],
+  REJECTED: ["REJECTED"],
+} as const;
+
 /**
- * Get all requests for warden (up to 100)
+ * One page of the warden's request queue (Student Requests screen), with the
+ * count of every tab. The queue: today's requests (resets daily), anything
+ * still pending, and hostellers still out on a pass from an earlier day (shown
+ * as delayed when late) — history is in Activity. Only the page on screen is
+ * sent; the screen reloads it the moment a request arrives, is cancelled or is
+ * decided (live "requests" ping).
  */
-export async function getWardenAllRequests() {
+export async function getWardenRequests(params?: { tab?: string; page?: number; pageSize?: number }) {
   const user = await requireRole("WARDEN");
+  const warden = await prisma.warden.findUnique({ where: { profileId: user.profileId }, select: { id: true } });
+  if (!warden) return { error: "Warden record not found" };
 
-  const warden = await prisma.warden.findUnique({
-    where: { profileId: user.profileId },
-    select: { id: true },
-  });
+  const tab = params?.tab === "ALL" || params?.tab === "ACCEPTED" || params?.tab === "REJECTED" ? params.tab : "PENDING";
+  const pageSize = Math.min(50, Math.max(1, Math.floor(Number(params?.pageSize) || 20)));
+  const page = Math.min(500, Math.max(1, Math.floor(Number(params?.page) || 1)));
 
-  if (!warden) return [];
+  const base: Prisma.PermissionWhereInput = {
+    approverId: warden.id,
+    approverType: "WARDEN",
+    OR: [
+      { createdAt: { gte: istStartOfDay() } },
+      { status: "PENDING" },
+      { status: "EXITED", type: { not: "ENTRY" }, movements: { none: { type: "ENTRY" } } },
+    ],
+  };
+  const where: Prisma.PermissionWhereInput =
+    tab === "ALL" ? base : { AND: [base, { status: { in: [...WARDEN_TAB_STATUS[tab]] } }] };
 
-  return prisma.permission.findMany({
-    where: {
-      approverId: warden.id,
-      approverType: "WARDEN",
-    },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-    include: {
-      student: {
-        select: {
-          studentRoll: true,
-          department: true,
-          year: true,
-          roomNumber: true,
-          hostelBlock: true,
-          profile: {
-            select: { name: true, email: true },
+  const groups = await prisma.permission.groupBy({ by: ["status"], where: base, _count: { _all: true } });
+  const n = (statuses: readonly string[]) => groups.reduce((sum, g) => sum + (statuses.includes(g.status) ? g._count._all : 0), 0);
+  const counts = {
+    ALL: groups.reduce((sum, g) => sum + g._count._all, 0),
+    PENDING: n(WARDEN_TAB_STATUS.PENDING),
+    ACCEPTED: n(WARDEN_TAB_STATUS.ACCEPTED),
+    REJECTED: n(WARDEN_TAB_STATUS.REJECTED),
+  };
+  const total = counts[tab];
+  const current = Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
+
+  const rows = total
+    ? await prisma.permission.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: (current - 1) * pageSize,
+        take: pageSize,
+        include: {
+          student: {
+            select: {
+              studentRoll: true, department: true, year: true, roomNumber: true, hostelBlock: true,
+              profile: { select: { name: true, email: true } },
+            },
           },
+          qr: { select: { usedForExit: true, usedForEntry: true } },
         },
-      },
-      qr: {
-        select: {
-          usedForExit: true,
-          usedForEntry: true,
-        },
-      },
-    },
-  });
+      })
+    : [];
+
+  return { rows, total, page: current, pageSize, counts };
 }
 
 /**

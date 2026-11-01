@@ -4,7 +4,7 @@ import { LoadingPill } from "@/components/ui/loading-pill";
 import { useT } from "@/components/providers/language-provider";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, ChevronRight, Clock, Eye, FilePlus2, FileText, History, KeyRound, Loader2, LogIn, LogOut, PencilLine, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronRight, Clock, Eye, FilePlus2, FileText, History, KeyRound, Loader2, LogIn, LogOut, MapPin, PencilLine, Trash2, XCircle } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Modal } from "@/components/ui/primitives";
 import { Card } from "@/components/ui/card";
@@ -26,6 +26,7 @@ import type { Translate } from "@/lib/i18n";
 import { RegisterToolbar, useRegisterFilters } from "./toolbar";
 import { fetchInsideEntries, invalidateInsideEntries } from "./inside-entries";
 import { insideForLabel, useMinuteClock } from "@/components/visits/hub-tiles";
+import { ListEmpty, ListLoading, PersonCard, PersonCardAction } from "@/components/visits/person-card";
 
 type Supplement = {
   id: string;
@@ -79,6 +80,7 @@ export function EntryRegisterView({
   canAdminEdit = false,
   canEdit = false,
   insideOnly = false,
+  onInsideTotal,
 }: {
   def: EntryRegister;
   canCreate: boolean;
@@ -92,10 +94,16 @@ export function EntryRegisterView({
    * 20 per page.
    */
   insideOnly?: boolean;
+  /** Inside now: how many are inside (the screen's title count), after every load */
+  onInsideTotal?: (total: number) => void;
 }) {
   const t = useT();
   const filters = useRegisterFilters();
   const [data, setData] = useState<{ entries: Entry[]; total: number; pageSize: number; canOverrideVisit?: boolean } | null>(null);
+  const insideTotal = insideOnly ? data?.total : undefined;
+  useEffect(() => {
+    if (insideTotal !== undefined) onInsideTotal?.(insideTotal);
+  }, [insideTotal, onInsideTotal]);
   // "Inside 2 h 10 min" moves on once a minute (no requests)
   const now = useMinuteClock(insideOnly);
   const [error, setError] = useState<string | null>(null);
@@ -349,6 +357,55 @@ export function EntryRegisterView({
     </span>
   );
 
+  // Inside now (Admission Book): who, phone, the other list columns, time in and how long
+  const inField = def.movement ? def.fields.find((f) => f.key === def.movement!.in.timeKey) : undefined;
+  const insideCard = (e: Entry) => {
+    const [first, ...rest] = columns;
+    const name = first ? displayValue(first, e.current[first.key], t) : formatFieldValue({ key: "d", label: "", type: "date" }, e.entryDate);
+    const phoneKey = def.visitHost?.phoneField;
+    const phone = phoneKey && typeof e.current[phoneKey] === "string" ? (e.current[phoneKey] as string) : null;
+    const details = rest
+      .filter((c) => c.type !== "time")
+      .map((c) => displayValue(c, e.current[c.key], t))
+      .filter((v) => v && v !== "—")
+      .join(" · ");
+    const timeIn = inField && e.current[inField.key] ? displayValue(inField, e.current[inField.key], t) : null;
+    const pend = canCreate ? pendingActions(def, e.current) : null;
+    const next = pend?.next ?? null;
+    const action = next ? (
+      <PersonCardAction
+        icon={next.direction === "OUT" ? LogOut : LogIn}
+        label={next.direction === "OUT" ? t("Mark exit") : t("Record {side}", { side: next.label })}
+        tone={next.direction === "OUT" ? "sky" : "emerald"}
+        onClick={() => quickRecord(e)}
+        busy={quickId === e.id}
+        disabled={!!quickId}
+      />
+    ) : pend?.groups.length ? (
+      <PersonCardAction icon={LogOut} label={t("Mark out")} onClick={() => openMode("record", e)} />
+    ) : null;
+    const chips = (e.visit || statusCols.length > 0) && (
+      <>
+        {e.visit && <MeetingChip visit={e.visit} />}
+        {statusCols.map((c) => (
+          <StatusChip key={c.key} field={c} withLabel value={e.current[c.key]} />
+        ))}
+      </>
+    );
+    return (
+      <PersonCard
+        name={name}
+        phone={phone}
+        details={details}
+        chips={chips}
+        time={timeIn ? `${t("In")} ${timeIn}` : null}
+        since={insideForLabel(t, e.createdAt, now)}
+        onOpen={() => setSelected(e)}
+        action={action}
+      />
+    );
+  };
+
   return (
     <div className="space-y-4">
       {!insideOnly && (
@@ -412,6 +469,22 @@ export function EntryRegisterView({
       )}
 
       <LoadingPill active={loading} />
+      {insideOnly ? (
+        // Inside now: one card per person, the main action on the right (tablets) or under (phones)
+        data && data.entries.length > 0 ? (
+          <ul className={cn("space-y-2.5 transition-opacity", loading && "opacity-60")}>
+            {data.entries.map((e) => (
+              <li key={e.id} className="min-w-0">
+                {insideCard(e)}
+              </li>
+            ))}
+          </ul>
+        ) : data ? (
+          <ListEmpty icon={MapPin} title={t("Nobody is inside now.")} hint={t("People still inside appear here by themselves.")} />
+        ) : error ? null : (
+          <ListLoading />
+        )
+      ) : (
       <Card className={cn("overflow-hidden transition-opacity", loading && "opacity-60")}>
         {/* Phones: stacked rows */}
         {data && data.entries.length > 0 && (
@@ -534,6 +607,7 @@ export function EntryRegisterView({
         )}
         {!data && !error && <p className="px-4 py-12 text-center text-sm text-zinc-500">{t("Loading…")}</p>}
       </Card>
+      )}
 
       {data && <PagerBar page={filters.page} pageSize={data.pageSize} total={data.total} onPageChange={filters.setPage} itemLabel={t("records")} />}
 

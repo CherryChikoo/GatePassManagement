@@ -436,7 +436,7 @@ export function UserDetailClient({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <StatCard
               title="Assigned Students"
-              value={user.faculty?.assignedStudents?.length || 0}
+              value={user.faculty?.assignedStudentsCount ?? 0}
               icon={<Users />}
             />
             <StatCard
@@ -459,7 +459,7 @@ export function UserDetailClient({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <StatCard
               title="Assigned Hostellers"
-              value={user.warden?.assignedHostellers?.length || 0}
+              value={user.warden?.assignedHostellersCount ?? 0}
               icon={<Users />}
             />
             <StatCard

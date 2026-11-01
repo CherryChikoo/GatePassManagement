@@ -220,6 +220,8 @@ const SIROS_LABOUR_INPUTS: Pick<EntryRegister, "required" | "movement" | "listFi
     in: { label: "In", timeKey: "contractorIn" },
     out: { label: "Out", timeKey: "contractorOut" },
     firstDirections: ["IN"],
+    // Always "In now, Out later": the same record is marked Out from the list
+    fixedStart: true,
   },
   listFields: ["contractorName", "totalWorkers", "contractorIn", "contractorOut"],
   fields: [
@@ -453,16 +455,19 @@ export const REGISTERS: RegisterDef[] = [
     kind: "entry",
     key: "SIROS_DAILY_LABOUR",
     number: 20,
-    title: "Siros Venture Daily Labour Book",
-    description: "Daily labour: contractors and every worker under them, with in and out times.",
+    // The one Siros Venture labour book (daily and contract labour together)
+    title: "Siros Venture Daily Labour & Contract Book",
+    description: "Contractors and every worker under them (daily or contract labour): In when they come, Out on the same entry when they leave.",
     ...SIROS_LABOUR_INPUTS,
   },
   {
     kind: "entry",
     key: "SIROS_LABOUR_CONTRACT",
     number: 10,
-    title: "Siros Venture Labour Contract Book",
-    description: "Contract labour: contractors and every worker under them, with in and out times.",
+    // Joined into the Siros Venture Daily Labour & Contract Book (SIROS_DAILY_LABOUR): kept only so
+    // its past records can still be read; no new entries (src/lib/registers/access.ts)
+    title: "Old Siros Venture Labour Contract Book",
+    description: "Contract labour (old records only; new entries go in the Siros Venture Daily Labour & Contract Book).",
     ...SIROS_LABOUR_INPUTS,
   },
   {

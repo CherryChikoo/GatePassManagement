@@ -3,8 +3,8 @@
 /**
  * Visitor self check-in, on every Security screen (mounted once by
  * app/security/layout.tsx): when a visitor has sent the form from their phone
- * and is waiting at the gate, a small banner "New visitor waiting at the gate
- * · Open now" leads to that register's Show QR screen, where the arrivals are.
+ * and is waiting at the gate, a small banner "New visitor waiting at the gate"
+ * (the whole card is the link) leads to that register's Waiting to accept screen.
  *
  * No polling: the count is fetched once, then again only when the server pings
  * the "arrivals" live topic (a request was sent, accepted or rejected).
@@ -105,39 +105,50 @@ export function ArrivalAlert() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed inset-x-3 z-30 mx-auto max-w-md animate-fade-in"
+      className="fixed inset-x-3 z-30 mx-auto max-w-lg animate-fade-in"
       style={{ top: "calc(var(--bar-top, 4.75rem) + 0.5rem)" }}
     >
-      <div className="flex items-center gap-2 rounded-2xl border border-orange-500/30 bg-zinc-900 p-2 pl-3 shadow-[0_16px_40px_-16px_rgba(207,62,37,0.45)]">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-orange-500">
-          <BellRing className="h-5 w-5" aria-hidden="true" />
+      <ArrivalBanner
+        href={checkInGateHref(target)}
+        title={n > 1 ? t("{n} visitors waiting at the gate", { n }) : t("New visitor waiting at the gate")}
+        book={t(target === "VISITORS" ? "Visitors Book" : "Admission Book & Pass")}
+        onHide={() => setDismissedId(data.latest!.id)}
+      />
+    </div>
+  );
+}
+
+/**
+ * The banner itself: one full-width card, the whole card opens the waiting
+ * list (a small arrow shows it), ✕ hides it. The text has the whole width, so
+ * the Telugu title wraps to two lines at most instead of a narrow column.
+ */
+export function ArrivalBanner({ href, title, book, onHide }: { href: string; title: string; book: string; onHide: () => void }) {
+  const t = useT();
+  return (
+    <div className="flex items-stretch overflow-hidden rounded-2xl border border-orange-500/30 bg-zinc-900 shadow-[0_16px_40px_-16px_rgba(207,62,37,0.45)]">
+      <Link
+        href={href}
+        className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 pr-2 transition-colors hover:bg-orange-500/5 active:bg-orange-500/10"
+      >
+        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white" aria-hidden="true">
+          <span className="absolute inset-0 animate-ping rounded-full bg-orange-500/30 motion-reduce:hidden" />
+          <BellRing className="relative h-5 w-5" />
         </span>
-        <Link
-          href={checkInGateHref(target)}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-xl py-1 pr-1"
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block text-[15px] font-semibold leading-snug text-zinc-100">
-              {n > 1 ? t("{n} visitors waiting at the gate", { n }) : t("New visitor waiting at the gate")}
-            </span>
-            <span className="block truncate text-xs text-zinc-500">
-              {t(target === "VISITORS" ? "Visitors Book" : "Admission Book & Pass")}
-            </span>
-          </span>
-          <span className="inline-flex h-10 shrink-0 items-center gap-1 rounded-full bg-orange-600 pl-4 pr-3 text-sm font-semibold text-white">
-            {t("Open now")}
-            <ChevronRight className="h-4 w-4" aria-hidden="true" />
-          </span>
-        </Link>
-        <button
-          type="button"
-          onClick={() => setDismissedId(data.latest!.id)}
-          aria-label={t("Hide")}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-950 hover:text-zinc-300"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+        <span className="min-w-0 flex-1">
+          <span className="line-clamp-2 text-[15px] font-semibold leading-snug text-zinc-100">{title}</span>
+          <span className="block truncate text-xs text-zinc-500">{book}</span>
+        </span>
+        <ChevronRight className="h-5 w-5 shrink-0 text-orange-600" aria-hidden="true" />
+      </Link>
+      <button
+        type="button"
+        onClick={onHide}
+        aria-label={t("Hide")}
+        className="flex w-11 shrink-0 items-center justify-center border-l border-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-950 hover:text-zinc-300"
+      >
+        <X className="h-4 w-4" aria-hidden="true" />
+      </button>
     </div>
   );
 }

@@ -12,7 +12,7 @@ import { VISITOR_SPEC_KEY, type VoiceFill } from "@/lib/voice/spec";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { dt, PersonCell, RowActions, IconAction } from "@/components/ui/data-table";
+import { dt, PersonCell } from "@/components/ui/data-table";
 import { PagerBar } from "@/components/ui/pager-bar";
 import { cn, formatDateTime, formatTime } from "@/lib/utils";
 import {
@@ -44,7 +44,8 @@ import { BackButton } from "@/components/ui/back-button";
 import { GoBackButton } from "@/components/ui/go-back-button";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { LiveDateTime } from "@/components/registers/register-form";
-import { HUB_PAGE_TOP, HubBackButton, HubQrButton, HubTiles, insideForLabel, useHubView, useMinuteClock } from "@/components/visits/hub-tiles";
+import { HUB_PAGE_TOP, HubQrButton, HubScreenHeader, HubTiles, insideForLabel, useHubView, useMinuteClock } from "@/components/visits/hub-tiles";
+import { ListEmpty, ListError, ListLoading, PersonCard, PersonCardAction } from "@/components/visits/person-card";
 import { CheckInQrScreen } from "@/components/visits/checkin-qr-screen";
 import { ARRIVAL_COUNTS_QUERY } from "@/components/visits/arrival-alert";
 import { useLiveTopics } from "@/lib/realtime/live";
@@ -524,8 +525,15 @@ export function OutsidersClient() {
   const categoryChip = "inline-flex shrink-0 items-center rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[11px] font-medium text-zinc-300";
 
   return (
-    <div className={cn("mx-auto max-w-5xl space-y-5 sm:space-y-6 pb-24 sm:pb-8", HUB_PAGE_TOP)}>
-      {/* The 4 buttons; every other screen has "← Buttons" in the same place */}
+    // Lists of people (Waiting to accept, Inside now): one readable column on tablets / desktops
+    <div
+      className={cn(
+        "mx-auto space-y-5 sm:space-y-6 pb-24 sm:pb-8",
+        view === "inside" || view === "gate" ? "max-w-[720px]" : "max-w-5xl",
+        HUB_PAGE_TOP
+      )}
+    >
+      {/* The 4 buttons; every other screen has the round "←" in the same place */}
       {onHub ? (
         <>
           <div className="min-w-0">
@@ -583,24 +591,14 @@ export function OutsidersClient() {
       ) : view === "gate" ? (
         <CheckInQrScreen register="VISITORS" showQr={false} onBack={back} />
       ) : (
-        <div className="min-w-0">
-          <HubBackButton className="mb-3" onClick={back} />
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
-              {view === "new" ? <UserPlus className="h-5 w-5" /> : view === "inside" ? <MapPin className="h-5 w-5" /> : <History className="h-5 w-5" />}
-            </span>
-            <h1 className="min-w-0 text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 break-words">
-              {view === "new" ? t("New visitor") : view === "inside" ? t("Inside now") : t("Old records")}
-            </h1>
-            {/* Everyone inside (hidden while searching: the pager shows the matches) */}
-            {view === "inside" && insidePage && !listQuery && (
-              <span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-orange-600 px-2 text-sm font-semibold tabular-nums text-white">
-                {insidePage.total}
-              </span>
-            )}
-          </div>
-          {formOpen && <p className="mt-1 text-sm text-zinc-500">{t("Photo first, then the details. Saving lets the visitor in.")}</p>}
-        </div>
+        <HubScreenHeader
+          onBack={back}
+          title={view === "new" ? t("New visitor") : view === "inside" ? t("Inside now") : t("Old records")}
+          subtitle={formOpen ? t("Photo first, then the details. Saving lets the visitor in.") : t("Visitors Book")}
+          // Everyone inside (hidden while searching: the pager shows the matches)
+          count={view === "inside" && insidePage && !listQuery ? insidePage.total : null}
+          busy={view === "inside" && insideList.refreshing}
+        />
       )}
 
       {/* Messages (the form shows its own, next to the submit button) */}
@@ -944,136 +942,59 @@ export function OutsidersClient() {
         </div>
       )}
 
-      {/* Inside now */}
+      {/* Inside now: one card per visitor, Mark exit on the right (tablets) or under (phones) */}
       {view === "inside" && (
         <>
           <LoadingPill active={insideList.loading || insideList.refreshing} />
-          <Card className="overflow-hidden">
-            {insideList.error ? (
-              <div role="alert" className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
-                <AlertCircle className="h-6 w-6 text-red-400" />
-                <p className="text-sm font-medium text-red-400">{t(insideList.error)}</p>
-                <Button variant="outline" className="h-11" onClick={() => void insideList.reload()}>
-                  <RotateCcw className="h-4 w-4" /> {t("Try Again")}
-                </Button>
-              </div>
-            ) : !insidePage ? (
-              <div className="flex items-center justify-center gap-2 px-6 py-12 text-sm text-zinc-500">
-                <Loader2 className="h-4 w-4 animate-spin" /> {t("Loading…")}
-              </div>
-            ) : paginatedInside.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-                <span className="mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 text-zinc-500">
-                  <Users className="h-5 w-5" />
-                </span>
-                <p className="text-sm font-medium text-zinc-300">{t("No active visitors inside campus")}</p>
-                <p className="text-xs text-zinc-500">
-                  {searchQuery ? t("No active visitors match your search.") : t("Visitors currently on campus will appear here.")}
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Phones: stacked rows with a big Mark Exited button */}
-                <ul className={`lg:hidden ${dt.mobileList}`}>
-                  {paginatedInside.map((person) => (
-                    <li
-                      key={person.id}
-                      className={`space-y-3 px-4 py-4 transition-colors ${highlightId === person.id ? "bg-orange-500/10" : ""}`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => openOutsiderDetails(person)}
-                        className="flex w-full items-center gap-3 text-left"
-                      >
-                        <PersonCell
-                          className="flex-1"
-                          name={person.name || "—"}
-                          sub={[person.phone, person.purpose].filter(Boolean).join(" · ")}
+          {insideList.error ? (
+            <ListError message={t(insideList.error)} onRetry={() => void insideList.reload()} />
+          ) : !insidePage ? (
+            <ListLoading />
+          ) : paginatedInside.length === 0 ? (
+            <ListEmpty
+              icon={MapPin}
+              title={searchQuery ? t("No active visitors match your search.") : t("No active visitors inside campus")}
+              hint={searchQuery ? undefined : t("Visitors currently on campus will appear here.")}
+            />
+          ) : (
+            <ul className="space-y-2.5">
+              {paginatedInside.map((person) => {
+                const meeting = person.visitPass && person.visitPass.status !== "EXITED" ? person.visitPass : null;
+                return (
+                  <li key={person.id} className="min-w-0">
+                    <PersonCard
+                      name={person.name || "—"}
+                      phone={person.phone}
+                      details={[person.category && t(person.category), person.purpose && t(person.purpose)].filter(Boolean).join(" · ")}
+                      chips={
+                        meeting && (
+                          <span className="inline-flex max-w-full items-start gap-1 rounded-xl bg-orange-500/10 px-2.5 py-0.5 text-xs font-semibold text-orange-600">
+                            <KeyRound className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                            <span className="min-w-0 break-words">
+                              {t("Meeting: {name}", { name: meeting.hostName })} · {t("code needed to exit")}
+                            </span>
+                          </span>
+                        )
+                      }
+                      time={`${t("In")} ${formatTime(person.entryTime)}`}
+                      since={insideForLabel(t, person.entryTime, now)}
+                      highlight={highlightId === person.id}
+                      onOpen={() => openOutsiderDetails(person)}
+                      action={
+                        <PersonCardAction
+                          icon={LogOut}
+                          label={t("Mark exit")}
+                          onClick={() => handleMarkExited(person)}
+                          busy={exitingId === person.id}
+                          disabled={!!exitingId}
                         />
-                        {person.visitPass && person.visitPass.status !== "EXITED" && (
-                          <span className="sr-only">{t("Meeting: {name}", { name: person.visitPass.hostName })}</span>
-                        )}
-                        <span className="flex shrink-0 flex-col items-end gap-1">
-                          <span className="text-sm font-medium text-zinc-100 tabular-nums">{formatTime(person.entryTime)}</span>
-                          <span className={categoryChip}>{t(person.category)}</span>
-                        </span>
-                      </button>
-                      <p className="text-xs font-semibold text-amber-600 tabular-nums">{insideForLabel(t, person.entryTime, now)}</p>
-                      {person.visitPass && person.visitPass.status !== "EXITED" && (
-                        <p className="flex items-center gap-1.5 text-xs font-semibold text-orange-500">
-                          <KeyRound className="h-3.5 w-3.5" aria-hidden="true" /> {t("Meeting: {name}", { name: person.visitPass.hostName })} · {t("code needed to exit")}
-                        </p>
-                      )}
-                      <Button
-                        className="h-12 w-full bg-sky-600 text-base text-white hover:bg-sky-700"
-                        onClick={(e) => { e.stopPropagation(); handleMarkExited(person); }}
-                        disabled={!!exitingId}
-                      >
-                        {exitingId === person.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-                        {t("Exit")}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-
-                {/* Tablet & up: table */}
-                <div className={`hidden lg:block ${dt.wrap}`}>
-                  <table className={dt.table}>
-                    <thead>
-                      <tr>
-                        <th className={dt.th}>{t("Name & Phone")}</th>
-                        <th className={dt.th}>{t("Category / Purpose")}</th>
-                        <th className={dt.th}>{t("Entry Time")}</th>
-                        <th className={dt.thRight}>{t("Action")}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedInside.map((person) => (
-                        <tr
-                          key={person.id}
-                          className={`${dt.trClickable} ${highlightId === person.id ? "bg-orange-500/10" : ""}`}
-                          onClick={() => openOutsiderDetails(person)}
-                        >
-                          <td className={dt.td}>
-                            <PersonCell name={person.name || "—"} sub={person.phone} />
-                            {person.visitPass && person.visitPass.status !== "EXITED" && (
-                              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-orange-500">
-                                <KeyRound className="h-3 w-3" aria-hidden="true" /> {t("Meeting: {name}", { name: person.visitPass.hostName })}
-                              </span>
-                            )}
-                          </td>
-                          <td className={dt.td}>
-                            <span className={categoryChip}>{t(person.category)}</span>
-                            <p className="mt-1 max-w-[220px] truncate text-xs text-zinc-500">{person.purpose}</p>
-                          </td>
-                          <td className={dt.td}>
-                            <span className="font-medium text-zinc-200 tabular-nums">{formatTime(person.entryTime)}</span>
-                            <p className="mt-0.5 whitespace-nowrap text-xs font-semibold text-amber-600 tabular-nums">{insideForLabel(t, person.entryTime, now)}</p>
-                          </td>
-                          <td className={dt.tdActions}>
-                            <RowActions>
-                              {/* Clearly visible: the main action on someone still inside */}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMarkExited(person);
-                                }}
-                                disabled={!!exitingId}
-                                className="inline-flex h-10 items-center gap-1.5 whitespace-nowrap rounded-full bg-sky-600 px-4 text-sm font-semibold text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.7)] transition-[background-color,transform] hover:bg-sky-700 active:scale-95 disabled:opacity-60"
-                              >
-                                {exitingId === person.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />} {t("Exit")}
-                              </button>
-                            </RowActions>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
-          </Card>
+                      }
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
           <PagerBar
             page={page}
             pageSize={insidePage ? insidePage.pageSize : ITEMS_PER_PAGE}

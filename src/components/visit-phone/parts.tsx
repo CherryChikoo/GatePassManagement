@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Loader2, WifiOff } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { useT } from "@/components/providers/language-provider";
 import { cn } from "@/lib/utils";
@@ -57,16 +57,6 @@ export function PhoneAlert({ children }: { children: React.ReactNode }) {
       <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
       <p className="text-sm font-medium leading-relaxed">{children}</p>
     </div>
-  );
-}
-
-/** Small line while the phone cannot reach the server (it keeps trying by itself) */
-export function OfflineNote({ text }: { text: string }) {
-  return (
-    <p role="status" className="flex items-center justify-center gap-2 rounded-full bg-zinc-900 px-4 py-2 text-center text-xs font-medium text-zinc-500">
-      <WifiOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-      {text}
-    </p>
   );
 }
 

@@ -13,7 +13,7 @@ import type { RegisterKey } from "./definitions";
 
 const ATTENDANCE: RegisterKey = "SECURITY_ATTENDANCE";
 /** Replaced registers: Security no longer sees them; Admin / Supervisor can still read the old records */
-const RETIRED: RegisterKey[] = ["AUTO_BOOK"];
+const RETIRED: RegisterKey[] = ["AUTO_BOOK", "SIROS_LABOUR_CONTRACT"];
 
 export type RegisterAccess = {
   isHeadSecurity: boolean;

@@ -472,17 +472,20 @@ model VisitPass {
 /// Self check-in from a visitor's own phone (Visitors Book / Admission Book).
 /// The visitor scans the QR on Security's screen and fills the form; Security
 /// checks it, takes the photo and accepts it (-> a normal Visitors Book visitor
-/// or Admission Book record, linked here) or rejects it. The phone follows the
-/// visit with a secret only it has (kept here only as a SHA-256 hash).
+/// or Admission Book record, linked here) or rejects it. Leaving is marked by
+/// Security (Inside now -> Mark exit / Out), with the host's meeting code when
+/// they came to meet someone.
 /// PENDING -> ACCEPTED -> EXITED, or REJECTED. A PENDING request older than 60
 /// minutes counts as expired. See src/lib/visits/requests.ts.
+/// (The table still has office_id / exit_unlocked_at / exit_unlock_method /
+/// office_visited_at columns from the removed Exit QR; Prisma ignores them.)
 model VisitRequest {
   id               String         @id @default(uuid())
   /// "VISITORS" | "ADMISSION"
   register         String
   /// PENDING | ACCEPTED | REJECTED | EXITED
   status           String         @default("PENDING")
-  /// SHA-256 (hex) of the phone's secret; the secret itself is never stored
+  /// Random SHA-256 (hex) per request (the column is NOT NULL unique; nothing reads it now)
   secretHash       String         @unique @map("secret_hash")
   /// What the visitor typed (keys = the register's field keys)
   data             Json
@@ -491,9 +494,6 @@ model VisitRequest {
   /// Faculty / staff member they came to meet (exit with the meeting code)
   hostProfileId    String?        @map("host_profile_id")
   host             Profile?       @relation("VisitRequestHost", fields: [hostProfileId], references: [id], onDelete: SetNull)
-  /// Office they came to (exit by scanning the office's QR poster)
-  officeId         String?        @map("office_id")
-  office           Office?        @relation(fields: [officeId], references: [id], onDelete: SetNull)
   /// Guard whose QR was scanned, and that guard's gate at the time
   issuedById       String?        @map("issued_by_id")
   issuedBy         Profile?       @relation("VisitRequestIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
@@ -509,27 +509,8 @@ model VisitRequest {
   outsider         Outsider?      @relation(fields: [outsiderId], references: [id], onDelete: SetNull)
   registerEntryId  String?        @unique @map("register_entry_id")
   registerEntry    RegisterEntry? @relation(fields: [registerEntryId], references: [id], onDelete: SetNull)
-  /// From this time the phone shows its Exit QR: CODE (meeting code typed) | OFFICE (office poster scanned)
-  exitUnlockedAt   DateTime?      @map("exit_unlocked_at")
-  exitUnlockMethod String?        @map("exit_unlock_method")
-  officeVisitedAt  DateTime?      @map("office_visited_at")
   createdAt        DateTime       @default(now()) @map("created_at")
 
   @@index([register, status, createdAt(sort: Desc)])
   @@map("visit_requests")
-}
-
-/// An office visitors come to (Accounts, Exam cell…). Offices have no logins:
-/// each has a printed QR poster (<site>/o/<posterKey>) the visitor scans with
-/// their phone to record the visit and unlock their Exit QR.
-model Office {
-  id        String         @id @default(uuid())
-  name      String
-  /// Random, unguessable key printed in the poster's QR
-  posterKey String         @unique @map("poster_key")
-  active    Boolean        @default(true)
-  createdAt DateTime       @default(now()) @map("created_at")
-  requests  VisitRequest[]
-
-  @@map("offices")
 }

@@ -138,10 +138,9 @@ function isPublicPath(pathname: string): boolean {
     pathname === "/api/health" ||
     pathname === "/api/version" ||
     pathname.startsWith("/api/cron/") ||
-    // Visitor self check-in on the visitor's own phone (no login): the form,
-    // office posters and their API (src/lib/visits/requests.ts)
+    // Visitor self check-in on the visitor's own phone (no login): the form
+    // and its API (src/lib/visits/requests.ts)
     pathname.startsWith("/v/") ||
-    pathname.startsWith("/o/") ||
     pathname.startsWith("/api/visit/")
   );
 }

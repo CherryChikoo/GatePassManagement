@@ -394,7 +394,6 @@ async function preloadWarden(profileId: string, light = false) {
     exitsToday,
     entriesToday,
     recentApprovals,
-    allRequests,
     wardens,
   ] = await Promise.all([
     prisma.student.count({ where: { wardenId: warden.id } }),
@@ -434,31 +433,7 @@ async function preloadWarden(profileId: string, light = false) {
         qr: { select: { usedForExit: true, usedForEntry: true, expiresAt: true } },
       },
     }),
-    prisma.permission.findMany({
-      // Today's requests (resets daily), anything still pending, and hostellers
-      // still out on a pass from an earlier day (shown as delayed when late);
-      // history is in Activity
-      where: {
-        approverId: warden.id,
-        approverType: "WARDEN",
-        OR: [
-          { createdAt: { gte: today } },
-          { status: "PENDING" },
-          { status: "EXITED", type: { not: "ENTRY" }, movements: { none: { type: "ENTRY" } } },
-        ],
-      },
-      orderBy: { createdAt: "desc" },
-      take: 500,
-      include: {
-        student: {
-          select: {
-            studentRoll: true, department: true, year: true, roomNumber: true, hostelBlock: true,
-            profile: { select: { name: true, email: true } },
-          },
-        },
-        qr: { select: { usedForExit: true, usedForEntry: true } },
-      },
-    }),
+    // The request queue loads one page at a time on its own screen (getWardenRequests)
     // Hostellers: the Students screen loads them one page at a time (getExecutiveStudents)
     light ? undefined : prisma.warden.findMany({
       select: { id: true, hostelBlock: true, profile: { select: { name: true } } },
@@ -472,7 +447,6 @@ async function preloadWarden(profileId: string, light = false) {
       stats: { totalHostellers, pendingCount, approvedToday, rejectedToday, exitsToday, entriesToday },
       recentActivity: recentApprovals,
     },
-    requests: allRequests,
     wardens,
     warden: warden,
   };
@@ -531,39 +505,6 @@ async function preloadStudent(profileId: string) {
     ? { name: resolution.approver.name, label: resolution.approver.label, available: true }
     : { name: null, label: null, available: false, reason: resolution.error };
 
-  // Hostellers going to the hostel: their department HOD approves
-  let hostelPassApprover: typeof assignedApprover | null = null;
-  if (isHosteller) {
-    const hod = await resolveStudentApprover({ ...student, studentType: "DAY_SCHOLAR" });
-    hostelPassApprover = hod.ok
-      ? { name: hod.approver.name, label: hod.approver.label, available: true }
-      : { name: null, label: null, available: false, reason: hod.error };
-  }
-
-  // Name of whoever the latest request was routed to
-  let approverName: string | null = null;
-  if (latestPermission) {
-    if (latestPermission.approverType === "WARDEN") {
-      const w = await prisma.warden.findUnique({
-        where: { id: latestPermission.approverId },
-        select: { profile: { select: { name: true } } },
-      });
-      approverName = w?.profile.name ?? null;
-    } else if (latestPermission.approverType === "FACULTY_ADMIN") {
-      const p = await prisma.profile.findUnique({
-        where: { id: latestPermission.approverId },
-        select: { name: true },
-      });
-      approverName = p?.name ?? null;
-    } else {
-      const f = await prisma.faculty.findUnique({
-        where: { id: latestPermission.approverId },
-        select: { profile: { select: { name: true } } },
-      });
-      approverName = f?.profile.name ?? null;
-    }
-  }
-
   // Determine state
   const now = new Date();
   const isQrValid =
@@ -595,10 +536,33 @@ async function preloadStudent(profileId: string) {
     state = "REJECTED";
   }
 
-  // QR on screen: its first code comes with this data, so the QR shows the
-  // moment the screen opens (no second request before it appears)
-  const firstQr =
-    state === "QR_CODE" && latestPermission ? await generateLiveQrToken(latestPermission.id).catch(() => null) : null;
+  // The rest is loaded side by side (this answer is what moves the student's
+  // screen from waiting to the QR, so every round trip counts):
+  // - hostellers going to the hostel: their department HOD approves
+  // - the name of whoever the latest request was routed to
+  // - QR on screen: its first code comes with this data, so the QR shows the
+  //   moment the screen opens (no second request before it appears)
+  const [hostelPassApprover, approverName, firstQr] = await Promise.all([
+    isHosteller
+      ? resolveStudentApprover({ ...student, studentType: "DAY_SCHOLAR" }).then((hod): typeof assignedApprover =>
+          hod.ok
+            ? { name: hod.approver.name, label: hod.approver.label, available: true }
+            : { name: null, label: null, available: false, reason: hod.error }
+        )
+      : Promise.resolve(null),
+    !latestPermission
+      ? Promise.resolve(null)
+      : latestPermission.approverType === "WARDEN"
+      ? prisma.warden
+          .findUnique({ where: { id: latestPermission.approverId }, select: { profile: { select: { name: true } } } })
+          .then((w) => w?.profile.name ?? null)
+      : latestPermission.approverType === "FACULTY_ADMIN"
+      ? prisma.profile.findUnique({ where: { id: latestPermission.approverId }, select: { name: true } }).then((p) => p?.name ?? null)
+      : prisma.faculty
+          .findUnique({ where: { id: latestPermission.approverId }, select: { profile: { select: { name: true } } } })
+          .then((f) => f?.profile.name ?? null),
+    state === "QR_CODE" && latestPermission ? generateLiveQrToken(latestPermission.id).catch(() => null) : Promise.resolve(null),
+  ]);
   const liveQr =
     firstQr && "token" in firstQr && firstQr.token ? { permissionId: latestPermission!.id, token: firstQr.token } : null;
 

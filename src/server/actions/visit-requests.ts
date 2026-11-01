@@ -2,38 +2,26 @@
 
 /**
  * Visitor self check-in, Security's side (see src/lib/visits/requests.ts):
- * the check-in QR, arrivals waiting at the gate, Accept / Reject, the
- * visitor's Exit QR, and the parent search of the Visitors Book form.
+ * the check-in QR, arrivals waiting at the gate, Accept / Reject, and the
+ * parent search of the Visitors Book form.
  *
- * Accept and the exit reuse the normal actions (registerOutsider /
- * createRegisterEntry, markOutsiderExited / completeRegisterEntry), so the
- * records, meeting codes and live updates are exactly as when typed by hand.
+ * Accept reuses the normal actions (registerOutsider / createRegisterEntry), so
+ * the records, meeting codes and live updates are exactly as when typed by
+ * hand. Leaving is Security's own Mark exit / Out in Inside now.
  */
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/helpers";
 import { notifyLive } from "@/lib/realtime/notify";
 import { createSignedPhotoUrl, isSafeStoragePath } from "@/lib/storage/storage-admin";
-import { generateCheckInToken, verifyVisitExitQr } from "@/lib/qr/token";
+import { generateCheckInToken } from "@/lib/qr/token";
 import { resolveHost } from "@/lib/visits/passes";
 import { checkRateLimit } from "@/lib/auth/rate-limiter";
 import { getRegisterAccess } from "@/lib/registers/access";
 import { PARENT_SELECT } from "@/lib/students/parents";
-import {
-  ARRIVALS_TOPIC,
-  PENDING_MAX_MS,
-  REQUEST_SELECT,
-  SENT_AGAIN,
-  isCheckInRegister,
-  visitExitWay,
-  visitPassOf,
-  visitState,
-  insideSince,
-  type CheckInRegister,
-  type VisitRequestRow,
-} from "@/lib/visits/requests";
-import { registerOutsider, markOutsiderExited } from "./outsiders";
-import { createRegisterEntry, completeRegisterEntry } from "./registers";
+import { ARRIVALS_TOPIC, PENDING_MAX_MS, SENT_AGAIN, isCheckInRegister, type CheckInRegister } from "@/lib/visits/requests";
+import { registerOutsider } from "./outsiders";
+import { createRegisterEntry } from "./registers";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 const PHONE_RE = /^\+?[0-9][0-9\s-]{8,16}[0-9]$/;
@@ -61,7 +49,6 @@ export type Arrival = {
   /** What the visitor typed (the register's field keys) */
   data: Record<string, unknown>;
   hostName: string | null;
-  officeName: string | null;
   gate: string | null;
   /** Sent from this guard's own QR */
   mine: boolean;
@@ -84,7 +71,6 @@ export async function listArrivals(register: CheckInRegister): Promise<Arrival[]
     select: {
       id: true, register: true, createdAt: true, visitorName: true, visitorPhone: true, data: true, gate: true, issuedById: true,
       host: { select: { name: true } },
-      office: { select: { name: true } },
     },
   });
   return rows.map((r) => ({
@@ -95,7 +81,6 @@ export async function listArrivals(register: CheckInRegister): Promise<Arrival[]
     phone: r.visitorPhone,
     data: (r.data ?? {}) as Record<string, unknown>,
     hostName: r.host?.name ?? null,
-    officeName: r.office?.name ?? null,
     gate: r.gate,
     mine: r.issuedById === user.profileId,
   }));
@@ -260,7 +245,7 @@ export async function acceptArrival(
   return { success: true, register: req.register, recordId: "outsiderId" in link ? link.outsiderId : link.registerEntryId };
 }
 
-/** Security turns the request away (the phone says "Please speak to the security officer"). */
+/** Security turns the request away (the visitor is told at the gate). */
 export async function rejectArrival(id: string, reason: string): Promise<{ success: true } | { error: string }> {
   const user = await requireRole("SECURITY", "ADMIN");
   if (typeof id !== "string" || !UUID_RE.test(id)) return { error: "Request not found" };
@@ -275,110 +260,7 @@ export async function rejectArrival(id: string, reason: string): Promise<{ succe
   return { success: true };
 }
 
-// ─── Exit QR (scanned on Scan QR) ────────────────────────────────────────────
-
-async function requestFromExitQr(token: string): Promise<{ row: VisitRequestRow } | { error: string }> {
-  const v = verifyVisitExitQr(token);
-  if (!v.valid) return { error: v.error };
-  const row = await prisma.visitRequest.findUnique({ where: { id: v.requestId }, select: REQUEST_SELECT });
-  if (!row || !isCheckInRegister(row.register)) return { error: "Visitor not found" };
-  const state = visitState(row);
-  if (state === "EXITED") return { error: "This visitor's exit is already recorded." };
-  if (state !== "INSIDE") return { error: "This visitor was not let in." };
-  const way = visitExitWay(row);
-  if (way.kind === "SECURITY" || !way.unlocked) return { error: "This visitor cannot leave with a QR. Use Mark exit in Inside now." };
-  return { row };
-}
-
-export type VisitorExitCard = {
-  valid: true;
-  kind: "VISITOR_EXIT";
-  /** Pass back to allowVisitorExit */
-  token: string;
-  visitor: {
-    requestId: string;
-    register: CheckInRegister;
-    name: string;
-    phone: string;
-    /** Signed photo URL (1 hour), or null */
-    photoUrl: string | null;
-    category: string | null;
-    vehicleNumber: string | null;
-    purpose: string | null;
-    /** Who they met (left with that person's code), or the office they visited */
-    hostName: string | null;
-    officeName: string | null;
-    exitMethod: "CODE" | "OFFICE";
-    /** When they were let in (ISO) */
-    insideSince: string | null;
-    gate: string | null;
-  };
-};
-
-/** What Security sees after scanning a visitor's Exit QR (verifyQrScan's GX1 branch). */
-export async function describeVisitorExitQr(token: string): Promise<VisitorExitCard | { valid: false; error: string }> {
-  await requireRole("SECURITY", "ADMIN");
-  if (typeof token !== "string") return { valid: false, error: "Invalid QR code" };
-  const found = await requestFromExitQr(token);
-  if ("error" in found) return { valid: false, error: found.error };
-  const r = found.row;
-  const data = (r.data ?? {}) as Record<string, unknown>;
-  const way = visitExitWay(r);
-  const path = r.outsider?.photoUrl ?? r.photoUrl;
-  const visitors = r.register === "VISITORS";
-  return {
-    valid: true,
-    kind: "VISITOR_EXIT",
-    token: token.trim(),
-    visitor: {
-      requestId: r.id,
-      register: r.register as CheckInRegister,
-      name: r.visitorName,
-      phone: r.visitorPhone,
-      photoUrl: path ? await createSignedPhotoUrl(path) : null,
-      category: visitors ? str(data.category) || "GUEST" : null,
-      vehicleNumber: visitors ? str(data.vehicleNumber) || null : null,
-      purpose: str(data.purpose) || null,
-      hostName: way.kind === "CODE" ? way.hostName : null,
-      officeName: way.kind === "OFFICE" ? way.officeName || null : null,
-      exitMethod: way.kind === "CODE" ? "CODE" : "OFFICE",
-      insideSince: insideSince(r),
-      gate: r.gate,
-    },
-  };
-}
-
-/**
- * Security taps "Allow exit" on a scanned Exit QR: the visitor is marked out
- * (Visitors Book) or Out is recorded (Admission Book), closing the meeting
- * code as used.
- */
-export async function allowVisitorExit(token: string): Promise<{ success: true; name: string; register: CheckInRegister } | { error: string }> {
-  await requireRole("SECURITY", "ADMIN");
-  if (typeof token !== "string") return { error: "Invalid QR code" };
-  const found = await requestFromExitQr(token);
-  if ("error" in found) return { error: found.error };
-  const r = found.row;
-
-  // The visitor proved the meeting code on their phone: close it with that code
-  const passRef = visitPassOf(r);
-  const pass = passRef && passRef.status !== "EXITED"
-    ? await prisma.visitPass.findUnique({ where: { id: passRef.id }, select: { code: true } })
-    : null;
-
-  if (r.outsiderId) {
-    const res = await markOutsiderExited(r.outsiderId, pass ? { code: pass.code } : undefined);
-    if (!res.success) return { error: res.error || "Could not mark the exit." };
-  } else if (r.registerEntryId) {
-    const res = await completeRegisterEntry(r.registerEntryId, { markMovement: true, ...(pass ? { visitCode: pass.code } : {}) }, `vx-${r.id}`);
-    if ("error" in res && res.error) return { error: String(res.error) };
-  } else {
-    return { error: "Visitor not found" };
-  }
-
-  await prisma.visitRequest.updateMany({ where: { id: r.id, status: "ACCEPTED" }, data: { status: "EXITED" } });
-  return { success: true, name: r.visitorName, register: r.register as CheckInRegister };
-}
+// ─── Check-in photo ──────────────────────────────────────────────────────────
 
 /** Photo taken at check-in, for a Visitors Book visitor or Admission Book record made from one. */
 export async function getCheckInPhotoUrl(recordId: string): Promise<string | null> {

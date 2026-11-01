@@ -21,7 +21,7 @@
  * "arrivals" (a request sent / accepted / rejected at any gate).
  */
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, CheckCircle2, ChevronDown, ChevronRight, Clock, Loader2, RefreshCw, UserRound, Users } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, ClipboardCheck, Loader2, RefreshCw, UserRound, Users } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { callGate } from "@/lib/gate-call";
 import { useGateData } from "@/lib/gate-cache";
@@ -34,6 +34,8 @@ import { ARRIVALS_TOPIC, useCheckInQrOpen, type CheckInRegister } from "./arriva
 import { ArrivalReview } from "./arrival-review";
 import { REFRESH_BEFORE_MS, checkInQrImage, getCheckInQr, readyCheckInQrImage } from "./checkin-qr-cache";
 import { CheckInQrFrame, CheckInQrPlaceholder } from "./checkin-qr-frame";
+import { HubBackButton, HubScreenHeader } from "./hub-tiles";
+import { ListEmpty, ListError, ListLoading, PersonCard, PersonCardAction } from "./person-card";
 
 /** After a failed load (no network): try again this much later, while visible */
 const RETRY_MS = 30_000;
@@ -230,45 +232,37 @@ function QrScreen({ register, onBack, showQr }: { register: CheckInRegister; onB
   const spinner = arrivalsData.refreshing && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-zinc-500" aria-hidden="true" />;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
-      {/* The waiting list: back on its own line, the title below (like the other hub screens) */}
-      <div className={showQr ? "flex flex-wrap items-center gap-3" : "flex flex-col items-start gap-3"}>
-        {onBack && (
-          <button
-            type="button"
-            onClick={onBack}
-            className="group inline-flex h-12 shrink-0 items-center gap-3 rounded-full border border-zinc-800 bg-zinc-900 pl-1.5 pr-5 text-[15px] font-medium text-zinc-100 shadow-card transition-[background-color,transform] hover:bg-zinc-950 active:scale-[0.98]"
-          >
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-600 text-white transition-transform group-hover:-translate-x-0.5">
-              <ArrowLeft className="h-[18px] w-[18px]" />
-            </span>
-            {t("Buttons")}
-          </button>
-        )}
-        <div className={showQr ? "min-w-[10rem] flex-1" : "w-full min-w-0"}>
-          {showQr ? (
+    <div className={cn("mx-auto space-y-4 sm:space-y-5", showQr ? "max-w-3xl" : "max-w-[720px]")}>
+      {showQr ? (
+        <div className="flex flex-wrap items-center gap-3">
+          {onBack && <HubBackButton onClick={onBack} />}
+          <div className="min-w-[10rem] flex-1">
             <h1 className="text-2xl font-light tracking-tight text-zinc-100">{t("Show QR")}</h1>
-          ) : (
-            <h1 className="flex flex-wrap items-center gap-2 text-2xl font-light tracking-tight text-zinc-100">
-              {t("Waiting to accept")}
-              {count}
-              {spinner}
-            </h1>
+            <p className="text-sm text-zinc-500">{t(title)}</p>
+          </div>
+          {/* Someone is waiting: the list is below the big QR */}
+          {arrivals.length > 0 && (
+            <button
+              type="button"
+              onClick={() => listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full bg-orange-600 pl-4 pr-3 text-sm font-semibold text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)]"
+            >
+              {t("{n} waiting", { n: arrivals.length })}
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            </button>
           )}
-          <p className="text-sm text-zinc-500">{t(title)}</p>
         </div>
-        {/* Someone is waiting: the list is below the big QR */}
-        {showQr && arrivals.length > 0 && (
-          <button
-            type="button"
-            onClick={() => listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-            className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full bg-orange-600 pl-4 pr-3 text-sm font-semibold text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)]"
-          >
-            {t("{n} waiting", { n: arrivals.length })}
-            <ChevronDown className="h-4 w-4" aria-hidden="true" />
-          </button>
-        )}
-      </div>
+      ) : onBack ? (
+        <HubScreenHeader
+          onBack={onBack}
+          title={t("Waiting to accept")}
+          subtitle={t(title)}
+          count={arrivalsData.data ? arrivals.length : null}
+          busy={arrivalsData.refreshing}
+        />
+      ) : (
+        <h1 className="text-xl font-semibold tracking-tight text-zinc-100 sm:text-2xl">{t("Waiting to accept")}</h1>
+      )}
 
       {done && (
         <div role="status" className="flex items-center gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-emerald-500">
@@ -290,7 +284,7 @@ function QrScreen({ register, onBack, showQr }: { register: CheckInRegister; onB
         )}
 
         {arrivals.length > 0 ? (
-          <ul className={cn("grid gap-2", !showQr && "lg:grid-cols-2")}>
+          <ul className="space-y-2.5">
             {arrivals.map((a) => (
               <li key={a.id} className="min-w-0">
                 <ArrivalRow arrival={a} onOpen={() => open(a)} />
@@ -298,35 +292,11 @@ function QrScreen({ register, onBack, showQr }: { register: CheckInRegister; onB
             ))}
           </ul>
         ) : arrivalsData.loading ? (
-          <div className="flex items-center gap-2 rounded-2xl border border-zinc-800/80 bg-zinc-900 px-4 py-5 text-sm text-zinc-500">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {t("Loading…")}
-          </div>
+          <ListLoading />
         ) : arrivalsData.error ? (
-          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-400">
-            <AlertCircle className="h-5 w-5 shrink-0" />
-            <p className="min-w-0 flex-1 text-sm font-medium">{t("Could not load the waiting list.")}</p>
-            <button
-              type="button"
-              onClick={() => void arrivalsData.reload()}
-              className="inline-flex h-11 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-sm font-medium text-zinc-100 hover:bg-zinc-950"
-            >
-              <RefreshCw className="h-4 w-4" />
-              {t("Try again")}
-            </button>
-          </div>
-        ) : showQr ? (
-          <p className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/60 px-4 py-6 text-center text-sm text-zinc-500">
-            {t("No one is waiting. New visitors appear here by themselves.")}
-          </p>
+          <ListError message={t("Could not load the waiting list.")} onRetry={() => void arrivalsData.reload()} />
         ) : (
-          <div className="flex flex-col items-center gap-3 rounded-3xl border border-dashed border-zinc-800 bg-zinc-900/60 px-6 py-12 text-center">
-            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-500/10 text-orange-500" aria-hidden="true">
-              <Users className="h-8 w-8" />
-            </span>
-            <p className="text-lg font-semibold text-zinc-100">{t("No one is waiting at the gate")}</p>
-            <p className="max-w-sm text-sm text-zinc-500">{t("New visitors appear here by themselves.")}</p>
-          </div>
+          <ListEmpty icon={Users} title={t("No one is waiting at the gate")} hint={t("New visitors appear here by themselves.")} />
         )}
       </section>
 
@@ -346,7 +316,7 @@ function QrScreen({ register, onBack, showQr }: { register: CheckInRegister; onB
   );
 }
 
-/** One waiting visitor: big, one tap opens the review. */
+/** One waiting visitor: a card; the card or "Review" opens the check (photo, Accept / Reject). */
 function ArrivalRow({ arrival: a, onOpen }: { arrival: Arrival; onOpen: () => void }) {
   const t = useT();
   const d = a.data ?? {};
@@ -359,42 +329,33 @@ function ArrivalRow({ arrival: a, onOpen }: { arrival: Arrival; onOpen: () => vo
           s(d.vehicleNumber) && t(s(d.vehicleNumber)),
         ]
       : [s(d.admissionReporting) && t(s(d.admissionReporting)), s(d.programRequested), s(d.branch)];
-  const meets = a.hostName ? t("Meeting: {name}", { name: a.hostName }) : a.officeName ? t("Office: {name}", { name: a.officeName }) : "";
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex w-full items-center gap-3 rounded-2xl border border-orange-500/30 bg-zinc-900 p-3 text-left shadow-card transition-[background-color,transform] hover:bg-zinc-950 active:scale-[0.99]"
-    >
-      {/* Phones: the room goes to the name and details */}
-      <span className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-orange-500 sm:flex">
-        <UserRound className="h-6 w-6" aria-hidden="true" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="line-clamp-2 break-words text-lg font-semibold leading-snug text-zinc-100">{a.name}</span>
-        <span className="block truncate text-sm text-zinc-400 tabular-nums">{a.phone}</span>
-        {parts.some(Boolean) && <span className="line-clamp-2 break-words text-sm text-zinc-500">{parts.filter(Boolean).join(" · ")}</span>}
-        {meets && <span className="line-clamp-2 break-words text-sm font-medium text-zinc-300">{meets}</span>}
-        <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
-          <span className="inline-flex items-center gap-1">
-            <Clock className="h-3 w-3" aria-hidden="true" />
-            {formatTime(a.createdAt)}
-          </span>
+    <PersonCard
+      name={a.name}
+      phone={a.phone}
+      details={parts.filter(Boolean).join(" · ")}
+      accent
+      onOpen={onOpen}
+      time={t("Sent at {time}", { time: formatTime(a.createdAt) })}
+      chips={
+        <>
+          {a.hostName && (
+            <span className="inline-flex max-w-full items-start gap-1 rounded-xl bg-orange-500/10 px-2.5 py-0.5 text-xs font-semibold text-orange-600">
+              <UserRound className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 break-words">{t("Meeting: {name}", { name: a.hostName })}</span>
+            </span>
+          )}
           {a.mine ? (
-            <span className="rounded-full bg-orange-500/10 px-2 py-0.5 font-medium text-orange-500">{t("Your QR")}</span>
+            <span className="rounded-full bg-zinc-950 px-2.5 py-0.5 text-xs font-medium text-zinc-500">{t("Your QR")}</span>
           ) : (
-            <span className="max-w-full truncate rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 font-medium text-zinc-400">
+            <span className="max-w-full truncate rounded-full border border-zinc-800 bg-zinc-950 px-2.5 py-0.5 text-xs font-medium text-zinc-400">
               {a.gate ? t("Other gate: {gate}", { gate: a.gate }) : t("Other gate")}
             </span>
           )}
-        </span>
-      </span>
-      {/* Phones: just the arrow (the whole card opens the check), so the name gets the room */}
-      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center gap-1 rounded-full bg-orange-600 text-sm font-semibold text-white sm:w-auto sm:pl-4 sm:pr-3">
-        <span className="sr-only sm:not-sr-only">{t("Check")}</span>
-        <ChevronRight className="h-4 w-4" aria-hidden="true" />
-      </span>
-    </button>
+        </>
+      }
+      action={<PersonCardAction icon={ClipboardCheck} label={t("Review")} tone="coral" onClick={onOpen} />}
+    />
   );
 }

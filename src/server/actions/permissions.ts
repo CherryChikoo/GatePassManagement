@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/helpers";
 import { permissionRequestSchema, batchGrantSchema, hostelOutingSchema } from "@/lib/validation/schemas";
 import { revalidatePath } from "next/cache";
-import { notifyApprovers } from "@/lib/realtime/notify";
+import { notifyApprovers, notifyLive } from "@/lib/realtime/notify";
 import { closeAllSupersededTrips } from "@/lib/passes/close-trips";
 import { resolveStudentActivePass } from "@/lib/permissions/auto-expire";
 import { resolveStudentApprover } from "@/lib/permissions/approver";
@@ -314,6 +314,8 @@ export async function batchCreatePermissions(studentIds: string[], data: Record<
   const now = new Date();
   const { start: todayStart, end: todayEnd } = istDayRange(now);
 
+  // Passes made here (for the live pings once saved)
+  const granted: string[] = [];
   try {
     await prisma.$transaction(async (tx) => {
       for (const { id: studentId } of allowed) {
@@ -354,6 +356,7 @@ export async function batchCreatePermissions(studentIds: string[], data: Record<
           },
         });
 
+        granted.push(perm.id);
         const { token } = await generateQrToken(perm.id, studentId, todayEnd);
         await tx.qrCredential.create({
           data: { permissionId: perm.id, token, expiresAt: todayEnd },
@@ -370,6 +373,9 @@ export async function batchCreatePermissions(studentIds: string[], data: Record<
 
   revalidatePath("/faculty-admin/students");
   revalidatePath("/warden/students");
+  // Open request lists (warden queue, HOD lists) and the gate's outing books show them at once
+  notifyApprovers(...granted);
+  notifyLive("gate");
   return { success: true };
 }
 

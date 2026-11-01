@@ -247,7 +247,8 @@ export function useLiveTopics(topics: string[], onChange: (changed: string[]) =>
   useEffect(() => {
     if (!enabled || !key) return;
     const matches = matcher(key.split("|"));
-    const batch = batcher((list) => cb.current(list), 600);
+    // Short: a burst of pings (several saves at once) still causes one reload, without a felt delay
+    const batch = batcher((list) => cb.current(list), 250);
     const remove = listen(LIVE_CHANNEL, (changed) => {
       const hit = changed.filter(matches);
       if (hit.length) batch.push(hit);

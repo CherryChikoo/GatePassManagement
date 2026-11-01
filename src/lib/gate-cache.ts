@@ -76,7 +76,14 @@ export function loadGateData<T>(key: string, fetcher: () => Promise<T>, topics: 
       }
       return data;
     })
-    .finally(() => inFlight.delete(key));
+    .finally(() => {
+      inFlight.delete(key);
+      // Changed on the server while this was loading (a screen pinged then joined
+      // this older request): the screen still on it loads once more, right away
+      if ((changedAt.get(key) ?? 0) >= startedAt && subs.has(key)) {
+        loadGateData(key, fetcher, topics).catch(() => {});
+      }
+    });
   inFlight.set(key, req);
   return req;
 }

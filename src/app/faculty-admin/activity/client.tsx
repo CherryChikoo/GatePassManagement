@@ -2,7 +2,7 @@
 import { PassFullDetails, prefetchPassDetails } from "@/components/passes/pass-full-details";
 import { DateField } from "@/components/ui/date-field";
 import { callGate } from "@/lib/gate-call";
-import { useGateData } from "@/lib/gate-cache";
+import { useDebounced, usePagedList } from "@/hooks/use-paged-list";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { istDateString } from "@/lib/time/ist";
 import { scheduledNote } from "@/lib/pass-dates";
@@ -38,90 +38,53 @@ interface HodActivityClientProps {
   initialDate?: string;
 }
 
-const NO_ROWS: any[] = [];
+const PAGE_SIZE = 20;
+
+type Counts = { all: number; pending: number; entries: number; exits: number };
+const NO_COUNTS: Counts = { all: 0, pending: 0, entries: 0, exits: 0 };
+type ActivityItem = { kind: "student-permission" | "student-movement" | "faculty-permission" | "faculty-movement"; data: any };
+const NO_ITEMS: ActivityItem[] = [];
+/** One page of the day (getHodActivity): the rows on screen and the day's counts per tab */
+type ActivityPage = {
+  department?: string;
+  counts?: { students: Counts; faculty: Counts };
+  items?: ActivityItem[];
+  total?: number;
+  page?: number;
+  error?: string;
+};
 
 export function HodActivityClient({ user, initialDate }: HodActivityClientProps) {
   const router = useRouter();
-  // The page opens at once; the chosen day loads here (cached per day: a day seen
-  // before shows at once, refreshed quietly when older than 15 s)
   const [selectedDate, setSelectedDate] = useState(() =>
     initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? initialDate : istDateString()
   );
-  const day = useGateData<any>(`hod-activity|${selectedDate}`, () => callGate("getHodActivity", [selectedDate], 20_000), ["gate"]);
-  const permissions: any[] = day.data?.permissions ?? NO_ROWS;
-  const facultyPermissions: any[] = day.data?.facultyPermissions ?? NO_ROWS;
-  const facultyMovements: any[] = day.data?.facultyMovements ?? NO_ROWS;
-  const department: string = day.data?.department ?? "";
-  const navigating = day.loading || day.refreshing;
   const [selectedPermission, setSelectedPermission] = useState<any>(null);
   const [selectedMovement, setSelectedMovement] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<Tab>("STUDENTS");
   const [subTab, setSubTab] = useState<SubTab>("ALL");
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const pageSize = PAGE_SIZE;
 
-  // Search filter predicate
-  const q = search.toLowerCase().trim();
+  // Only the page on screen is downloaded: the search, the tabs and the counts run
+  // in the database. The page opens at once; a page seen before shows at once and
+  // is refreshed quietly when older than 15 s (the last one stays while the next loads).
+  const q = useDebounced(search);
+  const params = { page: currentPage, pageSize: PAGE_SIZE, q, who: activeTab, filter: subTab };
+  const day = usePagedList<ActivityPage>(
+    `hod-activity|${selectedDate}`,
+    params,
+    () => callGate("getHodActivity", [selectedDate, params], 20_000),
+    ["gate"]
+  );
+  const dayLoading = !day.data && !day.error;
+  const department: string = day.data?.department ?? "";
+  const navigating = day.busy;
 
-  const studentMatchesSearch = (p: any) => {
-    if (!q) return true;
-    return (
-      p.student?.profile?.name?.toLowerCase().includes(q) ||
-      p.student?.studentRoll?.toLowerCase().includes(q) ||
-      p.student?.department?.toLowerCase().includes(q) ||
-      p.purpose?.toLowerCase().includes(q) ||
-      p.destination?.toLowerCase().includes(q)
-    );
-  };
-
-  const facultyPermMatchesSearch = (p: any) => {
-    if (!q) return true;
-    return (
-      p.faculty?.profile?.name?.toLowerCase().includes(q) ||
-      p.faculty?.employeeId?.toLowerCase().includes(q) ||
-      p.faculty?.department?.toLowerCase().includes(q) ||
-      p.faculty?.designation?.toLowerCase().includes(q) ||
-      p.purpose?.toLowerCase().includes(q) ||
-      p.destination?.toLowerCase().includes(q)
-    );
-  };
-
-  const facultyMovMatchesSearch = (m: any) => {
-    if (!q) return true;
-    return (
-      m.faculty?.profile?.name?.toLowerCase().includes(q) ||
-      m.faculty?.employeeId?.toLowerCase().includes(q) ||
-      m.faculty?.department?.toLowerCase().includes(q) ||
-      m.faculty?.designation?.toLowerCase().includes(q) ||
-      m.gate?.name?.toLowerCase().includes(q)
-    );
-  };
-
-  // Base search-filtered lists
-  const searchStudents = permissions.filter(studentMatchesSearch);
-  const searchFacultyPerms = facultyPermissions.filter(facultyPermMatchesSearch);
-  const searchFacultyMovements = facultyMovements.filter(facultyMovMatchesSearch);
-
-  // Sub-tab counts calculation
-  const studentCounts = {
-    all: searchStudents.length,
-    pending: searchStudents.filter((p) => p.status === "PENDING").length,
-    entries: searchStudents.filter((p) => p.type === "ENTRY").length,
-    exits: searchStudents.filter((p) => p.type === "EXIT").length,
-  };
-
-  const facultyCounts = {
-    all: searchFacultyPerms.length + searchFacultyMovements.length,
-    pending: searchFacultyPerms.filter((p) => p.status === "PENDING").length,
-    entries:
-      searchFacultyPerms.filter((p) => p.type === "ENTRY").length +
-      searchFacultyMovements.filter((m) => m.type === "ENTRY").length,
-    exits:
-      searchFacultyPerms.filter((p) => p.type === "EXIT").length +
-      searchFacultyMovements.filter((m) => m.type === "EXIT").length,
-  };
-
+  // Counts per tab for the day (with the search)
+  const studentCounts = day.data?.counts?.students ?? NO_COUNTS;
+  const facultyCounts = day.data?.counts?.faculty ?? NO_COUNTS;
   const combinedCounts = {
     all: studentCounts.all + facultyCounts.all,
     pending: studentCounts.pending + facultyCounts.pending,
@@ -136,72 +99,9 @@ export function HodActivityClient({ user, initialDate }: HodActivityClientProps)
       ? facultyCounts
       : combinedCounts;
 
-  // Filter students by subTab
-  const filteredStudents = searchStudents.filter((p) => {
-    if (subTab === "PENDING") return p.status === "PENDING";
-    if (subTab === "ENTRIES") return p.type === "ENTRY";
-    if (subTab === "EXITS") return p.type === "EXIT";
-    return true;
-  });
-
-  // Filter faculty permissions by subTab
-  const filteredFacultyPerms = searchFacultyPerms.filter((p) => {
-    if (subTab === "PENDING") return p.status === "PENDING";
-    if (subTab === "ENTRIES") return p.type === "ENTRY";
-    if (subTab === "EXITS") return p.type === "EXIT";
-    return true;
-  });
-
-  // Filter faculty movements by subTab (movements are executed scans, so never PENDING)
-  const filteredFacultyMovements = searchFacultyMovements.filter((m) => {
-    if (subTab === "PENDING") return false;
-    if (subTab === "ENTRIES") return m.type === "ENTRY";
-    if (subTab === "EXITS") return m.type === "EXIT";
-    return true;
-  });
-
-  // Build combined items list
-  type ActivityItem =
-    | { kind: "student-permission"; data: any; sortKey: number }
-    | { kind: "faculty-permission"; data: any; sortKey: number }
-    | { kind: "faculty-movement"; data: any; sortKey: number };
-
-  const visibleItems: ActivityItem[] = [];
-
-  if (activeTab === "ALL" || activeTab === "STUDENTS") {
-    filteredStudents.forEach((p) =>
-      visibleItems.push({
-        kind: "student-permission",
-        data: p,
-        sortKey: p.createdAt ? new Date(p.createdAt).getTime() : 0,
-      })
-    );
-  }
-
-  if (activeTab === "ALL" || activeTab === "FACULTY") {
-    filteredFacultyPerms.forEach((p) =>
-      visibleItems.push({
-        kind: "faculty-permission",
-        data: p,
-        sortKey: p.createdAt ? new Date(p.createdAt).getTime() : 0,
-      })
-    );
-    filteredFacultyMovements.forEach((m) =>
-      visibleItems.push({
-        kind: "faculty-movement",
-        data: m,
-        sortKey: m.createdAt ? new Date(m.createdAt).getTime() : 0,
-      })
-    );
-  }
-
-  visibleItems.sort((a, b) => b.sortKey - a.sortKey);
-
-  const displayTotal = visibleItems.length;
-  const paginatedItems = visibleItems.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize
-  );
+  const displayTotal = day.data?.total ?? 0;
+  const paginatedItems = day.data?.items ?? NO_ITEMS;
+  const shownPage = day.data?.page ?? currentPage;
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.value) return;
@@ -380,7 +280,7 @@ export function HodActivityClient({ user, initialDate }: HodActivityClientProps)
                   Try again
                 </button>
               </div>
-            ) : day.loading ? (
+            ) : dayLoading ? (
               <p className="py-12 px-4 text-center text-sm text-zinc-500">Loading the day&apos;s activity…</p>
             ) : paginatedItems.length === 0 ? (
               <div className="flex flex-col items-center py-12 px-4 text-center">
@@ -585,7 +485,7 @@ export function HodActivityClient({ user, initialDate }: HodActivityClientProps)
 
         {/* Pagination (docks at the bottom of the screen) */}
         <PagerBar
-          page={currentPage}
+          page={shownPage}
           pageSize={pageSize}
           total={displayTotal}
           onPageChange={setCurrentPage}

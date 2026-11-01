@@ -1,16 +1,29 @@
 /**
  * The visitor's phone talks to the public routes under /api/visit/* (never
  * server actions: their IDs change with every deployment and this page may
- * stay open for hours). The JSON answer is read whatever the HTTP status.
+ * stay open for a long time). The JSON answer is read whatever the HTTP status.
+ * Only two calls: open the form, and send it. Nothing is asked after sending.
  */
-import type { VisitFormResult, VisitStatus } from "@/lib/visits/requests";
+import type { CheckInRegister } from "@/components/visit-phone/visit-store";
 
-export type { VisitFormResult, VisitStatus };
-export type VisitFormOk = Extract<VisitFormResult, { ok: true }>;
-export type VisitExitWay = VisitStatus["exit"];
+/** A faculty / staff member the visitor can choose in "Who are you meeting?" */
+export type VisitHost = { id: string; name: string; title: string; department: string | null };
+
+/** GET /api/visit/form?t= */
+export type VisitFormOk = {
+  ok: true;
+  register: CheckInRegister;
+  /** The gate of the security officer whose QR was scanned (when the server sends it) */
+  gate?: string | null;
+  hosts: VisitHost[];
+  expiresAt: string;
+};
+
+/** POST /api/visit/submit */
+export type VisitSubmitOk = { ok: true; name: string; at: string };
 
 /** Not an answer from the server: no network / timed out (`status` 0) */
-export type VisitFailure = { ok: false; error: string; status: number; locked?: boolean; triesLeft?: number };
+export type VisitFailure = { ok: false; error: string; status: number };
 
 /** No answer reached us (offline, timed out) */
 export const NETWORK = "network";
@@ -31,35 +44,18 @@ async function call<T extends { ok: boolean }>(url: string, init?: RequestInit, 
   return { ok: false, error: "Something went wrong. Please try again.", status: res.status };
 }
 
-const post = (body: unknown): RequestInit => ({
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(body),
-});
-
-export function fetchVisitForm(token: string) {
-  return call<VisitFormOk>(`/api/visit/form?t=${encodeURIComponent(token)}`);
+export async function fetchVisitForm(token: string) {
+  const res = await call<VisitFormOk>(`/api/visit/form?t=${encodeURIComponent(token)}`);
+  // No list means nobody to choose (never a crash)
+  return res.ok ? { ...res, hosts: Array.isArray(res.hosts) ? res.hosts : [] } : res;
 }
 
-export function submitVisit(body: { t: string; s?: string; data: Record<string, unknown>; hostProfileId: string; officeId: string }) {
-  return call<{ ok: true; secret: string }>("/api/visit/submit", post(body), 25_000);
-}
-
-/** The secret goes in the body, never the address (addresses are written to request logs on every check) */
-export function fetchVisitStatus(secret: string) {
-  return call<VisitStatus>("/api/visit/status", post({ s: secret }), 12_000);
-}
-
-export function sendMeetingCode(secret: string, code: string) {
-  return call<VisitStatus>("/api/visit/code", post({ s: secret, code }), 20_000);
-}
-
-export function fetchOffice(posterKey: string) {
-  return call<{ ok: true; id: string; name: string }>(`/api/visit/office?k=${encodeURIComponent(posterKey)}`);
-}
-
-export function recordOfficeVisit(secret: string, posterKey: string) {
-  return call<VisitStatus>("/api/visit/office", post({ s: secret, k: posterKey }), 20_000);
+export function submitVisit(body: { t: string; data: Record<string, unknown>; hostProfileId?: string }) {
+  return call<VisitSubmitOk>(
+    "/api/visit/submit",
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    25_000
+  );
 }
 
 type Translate = (text: string, vars?: Record<string, string | number>) => string;

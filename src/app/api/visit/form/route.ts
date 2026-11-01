@@ -2,7 +2,7 @@ import { clientIp, overLimit, TOO_MANY, VISIT_LIMITS, visitForm, visitJson } fro
 
 /**
  * GET /api/visit/form?t=<check-in token> (public: the visitor's phone, no login)
- * -> { ok:true, register, gate, hosts, offices, expiresAt, submitBy } | { ok:false, error:"expired"|"invalid" }
+ * -> { ok:true, register, gate, hosts, expiresAt, submitBy } | { ok:false, error:"expired"|"invalid" }
  * See src/lib/visits/requests.ts.
  */
 export const dynamic = "force-dynamic";

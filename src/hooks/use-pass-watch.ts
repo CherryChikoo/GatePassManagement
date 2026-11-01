@@ -25,8 +25,9 @@ const MAX_POLL_MS = 30_000;
  * (scanned, approved, rejected…).
  *
  * - Live (normal): the server pings this user's private topic when the pass
- *   changes; the screen then asks /api/pass-status for the pass's tiny
- *   fingerprint and reacts straight away. A safety check runs every 20 s.
+ *   changes (after the change is saved); the screen reloads straight away —
+ *   no status check first, so approval → QR and scan → form are one round
+ *   trip. A safety check of the fingerprint runs every 20 s.
  * - Not live (no connection yet, or none free): it checks the fingerprint
  *   every `intervalMs` instead, slowing down to every 30 s.
  *
@@ -56,8 +57,11 @@ export function usePassWatch(
   });
 
   const checkNow = useRef<(() => void) | null>(null);
+  const reloadNow = useRef<(() => void) | null>(null);
   const live = useOwnLive((changed) => {
-    if (changed.includes("*") || changed.includes(`pass:${permissionId}`)) checkNow.current?.();
+    // This pass changed: reload at once. Reconnected (changes may have been missed): check first.
+    if (changed.includes(`pass:${permissionId}`)) reloadNow.current?.();
+    else if (changed.includes("*")) checkNow.current?.();
   }, enabled && !!permissionId);
   const liveRef = useRef(live);
   const reschedule = useRef<(() => void) | null>(null);
@@ -126,7 +130,32 @@ export function usePassWatch(
       }, liveRef.current ? LIVE_CHECK_MS : pollMs);
     };
 
+    // The server said this pass changed: no need to ask for its fingerprint first
+    const reload = async () => {
+      if (stopped) return;
+      if (busy) {
+        again = true;
+        return;
+      }
+      busy = true;
+      again = false;
+      try {
+        const done = await onChangeRef.current();
+        if (stopped) return;
+        // Not reloaded (network blip): check again shortly
+        if (done === false) setTimeout(() => void check(), RETRY_MS);
+        // Without shownSig, the next answer is the new starting point
+        else if (!shownRef.current) handled = null;
+      } catch {
+        if (!stopped) setTimeout(() => void check(), RETRY_MS);
+      } finally {
+        busy = false;
+      }
+      if (again && !stopped) void check();
+    };
+
     checkNow.current = () => void check();
+    reloadNow.current = () => void reload();
     reschedule.current = () => {
       if (timer) clearTimeout(timer);
       schedule();
@@ -143,6 +172,7 @@ export function usePassWatch(
     return () => {
       stopped = true;
       checkNow.current = null;
+      reloadNow.current = null;
       reschedule.current = null;
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);

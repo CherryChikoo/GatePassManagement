@@ -5,11 +5,11 @@
  * At the gate · Type it myself · Inside now · Old records, plus the round QR
  * button by the title (the check-in QR in a pop-up). Each button opens its
  * screen in place (`?view=…`, no server round trip), and every screen has the
- * same "← Buttons" control at the top to come back.
+ * same header (HubScreenHeader: round "←", title, count) to come back.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, QrCode, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Loader2, QrCode, type LucideIcon } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { scrollPageToTop } from "@/lib/ui/scroll-top";
 import { cn } from "@/lib/utils";
@@ -119,30 +119,71 @@ export function HubQrButton({ onClick, label, register }: { onClick: () => void;
   );
 }
 
-/** "← Buttons": back to the 4 buttons (same place on every screen). */
+/**
+ * The round "←" back to the 4 buttons (same place on every screen): an arrow
+ * only, so the title beside it keeps the room (the label is read aloud).
+ */
 export function HubBackButton({ onClick, className }: { onClick: () => void; className?: string }) {
   const t = useT();
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-label={t("Go Back")}
+      title={t("Go Back")}
       className={cn(
-        "group inline-flex h-12 items-center gap-3 rounded-full border border-zinc-800 bg-zinc-900 pl-1.5 pr-5 text-[15px] font-medium text-zinc-100 shadow-card transition-[background-color,transform] hover:bg-zinc-950 active:scale-[0.98]",
+        "group flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-zinc-100 shadow-card transition-[background-color,transform] hover:bg-zinc-950 active:scale-95",
         className
       )}
     >
-      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-600 text-white transition-transform group-hover:-translate-x-0.5">
-        <ArrowLeft className="h-[18px] w-[18px]" />
-      </span>
-      {t("Buttons")}
+      <ArrowLeft className="h-5 w-5 transition-transform group-hover:-translate-x-0.5" aria-hidden="true" />
     </button>
+  );
+}
+
+/**
+ * The heading of every screen behind the buttons: "←", the title with its live
+ * count (and a small spinner while it refreshes), one muted line under it.
+ */
+export function HubScreenHeader({
+  onBack,
+  title,
+  subtitle,
+  count,
+  busy = false,
+}: {
+  onBack: () => void;
+  title: string;
+  subtitle?: string;
+  /** Pill next to the title; hidden when 0 / unknown (the list says "nobody") */
+  count?: number | null;
+  /** A small spinner while the list refreshes */
+  busy?: boolean;
+}) {
+  return (
+    <header className="flex min-w-0 items-center gap-3">
+      <HubBackButton onClick={onBack} />
+      <div className="min-w-0 flex-1">
+        {/* The count follows the last word (also when a Telugu title wraps) */}
+        <h1 className="min-w-0 break-words text-xl font-semibold leading-tight tracking-tight text-zinc-100 sm:text-2xl">
+          {title}
+          {!!count && (
+            <span className="ml-2 inline-flex h-7 min-w-7 -translate-y-0.5 items-center justify-center whitespace-nowrap rounded-full bg-orange-600 px-2 align-middle text-sm font-semibold tabular-nums text-white">
+              {count}
+            </span>
+          )}
+          {busy && <Loader2 className="ml-2 inline-block h-4 w-4 animate-spin align-middle text-zinc-500" aria-hidden="true" />}
+        </h1>
+        {subtitle && <p className="mt-0.5 break-words text-sm leading-snug text-zinc-500">{subtitle}</p>}
+      </div>
+    </header>
   );
 }
 
 /**
  * Which screen is open: `?view=<one of views>`, else the buttons ("hub").
  * go() opens a screen without a server round trip (the phone's Back button
- * returns to the buttons); back() is the "← Buttons" control.
+ * returns to the buttons); back() is the round "←" of HubScreenHeader.
  */
 export function useHubView<V extends string>(views: readonly V[]) {
   const params = useSearchParams();
