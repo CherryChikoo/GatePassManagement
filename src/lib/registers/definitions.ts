@@ -70,6 +70,8 @@ export type FieldDef = {
   comboFills?: string;
   /** Kept in the record but not shown on the new-entry form (filled by a pick above) */
   formHidden?: boolean;
+  /** Short "select": the choices show as big buttons; "yesno": one toggle button (the yes word) */
+  buttons?: boolean;
 };
 
 /** Field types that can be updatable (changed later from the record) */
@@ -95,6 +97,17 @@ export type GroupDef = {
   /** Fields that must be filled in every row that is added */
   required?: string[];
 };
+
+/** Is a field required for this entry? (the required list, minus the "requiredUnless" waiver) */
+export function isFieldRequired(def: Pick<EntryRegister, "required" | "requiredUnless">, key: string, values: Record<string, unknown>): boolean {
+  if (!def.required.includes(key)) return false;
+  const w = def.requiredUnless;
+  if (w && w.fields.includes(key)) {
+    const v = values[w.flag];
+    if (v === true || v === "yes" || v === "true") return false;
+  }
+  return true;
+}
 
 export type Direction = "IN" | "OUT";
 
@@ -135,6 +148,8 @@ export type EntryRegister = {
   required: string[];
   /** Groups of fields where at least one of each group must be filled (e.g. person using the car OR purpose) */
   requiredAny?: string[][];
+  /** Listed fields are required unless the yes / no flag field is on (e.g. no bill: no bill photo or amount) */
+  requiredUnless?: { fields: string[]; flag: string };
   /** Fixed values printed on the form (e.g. the "To" block of Form 19) */
   /** Shown above the form: fixed details, or a one-line note (note: true) */
   fixed?: { label: string; value: string; note?: boolean }[];
@@ -207,20 +222,22 @@ const labourFields: FieldDef[] = [
 ];
 
 const stockFields: FieldDef[] = [
-  // Optional photos taken at the gate first, then the details (material coming in or going out)
+  // Inward / Outward first, then the photos taken at the gate, then the details
+  { key: "direction", label: "Inward / Outward", type: "select", options: ["Inward", "Outward"], buttons: true },
   { key: "materialPhoto", label: "Photo of the material", type: "photo" },
   { key: "billPhoto", label: "Photo of the bill", type: "photo" },
+  { key: "noBill", label: "No bill", type: "yesno", buttons: true, options: ["No bill", "Has a bill"] },
   { key: "date", label: "Date", type: "date" },
   { key: "itemName", label: "Item / Material Name", type: "text" },
-  { key: "quantity", label: "Quantity", type: "number" },
+  { key: "vehicleNumber", label: "Vehicle Number / Type", type: "text" },
+  { key: "billAmount", label: "Bill Amount (₹)", type: "number" },
+  { key: "handedOverTo", label: "Handing over to", type: "text" },
+  { key: "quantity", label: "Quantity / Size", type: "text", placeholder: "e.g. 10 bags, 2 m" },
   { key: "unit", label: "Unit", type: "select", options: UNITS },
-  { key: "direction", label: "Inward / Outward", type: "select", options: ["Inward", "Outward"] },
   { key: "supplierName", label: "Supplier Name", type: "text" },
   { key: "billNumber", label: "Bill Number", type: "text" },
   { key: "condition", label: "Condition", type: "select", options: ["Good", "Damaged", "Partially damaged"] },
-  { key: "billAmount", label: "Bill Amount (₹)", type: "number" },
   { key: "timeCame", label: "Time Came", type: "time" },
-  { key: "vehicleNumber", label: "Vehicle Number", type: "text" },
   { key: "billTakenBy", label: "Bill Taken By", type: "person" },
   { key: "inventoryStored", label: "Inventory Stored Details", type: "text", placeholder: "Where it is stored" },
   { key: "managerDetails", label: "Manager (name & designation)", type: "text" },
@@ -461,7 +478,8 @@ export const REGISTERS: RegisterDef[] = [
     number: 8,
     title: "Siros Venture Main Gate Stock Register",
     description: "Material coming in or going out at the Siros Venture main gate.",
-    required: ["itemName", "quantity", "direction"],
+    required: ["billPhoto", "itemName", "vehicleNumber", "billAmount", "handedOverTo", "quantity", "direction"],
+    requiredUnless: { fields: ["billPhoto", "billAmount"], flag: "noBill" },
     listFields: ["itemName", "direction", "quantity", "unit", "supplierName"],
     fields: stockFields,
   },
@@ -471,7 +489,8 @@ export const REGISTERS: RegisterDef[] = [
     number: 9,
     title: "College Main Gate Stock Entry Register",
     description: "Material coming in or going out at the college main gate.",
-    required: ["itemName", "quantity", "direction"],
+    required: ["billPhoto", "itemName", "vehicleNumber", "billAmount", "handedOverTo", "quantity", "direction"],
+    requiredUnless: { fields: ["billPhoto", "billAmount"], flag: "noBill" },
     listFields: ["itemName", "direction", "quantity", "unit", "supplierName"],
     fields: stockFields,
   },
@@ -510,6 +529,8 @@ export const REGISTERS: RegisterDef[] = [
     },
     listFields: ["whoReferred", "purpose", "inOut", "time"],
     fields: [
+      // Optional photo, taken first (like the stock registers)
+      { key: "photo", label: "Photo", type: "photo" },
       { key: "whoReferred", label: "Who Referred", type: "text", hint: "Person(s) or work the visit is for" },
       { key: "purpose", label: "Purpose", type: "text" },
       { key: "inOut", label: "In / Out", type: "select", options: ["In", "Out"] },

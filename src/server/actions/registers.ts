@@ -176,6 +176,8 @@ export async function createRegisterEntry(registerKey: string, payload: RawPaylo
 
   // "Meeting (faculty / staff)": kept outside the record's own fields (see VisitPass)
   const { visitHost, ...fields } = (payload ?? {}) as RawPayload & { visitHost?: unknown };
+  const recorderLookup = recorderSnapshot(user);
+  recorderLookup.catch(() => {});
   const result = await validateNewRecord(def, fields as RawPayload, resolveStaff);
   if ("error" in result) return { error: result.error };
   const host = def.visitHost && visitHost ? await resolveHost(visitHost) : null;
@@ -184,20 +186,22 @@ export async function createRegisterEntry(registerKey: string, payload: RawPaylo
   const meeting = host && result.data.direction !== "OUT" ? host : null;
 
   try {
-    const recorder = await recorderSnapshot(user);
-    const entry = await prisma.$transaction(async (tx) => {
-      const created = await tx.registerEntry.create({
-        data: {
-          register: def.key,
-          kind: "ORIGINAL",
-          entryDate: istDateToInstant(result.entryDateStr),
-          data: result.data as Prisma.InputJsonValue,
-          searchText: buildSearchText(def, result.data),
-          clientToken,
-          ...recorder,
-        },
-        select: { id: true },
-      });
+    const recorder = await recorderLookup;
+    const record = {
+      register: def.key,
+      kind: "ORIGINAL",
+      entryDate: istDateToInstant(result.entryDateStr),
+      data: result.data as Prisma.InputJsonValue,
+      searchText: buildSearchText(def, result.data),
+      clientToken,
+      ...recorder,
+    };
+    // Most records: one insert (a transaction costs extra round trips to the
+    // database on every save). With a meeting code, both are saved together.
+    const entry = !(meeting && def.visitHost)
+      ? await prisma.registerEntry.create({ data: record, select: { id: true } })
+      : await prisma.$transaction(async (tx) => {
+      const created = await tx.registerEntry.create({ data: record, select: { id: true } });
       if (meeting && def.visitHost) {
         const v = def.visitHost;
         const text = (k?: string) => (k && typeof result.data[k] === "string" ? String(result.data[k]).trim() : "") || null;

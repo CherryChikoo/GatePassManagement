@@ -63,6 +63,19 @@ const BASE: Record<RegisterViewer, string> = {
 
 /** One recognisable icon per register (the list is long; icons make it scannable). */
 /** Pass books (then Car Book and Auto Book) shown first on the registers list (lower = earlier); everything else keeps its order */
+/** The registers list in sections, so guards find a register by what it is for */
+const REGISTER_GROUPS: { title: string; keys: string[] }[] = [
+  { title: "Passes", keys: ["BOYS_HOSTEL_OUTING", "LADIES_HOSTEL_OUTING", "FACULTY_BOOK", "STUDENT_BOOK", "HOME_OUTING_SUMMARY"] },
+  { title: "Visitors", keys: ["VISITORS", "ADMISSION"] },
+  { title: "Vehicles", keys: ["CAR_BOOK", "AUTO_IN_OUT", "AUTO_BOOK"] },
+  { title: "Stock & materials", keys: ["SIROS_STOCK", "COLLEGE_STOCK", "RETURNABLE"] },
+  { title: "Labour", keys: ["DAILY_LABOUR", "LABOUR_CONTRACT", "SIROS_DAILY_LABOUR", "SIROS_LABOUR_CONTRACT", "COOLI_BOOK"] },
+  { title: "Daily & keys", keys: ["COLLEGE_DAILY", "SECURITY_DAILY", "KEYS"] },
+  { title: "Staff", keys: ["SECURITY_ATTENDANCE"] },
+];
+/** Registers in no section above (e.g. created in the portal) */
+const OTHER_GROUP = "Other registers";
+
 const PASS_BOOK_ORDER = ["BOYS_HOSTEL_OUTING", "LADIES_HOSTEL_OUTING", "FACULTY_BOOK", "STUDENT_BOOK", "CAR_BOOK", "AUTO_IN_OUT"];
 const passBookRank = (key: string) => {
   const i = PASS_BOOK_ORDER.indexOf(key);
@@ -228,8 +241,20 @@ export function RegistersHub({
         />
       </div>
 
+      {list.length === 0 && (
+        <p className="rounded-3xl border border-zinc-800/80 bg-zinc-900 px-4 py-10 text-center text-sm text-zinc-500 shadow-card">
+          {t("No register matches your search.")}
+        </p>
+      )}
+      {[...REGISTER_GROUPS, { title: OTHER_GROUP, keys: [] as string[] }].map((group) => {
+        const known = new Set(REGISTER_GROUPS.flatMap((g) => g.keys));
+        const rows = list.filter((r) => (group.title === OTHER_GROUP ? !known.has(r.key) : group.keys.includes(r.key)));
+        if (rows.length === 0) return null;
+        return (
+      <section key={group.title} className="space-y-2">
+        <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">{t(group.title)}</h2>
       <ul className="overflow-hidden rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-card divide-y divide-zinc-800/70">
-        {list.map((r) => {
+        {rows.map((r) => {
           const Icon = REGISTER_ICON[r.key as RegisterKey] ?? ClipboardList;
           // Security: the Visitors Book is the Visitors screen itself (its 4 buttons; no second visitors screen)
           const href = isSecurity && r.key === "VISITORS" ? "/security/visitors" : `${base}/registers/${slugForKey(r.key)}`;
@@ -309,8 +334,10 @@ export function RegistersHub({
             </li>
           );
         })}
-        {list.length === 0 && <li className="px-4 py-10 text-center text-sm text-zinc-500">{t("No register matches your search.")}</li>}
       </ul>
+      </section>
+        );
+      })}
 
       {quickKey && (
         <QuickEntryModal

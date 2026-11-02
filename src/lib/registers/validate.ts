@@ -3,7 +3,7 @@
  * definitions. Never trust the browser: every value is re-checked here, and
  * dates / times are always set from the server clock (IST).
  */
-import { firstDirection, isSirosLabour, pendingActions, type Direction, type EntryRegister, type FieldDef } from "./definitions";
+import { firstDirection, isSirosLabour, pendingActions, type Direction, type EntryRegister, type FieldDef, isFieldRequired } from "./definitions";
 import { istDateString } from "@/lib/time/ist";
 
 export type RawPayload = {
@@ -203,7 +203,7 @@ export async function validateNewRecord(
     if (skip.has(f.key)) continue;
     const res = await cleanValue(f, fields[f.key], resolveStaff);
     if ("error" in res) return { error: res.error };
-    if (res.value === null && def.required.includes(f.key)) return { error: `${f.label} is required` };
+    if (res.value === null && isFieldRequired(def, f.key, fields)) return { error: `${f.label} is required` };
     data[f.key] = res.value;
     if (res.value !== null) details++;
   }
@@ -410,7 +410,7 @@ export async function validateAdminEdit(
     if (def.movement?.directionField === f.key) continue;
     const res = await cleanAny(f, fields[f.key]);
     if ("error" in res) return { error: res.error };
-    if (res.value === null && def.required.includes(f.key)) return { error: `${f.label} is required` };
+    if (res.value === null && isFieldRequired(def, f.key, fields)) return { error: `${f.label} is required` };
     data[f.key] = res.value;
   }
 

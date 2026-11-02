@@ -164,18 +164,18 @@ export function HubScreenHeader({
     <header className="flex min-w-0 items-center gap-3">
       <HubBackButton onClick={onBack} />
       <div className="min-w-0 flex-1">
-        {/* The count follows the last word (also when a Telugu title wraps) */}
-        <h1 className="min-w-0 break-words text-xl font-semibold leading-tight tracking-tight text-zinc-100 sm:text-2xl">
+        <h1 className="min-w-0 break-words text-lg font-semibold leading-tight tracking-tight text-zinc-100 sm:text-2xl">
           {title}
-          {!!count && (
-            <span className="ml-2 inline-flex h-7 min-w-7 -translate-y-0.5 items-center justify-center whitespace-nowrap rounded-full bg-orange-600 px-2 align-middle text-sm font-semibold tabular-nums text-white">
-              {count}
-            </span>
-          )}
           {busy && <Loader2 className="ml-2 inline-block h-4 w-4 animate-spin align-middle text-zinc-500" aria-hidden="true" />}
         </h1>
         {subtitle && <p className="mt-0.5 break-words text-sm leading-snug text-zinc-500">{subtitle}</p>}
       </div>
+      {/* The count in its own spot on the right: never drops onto a line of its own */}
+      {!!count && (
+        <span className="inline-flex h-9 min-w-9 shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-orange-600 px-2.5 text-base font-semibold tabular-nums text-white">
+          {count}
+        </span>
+      )}
     </header>
   );
 }

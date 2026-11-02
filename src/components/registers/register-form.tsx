@@ -8,13 +8,13 @@ import { VoicePanel, useVoiceFill } from "@/components/voice/voice-fill";
 import { HostPicker } from "@/components/visits/host-picker";
 import { VisitCodeFields, visitInputReady, type VisitExitInput } from "@/components/visits/visit-code";
 import type { VoiceFill } from "@/lib/voice/spec";
-import { CalendarDays, Camera, CheckCircle2, ChevronDown, Clock, History, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
+import { CalendarDays, Camera, CheckCircle2, FileX, ChevronDown, Clock, History, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
 import { DepartmentSelect } from "@/components/ui/department-select";
 import { ComboInput, useVehicleOptions, type ComboItem } from "./combo-input";
 import { compressPhoto } from "@/lib/images/compress-photo";
 import type { Direction, EntryRegister, FieldDef, GroupDef } from "@/lib/registers/definitions";
-import { pendingActions, yesNoWords } from "@/lib/registers/definitions";
+import { isFieldRequired, pendingActions, yesNoWords } from "@/lib/registers/definitions";
 import { formatDate } from "@/lib/utils";
 import { displayValue } from "./localize";
 
@@ -369,11 +369,16 @@ function splitFields(def: EntryRegister, direction: Direction | null): { primary
   const all = visibleFields(def, direction);
   const topPhotos = new Set<string>();
   for (const f of all) {
-    if (f.type !== "photo") break;
+    // A leading In / Out button pair (stock registers) sits above the photos
+    if (f.type !== "photo") {
+      if (topPhotos.size === 0 && f.buttons && f.type === "select") continue;
+      break;
+    }
     topPhotos.add(f.key);
   }
   const anyOf = new Set((def.requiredAny ?? []).flat());
-  let primary = all.filter((f) => def.required.includes(f.key) || anyOf.has(f.key) || topPhotos.has(f.key));
+  const flagKey = def.requiredUnless?.flag;
+  let primary = all.filter((f) => def.required.includes(f.key) || anyOf.has(f.key) || topPhotos.has(f.key) || f.key === flagKey);
   // Nothing required: show the first few so the form is not just a toggle
   if (primary.length === 0) primary = all.slice(0, 3);
   const keys = new Set(primary.map((f) => f.key));
@@ -391,16 +396,24 @@ function PhotoInput({
   value,
   onChange,
   registerKey,
+  label,
+  required = false,
+  dimmed = false,
 }: {
   id: string;
   value: string;
   onChange: (v: string) => void;
   registerKey: string;
+  label: string;
+  required?: boolean;
+  dimmed?: boolean;
 }) {
   const t = useT();
   const [preview, setPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const has = !!(preview || value);
 
   async function pick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -428,28 +441,55 @@ function PhotoInput({
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-3">
-        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
-          {preview ? (
-
-            <img src={preview} alt="" className="h-full w-full object-cover" />
-          ) : value ? (
-            <CheckCircle2 className="h-7 w-7 text-emerald-400" />
-          ) : (
-            <Camera className="h-7 w-7 text-zinc-600" />
-          )}
-        </div>
+    <div className="space-y-1.5">
+      <div className={`photo-tile relative aspect-square w-full max-w-40 ${dimmed ? "opacity-40" : ""}`}>
         <label
           htmlFor={id}
-          className={`inline-flex h-12 items-center gap-2 rounded-full px-5 text-sm font-medium transition-colors ${
-            value ? "border border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-950" : "bg-orange-600 text-white hover:bg-orange-700"
-          } ${busy ? "pointer-events-none opacity-60" : "cursor-pointer"}`}
+          className={`flex h-full w-full flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl border-2 text-center transition-colors ${
+            has ? "border-zinc-800 bg-zinc-950" : "border-dashed border-orange-500/50 bg-orange-500/5 hover:bg-orange-500/10"
+          } ${busy || dimmed ? "pointer-events-none" : "cursor-pointer"}`}
         >
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-          {busy ? t("Uploading…") : value ? t("Retake Photo") : t("Take Photo")}
+          {preview ? (
+            <img src={preview} alt={t(label)} className="h-full w-full object-cover" />
+          ) : (
+            <>
+              {value ? <CheckCircle2 className="h-8 w-8 text-emerald-500" /> : <Camera className="h-8 w-8 text-orange-500" />}
+              <span className="px-2 text-xs font-semibold leading-tight text-zinc-300">
+                {dimmed ? t("No bill") : t(label)}
+                {required && !dimmed && <span className="ml-0.5 text-orange-500">*</span>}
+              </span>
+            </>
+          )}
         </label>
-        <input id={id} type="file" accept="image/*" capture="environment" className="hidden" onChange={pick} />
+        {busy && (
+          <span className="absolute inset-0 flex items-center justify-center rounded-2xl bg-white/70">
+            <Loader2 className="h-6 w-6 animate-spin text-orange-600" aria-label={t("Uploading…")} />
+          </span>
+        )}
+        <input ref={inputRef} id={id} type="file" accept="image/*" capture="environment" className="hidden" onChange={pick} />
+        {has && !busy && !dimmed && (
+          <>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="absolute bottom-1.5 left-1.5 inline-flex h-7 items-center gap-1 rounded-full bg-orange-600 px-2.5 text-[11px] font-semibold text-white shadow-sm hover:bg-orange-700"
+            >
+              <Camera className="h-3 w-3" aria-hidden="true" /> {t("Retake")}
+            </button>
+            <button
+              type="button"
+              aria-label={t("Remove")}
+              onClick={() => {
+                setPreview(null);
+                setError(null);
+                onChange("");
+              }}
+              className="absolute right-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-zinc-900/80 text-white hover:bg-zinc-900"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </>
+        )}
       </div>
       {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
     </div>
@@ -464,6 +504,7 @@ function FieldInput({
   staff,
   required = false,
   registerKey = "",
+  dimmed = false,
   onPickPerson,
   combo,
 }: {
@@ -474,6 +515,8 @@ function FieldInput({
   staff: StaffOption[];
   required?: boolean;
   registerKey?: string;
+  /** Photo tile shown as "No bill" (the bill is waived) */
+  dimmed?: boolean;
   /** "person" fields: the picked faculty / staff member (to fill designation etc.) */
   onPickPerson?: (p: PersonOption) => void;
   /** Driver / car / faculty boxes (Car Book, Auto Book): the list behind the "Select" button */
@@ -502,7 +545,7 @@ function FieldInput({
     case "department":
       return <DepartmentSelect id={id} value={value ?? ""} onChange={onChange} required={required} allowOther />;
     case "photo":
-      return <PhotoInput id={id} value={value ?? ""} onChange={onChange} registerKey={registerKey} />;
+      return <PhotoInput id={id} value={value ?? ""} onChange={onChange} registerKey={registerKey} label={f.label} required={required} dimmed={dimmed} />;
     case "textarea":
       return (
         <textarea
@@ -519,6 +562,46 @@ function FieldInput({
     case "select":
     case "yesno":
     case "staff": {
+      if (f.buttons && f.type === "yesno") {
+        const on = value === "yes";
+        return (
+          <button
+            id={id}
+            type="button"
+            onClick={() => onChange(on ? "" : "yes")}
+            aria-pressed={on}
+            className={`flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border-2 px-3 text-base font-semibold transition-colors ${
+              on ? "border-orange-500 bg-orange-500/15 text-orange-600" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700"
+            }`}
+          >
+            {on && <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />}
+            {t(yesNoWords(f)[0])}
+          </button>
+        );
+      }
+      if (f.buttons && f.type === "select" && !f.allowOther) {
+        return (
+          <div role="group" aria-labelledby={id} className="grid grid-cols-2 gap-2">
+            {(f.options ?? []).map((o) => {
+              const on = value === o;
+              return (
+                <button
+                  key={o}
+                  type="button"
+                  onClick={() => onChange(o)}
+                  aria-pressed={on}
+                  className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 px-3 text-base font-semibold transition-colors ${
+                    on ? "border-orange-500 bg-orange-500/15 text-orange-600" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700"
+                  }`}
+                >
+                  {on && <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />}
+                  {t(o)}
+                </button>
+              );
+            })}
+          </div>
+        );
+      }
       if (f.type === "select" && f.allowOther) {
         return <ChoiceWithOther id={id} options={f.options ?? []} value={value ?? ""} onChange={onChange} required={required} />;
       }
@@ -564,6 +647,7 @@ function FieldBlock({
   children: React.ReactNode;
 }) {
   const t = useT();
+  if (f.type === "photo") return <div className="min-w-0">{children}</div>;
   return (
     <div className={`space-y-1.5 min-w-0 ${f.type === "textarea" ? "sm:col-span-2" : ""}`}>
       <label htmlFor={id} className="field-label flex flex-wrap items-baseline gap-1 text-sm font-medium text-zinc-200">
@@ -872,13 +956,14 @@ export function RegisterForm({
       key={f.key}
       f={f}
       id={`rf-${f.key}`}
-      required={def.required.includes(f.key)}
+      required={isFieldRequired(def, f.key, values)}
       voice={voiceKeys.includes(f.key)}
-      missing={voiceDone && def.required.includes(f.key) && String(values[f.key] ?? "").trim() === ""}
+      missing={voiceDone && isFieldRequired(def, f.key, values) && String(values[f.key] ?? "").trim() === ""}
     >
       <FieldInput
         key={`${f.key}-${clearNo}-${fillTargets.has(f.key) ? fillNo : 0}-${voiceVer[f.key] ?? 0}`}
         registerKey={def.key}
+        dimmed={f.type === "photo" && !!def.requiredUnless && def.requiredUnless.fields.includes(f.key) && values[def.requiredUnless.flag] === "yes"}
         f={f}
         id={`rf-${f.key}`}
         value={values[f.key] ?? ""}
@@ -889,7 +974,7 @@ export function RegisterForm({
           if (voiceKeys.includes(f.key)) setVoiceKeys((ks) => ks.filter((k) => k !== f.key));
         }}
         staff={staff}
-        required={def.required.includes(f.key)}
+        required={isFieldRequired(def, f.key, values)}
         onPickPerson={
           f.fills
             ? (p) => {
@@ -919,12 +1004,85 @@ export function RegisterForm({
     </FieldBlock>
   );
 
+  // Consecutive photo fields share one row of square tiles; the "No bill" toggle sits under the bill tile
+  const renderGrid = (list: FieldDef[]) => {
+    const flagKey = def.requiredUnless?.flag;
+    const out: React.ReactNode[] = [];
+    let i = 0;
+    while (i < list.length) {
+      if (list[i].type !== "photo") {
+        out.push(renderField(list[i]));
+        i++;
+        continue;
+      }
+      const run: { p: FieldDef; extra: FieldDef | null }[] = [];
+      while (i < list.length && list[i].type === "photo") {
+        const p = list[i++];
+        let extra: FieldDef | null = null;
+        if (flagKey && list[i]?.key === flagKey) extra = list[i++];
+        run.push({ p, extra });
+      }
+      // The "No bill" toggle: one full-width line under the photo tiles
+      const flag = run.find((r) => r.extra)?.extra ?? null;
+      const flagOn = flag ? values[flag.key] === "yes" : false;
+      out.push(
+        <div key={`photos-${run[0].p.key}`} className="col-span-full space-y-2">
+          {/* One photo: a full-width tile; two or more: square tiles side by side */}
+          <div
+            className={
+              run.length === 1
+                ? "grid grid-cols-1 [&_.photo-tile]:aspect-auto [&_.photo-tile]:h-36 [&_.photo-tile]:max-w-none"
+                : "grid grid-cols-2 items-start gap-3 sm:grid-cols-3"
+            }
+          >
+            {run.map(({ p }) => (
+              <div key={p.key} className="min-w-0">
+                {renderField(p)}
+              </div>
+            ))}
+          </div>
+          {flag && (
+            <button
+              type="button"
+              aria-pressed={flagOn}
+              onClick={() => setValues((s) => ({ ...s, [flag.key]: s[flag.key] === "yes" ? "" : "yes" }))}
+              className={`flex h-12 w-full items-center justify-center gap-2 rounded-2xl border-2 px-4 text-base font-semibold transition-colors ${
+                flagOn
+                  ? "border-orange-600 bg-orange-600 text-white"
+                  : "border-zinc-700 bg-zinc-900 text-zinc-100 hover:border-orange-500/60"
+              }`}
+            >
+              {flagOn ? (
+                <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />
+              ) : (
+                <FileX className="h-5 w-5 shrink-0 text-orange-500" aria-hidden="true" />
+              )}
+              <span className="whitespace-nowrap">{t(flag.label)}</span>
+            </button>
+          )}
+          {flag && flagOn && (
+            <p className="text-center text-xs font-medium text-orange-600">{t("Bill photo and bill amount are not needed.")}</p>
+          )}
+        </div>
+      );
+    }
+    return out;
+  };
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         if (m && !direction) {
           setLocalError(t("Choose In or Out"));
+          return;
+        }
+        // Photos and button choices have no browser "required" check
+        const unfilled = visibleFields(def, direction).find(
+          (f) => (f.type === "photo" || f.buttons) && f.type !== "yesno" && isFieldRequired(def, f.key, values) && !filledIn(values[f.key])
+        );
+        if (unfilled) {
+          setLocalError(t("{field} is required", { field: t(unfilled.label) }));
           return;
         }
         const lacking = (def.requiredAny ?? []).find((keys) => keys.every((k) => !filledIn(values[k])));
@@ -948,43 +1106,40 @@ export function RegisterForm({
       className="space-y-5"
     >
       {/* One small line: date and time, and the mic (speak everything once; the form fills itself) */}
-      <div className="flex items-center justify-between gap-2">
-        <CompactDateTime />
-        {voice.status === "idle" && (
-          <button
-            type="button"
-            onClick={() => void voice.start()}
-            aria-label={t("Speak the details")}
-            title={t("Speak the details")}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_6px_14px_-8px_rgba(207,62,37,0.7)] transition-[background-color,transform] hover:bg-orange-700 active:scale-95"
-          >
-            <Mic className="h-[18px] w-[18px]" />
-          </button>
-        )}
-      </div>
-      {voice.status !== "idle" && <VoicePanel voice={voice} onUndo={undoVoice} />}
-
-      {/* Brought-back details, and one place to start again */}
-      {(restored || typedSomething) && (
-        <div className="flex items-center justify-between gap-2">
-          {restored ? (
-            <p className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-emerald-600">
-              <History className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {t("Your unsaved details were kept.")}
-            </p>
-          ) : (
-            <span />
-          )}
+      <div className="flex min-h-10 flex-nowrap items-center justify-between gap-2">
+        <div className="min-w-0 truncate">
+          <CompactDateTime />
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
           {typedSomething && (
             <button
               type="button"
               onClick={clearAll}
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-red-500/50 bg-red-500/10 px-3.5 text-xs font-semibold text-red-600 transition-[background-color,transform] hover:bg-red-500/15 active:scale-[0.97]"
+              className="inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-red-500/50 bg-transparent px-3 text-xs font-semibold leading-normal text-red-600 transition-[background-color,transform] hover:bg-red-500/10 active:scale-[0.97]"
             >
-              <RotateCcw className="h-4 w-4" aria-hidden="true" />
-              {t("Clear form")}
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+              {t("Clear")}
+            </button>
+          )}
+          {voice.status === "idle" && (
+            <button
+              type="button"
+              onClick={() => void voice.start()}
+              aria-label={t("Speak the details")}
+              title={t("Speak the details")}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_6px_14px_-8px_rgba(207,62,37,0.7)] transition-[background-color,transform] hover:bg-orange-700 active:scale-95"
+            >
+              <Mic className="h-[18px] w-[18px]" />
             </button>
           )}
         </div>
+      </div>
+      {voice.status !== "idle" && <VoicePanel voice={voice} onUndo={undoVoice} />}
+
+      {restored && (
+        <p className="-mt-3 flex min-w-0 items-center gap-1.5 text-xs font-medium text-emerald-600">
+          <History className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {t("Your unsaved details were kept.")}
+        </p>
       )}
 
       {m && !m.fixedStart && <DirectionPicker compact def={def} value={direction} onChange={(d) => { setDirection(d); setLocalError(null); }} />}
@@ -1047,7 +1202,7 @@ export function RegisterForm({
         </div>
       )}
 
-      {primary.length > 0 && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{primary.map(renderField)}</div>}
+      {primary.length > 0 && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{renderGrid(primary)}</div>}
 
       {more.length > 0 && (
         <div className="space-y-4">
@@ -1060,7 +1215,7 @@ export function RegisterForm({
             {t("More details")}
             <ChevronDown className={`h-4 w-4 transition-transform ${showMore ? "rotate-180" : ""}`} aria-hidden="true" />
           </button>
-          {showMore && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{more.map(renderField)}</div>}
+          {showMore && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{renderGrid(more)}</div>}
         </div>
       )}
 
