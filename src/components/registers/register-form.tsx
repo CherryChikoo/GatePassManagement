@@ -17,8 +17,6 @@ import type { Direction, EntryRegister, FieldDef, GroupDef } from "@/lib/registe
 import { pendingActions, yesNoWords } from "@/lib/registers/definitions";
 import { formatDate } from "@/lib/utils";
 import { displayValue } from "./localize";
-import { peekEntryList } from "./entry-list-cache";
-import { istDateString } from "@/lib/time/ist";
 
 export type StaffOption = { id: string; name: string; employeeId: string | null };
 type Values = Record<string, any>;
@@ -49,6 +47,23 @@ export function clearRegisterDraft(registerKey: string) {
 }
 
 const filledIn = (v: unknown) => String(v ?? "").trim() !== "";
+
+/** The last In / Out saved in this register (this tab), so the next fresh form starts on it */
+const LAST_DIRECTION_PREFIX = "gatepass:register-direction:";
+function readLastDirection(registerKey: string): Direction | null {
+  try {
+    const v = sessionStorage.getItem(LAST_DIRECTION_PREFIX + registerKey);
+    return v === "IN" || v === "OUT" ? v : null;
+  } catch {
+    return null;
+  }
+}
+function rememberDirection(registerKey: string, d: Direction | null | undefined) {
+  if (d !== "IN" && d !== "OUT") return;
+  try {
+    sessionStorage.setItem(LAST_DIRECTION_PREFIX + registerKey, d);
+  } catch {}
+}
 /** Anything typed or picked (a direction alone does not count) */
 function hasTyped(values: Values, rows: Record<string, Values[]>, visitHost: string) {
   return (
@@ -365,44 +380,6 @@ function splitFields(def: EntryRegister, direction: Direction | null): { primary
   return { primary, more: all.filter((f) => !keys.has(f.key)) };
 }
 
-const RECENT_TYPES: readonly string[] = ["text", "select", "phone", "number", "person", "department"];
-
-/** Up to 6 chips from today's newest records of this register already cached in the browser. */
-function recentChips(def: EntryRegister, t: (s: string) => string): { key: string; label: string; values: Values }[] {
-  const list = peekEntryList({ register: def.key, date: istDateString(), q: "", page: 1, shift: "" });
-  if (!list) return [];
-  const readings = new Set([def.movement?.in.readingKey, def.movement?.out.readingKey].filter(Boolean) as string[]);
-  const byKey = new Map(def.fields.map((f) => [f.key, f]));
-  const out: { key: string; label: string; values: Values }[] = [];
-  const seen = new Set<string>();
-  for (const e of list.entries) {
-    const cur: Values = e?.current ?? {};
-    const first = String(cur[def.listFields[0]] ?? "").trim().toLowerCase();
-    if (!first || seen.has(first)) continue;
-    seen.add(first);
-    const values: Values = {};
-    for (const f of def.fields) {
-      if (!RECENT_TYPES.includes(f.type) || f.key === def.movement?.directionField || readings.has(f.key)) continue;
-      const v = String(cur[f.key] ?? "").trim();
-      if (!v) continue;
-      if (f.type === "select" && !f.allowOther && !(f.options ?? []).includes(v)) continue;
-      values[f.key] = v;
-    }
-    const label = def.listFields
-      .slice(0, 2)
-      .map((k) => {
-        const f = byKey.get(k);
-        const v = cur[k];
-        return f && filledIn(v) ? String(displayValue(f, v, t as any)) : "";
-      })
-      .filter(Boolean)
-      .join(" · ");
-    if (!label || Object.keys(values).length === 0) continue;
-    out.push({ key: `${e.id ?? out.length}`, label, values });
-    if (out.length >= 6) break;
-  }
-  return out;
-}
 
 function emptyRow(g: GroupDef): Values {
   return Object.fromEntries(g.fields.filter((f) => f.type !== "time").map((f) => [f.key, ""]));
@@ -713,7 +690,10 @@ export function RegisterForm({
   const m = def.movement;
   // What was typed here before and not saved (the form only opens on a tap, so this runs in the browser)
   const [draft] = useState(() => readDraft(def.key));
-  const startDirection: Direction | null = m ? m.startWith ?? (m.firstDirections.length === 1 ? m.firstDirections[0] : null) : null;
+  const defaultDirection: Direction | null = m ? m.startWith ?? (m.firstDirections.length === 1 ? m.firstDirections[0] : null) : null;
+  // The last one used here wins (when this register may start either way)
+  const [lastDirection] = useState(() => (m && m.firstDirections.length > 1 ? readLastDirection(def.key) : null));
+  const startDirection: Direction | null = lastDirection ?? defaultDirection;
   // Car Book / Auto Book: drivers, cars and faculty behind the "Select" buttons (one request, kept for the session)
   const vehicleOpts = useVehicleOptions(def.key, def.fields.some((f) => !!f.combo));
   const comboFor = (f: FieldDef) => {
@@ -755,7 +735,7 @@ export function RegisterForm({
   // Bumped by "Clear form" so pickers and photo boxes start empty too
   const [clearNo, setClearNo] = useState(0);
   const typedSomething = hasTyped(values, rows, visitHost);
-  // "More details": closed until something inside it is filled (brought-back draft, voice, a recent entry)
+  // "More details": closed until something inside it is filled (brought-back draft, voice)
   const [moreOpen, setMoreOpen] = useState(() =>
     !!draft && splitFields(def, draft.direction ?? startDirection).more.some((f) => filledIn(draft.values[f.key]))
   );
@@ -939,18 +919,6 @@ export function RegisterForm({
     </FieldBlock>
   );
 
-  // Recent entries of this register already in the browser (no request): tap to reuse their details
-  const [recent] = useState(() => recentChips(def, t));
-  const fillFromRecent = (vals: Values) => {
-    const keys = Object.keys(vals);
-    setValues((s) => ({ ...s, ...vals }));
-    setVoiceKeys((ks) => ks.filter((k) => !keys.includes(k)));
-    setVoiceVer((vv) => Object.fromEntries([...Object.entries(vv), ...keys.map((k) => [k, (vv[k] ?? 0) + 1])]));
-    for (const k of keys) delete voiceSet.current[k];
-    if (keys.some((k) => more.some((f) => f.key === k))) setMoreOpen(true);
-    setLocalError(null);
-  };
-
   return (
     <form
       onSubmit={(e) => {
@@ -967,6 +935,8 @@ export function RegisterForm({
           return;
         }
         setLocalError(null);
+        // The next fresh form here starts on this side too
+        if (m && m.firstDirections.length > 1) rememberDirection(def.key, direction);
         onSubmit({
           fields: values,
           groups: rows,
@@ -1060,24 +1030,6 @@ export function RegisterForm({
               <p className="mt-0.5 text-sm font-medium text-zinc-200">{x.value}</p>
             </div>
           ))}
-        </div>
-      )}
-
-      {recent.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-zinc-500">{t("Recent")}</p>
-          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-            {recent.map((r) => (
-              <button
-                key={r.key}
-                type="button"
-                onClick={() => fillFromRecent(r.values)}
-                className="inline-flex h-10 max-w-[75%] shrink-0 items-center rounded-full border border-zinc-800 bg-zinc-950 px-3.5 text-sm font-medium text-zinc-200 transition-[background-color,transform] hover:bg-zinc-900 active:scale-[0.97]"
-              >
-                <span className="truncate">{r.label}</span>
-              </button>
-            ))}
-          </div>
         </div>
       )}
 
