@@ -12,6 +12,7 @@ import {
   Car,
   CarTaxiFront,
   ChevronRight,
+  CalendarClock,
   ClipboardCheck,
   ClipboardList,
   ContactRound,
@@ -49,6 +50,8 @@ import type { CheckInRegister } from "@/components/visits/arrival-alert";
 import { warmCheckInQr } from "@/components/visits/checkin-qr-cache";
 import { CheckInQrFrame, CheckInQrPlaceholder } from "@/components/visits/checkin-qr-frame";
 import { AttendanceSheetView } from "./attendance-sheet";
+import { SecurityDutyView, prefetchSecurityDuty } from "./security-duty";
+import { prefetchMyDuties } from "./my-shift";
 import { localizeRegister } from "./localize";
 import { FacultyBookView,
   StudentBookView, HomeOutingSummaryView, HostelOutingView, VisitorsBookView } from "./derived-views";
@@ -70,8 +73,8 @@ const REGISTER_GROUPS: { title: string; keys: string[] }[] = [
   { title: "Vehicles", keys: ["CAR_BOOK", "AUTO_IN_OUT", "AUTO_BOOK"] },
   { title: "Stock & materials", keys: ["SIROS_STOCK", "COLLEGE_STOCK", "RETURNABLE"] },
   { title: "Labour", keys: ["DAILY_LABOUR", "LABOUR_CONTRACT", "SIROS_DAILY_LABOUR", "SIROS_LABOUR_CONTRACT", "COOLI_BOOK"] },
-  { title: "Daily & keys", keys: ["COLLEGE_DAILY", "SECURITY_DAILY", "KEYS"] },
-  { title: "Staff", keys: ["SECURITY_ATTENDANCE"] },
+  { title: "Daily & keys", keys: ["COLLEGE_DAILY", "KEYS"] },
+  { title: "Staff", keys: ["SECURITY_DAILY", "SECURITY_ATTENDANCE"] },
 ];
 /** Registers in no section above (e.g. created in the portal) */
 const OTHER_GROUP = "Other registers";
@@ -165,6 +168,10 @@ export function RegistersHub({
   const countsData = useGateData<Record<string, number>>(REGISTER_COUNTS_QUERY.key, REGISTER_COUNTS_QUERY.fetch, REGISTER_COUNTS_QUERY.topics);
   const counts = countsData.data ?? {};
   useLiveTopics(["reg:"], () => {});
+  // Guards: their shift details are ready before they tap the button (no request while the kept copy is fresh)
+  useEffect(() => {
+    if (isSecurity) prefetchMyDuties();
+  }, [isSecurity]);
 
   const [query, setQuery] = useState("");
   const [quickKey, setQuickKey] = useState<string | null>(null);
@@ -228,6 +235,33 @@ export function RegistersHub({
         )}
       </div>
 
+      {/* Every guard: their own shifts, with Start / End duty */}
+      {isSecurity && (
+        <Link
+          href="/security/my-shift"
+          // Fully preloaded (the page itself is tiny), so opening it shows no loading screen
+          prefetch={true}
+          // Back from My shift: the list opens here, with this button glowing (like the registers)
+          data-register-row="MY_SHIFT"
+          onClick={() => rememberOpenedRegister("MY_SHIFT")}
+          onPointerDown={() => {
+            router.prefetch("/security/my-shift");
+            prefetchMyDuties();
+          }}
+          onFocus={prefetchMyDuties}
+          className="flex items-center gap-3 rounded-3xl border border-orange-500/30 bg-zinc-900 px-4 py-4 shadow-card transition-[background-color,transform] hover:bg-orange-500/5 active:scale-[0.99]"
+        >
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-600 text-white">
+            <CalendarClock className="h-6 w-6" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-lg font-semibold leading-snug text-zinc-100">{t("My shift details")}</span>
+            <span className="block text-sm text-zinc-500">{t("Start and end your duty")}</span>
+          </span>
+          <ChevronRight className="h-5 w-5 shrink-0 text-zinc-500" aria-hidden="true" />
+        </Link>
+      )}
+
       {/* Find a register quickly */}
       <div className="relative">
         <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
@@ -263,11 +297,12 @@ export function RegistersHub({
           const checkInQr = isSecurity && (r.key === "VISITORS" || (r.key === "ADMISSION" && creatable.includes(r.key)));
           // "+": entry registers open their form here
           // Attendance opens its monthly sheet instead of a form
-          const quickAdd = isEntryRegister(r) && creatable.includes(r.key) && r.key !== "SECURITY_ATTENDANCE";
+          const quickAdd = isEntryRegister(r) && creatable.includes(r.key) && !["SECURITY_ATTENDANCE", "SECURITY_DAILY"].includes(r.key);
           // On touch: the register's page and its list start loading while the tap completes
           const prefetch = () => {
             router.prefetch(href);
-            if (isEntryRegister(r) && r.key !== "SECURITY_ATTENDANCE") prefetchEntryList(r.key);
+            if (isEntryRegister(r) && !["SECURITY_ATTENDANCE", "SECURITY_DAILY"].includes(r.key)) prefetchEntryList(r.key);
+            if (r.key === "SECURITY_DAILY") prefetchSecurityDuty();
           };
           return (
             <li key={r.key} data-register-row={r.key} className="flex items-center gap-2 pr-2 sm:pr-3 transition-colors duration-700">
@@ -386,7 +421,10 @@ export function RegisterPage({
   const isSecurity = viewer === "SECURITY";
 
   let body: React.ReactNode;
-  if (def.key === "SECURITY_ATTENDANCE") {
+  if (def.key === "SECURITY_DAILY") {
+    // Duty plan for the coming days (Head Security)
+    body = <SecurityDutyView />;
+  } else if (def.key === "SECURITY_ATTENDANCE") {
     // Monthly sheet like the paper register (marks + day remarks)
     body = <AttendanceSheetView />;
   } else if (isEntryRegister(def)) {
@@ -408,19 +446,24 @@ export function RegisterPage({
     body = <HostelOutingView hostel="BOYS" />;
   } else if (def.key === "LADIES_HOSTEL_OUTING") {
     body = <HostelOutingView hostel="LADIES" />;
-  } else {
-    body = <HomeOutingSummaryView />;
   }
 
+  const header = (
+    <div>
+      {isSecurity ? <GoBackButton className="mb-3" /> : <BackButton href={`${base}/registers`} label={t("All registers")} />}
+      <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
+        {def.title}
+      </h1>
+      <p className="text-sm text-zinc-400 mt-1">{def.description}</p>
+    </div>
+  );
+  // Home outing passbook: two buttons (Information / Counts); its screens have their own "←" heading
+  if (!body) return <HomeOutingSummaryView header={header} title={def.title} />;
+
   return (
-    <div className="space-y-5">
-      <div>
-        {isSecurity ? <GoBackButton className="mb-3" /> : <BackButton href={`${base}/registers`} label={t("All registers")} />}
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
-          {def.title}
-        </h1>
-        <p className="text-sm text-zinc-400 mt-1">{def.description}</p>
-      </div>
+    // Duty plan: centred with its heading on wide screens (two columns from lg)
+    <div className={def.key === "SECURITY_DAILY" ? "mx-auto w-full max-w-[1100px] space-y-5" : "space-y-5"}>
+      {header}
       {body}
     </div>
   );

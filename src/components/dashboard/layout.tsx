@@ -129,6 +129,9 @@ function saveCollapsed(value: boolean) {
   collapsedListeners.forEach((l) => l());
 }
 
+/** Nothing to listen to: only tells the server's first paint from the browser's */
+const subscribeNothing = () => () => {};
+
 function subscribeCollapsed(listener: () => void) {
   collapsedListeners.add(listener);
   return () => {
@@ -223,10 +226,15 @@ export function DashboardLayout({
   }, [pathname]);
 
   const ROOT_PATHS = ["/admin", "/faculty", "/faculty-admin", "/director", "/dean", "/supervisor", "/warden", "/student", "/security"];
+  // Marked only once running in the browser: the server's page address can differ
+  // from the browser's (e.g. after a redirect), and a different highlight in the
+  // first paint is a hydration error. The first paint has none; it follows at once.
+  const inBrowser = useSyncExternalStore(subscribeNothing, () => true, () => false);
   const isActivePath = (href: string) =>
-    ROOT_PATHS.includes(href)
+    inBrowser &&
+    (ROOT_PATHS.includes(href)
       ? pathname === href
-      : pathname === href || (pathname.startsWith(href + "/") && href !== "/");
+      : pathname === href || (pathname.startsWith(href + "/") && href !== "/"));
 
   const initial = userName.charAt(0).toUpperCase();
   const toggleCollapsed = () => saveCollapsed(!desktopCollapsed);

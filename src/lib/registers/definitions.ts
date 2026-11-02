@@ -65,11 +65,17 @@ export type FieldDef = {
    * (drivers, cars, autos, faculty: getVehicleOptions in
    * src/server/actions/registers.ts); typing is always free. Stored as ordinary text.
    */
-  combo?: "driver" | "vehicle" | "faculty";
+  combo?: "driver" | "vehicle" | "carName" | "purpose" | "faculty" | "sirosContractor";
   /** "vehicle" combos: the field that also gets the picked vehicle's name (e.g. vehicleName) */
   comboFills?: string;
-  /** Kept in the record but not shown on the new-entry form (filled by a pick above) */
+  /** Kept in the record but not shown on the new-entry form (old records still show it) */
   formHidden?: boolean;
+  /** Optional, but shown up front on the new-entry form (not under "More details") */
+  upFront?: boolean;
+  /** One-tap answers shown as buttons under the box (e.g. "Self" for a referral) */
+  quickValues?: string[];
+  /** List columns: the older field to show when this one is empty (old records) */
+  listFallback?: string;
   /** Short "select": the choices show as big buttons; "yesno": one toggle button (the yes word) */
   buttons?: boolean;
 };
@@ -96,6 +102,11 @@ export type GroupDef = {
   max: number | null;
   /** Fields that must be filled in every row that is added */
   required?: string[];
+  /**
+   * Rows are picked from registered people instead of typed (Siros Venture
+   * coolies: "+ Add coolie" list, by name or number; new ones registered with a photo)
+   */
+  picker?: "sirosCoolie";
 };
 
 /** Is a field required for this entry? (the required list, minus the "requiredUnless" waiver) */
@@ -148,6 +159,8 @@ export type EntryRegister = {
   required: string[];
   /** Groups of fields where at least one of each group must be filled (e.g. person using the car OR purpose) */
   requiredAny?: string[][];
+  /** New-entry form: required fields get a subtle highlight, and every shown field is up front (no "More details") */
+  highlightRequired?: boolean;
   /** Listed fields are required unless the yes / no flag field is on (e.g. no bill: no bill photo or amount) */
   requiredUnless?: { fields: string[]; flag: string };
   /** Fixed values printed on the form (e.g. the "To" block of Form 19) */
@@ -249,8 +262,9 @@ const hostelOutingDescription =
   "Hostel outing passes approved in the portal, with the actual out and return times marked at the gate.";
 
 /** Same inputs for the Siros Venture Daily Labour Book and Labour Contract Book */
-const SIROS_LABOUR_INPUTS: Pick<EntryRegister, "required" | "movement" | "listFields" | "fields" | "groups"> = {
-  required: ["contractorName", "phone"],
+const SIROS_LABOUR_INPUTS: Pick<EntryRegister, "required" | "movement" | "listFields" | "fields" | "groups" | "highlightRequired"> = {
+  required: ["contractorName", "workDetails"],
+  highlightRequired: true,
   movement: {
     in: { label: "In", timeKey: "contractorIn" },
     out: { label: "Out", timeKey: "contractorOut" },
@@ -261,25 +275,30 @@ const SIROS_LABOUR_INPUTS: Pick<EntryRegister, "required" | "movement" | "listFi
   listFields: ["contractorName", "totalWorkers", "contractorIn", "contractorOut"],
   fields: [
     { key: "date", label: "Date", type: "date" },
-    { key: "contractorName", label: "Contractor Name", type: "text" },
-    { key: "workDetails", label: "Work Details", type: "textarea" },
+    // Picked from registered contractors (type the name or number); fills their phone
+    { key: "contractorName", label: "Contractor", type: "text", combo: "sirosContractor", comboFills: "phone" },
     { key: "phone", label: "Phone Number", type: "phone" },
-    { key: "totalWorkers", label: "Total Workers Under Contractor", type: "number" },
-    { key: "contractorIn", label: "Contractor In-Time", type: "time" },
-    { key: "contractorOut", label: "Contractor Out-Time", type: "time" },
-    { key: "supervisorDetails", label: "Supervisor (name & details)", type: "text" },
-    { key: "civilEngineerDetails", label: "Civil Engineer (name & details)", type: "text" },
-    { key: "remarks", label: "Remarks", type: "textarea" },
+    { key: "workDetails", label: "Details of Work", type: "textarea" },
+    // Counted from the coolies added (set on save)
+    { key: "totalWorkers", label: "Total Coolies", type: "number", formHidden: true },
+    { key: "contractorIn", label: "In-Time", type: "time" },
+    { key: "contractorOut", label: "Out-Time", type: "time" },
+    // Older records: kept and shown, not on the new form
+    { key: "supervisorDetails", label: "Supervisor (name & details)", type: "text", formHidden: true },
+    { key: "civilEngineerDetails", label: "Civil Engineer (name & details)", type: "text", formHidden: true },
+    { key: "remarks", label: "Remarks", type: "textarea", formHidden: true },
   ],
   groups: [
     {
       key: "workers",
-      label: "Workers",
-      itemLabel: "Worker",
+      label: "Coolies",
+      itemLabel: "Coolie",
       max: null,
       required: ["name"],
+      picker: "sirosCoolie",
       fields: [
-        { key: "name", label: "Worker Name", type: "text" },
+        { key: "no", label: "Coolie No.", type: "text" },
+        { key: "name", label: "Coolie Name", type: "text" },
         { key: "gender", label: "Gender", type: "select", options: ["Male", "Female"] },
         { key: "inTime", label: "In-Time", type: "time" },
         { key: "outTime", label: "Out-Time", type: "time", completion: true },
@@ -325,29 +344,35 @@ export const REGISTERS: RegisterDef[] = [
     number: 3,
     title: "Admission Book & Pass",
     description: "Admission enquiries and reporting visits by parents and guardians.",
-    required: ["parentName", "parentMobile"],
+    // Up front: student, parent, referral (+ its department), reason, how they heard; the rest under "More details"
+    required: ["studentName", "parentName", "purpose"],
     movement: { in: { label: "In", timeKey: "timeIn" }, out: { label: "Out", timeKey: "timeOut" }, firstDirections: ["IN"], fixedStart: true },
-    listFields: ["parentName", "programRequested", "admissionReporting", "timeIn", "timeOut"],
+    listFields: ["studentName", "parentName", "purpose", "timeIn", "timeOut"],
     visitHost: { visitorField: "parentName", phoneField: "parentMobile", purposeField: "purpose" },
     fields: [
-      { key: "visitDate", label: "Date of Visit", type: "date" },
+      { key: "studentName", label: "Student Name", type: "text" },
       { key: "parentName", label: "Parent / Guardian Name", type: "text" },
-      { key: "studentMobile", label: "Student Mobile Number", type: "phone" },
-      { key: "parentMobile", label: "Parent / Guardian Mobile Number", type: "phone" },
-      { key: "programRequested", label: "Program Requested", type: "text", placeholder: "e.g. B.Tech" },
-      { key: "branch", label: "Branch / Specialization", type: "department" },
-      { key: "admissionReporting", label: "Admission / Reporting", type: "select", options: ["Admission", "Reporting"] },
-      { key: "referralType", label: "Direct / Any Staff Referral", type: "select", options: ["Direct", "Staff Referral"] },
-      { key: "referralName", label: "Referral Name", type: "person" },
+      // A staff member picked from the suggestions fills the department; any name can be typed
+      { key: "referralName", label: "Referral (staff or anyone)", type: "person", fills: { department: "department" }, upFront: true, quickValues: ["Self"] },
+      { key: "department", label: "Department", type: "department", upFront: true },
+      { key: "purpose", label: "Reason / Purpose", type: "textarea" },
       {
         key: "heardFrom",
         label: "How Heard About RCE",
         type: "select",
         options: ["Friends / Relatives", "Alumni", "Newspaper", "Social Media", "Website", "Hoarding / Banner", "School / College visit", "Other"],
+        upFront: true,
       },
+      // More details
+      { key: "parentMobile", label: "Parent / Guardian Mobile Number", type: "phone" },
+      { key: "studentMobile", label: "Student Mobile Number", type: "phone" },
+      { key: "programRequested", label: "Program Requested", type: "text", placeholder: "e.g. B.Tech" },
+      { key: "branch", label: "Branch / Specialization", type: "department" },
+      { key: "admissionReporting", label: "Admission / Reporting", type: "select", options: ["Admission", "Reporting"] },
+      { key: "referralType", label: "Direct / Any Staff Referral", type: "select", options: ["Direct", "Staff Referral"] },
+      { key: "visitDate", label: "Date of Visit", type: "date" },
       { key: "timeIn", label: "Time In", type: "time" },
       { key: "timeOut", label: "Time Out", type: "time" },
-      { key: "purpose", label: "Purpose", type: "textarea" },
     ],
   },
   {
@@ -356,9 +381,8 @@ export const REGISTERS: RegisterDef[] = [
     number: 4,
     title: "Car Book",
     description: "College cars going out and coming back, with odometer readings.",
-    required: ["driverName", "vehicleNumber"],
-    // The faculty using the car, or the purpose: one of them is needed
-    requiredAny: [["usedBy", "purpose"]],
+    required: ["vehicleName", "vehicleNumber"],
+    highlightRequired: true,
     movement: {
       in: { label: "In", timeKey: "timeIn", readingKey: "inReading" },
       out: { label: "Out", timeKey: "timeOut", readingKey: "outReading" },
@@ -367,19 +391,20 @@ export const REGISTERS: RegisterDef[] = [
       startWith: "OUT",
       noOneWay: true,
     },
-    listFields: ["vehicleNumber", "driverName", "usedBy", "timeOut", "timeIn"],
+    listFields: ["vehicleName", "vehicleNumber", "timeOut", "timeIn"],
     fields: [
-      { key: "driverName", label: "Driver", type: "text", combo: "driver" },
-      { key: "vehicleNumber", label: "Car", type: "text", combo: "vehicle", comboFills: "vehicleName" },
-      { key: "vehicleName", label: "Car Name", type: "text", formHidden: true },
-      { key: "usedBy", label: "Faculty using", type: "text", combo: "faculty", hint: "Faculty using the car, or the purpose: one of the two is needed" },
-      { key: "purpose", label: "Purpose", type: "text" },
+      { key: "vehicleName", label: "Car Name", type: "text", combo: "carName", comboFills: "vehicleNumber" },
+      { key: "vehicleNumber", label: "Vehicle Number", type: "text", combo: "vehicle", comboFills: "vehicleName" },
+      { key: "remarks", label: "Remarks", type: "textarea" },
+      // Older records: kept and shown, not on the new form
+      { key: "driverName", label: "Driver", type: "text", formHidden: true },
+      { key: "usedBy", label: "Faculty using", type: "text", formHidden: true },
+      { key: "purpose", label: "Purpose", type: "text", formHidden: true },
       { key: "date", label: "Date", type: "date" },
       { key: "timeOut", label: "Time Out", type: "time" },
-      { key: "outReading", label: "Out Reading (km)", type: "text" },
+      { key: "outReading", label: "Out Reading (km)", type: "text", formHidden: true },
       { key: "timeIn", label: "Time In", type: "time" },
-      { key: "inReading", label: "In Reading (km)", type: "text" },
-      { key: "remarks", label: "Remarks", type: "textarea" },
+      { key: "inReading", label: "In Reading (km)", type: "text", formHidden: true },
     ],
   },
   {
@@ -610,7 +635,8 @@ export const REGISTERS: RegisterDef[] = [
     // Kept simple on purpose: auto number, driver, anything else; times are automatic.
     title: "Auto Book",
     description: "Autos coming in and going out: auto number, driver and any other details.",
-    required: ["autoNumber", "driverName"],
+    required: ["driverName", "purpose"],
+    highlightRequired: true,
     // The auto comes in first and goes out later (switchable); never "In only"
     movement: {
       in: { label: "In", timeKey: "inTime" },
@@ -619,16 +645,18 @@ export const REGISTERS: RegisterDef[] = [
       startWith: "IN",
       noOneWay: true,
     },
-    listFields: ["autoNumber", "driverName", "inTime", "outTime"],
+    listFields: ["driverName", "purpose", "inTime", "outTime"],
     fields: [
+      { key: "driverName", label: "Auto Driver Name", type: "text", combo: "driver" },
+      { key: "purpose", label: "Purpose", type: "text", combo: "purpose", listFallback: "autoNumber" },
+      { key: "remarks", label: "Remarks", type: "textarea" },
       { key: "date", label: "Date", type: "date" },
-      { key: "autoNumber", label: "Auto", type: "text", placeholder: "e.g. AP 39 T 1234", combo: "vehicle", comboFills: "vehicleName" },
-      { key: "vehicleName", label: "Auto Name", type: "text", formHidden: true },
-      { key: "driverName", label: "Driver", type: "text", combo: "driver" },
       { key: "inTime", label: "In-Time", type: "time" },
       { key: "outTime", label: "Out-Time", type: "time" },
-      // Older records called this "Purpose / Remarks" (same box)
-      { key: "purposeRemarks", label: "Additional information", type: "textarea", placeholder: "Purpose, who came in it, anything else" },
+      // Older records: kept and shown, not on the new form
+      { key: "autoNumber", label: "Auto", type: "text", formHidden: true },
+      { key: "vehicleName", label: "Auto Name", type: "text", formHidden: true },
+      { key: "purposeRemarks", label: "Additional information", type: "textarea", formHidden: true },
     ],
   },
   {
@@ -637,24 +665,29 @@ export const REGISTERS: RegisterDef[] = [
     number: 18,
     title: "College Purpose & Keys Book",
     description: "Keys handed out and returned.",
-    required: ["personName", "keyName"],
+    required: ["personName", "phone", "keyName"],
+    highlightRequired: true,
     movement: {
-      in: { label: "Key returned", timeKey: "keyReturnedTime" },
-      out: { label: "Key taken", timeKey: "keyTakenTime" },
+      in: { label: "In", timeKey: "keyReturnedTime" },
+      out: { label: "Out", timeKey: "keyTakenTime" },
+      // In / Out buttons on the form (starts on Out: key given); the same record is marked the other side later
       firstDirections: BOTH,
+      startWith: "OUT",
+      noOneWay: true,
     },
     listFields: ["keyName", "personName", "keyTakenTime", "keyReturnedTime"],
     fields: [
-      { key: "date", label: "Date", type: "date" },
       { key: "personName", label: "Person Name", type: "person" },
       { key: "phone", label: "Phone Number", type: "phone" },
-      { key: "keyName", label: "Key Name / Key Number", type: "text" },
-      { key: "purpose", label: "Purpose", type: "text" },
-      { key: "keyGivenBy", label: "Key Given By", type: "text" },
-      { key: "keyTakenBy", label: "Key Taken By", type: "person" },
-      { key: "keyTakenTime", label: "Key Taken Time", type: "time" },
-      { key: "keyReturnedTime", label: "Key Returned Time", type: "time" },
-      { key: "remarks", label: "Remarks", type: "textarea" },
+      { key: "keyName", label: "Key Details", type: "text", placeholder: "Which key / room" },
+      { key: "date", label: "Date", type: "date" },
+      { key: "keyTakenTime", label: "Out Time", type: "time" },
+      { key: "keyReturnedTime", label: "In Time", type: "time" },
+      // Older records: kept and shown, not on the new form
+      { key: "purpose", label: "Purpose", type: "text", formHidden: true },
+      { key: "keyGivenBy", label: "Key Given By", type: "text", formHidden: true },
+      { key: "keyTakenBy", label: "Key Taken By", type: "person", formHidden: true },
+      { key: "remarks", label: "Remarks", type: "textarea", formHidden: true },
     ],
   },
   {

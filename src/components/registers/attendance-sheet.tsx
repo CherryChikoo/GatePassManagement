@@ -33,7 +33,7 @@ const MARKS: { status: string; letter: string; label: string; cls: string }[] = 
   { status: "Absent", letter: "A", label: "Absent", cls: "text-red-500" },
   { status: "On Leave", letter: "L", label: "Leave", cls: "text-red-500" },
   { status: "Half Day", letter: "H", label: "Half day", cls: "text-amber-500" },
-  { status: "Double Duty", letter: "P", label: "Double duty", cls: "text-zinc-100" },
+  { status: "Double Duty", letter: "DD", label: "Double duty", cls: "text-sky-600" },
   { status: "Late", letter: "Lt", label: "Late", cls: "text-amber-500" },
 ];
 const markOf = (status: string | null | undefined) => MARKS.find((m) => m.status === status);
@@ -43,15 +43,6 @@ const RANKS = ["SUP", "H.G", "S.G"];
 function MarkGlyph({ status }: { status: string | null | undefined }) {
   const m = markOf(status);
   if (!m) return null;
-  if (m.status === "Double Duty") {
-    // Paper style: a second, red P under the first
-    return (
-      <span className="relative inline-flex flex-col items-center leading-none">
-        <span className="text-zinc-100">P</span>
-        <span className="text-[10px] text-red-500 -mt-0.5">P</span>
-      </span>
-    );
-  }
   return <span className={m.cls}>{m.letter}</span>;
 }
 
@@ -199,12 +190,12 @@ export function AttendanceSheetView() {
       <LoadingPill active={loading} />
 
       {/* Month + quick actions */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900 p-1 shadow-card">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="flex w-full items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900 p-1 shadow-card sm:w-auto">
           <button type="button" onClick={() => shiftMonth(-1)} aria-label={t("Previous month")} className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-950 hover:text-zinc-100">
             <ChevronLeft className="h-5 w-5" />
           </button>
-          <span className="min-w-[9.5rem] text-center text-sm font-semibold text-zinc-100">{monthLabel}</span>
+          <span className="min-w-[9.5rem] flex-1 text-center text-base font-semibold text-zinc-100 sm:text-sm">{monthLabel}</span>
           <button
             type="button"
             onClick={() => shiftMonth(1)}
@@ -220,7 +211,7 @@ export function AttendanceSheetView() {
             type="button"
             disabled={busy}
             onClick={() => run(() => markAllPresent(today), t("Marked present."))}
-            className="inline-flex h-12 items-center gap-2 rounded-full bg-orange-600 px-5 text-sm font-semibold text-white shadow-[0_6px_16px_-8px_rgba(207,62,37,0.55)] transition-[background-color,transform] hover:bg-orange-700 active:scale-[0.98] disabled:opacity-60"
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-orange-600 px-5 text-sm font-semibold text-white sm:w-auto shadow-[0_6px_16px_-8px_rgba(207,62,37,0.55)] transition-[background-color,transform] hover:bg-orange-700 active:scale-[0.98] disabled:opacity-60"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCheck className="h-4 w-4" />}
             {t("Mark all present today")} <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs tabular-nums">{unmarkedToday}</span>
@@ -228,23 +219,24 @@ export function AttendanceSheetView() {
         )}
       </div>
 
-      {/* Legend + rules */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-zinc-500">
-        {MARKS.map((m) => (
-          <span key={m.status} className="inline-flex items-center gap-1.5">
-            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 px-1 font-semibold">
-              <MarkGlyph status={m.status} />
-            </span>
-            {t(m.label)}
-          </span>
-        ))}
+      {/* Simple guide: letter – meaning, then the one rule */}
+      <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900 px-4 py-3 shadow-card">
+        <ul className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm text-zinc-300 sm:grid-cols-3 lg:grid-cols-6">
+          {MARKS.map((m) => (
+            <li key={m.status} className="flex items-center gap-2">
+              <span className="w-7 shrink-0 text-base font-bold">
+                <MarkGlyph status={m.status} />
+              </span>
+              <span className="text-zinc-500">–</span>
+              <span className="min-w-0">{t(m.label)}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2.5 flex items-center gap-1.5 border-t border-zinc-800/70 pt-2.5 text-sm text-zinc-500">
+          <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {data?.isAdmin ? t("Main Admin can change any day.") : t("Only 2 days can be changed: today and yesterday.")}
+        </p>
       </div>
-      <p className="flex items-start gap-1.5 text-xs leading-relaxed text-zinc-500">
-        <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        {data?.isAdmin
-          ? t("Tap a cell to mark. As Main Admin you can correct any day, including its remarks.")
-          : t("Attendance and day remarks can be marked or changed for 2 days: today and yesterday. Older days are locked. Tap a date to see that day and its remarks.")}
-      </p>
 
       {notice && (
         <div role="status" className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-400">{notice}</div>

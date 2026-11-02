@@ -714,7 +714,7 @@ export function OutsidersClient() {
         <div className="mx-auto max-w-2xl">
           <Card>
             <CardContent className="p-5 sm:p-6">
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} autoComplete="off" className="space-y-6">
 
                 {/* Brought-back details, and one tap to start again */}
                 {(restoredDraft || typedSomething) && (

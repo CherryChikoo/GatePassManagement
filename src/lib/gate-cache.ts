@@ -17,7 +17,7 @@ import { liveSince, onGatePing } from "@/lib/realtime/live";
 type Entry = { data: unknown; at: number; topics: string[] };
 
 /** Data loaded after the live connection came up is trusted until a ping (or this age) */
-const MAX_TRUSTED_AGE_MS = 5 * 60_000;
+const MAX_TRUSTED_AGE_MS = 60_000;
 /** Without live updates: refetched when older than this */
 const MAX_UNTRUSTED_AGE_MS = 15_000;
 const MAX_KEYS = 60;

@@ -18,13 +18,28 @@ const customSelect = {
 } as const;
 
 /** Built-in registers, then active custom registers (oldest first). */
+// Registers made in the portal change rarely: kept for a minute, so opening the
+// Security home / registers list needs no database wait (cleared when the Admin changes one)
+let customCache: { at: number; rows: Promise<RegisterDef[]> } | null = null;
+const CUSTOM_TTL_MS = 60_000;
+
+/** The Admin added / changed / removed a register: the next list is read fresh. */
+export function forgetCustomRegisters() {
+  customCache = null;
+}
+
 export async function listAllRegisters(): Promise<RegisterDef[]> {
-  const custom = await prisma.customRegister.findMany({
-    where: { active: true },
-    orderBy: { createdAt: "asc" },
-    select: customSelect,
-  });
-  return [...REGISTERS, ...custom.map((row, i) => customToDef(row, 100 + i))];
+  if (!customCache || Date.now() - customCache.at > CUSTOM_TTL_MS) {
+    const rows = prisma.customRegister
+      .findMany({ where: { active: true }, orderBy: { createdAt: "asc" }, select: customSelect })
+      .then((custom) => custom.map((row, i) => customToDef(row, 100 + i)));
+    customCache = { at: Date.now(), rows };
+    // A failed read is not kept
+    rows.catch(() => {
+      if (customCache?.rows === rows) customCache = null;
+    });
+  }
+  return [...REGISTERS, ...(await customCache.rows)];
 }
 
 /** Entry register by key (built-in or an active custom one). */

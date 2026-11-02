@@ -15,7 +15,7 @@ export async function voiceSpecForUser(user: AuthUser, key: unknown): Promise<Vo
   if (key === VISITOR_SPEC_KEY) return user.role === "SECURITY" ? VISITOR_SPEC : null;
   const [def, access] = await Promise.all([getEntryRegister(key), getRegisterAccess(user)]);
   // Staff attendance is a tap-grid, not a form
-  if (!def || def.key === "SECURITY_ATTENDANCE" || !access.canCreate(def.key)) return null;
+  if (!def || def.key === "SECURITY_ATTENDANCE" || def.key === "SECURITY_DAILY" || !access.canCreate(def.key)) return null;
   return voiceSpecForRegister(def);
 }
 

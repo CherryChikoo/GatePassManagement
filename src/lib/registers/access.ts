@@ -12,10 +12,12 @@ import type { AuthUser } from "@/lib/auth/helpers";
 import type { RegisterKey } from "./definitions";
 
 const ATTENDANCE: RegisterKey = "SECURITY_ATTENDANCE";
+/** Duty plan for the coming days: Head Security only (like attendance) */
+const DUTY_PLAN: RegisterKey = "SECURITY_DAILY";
 /** Replaced registers: Security no longer sees them; Admin / Supervisor can still read the old records */
 /** Drivers / cars / autos saved from the Car Book and Auto Book screens: no register page for anyone */
 const FLEET: RegisterKey = "VEHICLE_FLEET";
-const RETIRED: RegisterKey[] = ["AUTO_BOOK", "SIROS_LABOUR_CONTRACT"];
+const RETIRED: RegisterKey[] = ["AUTO_BOOK", "SIROS_LABOUR_CONTRACT", "COOLI_BOOK"];
 
 export type RegisterAccess = {
   isHeadSecurity: boolean;
@@ -44,7 +46,7 @@ export async function getRegisterAccess(user: AuthUser): Promise<RegisterAccess>
   const isHeadSecurity = user.role === "SECURITY" ? await isHeadSecurityStaff(user.profileId) : false;
   const viewer = user.role === "SECURITY" || user.role === "ADMIN" || user.role === "SECURITY_SUPERVISOR";
   const hidden: RegisterKey[] =
-    user.role === "SECURITY" ? [...(isHeadSecurity ? [] : [ATTENDANCE]), ...RETIRED, FLEET] : [FLEET];
+    user.role === "SECURITY" ? [...(isHeadSecurity ? [] : [ATTENDANCE, DUTY_PLAN]), ...RETIRED, FLEET] : [FLEET];
 
   return {
     isHeadSecurity,
@@ -55,7 +57,7 @@ export async function getRegisterAccess(user: AuthUser): Promise<RegisterAccess>
         ? user.role === "SECURITY"
         : RETIRED.includes(key as RegisterKey)
         ? false
-        : key === ATTENDANCE
+        : key === ATTENDANCE || key === DUTY_PLAN
         ? user.role === "ADMIN" || isHeadSecurity
         : user.role === "SECURITY",
   };

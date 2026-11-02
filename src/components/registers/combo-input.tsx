@@ -7,7 +7,7 @@
  * Laptop: a list under the box. Phone: a bottom sheet with large rows.
  *
  * Also here: the choices for those boxes — fetched once per session with one
- * request (getVehicleOptions) and kept in memory; refresh after a registration.
+ * request (getVehicleOptions) and kept in memory.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -32,26 +32,25 @@ const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
 
 // ── Choices (module-level, for this browser tab) ────────────────
 const optionsCache = new Map<string, Promise<VehicleOptions | null>>();
+const optionsAt = new Map<string, number>();
+/** A kept copy older than this is fetched again when a form opens (new drivers / cars added elsewhere show up) */
+const OPTIONS_FRESH_MS = 30_000;
 
-/** The choices of one book; one request per session (until invalidated), shared by every box of the form. */
+/** The choices of one book, shared by every box of the form; fetched again when over 30 s old. */
 export function loadVehicleOptions(registerKey: string): Promise<VehicleOptions | null> {
   let p = optionsCache.get(registerKey);
-  if (!p) {
+  if (!p || Date.now() - (optionsAt.get(registerKey) ?? 0) > OPTIONS_FRESH_MS) {
     p = callGate("getVehicleOptions", [registerKey], 15_000)
       .then((r) => (r && "drivers" in r ? r : null))
       .catch(() => null);
     optionsCache.set(registerKey, p);
+    optionsAt.set(registerKey, Date.now());
     // A failed load is tried again the next time a form opens
     void p.then((r) => {
       if (!r && optionsCache.get(registerKey) === p) optionsCache.delete(registerKey);
     });
   }
   return p;
-}
-
-/** After "New driver / car" is saved: the next form open fetches the lists again. */
-export function invalidateVehicleOptions() {
-  optionsCache.clear();
 }
 
 /** The book's choices as state (null while loading). */
@@ -98,6 +97,11 @@ export function ComboInput({
   const [sheetQuery, setSheetQuery] = useState("");
   const wrapRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Browsers keep what was typed in a box (by its name / id) and offer it under the box,
+  // even with autocomplete="off": a fresh name each time stops those offers (only our list shows)
+  useEffect(() => {
+    if (inputRef.current) inputRef.current.name = `c${Math.random().toString(36).slice(2)}`;
+  }, []);
   const listId = `${id}-list`;
 
   const exact = items.some((i) => i.fill === value);
@@ -142,11 +146,11 @@ export function ComboInput({
       style={sheet ? { maxHeight: "60dvh" } : undefined}
     >
       {loading && items.length === 0 ? (
-        <li className="flex items-center gap-2 px-3 py-3 text-sm text-zinc-500">
+        <li className="flex items-center justify-center gap-2 px-4 py-8 text-base text-zinc-500">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> {t("Loading…")}
         </li>
       ) : shown.length === 0 ? (
-        <li className="px-3 py-3 text-xs text-zinc-500">{t("Not in the list: the typed text will be saved.")}</li>
+        <li className="px-4 py-8 text-center text-base leading-relaxed text-zinc-500">{t("Not in the list: the typed text will be saved.")}</li>
       ) : (
         shown.map((item, i) => {
           const selected = item.fill === value;
@@ -189,8 +193,8 @@ export function ComboInput({
           placeholder={placeholder}
           onChange={(e) => {
             onChange(e.target.value);
-            // Laptop: typing searches the list; phone: the keyboard stays with the box
-            if (open !== "sheet" && !window.matchMedia("(max-width: 639px)").matches) setOpen("list");
+            // Typing only fills the box: nothing opens under it (the list opens from "Select")
+            if (open === "list") setOpen(null);
           }}
           onKeyDown={(e) => {
             if (e.key === "Escape") setOpen(null);

@@ -30,7 +30,7 @@ export async function getAdminMonitorCounts(todayStart: Date, todayEnd: Date) {
         where: {
           kind: "ORIGINAL",
           entryDate: { gte: todayStart, lt: todayEnd },
-          register: { notIn: ["SECURITY_ATTENDANCE", "ATTENDANCE_REMARK", "SECURITY_RANK", "OUTING_NOTE"] },
+          register: { notIn: ["SECURITY_ATTENDANCE", "ATTENDANCE_REMARK", "SECURITY_RANK", "OUTING_NOTE", "SECURITY_DUTY", "SECURITY_DUTY_LOG", "SECURITY_DUTY_REMARK", "SIROS_PERSON"] },
         },
       }),
       prisma.registerEntry.count({ where: { register: "SECURITY_ATTENDANCE", kind: "ORIGINAL", entryDate: { gte: todayStart, lt: todayEnd } } }),

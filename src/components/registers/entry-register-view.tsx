@@ -18,13 +18,13 @@ import { fetchEntryList, invalidateEntryLists, markEntryListsStale, peekEntryLis
 import { visitExitMessage } from "@/components/visits/visit-code";
 import { useLiveTopics } from "@/lib/realtime/live";
 import { actionErrorMessage } from "@/lib/deployment";
-import { AdminEditForm, CloseRecordForm, MovementForm, RegisterForm, clearRegisterDraft, type StaffOption } from "./register-form";
+import { AdminEditForm, CloseRecordForm, MovementForm, RegisterForm, restoreRegisterDraft, takeRegisterDraft, type StaffOption } from "./register-form";
 import { formatFieldValue, formatInstant, newClientToken } from "./format";
 import { displayValue } from "./localize";
 import { FactList, InOutCard, RecordHeader, type Fact, type MoveSide } from "./record-layout";
 import type { Translate } from "@/lib/i18n";
 import { RegisterToolbar, useRegisterFilters } from "./toolbar";
-import { fetchInsideEntries, invalidateInsideEntries } from "./inside-entries";
+import { fetchInsideEntries, invalidateInsideEntries, peekInsideEntries } from "./inside-entries";
 import { insideForLabel, useMinuteClock } from "@/components/visits/hub-tiles";
 import { ListEmpty, ListLoading, PersonCard, PersonCardAction } from "@/components/visits/person-card";
 
@@ -138,8 +138,11 @@ export function EntryRegisterView({
         invalidateEntryLists(def.key);
         invalidateInsideEntries(def.key);
       }
+      // A page seen before shows at once; the fresh copy replaces it quietly
+      const kept = fresh || silent ? null : peekInsideEntries(def.key, filters.page);
+      if (kept) setData({ entries: kept.entries, total: kept.total, pageSize: kept.pageSize, canOverrideVisit: kept.canOverrideVisit });
       if (!silent) {
-        setLoading(true);
+        setLoading(!kept);
         setError(null);
       }
       try {
@@ -208,6 +211,43 @@ export function EntryRegisterView({
     setFormKey((k) => k + 1);
     if (entry !== undefined) setSelected(entry);
     setMode(m);
+  }
+
+  /**
+   * New record: the form closes at once ("Saving…") and the record is saved
+   * meanwhile. If it fails, the form opens again with everything typed and the reason.
+   */
+  async function saveNew(payload: Parameters<React.ComponentProps<typeof RegisterForm>["onSubmit"]>[0]) {
+    const tok = token;
+    const kept = takeRegisterDraft(def.key);
+    setFormError(null);
+    setMode(null);
+    setNotice(t("Saving…"));
+    let res: any;
+    try {
+      res = await callGate("createRegisterEntry", [def.key, payload, tok]);
+    } catch (err) {
+      res = { error: actionErrorMessage(err, t("Could not save. Please try again.")), keepToken: true };
+    }
+    if (res?.error) {
+      setNotice(null);
+      restoreRegisterDraft(def.key, kept);
+      // A network failure may have saved it: the same token makes a retry save it only once
+      setToken(res.keepToken ? tok : newClientToken());
+      setFormKey((k) => k + 1);
+      setFormError(res.keepToken ? res.error : visitExitMessage(t, res));
+      setErrorNo((n) => n + 1);
+      setMode("new");
+      return;
+    }
+    setNotice(t("Record saved."));
+    setTimeout(() => setNotice(null), 4000);
+    const entries = await load(true);
+    // Registers with a list (e.g. coolies): show the saved record and its list
+    if (res?.id && def.groups?.length) {
+      const saved = entries?.find((e) => e.id === res.id);
+      if (saved) setSelected(saved);
+    }
   }
 
   async function run(action: () => Promise<any>, done: string) {
@@ -314,6 +354,8 @@ export function EntryRegisterView({
     );
   };
 
+  /** A list column's value; an older record without it shows its fallback field */
+  const cellOf = (c: FieldDef, cur: Record<string, any>) => (cur[c.key] ?? "") !== "" || !c.listFallback ? cur[c.key] : cur[c.listFallback];
   const columns = def.listFields.map((k) => def.fields.find((f) => f.key === k)).filter((f): f is NonNullable<typeof f> => !!f);
   // Yes / No statuses (e.g. Payment completed): their own column in the list
   const statusCols = updatableFields(def).filter((f) => f.type === "yesno" && !def.listFields.includes(f.key));
@@ -361,12 +403,12 @@ export function EntryRegisterView({
   const inField = def.movement ? def.fields.find((f) => f.key === def.movement!.in.timeKey) : undefined;
   const insideCard = (e: Entry) => {
     const [first, ...rest] = columns;
-    const name = first ? displayValue(first, e.current[first.key], t) : formatFieldValue({ key: "d", label: "", type: "date" }, e.entryDate);
+    const name = first ? displayValue(first, cellOf(first, e.current), t) : formatFieldValue({ key: "d", label: "", type: "date" }, e.entryDate);
     const phoneKey = def.visitHost?.phoneField;
     const phone = phoneKey && typeof e.current[phoneKey] === "string" ? (e.current[phoneKey] as string) : null;
     const details = rest
       .filter((c) => c.type !== "time")
-      .map((c) => displayValue(c, e.current[c.key], t))
+      .map((c) => displayValue(c, cellOf(c, e.current), t))
       .filter((v) => v && v !== "—")
       .join(" · ");
     const timeIn = inField && e.current[inField.key] ? displayValue(inField, e.current[inField.key], t) : null;
@@ -493,7 +535,7 @@ export function EntryRegisterView({
               const open = pendingActions(def, e.current).any;
               const [first, ...rest] = columns;
               const meta = rest
-                .map((c) => displayValue(c, e.current[c.key], t))
+                .map((c) => displayValue(c, cellOf(c, e.current), t))
                 .filter((v) => v && v !== "—")
                 .join(" · ");
               return (
@@ -506,7 +548,7 @@ export function EntryRegisterView({
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2 min-w-0">
                         <span className="truncate text-base font-medium text-zinc-100">
-                          {first ? displayValue(first, e.current[first.key], t) : formatFieldValue({ key: "d", label: "", type: "date" }, e.entryDate)}
+                          {first ? displayValue(first, cellOf(first, e.current), t) : formatFieldValue({ key: "d", label: "", type: "date" }, e.entryDate)}
                         </span>
                         {open && openChip}
                       </span>
@@ -572,7 +614,7 @@ export function EntryRegisterView({
                       {hasStarted && <td className={cn(dt.td, "whitespace-nowrap")}>{directionChip(e.current.direction) ?? <span className="text-zinc-600">—</span>}</td>}
                       {columns.map((c, i) => (
                         <td key={c.key} className={cn(dt.td, "whitespace-nowrap max-w-[220px] truncate", i === 0 ? "font-medium text-zinc-100" : "text-zinc-400")}>
-                          {displayValue(c, e.current[c.key], t)}
+                          {displayValue(c, cellOf(c, e.current), t)}
                         </td>
                       ))}
                       {statusCols.map((c) => (
@@ -652,13 +694,7 @@ export function EntryRegisterView({
             def={def}
             staff={staff}
             busy={busy}
-            onSubmit={(payload) =>
-              run(async () => {
-                const res: any = await callGate("createRegisterEntry", [def.key, payload, token]);
-                if (!res?.error) clearRegisterDraft(def.key);
-                return res;
-              }, t("Record saved."))
-            }
+            onSubmit={(payload) => void saveNew(payload)}
           />
         )}
         {mode === "edit" && selected && (
@@ -784,7 +820,7 @@ function ValuesGrid({ def, values }: { def: EntryRegister; values: Record<string
 
   // 1. Who / what: the list's headline field, and the next two as a short line
   const headField = fieldOf(def.listFields[0]);
-  const title = headField && headField.type !== "photo" ? show(headField.key) : null;
+  const title = headField && headField.type !== "photo" ? show(headField.key) ?? (headField.listFallback ? show(headField.listFallback) : null) : null;
   const moveKeys = new Set(
     m ? [m.in.timeKey, m.out.timeKey, m.in.readingKey, m.out.readingKey, m.directionField, "direction"].filter(Boolean) : []
   );

@@ -166,6 +166,10 @@ export async function acceptArrival(
     return { error: "You are not allowed to add to the Admission Book." };
   }
 
+  // The person to meet is read while the request is claimed (one wait instead of two)
+  const hostLookup = req.hostProfileId ? resolveHost(req.hostProfileId) : Promise.resolve(null);
+  hostLookup.catch(() => {}); // a failure is handled below, where it is awaited
+
   // Only one guard can accept it (a double tap or two screens)
   const claimed = await prisma.visitRequest.updateMany({
     where: { id, status: "PENDING" },
@@ -182,7 +186,7 @@ export async function acceptArrival(
   // 1) Make the visitor / Admission record. Until it exists, any failure puts the request back to waiting.
   try {
     // The person to meet may have been removed meanwhile: then let in without a meeting code
-    host = req.hostProfileId ? await resolveHost(req.hostProfileId) : null;
+    host = await hostLookup;
     if (req.register === "VISITORS") {
       const res = await registerOutsider({
         name,

@@ -857,6 +857,24 @@ function AdmissionField({
         {t(f.label)} {required && <span className="text-orange-500">*</span>}
       </label>
       {input}
+      {f.quickValues?.length ? (
+            <div className="flex flex-wrap gap-2">
+              {f.quickValues.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  aria-pressed={value === q}
+                  onClick={() => onChange(value === q ? "" : q)}
+                  className={cn(
+                    "inline-flex h-10 items-center rounded-full border px-4 text-sm font-semibold transition-colors",
+                    value === q ? "border-orange-500 bg-orange-500/10 text-orange-600" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+                  )}
+                >
+                  {t(q)}
+                </button>
+              ))}
+            </div>
+          ) : null}
       {f.hint && <p className="text-xs text-zinc-500">{t(f.hint)}</p>}
     </div>
   );

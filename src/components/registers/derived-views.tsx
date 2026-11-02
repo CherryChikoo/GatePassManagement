@@ -6,7 +6,7 @@ import { useT } from "@/components/providers/language-provider";
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight, FileText, Info, Loader2, LogIn, PencilLine, Plus, Trash2, UserPlus, Phone } from "lucide-react";
+import { BarChart3, ChevronRight, FileText, Info, Loader2, LogIn, PencilLine, Plus, Trash2, UserPlus, Phone } from "lucide-react";
 import { adminDeleteVisitor, adminUpdateVisitor } from "@/server/actions/outsiders";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Modal, StatusBadge } from "@/components/ui/primitives";
@@ -18,7 +18,6 @@ import { actionErrorMessage } from "@/lib/deployment";
 import { istDateString } from "@/lib/time/ist";
 import {
   addOutingNote,
-  deleteOutingNote,
 } from "@/server/actions/registers";
 import { formatDay, formatInstant, newClientToken } from "./format";
 import { formatTime } from "@/lib/utils";
@@ -27,6 +26,7 @@ import { useGateData } from "@/lib/gate-cache";
 import { formatDelay } from "@/lib/passes/return-scan";
 import { FactList, InOutCard, RecordHeader } from "./record-layout";
 import { callGate } from "@/lib/gate-call";
+import { HUB_PAGE_TOP, HubScreenHeader, HubTiles, useHubView } from "@/components/visits/hub-tiles";
 
 type Move = { at: string; gate: string | null; guard: string | null; guardEmployeeId: string | null } | null;
 
@@ -1031,12 +1031,105 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
 
 // ─── Form 16 — Home outing passbook ───────────────────────────
 
-export function HomeOutingSummaryView() {
+const OUTING_VIEWS = ["info", "counts"] as const;
+const dayShift = (days: number) => istDateString(new Date(Date.now() + days * 86_400_000));
+const outingDateCls =
+  "h-12 sm:h-10 w-full sm:w-auto rounded-full border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 [color-scheme:light] outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10";
+type DateRange = { from: string; to: string };
+
+/** From / To boxes (To may be limited to today) */
+function RangeFields({ range, onChange, maxTo }: { range: DateRange; onChange: (r: DateRange) => void; maxTo?: string }) {
+  const t = useT();
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
+      <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500 sm:flex-row sm:items-center sm:gap-2 sm:text-sm min-w-0">
+        {t("From")}
+        <DateField value={range.from} max={range.to} onChange={(e) => e.target.value && onChange({ ...range, from: e.target.value })} className={outingDateCls} />
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500 sm:flex-row sm:items-center sm:gap-2 sm:text-sm min-w-0">
+        {t("To")}
+        <DateField value={range.to} min={range.from} max={maxTo} onChange={(e) => e.target.value && onChange({ ...range, to: e.target.value })} className={outingDateCls} />
+      </label>
+    </div>
+  );
+}
+
+/**
+ * Home outing passbook: two big buttons, Information (notes for dates) and
+ * Counts (pass totals for picked dates). The open screen is in the address
+ * (?view=), so coming back to the book reopens it.
+ */
+export function HomeOutingSummaryView({ header, title }: { header?: React.ReactNode; title?: string }) {
+  const t = useT();
+  const { view, go, back } = useHubView(OUTING_VIEWS);
+  const today = istDateString();
+  // Kept while moving between the screens
+  const [countsRange, setCountsRange] = useState<DateRange>(() => ({ from: dayShift(-13), to: today }));
+  // Information: all dates (null) or only notes touching the chosen dates; 20 per page
+  const [infoRange, setInfoRange] = useState<DateRange | null>(null);
+  const [infoPage, setInfoPage] = useState(1);
+  const infoNotes = useLoader<any>(
+    "outing-notes-page",
+    () => callGate("listOutingNotesPage", [{ ...(infoRange ?? {}), page: infoPage }]),
+    `${infoRange?.from ?? ""}|${infoRange?.to ?? ""}|${infoPage}`
+  );
+  const infoCount: number | null = infoNotes.data ? infoNotes.data.total ?? 0 : null;
+
+  if (view === "hub") {
+    return (
+      <div className="space-y-5">
+        {header}
+        <HubTiles
+          tiles={[
+            { key: "info", icon: Info, title: t("Information"), hint: t("Add info for dates and see it"), count: infoCount, onClick: () => go("info") },
+            { key: "counts", icon: BarChart3, title: t("Counts"), hint: t("Pass totals for the dates you pick"), onClick: () => go("counts") },
+          ]}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn("space-y-5", HUB_PAGE_TOP)}>
+      <HubScreenHeader
+        onBack={back}
+        title={view === "counts" ? t("Counts") : t("Information")}
+        subtitle={title}
+        count={view === "info" ? infoCount : null}
+        busy={view === "info" && infoNotes.loading && !!infoNotes.data}
+      />
+      {view === "counts" ? (
+        <OutingCounts range={countsRange} onRange={setCountsRange} />
+      ) : (
+        <OutingInfo
+          range={infoRange}
+          onRange={(r) => {
+            setInfoRange(r);
+            setInfoPage(1);
+          }}
+          page={infoPage}
+          onPage={setInfoPage}
+          state={infoNotes}
+          onOpenCounts={(n) => {
+            setCountsRange({ from: n.from, to: n.to < today ? n.to : today });
+            go("counts");
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Counts: pass totals for the picked dates, day by day (a day opens its passes). */
+function OutingCounts({ range, onRange }: { range: DateRange; onRange: (r: DateRange) => void }) {
   const t = useT();
   const today = istDateString();
-  const [to, setTo] = useState(today);
-  const [from, setFrom] = useState(() => istDateString(new Date(Date.now() - 13 * 86_400_000)));
+  const { from, to } = range;
   const { data, error, loading, reload } = useLoader<any>("outing-summary", () => callGate("getHomeOutingSummary", [{ from, to }]), `${from}|${to}`, LIVE_GATE);
+  // Days with info get a chip (the notes are read here, added on Information)
+  const notesState = useLoader<any>("outing-notes", () => callGate("listOutingNotes", [{ from, to }]), `${from}|${to}`);
+  const notes: OutingNote[] = notesState.data?.notes ?? [];
+  const notesOn = (date: string) => notes.filter((n) => n.from <= date && n.to >= date);
   // 14 days per page (a range can be up to 62 days)
   const DAYS_PER_PAGE = 14;
   const [page, setPage] = useState(1);
@@ -1046,19 +1139,7 @@ export function HomeOutingSummaryView() {
     setPage(1);
   }
   const [day, setDay] = useState<string | null>(null);
-
-  // Information notes for one date or a set of dates
-  const notesState = useLoader<any>("outing-notes", () => callGate("listOutingNotes", [{ from, to }]), `${from}|${to}`);
-  const notes: OutingNote[] = notesState.data?.notes ?? [];
-  const notesOn = (date: string) => notes.filter((n) => n.from <= date && n.to >= date);
-  const [onlyWithInfo, setOnlyWithInfo] = useState(false);
-  const [addingNote, setAddingNote] = useState(false);
-  const [removeNote, setRemoveNote] = useState<OutingNote | null>(null);
-  const [removingNote, setRemovingNote] = useState(false);
-  const [noteError, setNoteError] = useState<string | null>(null);
-
-  const allDays: any[] = data?.days ?? [];
-  const days = onlyWithInfo ? allDays.filter((d) => notesOn(d.date).length > 0) : allDays;
+  const days: any[] = data?.days ?? [];
   const pageDays = days.slice((page - 1) * DAYS_PER_PAGE, page * DAYS_PER_PAGE);
 
   const cols = [
@@ -1070,45 +1151,34 @@ export function HomeOutingSummaryView() {
     ["facultyOut", "Faculty out"],
   ] as const;
 
-  const dateInputCls =
-    "h-12 sm:h-10 w-full sm:w-auto rounded-full border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 [color-scheme:light] outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10";
+  const quick: { label: string; r: DateRange }[] = [
+    { label: "Today", r: { from: today, to: today } },
+    { label: "Last 7 days", r: { from: dayShift(-6), to: today } },
+    { label: "This month", r: { from: today.slice(0, 8) + "01", to: today } },
+  ];
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
-        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500 sm:flex-row sm:items-center sm:gap-2 sm:text-sm min-w-0">
-          {t("From")}
-          <DateField value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} className={dateInputCls} />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-500 sm:flex-row sm:items-center sm:gap-2 sm:text-sm min-w-0">
-          {t("To")}
-          <DateField value={to} max={today} onChange={(e) => e.target.value && setTo(e.target.value)} className={dateInputCls} />
-        </label>
+      <div className="flex flex-wrap gap-2">
+        {quick.map((q) => {
+          const on = q.r.from === from && q.r.to === to;
+          return (
+            <button
+              key={q.label}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onRange(q.r)}
+              className={cn(
+                "inline-flex h-11 sm:h-10 items-center rounded-full border px-4 text-sm font-medium transition-colors",
+                on ? "border-orange-600 bg-orange-600 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+              )}
+            >
+              {t(q.label)}
+            </button>
+          );
+        })}
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setAddingNote(true)}
-          className="inline-flex h-11 sm:h-10 items-center gap-2 rounded-full bg-orange-600 px-4 text-sm font-semibold text-white transition-[background-color,transform] hover:bg-orange-700 active:scale-[0.98]"
-        >
-          <Plus className="h-4 w-4" /> {t("Add info")}
-        </button>
-        <button
-          type="button"
-          aria-pressed={onlyWithInfo}
-          onClick={() => {
-            setOnlyWithInfo((v) => !v);
-            setPage(1);
-          }}
-          className={cn(
-            "inline-flex h-11 sm:h-10 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors",
-            onlyWithInfo ? "border-orange-500/30 bg-orange-500/10 text-orange-400" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
-          )}
-        >
-          <Info className="h-4 w-4" /> {t("Only days with info")}
-          {notes.length > 0 && <span className="rounded-full bg-zinc-950 px-2 py-0.5 text-[11px] tabular-nums">{notes.length}</span>}
-        </button>
-      </div>
+      <RangeFields range={range} onChange={onRange} maxTo={today} />
       <p className="text-xs leading-relaxed text-zinc-500">
         {t("Totals are counted from approved passes (by pass date) and actual gate exits (by exit date). Total covers the whole selected range.")}
       </p>
@@ -1127,25 +1197,6 @@ export function HomeOutingSummaryView() {
         </div>
       )}
 
-      {notes.length > 0 && (
-        <div className="rounded-3xl border border-zinc-800/80 bg-zinc-900 px-4 py-4 sm:px-5 shadow-card">
-          <p className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
-            <Info className="h-4 w-4 text-orange-400" /> {t("Information")}
-            <span className="font-normal text-zinc-500 tabular-nums">({notes.length})</span>
-          </p>
-          <ul className="mt-3 space-y-2">
-            {notes.map((n) => (
-              <NoteItem key={n.id} note={n} onRemove={n.canDelete && !removingNote ? () => setRemoveNote(n) : undefined} />
-            ))}
-          </ul>
-          {noteError && <div className="mt-3"><p role="alert" className="flex items-start gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-          <span className="min-w-0 flex-1">{noteError}</span>
-          <button type="button" onClick={() => setNoteError(null)} className="shrink-0 px-2 text-xs font-semibold hover:underline">
-            OK
-          </button>
-        </p></div>}
-        </div>
-      )}
 
       <Shell loading={loading} error={error} onRetry={reload} empty={!!data && days.length === 0}>
         {/* Phones */}
@@ -1226,37 +1277,127 @@ export function HomeOutingSummaryView() {
         )}
       </Modal>
 
+    </div>
+  );
+}
+
+/** Information: every note, newest first, 20 per page (or only the chosen dates); a row opens the full note. */
+function OutingInfo({
+  range,
+  onRange,
+  page,
+  onPage,
+  state,
+  onOpenCounts,
+}: {
+  range: DateRange | null;
+  onRange: (r: DateRange | null) => void;
+  page: number;
+  onPage: (p: number) => void;
+  state: { data: any; error: string | null; loading: boolean; reload: () => void };
+  onOpenCounts: (n: OutingNote) => void;
+}) {
+  const t = useT();
+  const today = istDateString();
+  const notes: OutingNote[] = state.data?.notes ?? [];
+  const total: number = state.data?.total ?? 0;
+  const [addingNote, setAddingNote] = useState(false);
+  const [open, setOpen] = useState<OutingNote | null>(null);
+  const day = (d: string) => formatDay(`${d}T00:00:00+05:30`);
+  const dates = (n: OutingNote) => (n.from === n.to ? day(n.from) : `${day(n.from)} – ${day(n.to)}`);
+
+  return (
+    <div className="space-y-4">
+      <button
+        type="button"
+        onClick={() => setAddingNote(true)}
+        className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-orange-600 px-4 text-base font-semibold text-white shadow-card transition-[background-color,transform] hover:bg-orange-700 active:scale-[0.98]"
+      >
+        <Plus className="h-5 w-5" /> {t("Add info")}
+      </button>
+
+      {/* All dates, or only the chosen dates (up to today) */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          aria-pressed={!range}
+          onClick={() => onRange(null)}
+          className={cn(
+            "inline-flex h-11 sm:h-10 items-center rounded-full border px-4 text-sm font-medium transition-colors",
+            !range ? "border-orange-600 bg-orange-600 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+          )}
+        >
+          {t("All dates")}
+        </button>
+        <button
+          type="button"
+          aria-pressed={!!range}
+          onClick={() => !range && onRange({ from: dayShift(-6), to: today })}
+          className={cn(
+            "inline-flex h-11 sm:h-10 items-center rounded-full border px-4 text-sm font-medium transition-colors",
+            range ? "border-orange-600 bg-orange-600 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+          )}
+        >
+          {t("Pick dates")}
+        </button>
+      </div>
+      {range && <RangeFields range={range} onChange={onRange} maxTo={today} />}
+
+      <Shell loading={state.loading} error={state.error} onRetry={state.reload} empty={!!state.data && notes.length === 0}>
+        {notes.length > 0 && (
+          <ul className={dt.mobileList}>
+            {notes.map((n) => (
+              <li key={n.id}>
+                <button type="button" onClick={() => setOpen(n)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-zinc-950/70 active:bg-zinc-950">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-semibold text-orange-500 tabular-nums">{dates(n)}</span>
+                    <span className="mt-0.5 block truncate text-base text-zinc-100">{n.note}</span>
+                  </span>
+                  <ChevronRight className="h-5 w-5 shrink-0 text-zinc-600" aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Shell>
+      {state.data && <PagerBar page={page} pageSize={state.data.pageSize ?? 20} total={total} onPageChange={onPage} itemLabel={t("notes")} />}
+
+      {/* The full note */}
+      <Modal open={!!open} onClose={() => setOpen(null)} title={t("Information")} className="max-w-lg">
+        {open && (
+          <div className="space-y-4">
+            <p className="text-sm font-semibold text-orange-500 tabular-nums">{dates(open)}</p>
+            <p className="whitespace-pre-wrap break-words text-base text-zinc-100">{open.note}</p>
+            <p className="text-xs text-zinc-500">
+              {open.by} · {formatInstant(open.createdAt)}
+            </p>
+            {open.from <= today && (
+              <button
+                type="button"
+                onClick={() => {
+                  const n = open;
+                  setOpen(null);
+                  onOpenCounts(n);
+                }}
+                className="flex h-12 w-full items-center justify-center gap-1 rounded-2xl border border-orange-500/30 bg-zinc-900 text-sm font-semibold text-orange-500 transition-colors hover:bg-orange-500/10"
+              >
+                {t("See counts")} <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        )}
+      </Modal>
+
       <Modal open={addingNote} onClose={() => setAddingNote(false)} title={t("Add info")} className="max-w-lg">
         {addingNote && (
           <AddNoteForm
             onSaved={() => {
               setAddingNote(false);
-              notesState.reload();
+              state.reload();
             }}
           />
         )}
       </Modal>
-
-      <ConfirmDialog
-        open={!!removeNote}
-        onClose={() => setRemoveNote(null)}
-        title={t("Remove this info?")}
-        description={removeNote?.note ?? ""}
-        confirmText={t("Remove")}
-        cancelText={t("Go Back")}
-        variant="danger"
-        onConfirm={async () => {
-          const n = removeNote;
-          setRemoveNote(null);
-          if (!n || removingNote) return;
-          setRemovingNote(true);
-          setNoteError(null);
-          const res: any = await deleteOutingNote(n.id).catch(() => ({ error: "Could not save. Please try again." }));
-          setRemovingNote(false);
-          if (res?.error) setNoteError(t(res.error));
-          notesState.reload();
-        }}
-      />
     </div>
   );
 }
@@ -1274,8 +1415,7 @@ function InfoChip() {
 const infoChip = <InfoChip />;
 
 /** One information note: its dates, the text and who wrote it. */
-function NoteItem({ note, onRemove }: { note: OutingNote; onRemove?: () => void }) {
-  const t = useT();
+function NoteItem({ note }: { note: OutingNote }) {
   const day = (d: string) => formatDay(`${d}T00:00:00+05:30`);
   return (
     <li className="flex items-start gap-3 rounded-2xl border border-orange-500/15 bg-orange-500/5 px-4 py-3">
@@ -1288,16 +1428,6 @@ function NoteItem({ note, onRemove }: { note: OutingNote; onRemove?: () => void 
           {note.by} · {formatInstant(note.createdAt)}
         </p>
       </div>
-      {onRemove && (
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label={t("Remove")}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      )}
     </li>
   );
 }

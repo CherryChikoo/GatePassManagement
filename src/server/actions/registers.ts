@@ -236,10 +236,10 @@ export async function createRegisterEntry(registerKey: string, payload: RawPaylo
  */
 export async function completeRegisterEntry(entryId: string, payload: CompletionPayload, clientToken: string) {
   const user = await requireRole("SECURITY", "ADMIN");
-  const access = await getRegisterAccess(user);
   if (typeof entryId !== "string" || !entryId) return { error: "Record not found" };
   if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
-  const canOverride = await canOverrideVisitExit(user);
+  // Both answers kept in memory for a minute; looked up together when not
+  const [access, canOverride] = await Promise.all([getRegisterAccess(user), canOverrideVisitExit(user)]);
   let metHost: string | null = null;
 
   try {
@@ -892,6 +892,52 @@ export async function listOutingNotes(params: { from?: string; to?: string }) {
   };
 }
 
+const NOTES_PAGE_SIZE = 20;
+
+/**
+ * Information notes, newest first, one page (20) at a time: all of them, or
+ * only those touching the chosen dates (from / to). Small reads on the free plan.
+ */
+export async function listOutingNotesPage(params: { from?: string; to?: string; page?: number }) {
+  await requireRole(...VIEW_ROLES);
+  const from = parseDateParam(params?.from);
+  const to = parseDateParam(params?.to);
+  const page = Math.max(1, Math.min(10_000, Math.floor(Number(params?.page) || 1)));
+  const where: Prisma.RegisterEntryWhereInput = { register: OUTING_NOTE_KEY, kind: "ORIGINAL" };
+  if (from && to) {
+    // Starts on or before "to", ends on or after "from" (dates are YYYY-MM-DD, so text order is date order)
+    where.entryDate = { lt: new Date(istDateToInstant(to).getTime() + 86_400_000) };
+    where.data = { path: ["to"], gte: from };
+  }
+  const [rows, total] = await Promise.all([
+    prisma.registerEntry.findMany({
+      where,
+      orderBy: [{ entryDate: "desc" }, { createdAt: "desc" }],
+      skip: (page - 1) * NOTES_PAGE_SIZE,
+      take: NOTES_PAGE_SIZE,
+      select: { id: true, data: true, recordedByName: true, recordedByEmployeeId: true, recordedAtGate: true, createdAt: true },
+    }),
+    prisma.registerEntry.count({ where }),
+  ]);
+  return {
+    success: true,
+    total,
+    pageSize: NOTES_PAGE_SIZE,
+    notes: rows.map((r) => {
+      const d = (r.data ?? {}) as { from?: string; to?: string; note?: string };
+      return {
+        id: r.id,
+        from: d.from ?? "",
+        to: d.to ?? d.from ?? "",
+        note: d.note ?? "",
+        by: [r.recordedByName, r.recordedByEmployeeId, r.recordedAtGate].filter(Boolean).join(" • "),
+        createdAt: r.createdAt.toISOString(),
+        canDelete: false,
+      };
+    }),
+  };
+}
+
 /** The writer, or the Main Admin, can remove a note. */
 export async function deleteOutingNote(id: string) {
   const user = await requireRole("SECURITY", "ADMIN");
@@ -1317,81 +1363,67 @@ export async function getMovementDetails(movementId: string) {
 }
 
 // ──────────────────────────────────────────────────────────────
-// Car Book / Auto Book: choices for Driver, Car / Auto and Faculty using
+// Car Book / Auto Book: suggestions learned from the book own entries
 // ──────────────────────────────────────────────────────────────
 
 export type VehicleOptions = {
   drivers: { name: string; phone: string | null }[];
   vehicles: { name: string; number: string }[];
-  /** Faculty / staff names ("Name (employee ID)"); Car Book only */
+  /** Purposes typed before (Auto Book) */
+  purposes: string[];
+  /** Not used any more (kept so older callers still type-check) */
   people: string[];
 };
 
-const VEHICLE_BOOKS: Record<string, { type: "Car" | "Auto"; numberKey: string }> = {
-  CAR_BOOK: { type: "Car", numberKey: "vehicleNumber" },
-  AUTO_IN_OUT: { type: "Auto", numberKey: "autoNumber" },
+const VEHICLE_BOOKS: Record<string, { numberKey: string }> = {
+  CAR_BOOK: { numberKey: "vehicleNumber" },
+  AUTO_IN_OUT: { numberKey: "autoNumber" },
 };
 const VEHICLE_OPTION_CAP = 100;
 const VEHICLE_LEARN_DAYS = 90;
 
 /**
- * One request when a Car Book / Auto Book form opens: drivers and vehicles
- * registered for this book (VEHICLE_FLEET), then the ones seen in the book's
- * own entries of the last ~90 days (distinct, newest first, about 100 each),
- * plus faculty names for the Car Book's "Faculty using". Read only.
+ * One request when a Car Book / Auto Book form opens: the distinct car names +
+ * numbers, driver names and purposes typed in the book's own entries of the
+ * last ~90 days (newest first, about 100 each). Read only; nothing to register.
  */
 export async function getVehicleOptions(registerKey: string): Promise<VehicleOptions | { error: string }> {
   await requireRole("SECURITY", "ADMIN", "SECURITY_SUPERVISOR");
   const book = VEHICLE_BOOKS[registerKey];
   if (!book) return { error: "Unknown register" };
   const since = new Date(Date.now() - VEHICLE_LEARN_DAYS * 86_400_000);
-  const [fleet, learned, people] = await Promise.all([
-    prisma.registerEntry.findMany({
-      where: { register: "VEHICLE_FLEET", kind: "ORIGINAL" },
-      orderBy: { createdAt: "desc" },
-      select: { data: true },
-      take: 400,
-    }),
-    prisma.registerEntry.findMany({
-      where: { register: registerKey, kind: "ORIGINAL", createdAt: { gte: since } },
-      orderBy: { createdAt: "desc" },
-      select: { data: true },
-      take: 600,
-    }),
-    registerKey === "CAR_BOOK" ? getRegisterPeopleOptions() : Promise.resolve([]),
-  ]);
+  const learned = await prisma.registerEntry.findMany({
+    where: { register: registerKey, kind: "ORIGINAL", createdAt: { gte: since } },
+    orderBy: { createdAt: "desc" },
+    select: { data: true },
+    take: 600,
+  });
 
   const text = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 200) : "");
   const drivers = new Map<string, { name: string; phone: string | null }>();
   const vehicles = new Map<string, { name: string; number: string }>();
-  const addDriver = (name: string, phone: string) => {
-    const k = name.toLowerCase().replace(/\s+/g, " ");
-    if (!k) return;
-    const have = drivers.get(k);
-    if (!have) drivers.set(k, { name, phone: phone || null });
-    else if (!have.phone && phone) have.phone = phone;
-  };
-  const addVehicle = (name: string, number: string) => {
-    const k = (number || name).toUpperCase().replace(/\s+/g, "");
-    if (!k) return;
-    const have = vehicles.get(k);
-    if (!have) vehicles.set(k, { name, number });
-    else if (!have.name && name) have.name = name;
-  };
-  for (const row of fleet) {
-    const d = (row.data ?? {}) as Record<string, unknown>;
-    if (d.vehicleType !== undefined && d.vehicleType !== null && d.vehicleType !== book.type) continue;
-    addDriver(text(d.driverName), text(d.driverPhone));
-    addVehicle(text(d.vehicleName), text(d.vehicleNumber));
-  }
+  const purposes = new Map<string, string>();
+  const squash = (v: string) => v.toLowerCase().replace(/s+/g, " ");
   for (const row of learned) {
     const d = (row.data ?? {}) as Record<string, unknown>;
-    addDriver(text(d.driverName), "");
-    addVehicle(text(d.vehicleName), text(d[book.numberKey]));
+    const driver = text(d.driverName);
+    if (driver && !drivers.has(squash(driver))) drivers.set(squash(driver), { name: driver, phone: null });
+    const purpose = text(d.purpose);
+    if (registerKey === "AUTO_IN_OUT" && purpose && !purposes.has(squash(purpose))) purposes.set(squash(purpose), purpose);
+    if (registerKey === "CAR_BOOK") {
+      const name = text(d.vehicleName);
+      const number = text(d[book.numberKey]);
+      const k = (number || name).toUpperCase().replace(/s+/g, "");
+      if (!k) continue;
+      const have = vehicles.get(k);
+      if (!have) vehicles.set(k, { name, number });
+      else if (!have.name && name) have.name = name;
+    }
   }
   return {
-    drivers: [...drivers.values()].slice(0, VEHICLE_OPTION_CAP),
+    drivers: registerKey === "AUTO_IN_OUT" ? [...drivers.values()].slice(0, VEHICLE_OPTION_CAP) : [],
     vehicles: [...vehicles.values()].slice(0, VEHICLE_OPTION_CAP),
-    people: people.map((p) => (p.employeeId ? `${p.name} (${p.employeeId})` : p.name)),
+    purposes: [...purposes.values()].slice(0, VEHICLE_OPTION_CAP),
+    people: [],
   };
 }

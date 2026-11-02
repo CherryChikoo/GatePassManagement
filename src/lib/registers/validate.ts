@@ -251,6 +251,8 @@ export async function validateNewRecord(
     data[g.key] = rows;
     details += rows.length;
   }
+  // Siros Venture labour: the coolie count is the coolies added (never typed)
+  if (isSirosLabour(def.key)) data.totalWorkers = Array.isArray(data.workers) ? (data.workers as unknown[]).length : 0;
 
   if (details === 0) return { error: "Enter at least one detail" };
   for (const anyOf of def.requiredAny ?? []) {
@@ -302,6 +304,12 @@ export async function validateCompletion(
     const side = pending.next;
     data[side.timeKey] = time;
     provided++;
+    // Siros Venture labour: Out is for everyone at once (the contractor and every coolie still in)
+    if (side.direction === "OUT" && isSirosLabour(def.key)) {
+      for (const { group, field, open } of pending.groups) {
+        if (field && open.length) data[group.key] = open.map((index) => ({ index, [field.key]: time }));
+      }
+    }
     if (side.readingKey && !isBlank(payload.reading)) {
       // Readings are free text (e.g. "12,450 km", "Full tank"); compared only when both are plain numbers
       const text = String(payload.reading).trim();

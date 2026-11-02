@@ -11,11 +11,12 @@ import type { VoiceFill } from "@/lib/voice/spec";
 import { CalendarDays, Camera, CheckCircle2, FileX, ChevronDown, Clock, History, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
 import { DepartmentSelect } from "@/components/ui/department-select";
+import { CooliePicker, SirosNewPeople, contractorItems, useSirosPeople } from "./siros-people";
 import { ComboInput, useVehicleOptions, type ComboItem } from "./combo-input";
 import { compressPhoto } from "@/lib/images/compress-photo";
 import type { Direction, EntryRegister, FieldDef, GroupDef } from "@/lib/registers/definitions";
 import { isFieldRequired, pendingActions, yesNoWords } from "@/lib/registers/definitions";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { displayValue } from "./localize";
 
 export type StaffOption = { id: string; name: string; employeeId: string | null };
@@ -37,6 +38,27 @@ function readDraft(registerKey: string): Draft | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Save started (the form closes / clears at once): take the kept copy out, so a
+ * new form doesn't show these details again. Put it back with restoreRegisterDraft
+ * if the save fails, and the reopened form shows everything that was typed.
+ */
+export function takeRegisterDraft(registerKey: string): string | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_PREFIX + registerKey);
+    sessionStorage.removeItem(DRAFT_PREFIX + registerKey);
+    return raw;
+  } catch {
+    return null;
+  }
+}
+export function restoreRegisterDraft(registerKey: string, raw: string | null) {
+  if (!raw) return;
+  try {
+    sessionStorage.setItem(DRAFT_PREFIX + registerKey, raw);
+  } catch {}
 }
 
 /** The record was saved: its kept copy is no longer needed */
@@ -79,10 +101,10 @@ export const inputCls =
 
 export type PersonOption = { name: string; employeeId: string | null; designation: string | null; department: string | null };
 
-// Faculty / staff list: fetched once and shared by every picker for 5 minutes
+// Faculty / staff list: shared by every picker; fetched again when over 30 s old
 let peopleCache: { at: number; list: Promise<PersonOption[]> } | null = null;
 function loadPeople(): Promise<PersonOption[]> {
-  if (!peopleCache || Date.now() - peopleCache.at > 5 * 60_000) {
+  if (!peopleCache || Date.now() - peopleCache.at > 30_000) {
     peopleCache = {
       at: Date.now(),
       list: callGate("getRegisterPeopleOptions", [], 15_000).catch(() => {
@@ -116,6 +138,13 @@ function PersonInput({
   const t = useT();
   const [people, setPeople] = useState<PersonOption[] | null>(null);
   const [open, setOpen] = useState(false);
+  // The list opens downwards: scroll just enough that all of it shows above the sticky Save bar
+  const listRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => listRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
   useEffect(() => {
     let alive = true;
     loadPeople().then((list) => alive && setPeople(list));
@@ -190,7 +219,7 @@ function PersonInput({
         </button>
       </div>
       {open && (
-        <ul id={`${id}-list`} role="listbox" className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-1 shadow-card">
+        <ul ref={listRef} id={`${id}-list`} role="listbox" className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-1 shadow-card">
           {people === null ? (
             <li className="flex items-center gap-2 px-3 py-2.5 text-sm text-zinc-500">
               <Loader2 className="h-4 w-4 animate-spin" /> {t("Loading…")}
@@ -378,7 +407,10 @@ function splitFields(def: EntryRegister, direction: Direction | null): { primary
   }
   const anyOf = new Set((def.requiredAny ?? []).flat());
   const flagKey = def.requiredUnless?.flag;
-  let primary = all.filter((f) => def.required.includes(f.key) || anyOf.has(f.key) || topPhotos.has(f.key) || f.key === flagKey);
+  // Car Book / Auto Book: the few shown fields are all up front
+  let primary = def.highlightRequired
+    ? all
+    : all.filter((f) => def.required.includes(f.key) || f.upFront || anyOf.has(f.key) || topPhotos.has(f.key) || f.key === flagKey);
   // Nothing required: show the first few so the form is not just a toggle
   if (primary.length === 0) primary = all.slice(0, 3);
   const keys = new Set(primary.map((f) => f.key));
@@ -541,7 +573,30 @@ function FieldInput({
   }
   switch (f.type) {
     case "person":
-      return <PersonInput id={id} value={value ?? ""} onChange={onChange} onPick={onPickPerson} required={required} />;
+      return (
+        <div className="space-y-2">
+          {/* Remounted on a one-tap answer, so the search box shows it */}
+          <PersonInput key={f.quickValues?.includes(value ?? "") ? `q-${value}` : "typed"} id={id} value={value ?? ""} onChange={onChange} onPick={onPickPerson} required={required} />
+          {f.quickValues?.length ? (
+            <div className="flex flex-wrap gap-2">
+              {f.quickValues.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  aria-pressed={value === q}
+                  onClick={() => onChange(value === q ? "" : q)}
+                  className={cn(
+                    "inline-flex h-10 items-center rounded-full border px-4 text-sm font-semibold transition-colors",
+                    value === q ? "border-orange-500 bg-orange-500/10 text-orange-600" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+                  )}
+                >
+                  {t(q)}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      );
     case "department":
       return <DepartmentSelect id={id} value={value ?? ""} onChange={onChange} required={required} allowOther />;
     case "photo":
@@ -635,6 +690,7 @@ function FieldBlock({
   required = false,
   voice = false,
   missing = false,
+  highlight = false,
   children,
 }: {
   f: FieldDef;
@@ -644,6 +700,8 @@ function FieldBlock({
   voice?: boolean;
   /** Required, but not heard in what the guard said */
   missing?: boolean;
+  /** Required field of a register with highlightRequired: tinted box */
+  highlight?: boolean;
   children: React.ReactNode;
 }) {
   const t = useT();
@@ -664,7 +722,17 @@ function FieldBlock({
         )}
         {missing && <span className="ml-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-500">{t("Not heard — fill in")}</span>}
       </label>
-      <div className={voice ? "rounded-2xl ring-2 ring-amber-400/60" : missing ? "rounded-2xl ring-2 ring-red-400/60" : undefined}>{children}</div>
+      <div
+        className={
+          voice
+            ? "rounded-2xl ring-2 ring-amber-400/60"
+            : missing
+            ? "rounded-2xl ring-2 ring-red-400/60"
+            : highlight && required
+            ? "[&_input]:border-orange-400/40 [&_input]:bg-white"
+            : undefined
+        }
+      >{children}</div>
       {f.hint && <p className="text-[11px] leading-snug text-zinc-500">{f.hint}</p>}
     </div>
   );
@@ -689,7 +757,8 @@ function DirectionPicker({
     return (
       <fieldset>
         <legend className="sr-only">{t("In or Out")}</legend>
-        <div className={`grid gap-1 rounded-xl border border-zinc-800 bg-zinc-950 p-0.5 ${choices.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+        {/* Two separate buttons (not one merged bar) */}
+        <div className={`grid gap-3 ${choices.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
           {choices.map((d) => {
             const side = d === "IN" ? m.in : m.out;
             const active = value === d;
@@ -700,12 +769,12 @@ function DirectionPicker({
                 type="button"
                 onClick={() => onChange(d)}
                 aria-pressed={active}
-                className={`flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-semibold leading-tight transition-colors ${
+                className={`flex min-h-12 items-center justify-center gap-1.5 rounded-2xl border px-3 text-base font-semibold leading-tight shadow-card transition-[background-color,border-color,color,transform] active:scale-[0.98] ${
                   active
                     ? d === "IN"
-                      ? "bg-emerald-500/15 text-emerald-500 ring-1 ring-emerald-500/60"
-                      : "bg-sky-500/15 text-sky-500 ring-1 ring-sky-500/60"
-                    : "text-zinc-400 hover:text-zinc-200"
+                      ? "border-emerald-500/70 bg-emerald-500/15 text-emerald-600"
+                      : "border-sky-500/70 bg-sky-500/15 text-sky-600"
+                    : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
                 }`}
               >
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -779,13 +848,30 @@ export function RegisterForm({
   const [lastDirection] = useState(() => (m && m.firstDirections.length > 1 ? readLastDirection(def.key) : null));
   const startDirection: Direction | null = lastDirection ?? defaultDirection;
   // Car Book / Auto Book: drivers, cars and faculty behind the "Select" buttons (one request, kept for the session)
-  const vehicleOpts = useVehicleOptions(def.key, def.fields.some((f) => !!f.combo));
+  const vehicleOpts = useVehicleOptions(def.key, def.fields.some((f) => !!f.combo && f.combo !== "sirosContractor"));
+  // Siros Venture labour: registered coolies and contractors (picked by name or number)
+  const sirosBook = !!def.groups?.some((g) => g.picker === "sirosCoolie");
+  const sirosPeople = useSirosPeople(sirosBook);
   const comboFor = (f: FieldDef) => {
     if (!f.combo) return undefined;
+    if (f.combo === "sirosContractor") {
+      return {
+        items: contractorItems(sirosPeople),
+        loading: sirosPeople === null,
+        // Picking a contractor fills their phone too (still editable)
+        onPick: (item: ComboItem) => setValues((v) => ({ ...v, ...(item.extra ? { phone: item.extra } : {}) })),
+      };
+    }
     const o = vehicleOpts;
     const items: ComboItem[] =
       f.combo === "driver"
         ? (o?.drivers ?? []).map((d) => ({ fill: d.name, sub: d.phone ?? undefined }))
+        : f.combo === "purpose"
+        ? (o?.purposes ?? []).map((p) => ({ fill: p }))
+        : f.combo === "carName"
+        ? (o?.vehicles ?? [])
+            .filter((v) => v.name)
+            .map((v) => ({ fill: v.name, label: v.number ? `${v.name} · ${v.number}` : v.name, extra: v.number }))
         : f.combo === "vehicle"
         ? (o?.vehicles ?? []).map((v) => ({
             fill: v.number || v.name,
@@ -797,7 +883,7 @@ export function RegisterForm({
       items,
       loading: o === null,
       // Picking a car / auto fills its name too; typing over it forgets the name
-      onPick: f.comboFills ? (item: ComboItem) => setValues((s) => ({ ...s, [f.comboFills!]: item.extra ?? "" })) : undefined,
+      onPick: f.comboFills ? (item: ComboItem) => setValues((s) => ({ ...s, ...(item.extra ? { [f.comboFills!]: item.extra } : {}) })) : undefined,
     };
   };
   // "Meeting (faculty / staff)" (registers with def.visitHost): that person gets a meeting code
@@ -810,7 +896,8 @@ export function RegisterForm({
   // What each box got from the last picked person (so a new pick can replace it)
   const autoFilled = useRef<Record<string, string>>({});
   const fillTargets = new Set(def.fields.flatMap((f) => (f.fills ? Object.values(f.fills) : [])) as string[]);
-  const emptyRows = () => Object.fromEntries((def.groups ?? []).map((g) => [g.key, [emptyRow(g)]])) as Record<string, Values[]>;
+  // Picked lists (Siros coolies) start empty; typed lists start with one blank row
+  const emptyRows = () => Object.fromEntries((def.groups ?? []).map((g) => [g.key, g.picker ? [] : [emptyRow(g)]])) as Record<string, Values[]>;
   const [values, setValues] = useState<Values>(draft?.values ?? {});
   const [rows, setRows] = useState<Record<string, Values[]>>(() => draft?.rows ?? emptyRows());
   const [localError, setLocalError] = useState<string | null>(null);
@@ -958,6 +1045,7 @@ export function RegisterForm({
       id={`rf-${f.key}`}
       required={isFieldRequired(def, f.key, values)}
       voice={voiceKeys.includes(f.key)}
+      highlight={!!def.highlightRequired}
       missing={voiceDone && isFieldRequired(def, f.key, values) && String(values[f.key] ?? "").trim() === ""}
     >
       <FieldInput
@@ -969,7 +1057,7 @@ export function RegisterForm({
         value={values[f.key] ?? ""}
         combo={comboFor(f)}
         onChange={(v) => {
-          setValues((s) => ({ ...s, [f.key]: v, ...(f.comboFills ? { [f.comboFills]: "" } : {}) }));
+          setValues((s) => ({ ...s, [f.key]: v }));
           // The guard checked / changed it: no longer marked as voice
           if (voiceKeys.includes(f.key)) setVoiceKeys((ks) => ks.filter((k) => k !== f.key));
         }}
@@ -998,9 +1086,6 @@ export function RegisterForm({
             : undefined
         }
       />
-      {f.comboFills && String(values[f.comboFills] ?? "").trim() !== "" && (
-        <p className="mt-1.5 text-xs font-medium text-zinc-400">{String(values[f.comboFills])}</p>
-      )}
     </FieldBlock>
   );
 
@@ -1071,6 +1156,7 @@ export function RegisterForm({
 
   return (
     <form
+      autoComplete="off"
       onSubmit={(e) => {
         e.preventDefault();
         if (m && !direction) {
@@ -1220,6 +1306,9 @@ export function RegisterForm({
       )}
 
       {(def.groups ?? []).map((g) => {
+        if (g.picker === "sirosCoolie") {
+          return <CooliePicker key={g.key} rows={rows[g.key] ?? []} onChange={(list) => setRows((st) => ({ ...st, [g.key]: list }))} people={sirosPeople} />;
+        }
         const list = rows[g.key] ?? [];
         const atMax = g.max !== null && list.length >= g.max;
         const typed = g.fields.filter((f) => f.type !== "time");
@@ -1285,6 +1374,20 @@ export function RegisterForm({
         );
       })}
 
+      {sirosBook && (
+        <SirosNewPeople
+          renderPhoto={(v, onPhoto) => <PhotoInput id="rf-siros-new-photo" value={v} onChange={onPhoto} registerKey={def.key} label={t("Photo")} required />}
+          onRegistered={(p) =>
+            p.kind === "CONTRACTOR"
+              ? setValues((v) => ({ ...v, contractorName: p.name, ...(p.phone ? { phone: p.phone } : {}) }))
+              : setRows((st) => ({
+                  ...st,
+                  workers: [...(st.workers ?? []).filter((x) => String(x.name ?? "").trim() !== ""), { no: String(p.no), name: p.name, gender: p.gender ?? "" }],
+                }))
+          }
+        />
+      )}
+
       <div className={stickyFooterCls}>
         {localError && (
           <p role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-400">
@@ -1339,6 +1442,7 @@ export function MovementForm({
 
   return (
     <form
+      autoComplete="off"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit({ markMovement: mark && !!next, reading, groupMarks: marks, ...(needsCode ? visitInput : {}) });
@@ -1439,6 +1543,7 @@ export function CloseRecordForm({
   if (!next) return <p className="text-sm text-zinc-500">{t("This record is already complete.")}</p>;
   return (
     <form
+      autoComplete="off"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit({ close: true, note });
@@ -1517,6 +1622,7 @@ export function AdminEditForm({
 
   return (
     <form
+      autoComplete="off"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit({ fields: values, groups: rows, direction: direction ?? undefined });

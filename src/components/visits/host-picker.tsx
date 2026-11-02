@@ -12,10 +12,10 @@ import { useT } from "@/components/providers/language-provider";
 import type { VisitHostOption } from "@/server/actions/visits";
 import { callGate } from "@/lib/gate-call";
 
-// Fetched once and shared by every picker for 5 minutes
+// Shared by every picker; fetched again when over 30 s old (staff added elsewhere show up)
 let hostsCache: { at: number; list: Promise<VisitHostOption[]> } | null = null;
 function loadHosts(): Promise<VisitHostOption[]> {
-  if (!hostsCache || Date.now() - hostsCache.at > 5 * 60_000) {
+  if (!hostsCache || Date.now() - hostsCache.at > 30_000) {
     hostsCache = {
       at: Date.now(),
       list: callGate("getVisitHostOptions", [], 15_000).catch(() => {

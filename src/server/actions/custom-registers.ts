@@ -6,6 +6,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { getAuthUser, type AuthUser } from "@/lib/auth/helpers";
 import { REGISTERS } from "@/lib/registers/definitions";
+import { forgetCustomRegisters } from "@/lib/registers/catalog";
 import {
   BUILDER_FIELD_TYPES,
   CUSTOM_KEY_PREFIX,
@@ -96,6 +97,7 @@ async function requireBuilder(): Promise<AuthUser> {
 }
 
 function revalidateRegisterPages() {
+  forgetCustomRegisters();
   revalidatePath("/security");
   revalidatePath("/admin/registers");
   revalidatePath("/supervisor/registers");

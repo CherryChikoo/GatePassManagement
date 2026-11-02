@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/primitives";
 import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
@@ -9,7 +9,7 @@ import { REGISTER_BY_KEY, isEntryRegister, type EntryRegister, type RegisterDef,
 import { callGate } from "@/lib/gate-call";
 import { invalidateEntryLists } from "./entry-list-cache";
 import type { createRegisterEntry } from "@/server/actions/registers";
-import { RegisterForm, clearRegisterDraft, type StaffOption } from "./register-form";
+import { RegisterForm, restoreRegisterDraft, takeRegisterDraft, type StaffOption } from "./register-form";
 import { newClientToken } from "./format";
 import { localizeRegister } from "./localize";
 
@@ -46,7 +46,9 @@ export function QuickEntryModal({
   // A fresh token per entry: a retried save of the same entry is stored once
   const [token, setToken] = useState(newClientToken);
   const [formKey, setFormKey] = useState(0);
-  const [busy, setBusy] = useState(false);
+  // Saves still running (the form is already blank for the next person)
+  const [saving, setSaving] = useState(0);
+  const busy = saving > 0;
   const [error, setError] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState(0);
   // Lists just saved (e.g. coolies), to show to the person concerned
@@ -57,29 +59,36 @@ export function QuickEntryModal({
 
   if (!def) return null;
 
+
   async function submit(payload: Parameters<typeof createRegisterEntry>[1]) {
     if (!def) return;
-    setBusy(true);
+    const tok = token;
+    // Blank form for the next person at once; the typed copy is put back if the save fails
+    const kept = takeRegisterDraft(def.key);
     setError(null);
+    setToken(newClientToken());
+    setFormKey((k) => k + 1);
+    setSaving((n) => n + 1);
+    let res: any;
     try {
-      const res: any = await callGate("createRegisterEntry", [def.key, payload, token]);
-      if (res?.error) {
-        setError(res.error);
-      } else {
-        clearRegisterDraft(def.key);
-        setSavedCount((n) => n + 1);
-        setLastGroups((payload as any)?.groups ?? null);
-        setSavedAt(new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" }));
-        setToken(newClientToken());
-        setFormKey((k) => k + 1); // blank form for the next person
-        // Opening this register next shows the new record (not a cached list)
-        invalidateEntryLists(def.key);
-        onSaved?.();
-      }
+      res = await callGate("createRegisterEntry", [def.key, payload, tok]);
     } catch (err) {
-      setError(actionErrorMessage(err, t("Could not save. Please try again.")));
+      res = { error: actionErrorMessage(err, t("Could not save. Please try again.")), keepToken: true };
     }
-    setBusy(false);
+    setSaving((n) => n - 1);
+    if (res?.error) {
+      setError(res.error);
+      restoreRegisterDraft(def.key, kept);
+      if (res.keepToken) setToken(tok); // a retry of the same entry is stored once
+      setFormKey((k) => k + 1); // the form shows what was typed again
+    } else {
+      setSavedCount((n) => n + 1);
+      setLastGroups((payload as any)?.groups ?? null);
+      setSavedAt(new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" }));
+      // Opening this register next shows the new record (not a cached list)
+      invalidateEntryLists(def.key);
+      onSaved?.();
+    }
     setResultNo((n) => n + 1);
   }
 
@@ -131,7 +140,13 @@ export function QuickEntryModal({
             {error}
           </div>
         )}
-        <RegisterForm key={formKey} def={def} staff={staff} busy={busy} onSubmit={submit} />
+        {saving > 0 && (
+          <p role="status" className="flex items-center gap-2 text-sm font-medium text-zinc-500">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> {t("Saving…")}
+          </p>
+        )}
+        {/* The blank form is ready for the next person while the last one saves */}
+        <RegisterForm key={formKey} def={def} staff={staff} busy={false} onSubmit={submit} />
         <button
           type="button"
           onClick={onClose}

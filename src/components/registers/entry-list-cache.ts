@@ -24,7 +24,7 @@ const MAX_KEYS = 40;
 /** Older lists are not shown at all (a fresh load is waited for instead) */
 const MAX_SHOW_AGE_MS = 10 * 60_000;
 /** Loaded while live updates were on: trusted this long unless the register changes */
-const MAX_TRUSTED_AGE_MS = 5 * 60_000;
+const MAX_TRUSTED_AGE_MS = 60_000;
 /** Without live updates: fetched again when older than this */
 const MAX_UNTRUSTED_AGE_MS = 15_000;
 const REQUEST_TIMEOUT_MS = 15_000;

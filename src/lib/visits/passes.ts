@@ -14,6 +14,7 @@ import { randomInt, timingSafeEqual } from "crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import type { AuthUser } from "@/lib/auth/helpers";
+import { getRegisterAccess } from "@/lib/registers/access";
 import { notifyTopic } from "@/lib/realtime/notify";
 import { personalTopic } from "@/lib/realtime/topics";
 
@@ -39,8 +40,8 @@ export async function resolveHost(profileId: unknown, db: Db = prisma) {
 export async function canOverrideVisitExit(user: AuthUser): Promise<boolean> {
   if (user.role === "ADMIN") return true;
   if (user.role !== "SECURITY") return false;
-  const staff = await prisma.securityStaff.findUnique({ where: { profileId: user.profileId }, select: { isHead: true } });
-  return !!staff?.isHead;
+  // Head Security is kept for a minute (lib/registers/access.ts): no database wait on most taps
+  return (await getRegisterAccess(user)).isHeadSecurity;
 }
 
 type OpenPass = { id: string; code: string; status: string; attempts: number; hostName: string };

@@ -27,7 +27,7 @@ export type InsideEntries = {
 type Hit = { data: InsideEntries; at: number };
 
 /** Loaded while live updates were on: trusted this long unless the register changes */
-const MAX_TRUSTED_AGE_MS = 5 * 60_000;
+const MAX_TRUSTED_AGE_MS = 60_000;
 /** Without live updates: asked for again when older than this */
 const MAX_UNTRUSTED_AGE_MS = 15_000;
 const MAX_KEYS = 20;
@@ -82,6 +82,12 @@ export function fetchInsideEntries(def: EntryRegister, useCache: boolean, page =
     .finally(() => inFlight.delete(key));
   inFlight.set(key, req);
   return req;
+}
+
+/** A kept page to show at once while the fresh one loads (up to 30 minutes old). */
+export function peekInsideEntries(register: string, page = 1): InsideEntries | null {
+  const hit = cache.get(keyOf(register, page));
+  return hit && Date.now() - hit.at < 30 * 60_000 ? hit.data : null;
 }
 
 /** Forget a register's kept pages (it was just changed on this phone). */

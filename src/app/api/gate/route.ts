@@ -19,6 +19,7 @@ import {
   getHomeOutingSummary,
   getHomeOutingDay,
   listOutingNotes,
+  listOutingNotesPage,
   getMovementDetails,
   getVisitorDetails,
   getPassGatePhotos,
@@ -34,6 +35,8 @@ import { getHodActivity } from "@/server/actions/hod-activity";
 import { confirmHostelArrival, getHostelPassesToday, verifyHostelPass } from "@/server/actions/warden-scan";
 import { listCustomRegisters } from "@/server/actions/custom-registers";
 import { getAttendanceMonth } from "@/server/actions/attendance";
+import { getMyDuties, getSecurityDutyDay } from "@/server/actions/security-duty";
+import { listSirosPeople } from "@/server/actions/siros-people";
 import {
   getCheckInQr,
   listArrivals,
@@ -92,6 +95,7 @@ const GATE_FUNCTIONS = {
   getHomeOutingSummary,
   getHomeOutingDay,
   listOutingNotes,
+  listOutingNotesPage,
   getMovementDetails,
   getVisitorDetails,
   getPassGatePhotos,
@@ -117,6 +121,9 @@ const GATE_FUNCTIONS = {
   // Register builder list, attendance sheet
   listCustomRegisters,
   getAttendanceMonth,
+  getSecurityDutyDay,
+  getMyDuties,
+  listSirosPeople,
   // Visitor self check-in: Show QR, arrivals, Accept / Reject, parent search
   getCheckInQr,
   listArrivals,
