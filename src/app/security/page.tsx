@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/auth/helpers";
 import { getRegisterAccess } from "@/lib/registers/access";
 import { listAllRegisters } from "@/lib/registers/catalog";
 import { RegistersHub } from "@/components/registers/register-pages";
+import { isCustomRegisterKey } from "@/lib/registers/custom";
 
 /** Security home = the registers list (with "+" to add an entry straight away). */
 export default async function SecurityHomePage() {
@@ -14,7 +15,8 @@ export default async function SecurityHomePage() {
       viewer="SECURITY"
       hidden={access.hidden}
       creatable={creatable}
-      registers={registers}
+      // Built-in registers are already in the app: only portal-made ones are sent (small page, quick return)
+      extraRegisters={registers.filter((r) => isCustomRegisterKey(r.key))}
       canBuild={false}
     />
   );

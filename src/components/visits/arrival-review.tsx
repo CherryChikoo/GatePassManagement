@@ -11,6 +11,7 @@
  * Visitors Book form, so Accept is usually instant.
  */
 import { useRef, useState } from "react";
+import { ZoomablePhoto } from "@/components/ui/zoomable-photo";
 import { AlertCircle, Camera, CheckCircle2, Loader2, RotateCcw, ShieldX, UserCheck } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { Modal } from "@/components/ui/primitives";
@@ -271,7 +272,7 @@ export function ArrivalReview({
           </p>
           {photo ? (
             <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-emerald-500/30 bg-emerald-500/5 p-3 sm:gap-4">
-              <img src={photo} alt="" className="h-24 w-24 shrink-0 rounded-2xl object-cover sm:h-28 sm:w-28" />
+              <ZoomablePhoto src={photo} className="h-24 w-24 shrink-0 rounded-2xl object-cover sm:h-28 sm:w-28" />
               <div className="min-w-0 flex-1 space-y-3">
                 <p className="flex items-center gap-2 text-sm font-medium text-emerald-400">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />

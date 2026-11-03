@@ -20,7 +20,8 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/helpers";
 import { notifyLive } from "@/lib/realtime/notify";
 import { istDateString, istDateToInstant } from "@/lib/time/ist";
-import { isSafeStoragePath } from "@/lib/storage/storage-admin";
+import { createSignedPhotoUrl, isSafeStoragePath } from "@/lib/storage/storage-admin";
+import { sirosInside } from "@/lib/registers/siros-inside";
 
 const PEOPLE_KEY = "SIROS_PERSON";
 const LIVE_TOPIC = "reg:SIROS_PERSON";
@@ -55,6 +56,12 @@ export async function listSirosPeople() {
   });
   const people = rows.map(toPerson).filter((p): p is SirosPerson => !!p).sort((a, b) => a.no - b.no);
   return { success: true, people };
+}
+
+/** Who is inside now (on Siros entries not yet marked Out): small, refreshed after each save / Out. */
+export async function getSirosInside() {
+  await requireRole("SECURITY", "ADMIN", "SECURITY_SUPERVISOR");
+  return { success: true, inside: await sirosInside() };
 }
 
 /** Register a new coolie or contractor (with a photo); returns them with their new number. */
@@ -112,4 +119,34 @@ export async function addSirosPerson(input: { kind: string; name: string; gender
     }
   }
   return { error: "Could not save. Please try again." };
+}
+
+/** One coolie / contractor by number: photo, details, who registered them and when, and whether inside now. */
+export async function getSirosPersonDetails(no: number) {
+  await requireRole("SECURITY", "ADMIN", "SECURITY_SUPERVISOR");
+  const n = Math.floor(Number(no));
+  if (!Number.isFinite(n) || n < 1) return { error: "Not found" };
+  const row = await prisma.registerEntry.findUnique({
+    where: { clientToken: `siros-person-${n}` },
+    select: { register: true, data: true, createdAt: true, recordedByName: true },
+  });
+  if (!row || row.register !== PEOPLE_KEY) return { error: "Not found" };
+  const d = (row.data ?? {}) as PersonData;
+  // The photo link only ("inside now" comes from the list the phone already has)
+  const photo = d.photoUrl ? await createSignedPhotoUrl(d.photoUrl) : null;
+  const kind = d.kind === "CONTRACTOR" ? "CONTRACTOR" : "COOLIE";
+  const name = d.name ?? "";
+  return {
+    success: true,
+    person: {
+      no: n,
+      kind,
+      name,
+      gender: d.gender ?? null,
+      phone: d.phone ?? null,
+      photo,
+      registeredAt: row.createdAt.toISOString(),
+      registeredBy: row.recordedByName ?? "",
+    },
+  };
 }

@@ -54,7 +54,7 @@ export interface SelectProps extends ThemedSelectProps {
 
 /** Labelled dropdown in the portal's own style (see ThemedSelect). */
 function Select({ className, label, error, id, children, icon: _icon, ...props }: SelectProps) {
-  const selectId = id || label?.toLowerCase().replace(/s+/g, "-");
+  const selectId = id || label?.toLowerCase().replace(/\s+/g, "-");
   return (
     <div className="space-y-1.5 min-w-0">
       {label && (
@@ -274,9 +274,14 @@ interface ModalProps {
   className?: string;
   /** When this changes (e.g. a form reset after saving), the popup scrolls back to the top */
   scrollTopKey?: string | number;
+  /**
+   * Soft look for cards: a solid warm-white popup (white / coloured cards with shadows stand out on it)
+   * and a light blur of the page behind — only on phones that handle it (no blur on low-memory phones).
+   */
+  frosted?: boolean;
 }
 
-export function Modal({ open, onClose, title, children, className, scrollTopKey }: ModalProps) {
+export function Modal({ open, onClose, title, children, className, scrollTopKey, frosted = false }: ModalProps) {
   // On Security screens the dialog closes with a labelled "Go Back" button
   const goBackStyle = (usePathname() ?? "").startsWith("/security");
   const bodyRef = React.useRef<HTMLDivElement>(null);
@@ -286,11 +291,25 @@ export function Modal({ open, onClose, title, children, className, scrollTopKey 
     if (!open) return;
     return lockPageScroll();
   }, [open]);
+  // Back to the top quickly (about a quarter second, smooth): the browser's own smooth scroll is slow on long forms
   React.useEffect(() => {
-    bodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    const el = bodyRef.current;
+    if (!el || el.scrollTop === 0) return;
+    const from = el.scrollTop;
+    const start = performance.now();
+    let frame = 0;
+    const step = (now: number) => {
+      const p = Math.min(1, (now - start) / 240);
+      el.scrollTop = from * (1 - (1 - (1 - p) ** 3)); // ease-out
+      if (p < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
   }, [scrollTopKey]);
 
   if (!open || !mounted) return null;
+  // Blur behind the popup only where it is cheap: not on low-memory phones (4 GB or less reported as <= 4)
+  const lightBlur = frosted && (((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8) > 4);
 
   // Drawn over the whole page (not inside the page's scroll area), so only the
   // popup scrolls while it is open and the page is free again once it closes.
@@ -298,7 +317,7 @@ export function Modal({ open, onClose, title, children, className, scrollTopKey 
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/40"
+        className={lightBlur ? "absolute inset-0 bg-black/30 backdrop-blur-[3px]" : "absolute inset-0 bg-black/40"}
         onClick={onClose}
       />
       {/* Content */}
@@ -307,6 +326,8 @@ export function Modal({ open, onClose, title, children, className, scrollTopKey 
           // dvh: the visible screen height on phones (100vh hides the bottom behind the browser bar)
           "relative z-10 w-full max-w-lg rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-[0_24px_60px_-20px_rgba(16,24,40,0.35)] flex flex-col max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)]",
           "animate-in fade-in-0 zoom-in-95 duration-200",
+          // Solid (no blur inside: smooth scrolling on every phone)
+          frosted && "bg-[#f7f4f1]",
           className
         )}
       >

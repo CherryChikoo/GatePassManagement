@@ -41,7 +41,9 @@ export const dt = {
   /** Small neutral chip, e.g. roll number / employee ID / department code */
   chip: "inline-flex items-center rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 font-mono text-[11px] text-zinc-400",
   /** Mobile stacked rows (same data, below the table breakpoint) */
-  mobileList: "divide-y divide-zinc-800/70",
+  // Each row its own card (border + shadow) with a gap, on a light grey tray: rows never blend together
+  mobileList:
+    "space-y-2.5 bg-zinc-950 p-2.5 sm:p-3 [&>li]:overflow-hidden [&>li]:rounded-2xl [&>li]:border-[1.5px] [&>li]:border-zinc-700 [&>li]:bg-zinc-900 [&>li]:shadow-card",
   mobileRow: "flex items-start gap-3 px-4 py-3.5 hover:bg-zinc-950/70 transition-colors",
 };
 

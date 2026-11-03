@@ -181,6 +181,14 @@ export async function deleteAvatarAdmin(profileId: string): Promise<void> {
 }
 
 /** The photo bytes, or null if there is none. */
+/** A register photo's bytes (e.g. a bill to read), or null. */
+export async function downloadRegisterPhotoAdmin(path: string): Promise<{ bytes: ArrayBuffer; type: string } | null> {
+  if (!isSafeStoragePath(path) || !path.startsWith("registers/")) return null;
+  const { data, error } = await adminStorage().from(BUCKET_NAME).download(path);
+  if (error || !data) return null;
+  return { bytes: await data.arrayBuffer(), type: data.type || "image/jpeg" };
+}
+
 export async function downloadAvatarAdmin(profileId: string): Promise<ArrayBuffer | null> {
   const { data, error } = await adminStorage().from(BUCKET_NAME).download(avatarPath(profileId));
   if (error || !data) return null;

@@ -10,6 +10,7 @@ import {
   getRegisterStaffOptions,
   getRegisterPeopleOptions,
   getVehicleOptions,
+  getFieldSuggestions,
   getRegisterCountsToday,
   listInsideRegisterEntries,
   getFacultyBook,
@@ -36,7 +37,8 @@ import { confirmHostelArrival, getHostelPassesToday, verifyHostelPass } from "@/
 import { listCustomRegisters } from "@/server/actions/custom-registers";
 import { getAttendanceMonth } from "@/server/actions/attendance";
 import { getMyDuties, getSecurityDutyDay } from "@/server/actions/security-duty";
-import { listSirosPeople } from "@/server/actions/siros-people";
+import { getSirosInside, getSirosPersonDetails, listSirosPeople } from "@/server/actions/siros-people";
+import { readBillPhoto } from "@/server/actions/bill-reader";
 import {
   getCheckInQr,
   listArrivals,
@@ -76,6 +78,7 @@ const GATE_FUNCTIONS = {
   getRegisterStaffOptions,
   getRegisterPeopleOptions,
   getVehicleOptions,
+  getFieldSuggestions,
   getRegisterCountsToday,
   registerOutsider,
   markOutsiderExited,
@@ -124,6 +127,9 @@ const GATE_FUNCTIONS = {
   getSecurityDutyDay,
   getMyDuties,
   listSirosPeople,
+  getSirosPersonDetails,
+  getSirosInside,
+  readBillPhoto,
   // Visitor self check-in: Show QR, arrivals, Accept / Reject, parent search
   getCheckInQr,
   listArrivals,

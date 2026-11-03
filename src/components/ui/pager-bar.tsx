@@ -57,12 +57,12 @@ export function PagerBar({ page, pageSize, total, onPageChange, hrefForPage, ite
 
   const go = (p: number, label: React.ReactNode, opts: { disabled?: boolean; active?: boolean; ariaLabel?: string; wide?: boolean } = {}) => {
     const cls = cn(
-      "inline-flex h-9 items-center justify-center gap-1 rounded-full text-xs font-medium transition-colors",
-      opts.wide ? "px-3" : "min-w-9 px-2",
+      "inline-flex h-11 items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition-[background-color,transform] active:scale-95",
+      opts.wide ? "min-w-11 px-3 sm:px-4" : "min-w-11 px-2",
       opts.active
-        ? "bg-zinc-100 text-zinc-900"
-        : "border border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950 hover:text-zinc-100",
-      opts.disabled && "pointer-events-none opacity-40"
+        ? "bg-orange-600 text-white shadow-[0_6px_14px_-8px_rgba(207,62,37,0.7)]"
+        : "border-[1.5px] border-zinc-600 bg-zinc-900 text-zinc-100 hover:bg-zinc-950",
+      opts.disabled && "pointer-events-none opacity-35"
     );
     if (hrefForPage && !opts.disabled && !opts.active) {
       return (
@@ -95,22 +95,22 @@ export function PagerBar({ page, pageSize, total, onPageChange, hrefForPage, ite
         className
       )}
     >
-      <p className="min-w-0 truncate text-xs text-zinc-500">
+      <p className="min-w-0 truncate text-sm text-zinc-400">
         {total === 0 ? (
           t("No {items}", { items: t(itemLabel) })
         ) : (
           <>
             <span className="hidden sm:inline">{t("Showing")} </span>
-            <span className="font-medium text-zinc-200 tabular-nums">
+            <span className="font-bold text-zinc-100 tabular-nums">
               {from}–{to}
             </span>{" "}
-            {t("of")} <span className="font-medium text-zinc-200 tabular-nums">{total}</span>
+            {t("of")} <span className="font-bold text-zinc-100 tabular-nums">{total}</span>
             <span className="hidden sm:inline"> {t(itemLabel)}</span>
           </>
         )}
       </p>
       <div className="flex shrink-0 items-center gap-1.5">
-        {go(current - 1, <><ChevronLeft className="h-4 w-4" /><span className="hidden md:inline">{t("Previous")}</span></>, {
+        {go(current - 1, <><ChevronLeft className="h-5 w-5" /><span className="hidden sm:inline">{t("Previous")}</span></>, {
           disabled: current <= 1,
           ariaLabel: t("Previous page"),
           wide: true,
@@ -118,16 +118,16 @@ export function PagerBar({ page, pageSize, total, onPageChange, hrefForPage, ite
         <span className="hidden sm:flex items-center gap-1">
           {pageList(current, pages).map((p, i) =>
             p === "…" ? (
-              <span key={`gap-${i}`} className="px-1 text-xs text-zinc-600">…</span>
+              <span key={`gap-${i}`} className="px-1 text-sm font-bold text-zinc-400">…</span>
             ) : (
               go(p, p, { active: p === current, ariaLabel: t("Page {page}", { page: p }) })
             )
           )}
         </span>
-        <span className="sm:hidden px-1.5 text-xs font-medium text-zinc-300 tabular-nums">
+        <span className="sm:hidden px-1.5 text-base font-bold text-zinc-100 tabular-nums">
           {current} / {pages}
         </span>
-        {go(current + 1, <><span className="hidden md:inline">{t("Next")}</span><ChevronRight className="h-4 w-4" /></>, {
+        {go(current + 1, <><span className="hidden sm:inline">{t("Next")}</span><ChevronRight className="h-5 w-5" /></>, {
           disabled: current >= pages,
           ariaLabel: t("Next page"),
           wide: true,

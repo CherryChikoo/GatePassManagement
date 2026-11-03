@@ -94,6 +94,8 @@ export function ComboInput({
 }) {
   const t = useT();
   const [open, setOpen] = useState<null | "list" | "sheet">(null);
+  // Opened by typing: the list shows only when something matches (no "not in the list" line)
+  const [byTyping, setByTyping] = useState(false);
   const [sheetQuery, setSheetQuery] = useState("");
   const wrapRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -122,6 +124,7 @@ export function ComboInput({
   }, [open]);
 
   const openList = () => {
+    setByTyping(false);
     const phone = typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
     if (phone) {
       setSheetQuery(exact ? "" : value);
@@ -193,8 +196,11 @@ export function ComboInput({
           placeholder={placeholder}
           onChange={(e) => {
             onChange(e.target.value);
-            // Typing only fills the box: nothing opens under it (the list opens from "Select")
-            if (open === "list") setOpen(null);
+            // Typing: the matching suggestions open under the box (empty box: closed)
+            if (open !== "sheet") {
+              setByTyping(true);
+              setOpen(e.target.value.trim() ? "list" : null);
+            }
           }}
           onKeyDown={(e) => {
             if (e.key === "Escape") setOpen(null);
@@ -209,9 +215,11 @@ export function ComboInput({
           role="combobox"
           aria-expanded={open === "list"}
           aria-controls={open === "list" ? listId : undefined}
+          data-combo-input=""
           className={cn(inputClassName, "min-w-0 flex-1 rounded-r-none border-r-0")}
         />
         <button
+          data-combo-select=""
           type="button"
           onClick={() => (open ? setOpen(null) : openList())}
           aria-haspopup="listbox"
@@ -226,7 +234,7 @@ export function ComboInput({
         </button>
       </div>
 
-      {open === "list" && (
+      {open === "list" && !(byTyping && (shown.length === 0 || exact)) && (
         <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-card">{rows(false)}</div>
       )}
 

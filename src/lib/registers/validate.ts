@@ -25,6 +25,8 @@ export type CompletionPayload = {
   markMovement?: unknown;
   /** Reading for that side (e.g. In Reading) */
   reading?: unknown;
+  /** Out with counts by type (registers with movement.exitCounts), e.g. { Peddamestri: 1, Cooli: 4 } */
+  exitCounts?: Record<string, unknown>;
   /** Group rows to mark out now, e.g. { workers: [0, 3] } */
   groupMarks?: Record<string, unknown>;
   /** Meeting code the visitor got from the person they met (registers with a "Meeting" picker) */
@@ -251,6 +253,38 @@ export async function validateNewRecord(
     data[g.key] = rows;
     details += rows.length;
   }
+  // Boxes shown only after their button: ignored when the button is off, required while on (if so marked)
+  for (const f of def.fields) {
+    if (!f.showWhen) continue;
+    if (data[f.showWhen] !== true) {
+      data[f.key] = null;
+      continue;
+    }
+    if (f.requiredWhenShown && (data[f.key] === null || data[f.key] === undefined || data[f.key] === "")) return { error: `${f.label} is required` };
+  }
+  // A button that also sets a status when on (e.g. "Bill taken now" → Bill taken)
+  for (const f of def.fields) if (f.setsFlag && data[f.key] === true) data[f.setsFlag] = true;
+  // Lists that need at least some rows (e.g. one worker)
+  for (const g of def.groups ?? []) {
+    const n = Array.isArray(data[g.key]) ? (data[g.key] as unknown[]).length : 0;
+    if (g.minRows && n < g.minRows) return { error: `Add at least one ${g.itemLabel.toLowerCase()}` };
+  }
+  // College Daily Labour: total and types come from the workers list
+  if ((def.key === "DAILY_LABOUR" || def.key === "LABOUR_CONTRACT") && Array.isArray(data.workers)) {
+    const rows = data.workers as Record<string, unknown>[];
+    let total = 0;
+    const byType = new Map<string, number>();
+    for (const [i, r] of rows.entries()) {
+      const c = Number(r.count);
+      if (!Number.isInteger(c) || c < 1 || c > 1000) return { error: `Worker ${i + 1} — Count must be a whole number (1 or more)` };
+      total += c;
+      const type = String(r.workerType ?? "");
+      if (byType.has(type)) return { error: `${type}: add it only once` };
+      byType.set(type, c);
+    }
+    data.workerCount = total;
+    data.workerType = [...byType].map(([type, c]) => `${type} × ${c}`).join(", ");
+  }
   // Siros Venture labour: the coolie count is the coolies added (never typed)
   if (isSirosLabour(def.key)) data.totalWorkers = Array.isArray(data.workers) ? (data.workers as unknown[]).length : 0;
 
@@ -304,6 +338,23 @@ export async function validateCompletion(
     const side = pending.next;
     data[side.timeKey] = time;
     provided++;
+    // Out with the counts leaving, by type (College Daily Labour)
+    const countsGroup = def.movement?.exitCounts;
+    if (side.direction === "OUT" && countsGroup) {
+      const raw = payload.exitCounts && typeof payload.exitCounts === "object" ? (payload.exitCounts as Record<string, unknown>) : {};
+      const rowsIn = Array.isArray(current[countsGroup]) ? (current[countsGroup] as Record<string, unknown>[]) : [];
+      const types = [...new Set(rowsIn.map((r) => String(r.workerType ?? "")).filter(Boolean))];
+      let total = 0;
+      const parts: string[] = [];
+      for (const type of types) {
+        const n = Number(raw[type] ?? 0);
+        if (!Number.isInteger(n) || n < 0 || n > 1000) return { error: `${type}: enter a whole number` };
+        total += n;
+        parts.push(`${type} × ${n}`);
+      }
+      data.outCounts = parts.join(", ");
+      data.outTotal = total;
+    }
     // Siros Venture labour: Out is for everyone at once (the contractor and every coolie still in)
     if (side.direction === "OUT" && isSirosLabour(def.key)) {
       for (const { group, field, open } of pending.groups) {

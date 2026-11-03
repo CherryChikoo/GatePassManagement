@@ -129,14 +129,15 @@ export function HubBackButton({ onClick, className }: { onClick: () => void; cla
     <button
       type="button"
       onClick={onClick}
-      aria-label={t("Go Back")}
-      title={t("Go Back")}
       className={cn(
-        "group flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-zinc-100 shadow-card transition-[background-color,transform] hover:bg-zinc-950 active:scale-95",
+        "group inline-flex h-12 w-fit shrink-0 items-center gap-3 rounded-full border-[1.5px] border-zinc-700 bg-zinc-900 pl-1.5 pr-5 text-base font-semibold text-zinc-100 shadow-card transition-[background-color,transform] hover:bg-zinc-950 active:scale-[0.98]",
         className
       )}
     >
-      <ArrowLeft className="h-5 w-5 transition-transform group-hover:-translate-x-0.5" aria-hidden="true" />
+      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-600 text-white transition-transform group-hover:-translate-x-0.5">
+        <ArrowLeft className="h-5 w-5" aria-hidden="true" />
+      </span>
+      {t("Go Back")}
     </button>
   );
 }
@@ -161,10 +162,11 @@ export function HubScreenHeader({
   busy?: boolean;
 }) {
   return (
-    <header className="flex min-w-0 items-center gap-3">
+    <header className="space-y-3">
       <HubBackButton onClick={onBack} />
+      <div className="flex min-w-0 items-center gap-3">
       <div className="min-w-0 flex-1">
-        <h1 className="min-w-0 break-words text-lg font-semibold leading-tight tracking-tight text-zinc-100 sm:text-2xl">
+        <h1 className="min-w-0 break-words text-xl font-bold leading-tight tracking-tight text-zinc-100 sm:text-2xl">
           {title}
           {busy && <Loader2 className="ml-2 inline-block h-4 w-4 animate-spin align-middle text-zinc-500" aria-hidden="true" />}
         </h1>
@@ -176,6 +178,7 @@ export function HubScreenHeader({
           {count}
         </span>
       )}
+      </div>
     </header>
   );
 }

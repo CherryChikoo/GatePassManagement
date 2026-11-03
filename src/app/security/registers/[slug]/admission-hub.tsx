@@ -145,7 +145,6 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
             {/* The check-in QR, as a pop-up (like the registers list's QR button) */}
             {canCreate && <HubQrButton register="ADMISSION" label={`${t("Show QR")} — ${def.title}`} onClick={() => openView("qr")} />}
           </div>
-          <p className="mt-1 text-sm text-zinc-400">{def.description}</p>
         </div>
         {noticeBox}
         <HubTiles
@@ -208,8 +207,9 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
 
       {view === "new" &&
         (canCreate ? (
-          <div className="mx-auto max-w-2xl">
-            <Card>
+          <div className="mx-auto max-w-2xl md:max-w-[min(92vw,1000px)]">
+            {/* Thin orange border all round: the form stands out from the page */}
+            <Card className="border-2 border-orange-500/80 shadow-[0_10px_28px_-12px_rgba(255,99,74,0.45)]">
               <CardContent className="p-5 sm:p-6">
                 {formError && (
                   <div role="alert" className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">

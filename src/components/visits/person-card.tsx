@@ -159,14 +159,13 @@ export function PersonCard({
 /** Compact box for "nobody here" (not a giant empty card). */
 export function ListEmpty({ icon: Icon, title, hint }: { icon: LucideIcon; title: string; hint?: string }) {
   return (
-    <div className="flex items-center gap-4 rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/60 px-4 py-5 sm:px-5">
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-orange-500" aria-hidden="true">
-        <Icon className="h-6 w-6" />
+    // Centred and big: easy to see at a glance that the list is empty
+    <div className="flex flex-col items-center gap-3 rounded-3xl border-[1.5px] border-dashed border-zinc-700 bg-zinc-900 px-6 py-12 text-center shadow-card sm:py-16">
+      <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-orange-500" aria-hidden="true">
+        <Icon className="h-10 w-10" />
       </span>
-      <span className="min-w-0">
-        <span className="block text-base font-semibold text-zinc-100">{title}</span>
-        {hint && <span className="mt-0.5 block text-sm text-zinc-500">{hint}</span>}
-      </span>
+      <span className="block text-xl font-bold text-zinc-100 sm:text-2xl">{title}</span>
+      {hint && <span className="block max-w-md text-base text-zinc-500">{hint}</span>}
     </div>
   );
 }

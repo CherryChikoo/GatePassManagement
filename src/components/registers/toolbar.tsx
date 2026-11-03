@@ -3,7 +3,7 @@ import { DateField } from "@/components/ui/date-field";
 import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { CalendarRange, CheckCircle2, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { istDateString } from "@/lib/time/ist";
 
 export type RegisterFilters = ReturnType<typeof useRegisterFilters>;
@@ -64,33 +64,33 @@ export function RegisterToolbar({ filters, action, searchPlaceholder = "Searchâ€
           max={istDateString()}
           disabled={filters.allDates}
           onChange={(e) => filters.setDate(e.target.value)}
-          className="h-12 sm:h-10 min-w-0 flex-1 sm:flex-none rounded-full border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 [color-scheme:light] outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10 disabled:opacity-40"
+          className="h-12 min-w-0 flex-1 sm:flex-none rounded-full border-[1.5px] border-zinc-600 bg-zinc-950 px-4 text-base font-semibold text-zinc-100 [color-scheme:light] outline-none transition-colors hover:border-zinc-500 focus:border-orange-500 focus:bg-zinc-900 focus:ring-4 focus:ring-orange-500/15 disabled:opacity-40"
         />
-        <label
-          className={`inline-flex h-12 sm:h-10 shrink-0 cursor-pointer select-none items-center gap-2 rounded-full border px-4 text-sm font-medium whitespace-nowrap transition-colors ${
+        {/* A clear toggle (no small checkbox): on = orange with âœ“ */}
+        <button
+          type="button"
+          aria-pressed={filters.allDates}
+          onClick={() => filters.setAllDates(!filters.allDates)}
+          className={`inline-flex h-12 shrink-0 select-none items-center gap-2 rounded-full border-[1.5px] px-4 text-base font-semibold whitespace-nowrap transition-[background-color,border-color,color,transform] active:scale-[0.98] ${
+            // Off: light orange; selected: solid dark orange with white text
             filters.allDates
-              ? "border-orange-500/30 bg-orange-500/10 text-orange-400"
-              : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+              ? "border-orange-600 bg-orange-600 text-white shadow-[0_6px_14px_-8px_rgba(207,62,37,0.7)]"
+              : "border-orange-500/40 bg-orange-500/10 text-orange-600 hover:bg-orange-500/15"
           }`}
         >
-          <input
-            type="checkbox"
-            checked={filters.allDates}
-            onChange={(e) => filters.setAllDates(e.target.checked)}
-            className="h-4 w-4 accent-orange-500"
-          />
+          {filters.allDates ? <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" /> : <CalendarRange className="h-5 w-5 shrink-0" aria-hidden="true" />}
           {t("All dates")}
-        </label>
+        </button>
       </div>
       <div className="relative flex-1 min-w-0 sm:min-w-[220px]">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-zinc-400 pointer-events-none" />
         <input
           type="search"
           aria-label={t("Search")}
           value={filters.qInput}
           onChange={(e) => filters.setQInput(e.target.value)}
           placeholder={t(searchPlaceholder)}
-          className="h-12 sm:h-10 w-full rounded-full border border-zinc-800 bg-zinc-900 pl-11 pr-4 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
+          className="h-12 w-full rounded-full border-[1.5px] border-zinc-600 bg-zinc-950 pl-12 pr-4 text-base text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-500 focus:border-orange-500 focus:bg-zinc-900 focus:ring-4 focus:ring-orange-500/15"
         />
       </div>
     </div>

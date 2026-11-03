@@ -1,10 +1,11 @@
 "use client";
 import { callGate } from "@/lib/gate-call";
+import { ZoomablePhoto } from "@/components/ui/zoomable-photo";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { useT } from "@/components/providers/language-provider";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, ChevronRight, Clock, Eye, FilePlus2, FileText, History, KeyRound, Loader2, LogIn, LogOut, MapPin, PencilLine, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, Info, Clock, Eye, FilePlus2, FileText, History, KeyRound, Loader2, LogIn, LogOut, MapPin, PencilLine, Trash2, Users, XCircle } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Modal } from "@/components/ui/primitives";
 import { Card } from "@/components/ui/card";
@@ -22,6 +23,7 @@ import { AdminEditForm, CloseRecordForm, MovementForm, RegisterForm, restoreRegi
 import { formatFieldValue, formatInstant, newClientToken } from "./format";
 import { displayValue } from "./localize";
 import { FactList, InOutCard, RecordHeader, type Fact, type MoveSide } from "./record-layout";
+import { SirosPersonDialog, prefetchSirosPerson, useSirosPeople } from "./siros-people";
 import type { Translate } from "@/lib/i18n";
 import { RegisterToolbar, useRegisterFilters } from "./toolbar";
 import { fetchInsideEntries, invalidateInsideEntries, peekInsideEntries } from "./inside-entries";
@@ -283,7 +285,8 @@ export function EntryRegisterView({
   async function quickRecord(e: Entry) {
     const next = pendingActions(def, e.current).next;
     if (!next || quickId) return;
-    if (next.readingKey || (e.visit?.open && next.direction === "OUT")) {
+    // A reading, a meeting code or counts to enter: the small form instead of one tap
+    if (next.readingKey || (e.visit?.open && next.direction === "OUT") || (def.movement?.exitCounts && next.direction === "OUT")) {
       openMode("record", e);
       return;
     }
@@ -530,14 +533,21 @@ export function EntryRegisterView({
       <Card className={cn("overflow-hidden transition-opacity", loading && "opacity-60")}>
         {/* Phones: stacked rows */}
         {data && data.entries.length > 0 && (
-          <ul className={cn(dt.mobileList, "lg:hidden")}>
+          <ul className={cn(dt.mobileList, "xl:hidden")}>
             {data.entries.map((e) => {
               const open = pendingActions(def, e.current).any;
               const [first, ...rest] = columns;
-              const meta = rest
-                .map((c) => displayValue(c, cellOf(c, e.current), t))
-                .filter((v) => v && v !== "—")
-                .join(" · ");
+              const has = (c: FieldDef) => {
+                const v = displayValue(c, cellOf(c, e.current), t);
+                return !!v && v !== "—";
+              };
+              // In / Out style values (Inward / Outward, In / Out): a coloured chip on the right
+              const dirCol = rest.find((c) => c.type === "select" && (c.options ?? []).some((o) => /^(in|inward|out|outward)$/i.test(o)));
+              const dirValue = dirCol ? String(cellOf(dirCol, e.current) ?? "") : "";
+              const dirIn = /^(in|inward)$/i.test(dirValue);
+              const times = rest.filter((c) => c.type === "time" && has(c));
+              const pairs = rest.filter((c) => c !== dirCol && c.type !== "time" && has(c));
+              const moveIn = def.movement?.in.timeKey;
               return (
                 <li key={e.id} className="flex items-center">
                   <button
@@ -545,26 +555,68 @@ export function EntryRegisterView({
                     onClick={() => setSelected(e)}
                     className="flex min-w-0 flex-1 min-h-[72px] items-center gap-3 px-4 py-3.5 text-left transition-colors active:bg-zinc-950 hover:bg-zinc-950/70"
                   >
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2 min-w-0">
-                        <span className="truncate text-base font-medium text-zinc-100">
+                    <span className="min-w-0 flex-1 space-y-1.5">
+                      <span className="flex items-start justify-between gap-2 min-w-0">
+                        <span className="min-w-0 break-words text-lg font-bold leading-snug text-zinc-100">
                           {first ? displayValue(first, cellOf(first, e.current), t) : formatFieldValue({ key: "d", label: "", type: "date" }, e.entryDate)}
                         </span>
-                        {open && openChip}
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          {dirValue && (
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-sm font-bold",
+                                dirIn ? "bg-emerald-500/15 text-emerald-700" : "bg-sky-500/15 text-sky-700"
+                              )}
+                            >
+                              {dirIn ? <LogIn className="h-3.5 w-3.5" aria-hidden="true" /> : <LogOut className="h-3.5 w-3.5" aria-hidden="true" />}
+                              {t(dirValue)}
+                            </span>
+                          )}
+                          {open && openChip}
+                        </span>
                       </span>
-                      {meta && <span className="mt-0.5 block truncate text-sm text-zinc-400">{meta}</span>}
+                      {/* Each value with its small label, so it is clear what it is */}
+                      {pairs.length > 0 && (
+                        <span className="flex flex-wrap gap-x-3 gap-y-1 text-base">
+                          {pairs.map((c) => (
+                            <span key={c.key} className="min-w-0 break-words">
+                              <span className="text-sm text-zinc-500">{t(c.label)}</span>{" "}
+                              <span className="font-semibold text-zinc-200">{displayValue(c, cellOf(c, e.current), t)}</span>
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                      {/* In / Out times as green / blue chips */}
+                      {times.length > 0 && (
+                        <span className="flex flex-wrap gap-1.5">
+                          {times.map((c) => {
+                            const isIn = c.key === moveIn || /in/i.test(c.key) && !/out/i.test(c.key);
+                            return (
+                              <span
+                                key={c.key}
+                                className={cn(
+                                  "inline-flex items-center rounded-lg px-2 py-0.5 text-sm font-bold tabular-nums",
+                                  isIn ? "bg-emerald-500/15 text-emerald-700" : "bg-sky-500/15 text-sky-700"
+                                )}
+                              >
+                                {isIn ? t("In") : t("Out")} {displayValue(c, cellOf(c, e.current), t)}
+                              </span>
+                            );
+                          })}
+                        </span>
+                      )}
                       {e.visit && <MeetingChip visit={e.visit} />}
                       {insideOnly && (
                         <span className="mt-1 block text-xs font-semibold text-amber-600 tabular-nums">{insideForLabel(t, e.createdAt, now)}</span>
                       )}
-                      <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-500">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-zinc-500">
                         {statusCols.map((c) => (
                           <StatusChip key={c.key} field={c} withLabel value={e.current[c.key]} />
                         ))}
                         {hasStarted && directionChip(e.current.direction)}
                         <span className="tabular-nums">{formatFieldValue({ key: "d", label: "", type: "date" }, e.entryDate)}</span>
                         <span aria-hidden="true">·</span>
-                        <span className="truncate">{e.recordedByName}</span>
+                        <span className="truncate font-medium text-zinc-400">{e.recordedByName}</span>
                       </span>
                     </span>
                     {!hasQuick(e) && (
@@ -580,7 +632,7 @@ export function EntryRegisterView({
 
         {/* Larger screens: table */}
         {data && data.entries.length > 0 && (
-          <div className={cn(dt.wrap, "hidden lg:block")}>
+          <div className={cn(dt.wrap, "hidden xl:block")}>
             <table className={dt.table}>
               <thead>
                 <tr>
@@ -654,7 +706,13 @@ export function EntryRegisterView({
       {data && <PagerBar page={filters.page} pageSize={data.pageSize} total={data.total} onPageChange={filters.setPage} itemLabel={t("records")} />}
 
       {/* Details */}
-      <Modal open={!!selected && mode === null} onClose={() => setSelected(null)} title={def.title} className="max-w-2xl">
+      <Modal
+        open={!!selected && mode === null}
+        onClose={() => setSelected(null)}
+        title={def.title}
+        className="max-w-2xl md:max-w-[min(92vw,1000px)] border-2 border-orange-500/80"
+        frosted
+      >
         {selected && (
           <EntryDetails
             def={def}
@@ -684,7 +742,7 @@ export function EntryRegisterView({
             ? nextActionLabel(def, selected.current, t) ?? def.title
             : def.title
         }
-        className="max-w-2xl"
+        className="max-w-2xl md:max-w-[min(92vw,1000px)] border-2 border-orange-500/80"
         scrollTopKey={errorNo}
       >
         {formError && <div role="alert" className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">{formError}</div>}
@@ -780,7 +838,7 @@ function RegisterPhoto({ path }: { path: unknown }) {
   if (!url) return <span className="inline-block h-40 w-40 animate-pulse rounded-2xl bg-zinc-950" />;
   return (
      
-    <img src={url} alt="" className="h-40 w-40 rounded-2xl border border-zinc-800 object-cover" />
+    <ZoomablePhoto src={url} className="h-40 w-40 rounded-2xl border border-zinc-800 object-cover" />
   );
 }
 
@@ -801,7 +859,7 @@ function CheckInPhoto({ recordId }: { recordId: string }) {
   return (
     <div className="space-y-2">
       <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">{t("Photo at check-in")}</p>
-      <img src={url} alt="" className="h-40 w-40 rounded-2xl border border-zinc-800 object-cover" />
+      <ZoomablePhoto src={url} className="h-40 w-40 rounded-2xl border border-zinc-800 object-cover" />
     </div>
   );
 }
@@ -809,6 +867,10 @@ function CheckInPhoto({ recordId }: { recordId: string }) {
 /** A register record, top to bottom: who it is, the In / Out card, then the filled details */
 function ValuesGrid({ def, values }: { def: EntryRegister; values: Record<string, any> }) {
   const t = useT();
+  const [showEmpty, setShowEmpty] = useState(false);
+  // Siros labour: tap a coolie / the contractor for their full details
+  const sirosPeople = useSirosPeople(isSirosLabour(def.key));
+  const [personNo, setPersonNo] = useState<number | null>(null);
   const m = def.movement;
   const fieldOf = (key?: string) => (key ? def.fields.find((f) => f.key === key) : undefined);
   const show = (key?: string) => {
@@ -884,51 +946,165 @@ function ValuesGrid({ def, values }: { def: EntryRegister; values: Record<string
       })),
   ];
 
+  const isEmpty = (v: unknown) => v === null || v === undefined || v === "";
+  const filled = facts.filter((f) => !isEmpty(f.value));
+  const emptyFacts = facts.filter((f) => isEmpty(f.value));
+  const [first, second] = sides;
+  const done = !!first?.time && !!second?.time;
+  const inside = !!first?.time && !second?.time && values.oneWay !== true;
   return (
     <div className="space-y-5">
-      {(title || status) && <RecordHeader title={title ?? def.title} subtitle={subtitle || null} status={status} />}
-      {sides.length > 0 && sides.some((x) => x.time) && <InOutCard sides={sides} />}
-      <FactList facts={facts} title={t("Details")} />
+      {/* Who, and the In / Out times: the summary, tinted */}
+      <div className="rounded-2xl border-[1.5px] border-orange-500/30 bg-orange-50 px-4 py-3.5 shadow-card">
+        {(() => {
+          const n = String(values.contractorName ?? "").trim().toLowerCase();
+          const no = n ? sirosPeople?.people.find((p) => p.kind === "CONTRACTOR" && p.name.trim().toLowerCase() === n)?.no : undefined;
+          return no ? (
+            <button type="button" onClick={() => setPersonNo(no)} className="flex items-center gap-2 text-left">
+              <span className="break-words text-2xl font-bold leading-snug text-zinc-100 underline decoration-zinc-400 decoration-2 underline-offset-4">{title ?? def.title}</span>
+              <Info className="h-5 w-5 shrink-0 text-zinc-400" aria-hidden="true" />
+            </button>
+          ) : (
+            <p className="break-words text-2xl font-bold leading-snug text-zinc-100">{title ?? def.title}</p>
+          );
+        })()}
+        {/* In / Out times as two clear chips */}
+        {first?.time && (
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            {[first, second].filter((x): x is MoveSide => !!x?.time).map((x) => (
+              <span
+                key={x.direction}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xl font-bold tabular-nums",
+                  x.direction === "IN" ? "bg-emerald-500/15 text-emerald-700" : "bg-sky-500/15 text-sky-700"
+                )}
+              >
+                {x.direction === "IN" ? <LogIn className="h-5 w-5" aria-hidden="true" /> : <LogOut className="h-5 w-5" aria-hidden="true" />}
+                {x.label} {x.time}
+              </span>
+            ))}
+            {inside && <span className="text-sm font-semibold text-emerald-700">{t("Still inside")}</span>}
+            {done && <span className="sr-only">{t("Completed")}</span>}
+          </div>
+        )}
+      </div>
+
+      {/* Details: only the filled ones; label left, value right */}
+      <div className="space-y-3">
+        <p className="flex items-center gap-2 border-t-2 border-zinc-700 pt-4 text-lg font-bold text-zinc-100">
+          <FileText className="h-5 w-5 text-orange-500" aria-hidden="true" /> {t("Details")}
+        </p>
+      {filled.length > 0 && (
+        <dl className="divide-y divide-zinc-800 overflow-hidden rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900 shadow-card">
+          {filled.map((f, i) => (
+            <div
+              key={i}
+              className={
+                f.wide
+                  ? "space-y-1 px-4 py-3"
+                  : "grid grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)] items-baseline gap-3 px-4 py-3 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)]"
+              }
+            >
+              <dt className="text-base font-semibold text-zinc-300">{t(f.label)}</dt>
+              <dd className="min-w-0 break-words text-lg font-bold text-zinc-100">{f.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {/* Not filled: under their own button */}
+      {emptyFacts.length > 0 && (
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setShowEmpty((v) => !v)}
+            aria-expanded={showEmpty}
+            className="flex h-12 w-full items-center gap-3 rounded-2xl border-[1.5px] border-zinc-600 bg-zinc-900 px-4 text-base font-semibold text-zinc-100 shadow-card transition-colors hover:bg-zinc-950"
+          >
+            <span className="min-w-0 flex-1 text-left">
+              {t("Not filled")} <span className="font-normal text-zinc-500 tabular-nums">({emptyFacts.length})</span>
+            </span>
+            <ChevronDown className={cn("h-5 w-5 shrink-0 text-zinc-400 transition-transform", showEmpty && "rotate-180")} aria-hidden="true" />
+          </button>
+          {showEmpty && (
+            <ul className="divide-y divide-zinc-800 overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-950">
+              {emptyFacts.map((f, i) => (
+                <li key={i} className="px-4 py-2.5 text-sm text-zinc-500">
+                  {t(f.label)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      </div>
+
+      {/* Workers: a small card each — number, name, other details, In → Out */}
       {(def.groups ?? []).map((g) => {
         const rows = Array.isArray(values[g.key]) ? (values[g.key] as Record<string, any>[]) : [];
-        const total = isSirosLabour(def.key) && typeof values.totalWorkers === "number" ? values.totalWorkers : null;
+        const timeFields = g.fields.filter((f) => f.type === "time");
+        // The title is the name (or, for items, the details): not repeated below
+        const titleKey = g.fields.some((x) => x.key === "name") ? "name" : "description";
+        const otherFields = g.fields.filter((f) => f.type !== "time" && f.key !== "no" && f.key !== titleKey);
         return (
-          <div key={g.key}>
-            <p className="text-sm font-medium text-zinc-100 mb-2">
-              {g.label} <span className="font-normal text-zinc-500 tabular-nums">({rows.length}{total !== null ? ` / ${total}` : ""})</span>
+          <div key={g.key} className="space-y-3">
+            <p className="flex items-center gap-2 border-t-2 border-zinc-700 pt-4 text-lg font-bold text-zinc-100">
+              <Users className="h-5 w-5 text-amber-600" aria-hidden="true" /> {t(g.label)}{" "}
+              <span className="font-semibold text-zinc-400 tabular-nums">({rows.length})</span>
             </p>
-            {total !== null && rows.length < total && (
-              <p className="text-xs text-amber-400 mb-2">{t("Details were entered for {n} of {total} workers.", { n: rows.length, total })}</p>
-            )}
             {rows.length === 0 ? (
               <p className="text-sm text-zinc-500">{t("None")}</p>
             ) : (
-              <div className="overflow-x-auto rounded-2xl border border-zinc-800">
-                <table className="w-full text-sm">
-                  <thead className="bg-zinc-950 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                    <tr>
-                      <th className="px-3 py-2.5">#</th>
-                      {g.fields.map((f) => (
-                        <th key={f.key} className="px-3 py-2.5 whitespace-nowrap">{f.label}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/70">
-                    {rows.map((r, i) => (
-                      <tr key={i}>
-                        <td className="px-3 py-2.5 text-zinc-500 tabular-nums">{i + 1}</td>
-                        {g.fields.map((f) => (
-                          <td key={f.key} className="px-3 py-2.5 text-zinc-200 whitespace-nowrap">{displayValue(f, r[f.key], t)}</td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ul className="divide-y divide-amber-500/25 overflow-hidden rounded-2xl border-[1.5px] border-amber-500/40 bg-amber-50 shadow-card">
+                {rows.map((row, i) => {
+                  const meta = otherFields.filter((f) => !isEmpty(row[f.key])).map((f) => displayValue(f, row[f.key], t));
+                  // Short In / Out chips (the row's time fields: the first is In, a later one Out)
+                  const times = timeFields
+                    .filter((f) => !isEmpty(row[f.key]))
+                    .map((f) => ({ key: f.key, out: !!f.completion, text: displayValue(f, row[f.key], t) }));
+                  return (
+                    <li
+                      key={i}
+                      onPointerDown={isSirosLabour(def.key) && !isEmpty(row.no) ? () => prefetchSirosPerson(row.no) : undefined}
+                      onClick={isSirosLabour(def.key) && !isEmpty(row.no) ? () => setPersonNo(Number(row.no)) : undefined}
+                      className={cn(
+                        "flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3",
+                        isSirosLabour(def.key) && !isEmpty(row.no) && "cursor-pointer transition-colors hover:bg-amber-500/10"
+                      )}
+                    >
+                      {/* One line: number, name, then the In / Out chips (they wrap under the name only on a narrow phone) */}
+                      <div className="flex min-w-[10rem] flex-1 items-center gap-3">
+                        <span className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/25 px-2 text-base font-bold tabular-nums text-amber-800">
+                          {isEmpty(row.no) ? i + 1 : String(row.no)}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block break-words text-lg font-bold leading-snug text-zinc-100">{!isEmpty(row.name) ? String(row.name) : !isEmpty(row.description) ? String(row.description) : `${t(g.itemLabel)} ${i + 1}`}</span>
+                          {meta.length > 0 && <span className="block text-base text-zinc-400">{meta.join(" · ")}</span>}
+                        </span>
+                      </div>
+                      {times.length > 0 && (
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          {times.map((x) => (
+                            <span
+                              key={x.key}
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-base font-bold tabular-nums",
+                                x.out ? "bg-sky-500/15 text-sky-700" : "bg-emerald-500/15 text-emerald-700"
+                              )}
+                            >
+                              {x.out ? t("Out") : t("In")} {x.text}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </div>
         );
       })}
+      {personNo !== null && <SirosPersonDialog no={personNo} onClose={() => setPersonNo(null)} />}
     </div>
   );
 }
@@ -1175,29 +1351,30 @@ function EntryDetails({
 
       {entry.visit && <MeetingSection visit={entry.visit} />}
 
-      {updatableFields(def).map((f) => (
-        <UpdatableSection
-          key={f.key}
-          field={f}
-          value={entry.current[f.key]}
-          onSave={onUpdateField ? (v) => onUpdateField(f.key, v) : undefined}
-        />
-      ))}
+      {updatableFields(def).map((f) => {
+        // A Yes / No that locks a name (e.g. "Bill taken"): drawn together with that name
+        if (def.fields.some((x) => x.lockedBy === f.key)) return null;
+        const flag = f.lockedBy ? def.fields.find((x) => x.key === f.lockedBy) : undefined;
+        if (flag) {
+          return (
+            <TakenSection
+              key={f.key}
+              nameField={f}
+              flagField={flag}
+              name={entry.current[f.key]}
+              taken={entry.current[flag.key] === true}
+              onSave={onUpdateField}
+            />
+          );
+        }
+        // A short name / note (e.g. "Given To"): one line with Save
+        if (f.type === "text") {
+          return <QuickTextSection key={f.key} field={f} value={entry.current[f.key]} onSave={onUpdateField ? (v) => onUpdateField(f.key, v) : undefined} />;
+        }
+        return <UpdatableSection key={f.key} field={f} value={entry.current[f.key]} onSave={onUpdateField ? (v) => onUpdateField(f.key, v) : undefined} />;
+      })}
 
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-2.5">
-        <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 flex items-center gap-1.5"><History className="h-3.5 w-3.5" /> {t("Record history")}</p>
-        <ul className="space-y-2 text-sm text-zinc-300">
-          <li>
-            <span className="text-zinc-500">{formatInstant(entry.createdAt)}</span> — {t("Recorded by")} {recorderLine(entry, t)}
-          </li>
-          {entry.supplements.map((s) => (
-            <li key={s.id}>
-              <span className="text-zinc-500">{formatInstant(s.createdAt)}</span> — {s.kind === "CORRECTION" ? t("Correction by") : s.data?.oneWay === true ? t("Closed by") : t("Updated by")} {recorderLine(s, t)}
-              {s.reason && <span className="block text-zinc-400 pl-3">{t("Reason")}: {t(s.reason)}</span>}
-            </li>
-          ))}
-        </ul>
-      </div>
+      <HistoryCards def={def} entry={entry} />
 
       <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
         {onRecord && label && (
@@ -1222,5 +1399,214 @@ function EntryDetails({
         )}
       </div>
     </div>
+  );
+}
+
+type HistoryStep = {
+  id: string;
+  createdAt: string;
+  kind?: string;
+  data?: Record<string, any> | null;
+  reason?: string | null;
+  recordedByName: string;
+  recordedByRole: string;
+  recordedByEmployeeId: string | null;
+  recordedAtGate: string | null;
+};
+
+/** Record history as small cards: what happened and when (bold), and the guard as clear tags (name, ID, gate). */
+function HistoryCards({ def, entry }: { def: EntryRegister; entry: HistoryStep & { supplements: HistoryStep[] } }) {
+  const t = useT();
+  const m = def.movement;
+  const what = (step: HistoryStep, first: boolean) => {
+    if (first) return { text: t("Saved"), tone: "bg-emerald-500" };
+    if (step.kind === "CORRECTION") return { text: t("Correction"), tone: "bg-amber-500" };
+    if (step.data?.oneWay === true) return { text: t("Closed"), tone: "bg-zinc-400" };
+    if (m && step.data?.[m.out.timeKey]) return { text: t("{side} recorded", { side: m.out.label }), tone: "bg-sky-500" };
+    if (m && step.data?.[m.in.timeKey]) return { text: t("{side} recorded", { side: m.in.label }), tone: "bg-emerald-500" };
+    return { text: t("Updated"), tone: "bg-zinc-400" };
+  };
+  const steps = [entry, ...entry.supplements];
+  return (
+    <section className="space-y-3">
+      <p className="flex items-center gap-2 border-t-2 border-zinc-700 pt-4 text-lg font-bold text-zinc-100">
+        <History className="h-5 w-5 text-orange-500" aria-hidden="true" /> {t("Record history")}
+      </p>
+      <ul className="space-y-2">
+        {steps.map((step, i) => {
+          const w = what(step, i === 0);
+          return (
+            <li key={step.id} className="space-y-2 rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900 px-4 py-3 shadow-card">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <span className="flex items-center gap-2 text-base font-bold text-zinc-100">
+                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${w.tone}`} aria-hidden="true" /> {w.text}
+                </span>
+                <span className="text-base font-semibold tabular-nums text-zinc-300">{formatInstant(step.createdAt)}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-base font-semibold text-zinc-100">{step.recordedByName}</span>
+                {step.recordedByEmployeeId && (
+                  <span className="rounded-lg bg-zinc-950 px-2 py-0.5 text-sm font-semibold tabular-nums text-zinc-300">{step.recordedByEmployeeId}</span>
+                )}
+                {step.recordedAtGate && <span className="rounded-lg bg-orange-500/10 px-2 py-0.5 text-sm font-semibold text-orange-600">{step.recordedAtGate}</span>}
+                {step.recordedByRole === "ADMIN" && <span className="rounded-lg bg-zinc-950 px-2 py-0.5 text-sm font-semibold text-zinc-300">{t("Admin")}</span>}
+              </div>
+              {step.reason && (
+                <p className="text-sm text-zinc-400">
+                  {t("Reason")}: {t(step.reason)}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/** A short name filled in later (e.g. "Given To"): one line — the box and Save; once set, the name with Edit. */
+function QuickTextSection({ field, value, onSave }: { field: FieldDef; value: unknown; onSave?: (value: unknown) => Promise<string | null> }) {
+  const t = useT();
+  const shown = typeof value === "string" ? value.trim() : "";
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(shown);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const save = async () => {
+    if (!onSave || busy || !text.trim()) return;
+    setBusy(true);
+    setError(null);
+    const err = await onSave(text.trim());
+    setBusy(false);
+    if (err) setError(err);
+    else setEditing(false);
+  };
+  const open = editing || (!shown && !!onSave);
+  return (
+    <section className="space-y-2 rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900 px-4 py-3 shadow-card">
+      <p className="text-sm font-semibold text-zinc-400">{t(field.label)}</p>
+      {open ? (
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          <input
+            value={text}
+            maxLength={200}
+            autoComplete="off"
+            aria-label={t(field.label)}
+            placeholder={t("Name")}
+            onChange={(e) => setText(e.target.value)}
+            className="h-12 min-w-0 flex-1 rounded-xl border-[1.5px] border-zinc-600 bg-zinc-950 px-3 text-base text-zinc-100 outline-none focus:border-orange-500 focus:bg-zinc-900"
+          />
+          <button
+            type="submit"
+            disabled={busy || !text.trim()}
+            className="inline-flex h-12 shrink-0 items-center gap-1.5 rounded-xl bg-orange-600 px-4 text-base font-semibold text-white hover:bg-orange-700 disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} {t("Save")}
+          </button>
+        </form>
+      ) : (
+        <div className="flex items-center justify-between gap-3">
+          <p className="min-w-0 break-words text-lg font-bold text-zinc-100">{shown || "—"}</p>
+          {onSave && (
+            <button
+              type="button"
+              onClick={() => {
+                setText(shown);
+                setEditing(true);
+              }}
+              className="shrink-0 text-sm font-semibold text-orange-600 hover:underline"
+            >
+              {t("Edit")}
+            </button>
+          )}
+        </div>
+      )}
+      {error && <p role="alert" className="text-sm font-medium text-red-600">{error}</p>}
+    </section>
+  );
+}
+
+/**
+ * Who took something and whether it is done (e.g. the bill): one line — the name box and
+ * "Bill taken"; once marked, one green line with the name (locked).
+ */
+function TakenSection({
+  nameField,
+  flagField,
+  name,
+  taken,
+  onSave,
+}: {
+  nameField: FieldDef;
+  flagField: FieldDef;
+  name: unknown;
+  taken: boolean;
+  onSave?: (key: string, value: unknown) => Promise<string | null>;
+}) {
+  const t = useT();
+  const saved = typeof name === "string" ? name.trim() : "";
+  const [text, setText] = useState(saved);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [yesWord] = yesNoWords(flagField);
+  const mark = async () => {
+    if (!onSave || busy) return;
+    const who = text.trim();
+    if (!who) return setError(t("Fill \"{field}\" first", { field: t(nameField.label) }));
+    setBusy(true);
+    setError(null);
+    // The name first (if new / changed), then mark it
+    const err = (who !== saved ? await onSave(nameField.key, who) : null) ?? (await onSave(flagField.key, true));
+    setBusy(false);
+    if (err) setError(err);
+  };
+  if (taken) {
+    return (
+      <section className="flex items-center gap-2 rounded-2xl border-[1.5px] border-emerald-500/40 bg-emerald-500/10 px-4 py-3 shadow-card">
+        <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
+        <p className="min-w-0 break-words text-base font-bold text-emerald-800">
+          {t(yesWord)}
+          {saved && <span className="font-semibold"> · {saved}</span>}
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section className="space-y-2 rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900 px-4 py-3 shadow-card">
+      <p className="text-sm font-semibold text-zinc-400">{t(nameField.label)}</p>
+      {onSave ? (
+        <div className="flex gap-2">
+          <input
+            value={text}
+            maxLength={200}
+            autoComplete="off"
+            aria-label={t(nameField.label)}
+            placeholder={t("Name")}
+            onChange={(e) => {
+              setText(e.target.value);
+              setError(null);
+            }}
+            className="h-12 min-w-0 flex-1 rounded-xl border-[1.5px] border-zinc-600 bg-zinc-950 px-3 text-base text-zinc-100 outline-none focus:border-orange-500 focus:bg-zinc-900"
+          />
+          <button
+            type="button"
+            onClick={() => void mark()}
+            disabled={busy}
+            className="inline-flex h-12 shrink-0 items-center gap-1.5 rounded-xl bg-emerald-600 px-4 text-base font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} {t(yesWord)}
+          </button>
+        </div>
+      ) : (
+        <p className="text-base font-semibold text-zinc-300">{saved || t("Not taken yet")}</p>
+      )}
+      {error && <p role="alert" className="text-sm font-medium text-red-600">{error}</p>}
+    </section>
   );
 }

@@ -51,9 +51,6 @@ export function QuickEntryModal({
   const busy = saving > 0;
   const [error, setError] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState(0);
-  // Lists just saved (e.g. coolies), to show to the person concerned
-  const [lastGroups, setLastGroups] = useState<Record<string, Record<string, unknown>[]> | null>(null);
-  const [savedAt, setSavedAt] = useState("");
   // Bumped on every save result, so the popup scrolls up to the "Saved" / error message
   const [resultNo, setResultNo] = useState(0);
 
@@ -69,6 +66,8 @@ export function QuickEntryModal({
     setToken(newClientToken());
     setFormKey((k) => k + 1);
     setSaving((n) => n + 1);
+    // The blank form for the next person: back to the top at once (not after the server answers)
+    setResultNo((n) => n + 1);
     let res: any;
     try {
       res = await callGate("createRegisterEntry", [def.key, payload, tok]);
@@ -83,8 +82,6 @@ export function QuickEntryModal({
       setFormKey((k) => k + 1); // the form shows what was typed again
     } else {
       setSavedCount((n) => n + 1);
-      setLastGroups((payload as any)?.groups ?? null);
-      setSavedAt(new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" }));
       // Opening this register next shows the new record (not a cached list)
       invalidateEntryLists(def.key);
       onSaved?.();
@@ -93,7 +90,7 @@ export function QuickEntryModal({
   }
 
   return (
-    <Modal open onClose={() => !busy && onClose()} title={def.title} className="max-w-2xl" scrollTopKey={resultNo}>
+    <Modal open onClose={() => !busy && onClose()} title={def.title} className="max-w-2xl md:max-w-[min(92vw,1000px)] border-2 border-orange-500/80" scrollTopKey={resultNo}>
       <div className="space-y-4">
         {savedCount > 0 && (
           <div role="status" className="flex items-center gap-2.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
@@ -104,37 +101,6 @@ export function QuickEntryModal({
             </span>
           </div>
         )}
-        {savedCount > 0 &&
-          lastGroups &&
-          (def.groups ?? []).map((g) => {
-            const rows = (lastGroups[g.key] ?? []).filter((r) => Object.values(r).some((v) => String(v ?? "").trim() !== ""));
-            if (rows.length === 0) return null;
-            const shown = g.fields.filter((f) => f.type !== "time");
-            return (
-              <div key={g.key} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-                <p className="text-sm font-semibold text-zinc-100">
-                  {g.label} <span className="font-normal text-zinc-500 tabular-nums">({rows.length})</span>
-                </p>
-                <ol className="mt-2 space-y-1.5">
-                  {rows.map((r, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-sm">
-                      <span className="w-6 shrink-0 text-right tabular-nums text-zinc-500">{i + 1}.</span>
-                      <span className="min-w-0 flex-1">
-                        <span className="font-medium text-zinc-100">{String(r[shown[0]?.key] ?? "") || "—"}</span>
-                        {shown.slice(1).map((f) => {
-                          const v = String(r[f.key] ?? "").trim();
-                          return v ? <span key={f.key} className="text-zinc-400"> · {f.type === "select" ? t(v) : v}</span> : null;
-                        })}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-                {g.fields.some((f) => f.type === "time") && savedAt && (
-                  <p className="mt-2 text-xs text-zinc-500">{t("In since {time}", { time: savedAt })}</p>
-                )}
-              </div>
-            );
-          })}
         {error && (
           <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {error}

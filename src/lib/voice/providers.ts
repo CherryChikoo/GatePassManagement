@@ -71,7 +71,13 @@ function geminiModels(): string[] {
 }
 
 /** Text -> JSON matching `schema`. Tries each free model in turn when one is busy. */
-export async function fillWithGemini(req: { system: string; user: string; schema: object }): Promise<unknown> {
+export async function fillWithGemini(req: {
+  system: string;
+  user: string;
+  schema: object;
+  /** A photo to read (e.g. a bill), sent with the text */
+  image?: { mimeType: string; data: string };
+}): Promise<unknown> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new VoiceServiceError("Form-filling service is not set up", "setup");
 
@@ -87,7 +93,9 @@ export async function fillWithGemini(req: { system: string; user: string; schema
           headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: req.system }] },
-            contents: [{ role: "user", parts: [{ text: req.user }] }],
+            contents: [
+              { role: "user", parts: [...(req.image ? [{ inlineData: { mimeType: req.image.mimeType, data: req.image.data } }] : []), { text: req.user }] },
+            ],
             generationConfig: {
               responseMimeType: "application/json",
               responseJsonSchema: req.schema,

@@ -43,6 +43,7 @@ function delayOf(p: { status: string; expectedReturn?: Date | null; endDate?: Da
   return minutes > 0 ? { minutes, returned: !!back } : null;
 }
 import { invalidateSecurityCache } from "./security";
+import { sirosAlreadyInside, sirosInside } from "@/lib/registers/siros-inside";
 import { getEntryRegister } from "@/lib/registers/catalog";
 import { notifyLive, notifyPassHolder } from "@/lib/realtime/notify";
 import { canOverrideVisitExit, checkVisitExit, closeVisitPass, newVisitCode, notifyHost, resolveHost } from "@/lib/visits/passes";
@@ -178,8 +179,16 @@ export async function createRegisterEntry(registerKey: string, payload: RawPaylo
   const { visitHost, ...fields } = (payload ?? {}) as RawPayload & { visitHost?: unknown };
   const recorderLookup = recorderSnapshot(user);
   recorderLookup.catch(() => {});
+  // Siros labour: who is inside, read while the entry is checked (not after)
+  const insideLookup = def.key === "SIROS_DAILY_LABOUR" ? sirosInside() : undefined;
+  insideLookup?.catch(() => {});
   const result = await validateNewRecord(def, fields as RawPayload, resolveStaff);
   if ("error" in result) return { error: result.error };
+  // Siros labour: a coolie / contractor still inside on another entry can't be added again until it is marked Out
+  if (def.key === "SIROS_DAILY_LABOUR") {
+    const busy = await sirosAlreadyInside(result.data as Record<string, unknown>, insideLookup);
+    if (busy) return { error: busy };
+  }
   const host = def.visitHost && visitHost ? await resolveHost(visitHost) : null;
   if (def.visitHost && visitHost && !host) return { error: "Choose the faculty / staff member from the list" };
   // A meeting code only for someone coming in (not a record that starts with Out)
@@ -323,7 +332,9 @@ function passOnDay(range: { start: Date; end: Date }): Prisma.PermissionWhereInp
   return {
     OR: [
       { exitDate: { gte: range.start, lt: range.end } },
-      { exitDate: { lt: range.end }, endDate: { gte: range.start } },
+      // A pass whose dates cover the day shows only while it is not finished (approved, or out and not back yet);
+      // a finished one (came back, expired…) shows on the days it went out / came back (its gate scans), not every later day
+      { exitDate: { lt: range.end }, endDate: { gte: range.start }, status: { in: ["APPROVED", "EXITED"] } },
       { movements: { some: { createdAt: { gte: range.start, lt: range.end } } } },
     ],
   };
@@ -1221,6 +1232,16 @@ export async function updateRegisterField(entryId: string, fieldKey: string, val
       const next = field.type === "yesno" ? checked.value === true : checked.value;
 
       const current = effectiveData(def, original.data as RegisterData, original.supplements);
+      // Locked: e.g. "Bill taken by" once the bill is marked taken
+      if (field.lockedBy && current[field.lockedBy] === true) {
+        const flag = def.fields.find((x) => x.key === field.lockedBy);
+        return { error: `${field.label} can't be changed after "${flag ? yesNoWords(flag)[0] : field.lockedBy}"` };
+      }
+      // Marking it (e.g. "Bill taken") needs the fields it locks to be filled first
+      if (field.type === "yesno" && next === true) {
+        const needs = def.fields.find((x) => x.lockedBy === field.key && (current[x.key] === null || current[x.key] === undefined || current[x.key] === ""));
+        if (needs) return { error: `Fill "${needs.label}" first` };
+      }
       const before = field.type === "yesno" ? current[field.key] === true : current[field.key] ?? null;
       if (before === next) return { success: true as const, register: "" };
 
@@ -1387,6 +1408,55 @@ const VEHICLE_LEARN_DAYS = 90;
  * numbers, driver names and purposes typed in the book's own entries of the
  * last ~90 days (newest first, about 100 each). Read only; nothing to register.
  */
+/**
+ * Values typed before in one box of a register (e.g. Work Area), newest first,
+ * for a type-or-select box: the last 6 months, at most 40 different values.
+ */
+export async function getFieldSuggestions(
+  registerKey: string,
+  fieldKeys: string[]
+): Promise<{ values: Record<string, string[]>; fills?: Record<string, Record<string, Record<string, string>>> } | { error: string }> {
+  await requireRole("SECURITY", "ADMIN", "SECURITY_SUPERVISOR");
+  const def = await getEntryRegister(registerKey);
+  const keys = Array.isArray(fieldKeys) ? fieldKeys.filter((k) => typeof k === "string").slice(0, 5) : [];
+  const suggestable = (k: string) => {
+    const combo = def?.fields.find((x) => x.key === k)?.combo;
+    return combo === "suggest" || combo === "sirosContractor";
+  };
+  if (!def || !keys.length || keys.some((k) => !suggestable(k))) return { error: "Unknown register" };
+  const rows = await prisma.registerEntry.findMany({
+    where: { register: def.key, kind: "ORIGINAL", createdAt: { gte: new Date(Date.now() - 180 * 86_400_000) } },
+    orderBy: { createdAt: "desc" },
+    take: 400,
+    select: { data: true },
+  });
+  // Every suggested box from the same read
+  const values: Record<string, string[]> = {};
+  const fills: Record<string, Record<string, Record<string, string>>> = {};
+  for (const fieldKey of keys) {
+    const also = def.fields.find((x) => x.key === fieldKey)?.suggestFills ?? [];
+    const seen = new Map<string, string>();
+    for (const r of rows) {
+      const d = (r.data as Record<string, unknown> | null) ?? {};
+      const v = d[fieldKey];
+      if (typeof v !== "string") continue;
+      const text = v.trim().replace(/\s+/g, " ");
+      const key = text.toLowerCase();
+      if (!text || seen.has(key)) continue;
+      seen.set(key, text);
+      // The newest entry with this value: its other boxes (e.g. designation, department)
+      if (also.length) {
+        const pick: Record<string, string> = {};
+        for (const k of also) if (typeof d[k] === "string" && (d[k] as string).trim()) pick[k] = (d[k] as string).trim();
+        if (Object.keys(pick).length) (fills[fieldKey] ??= {})[key] = pick;
+      }
+      if (seen.size >= 40) break;
+    }
+    values[fieldKey] = [...seen.values()];
+  }
+  return { values, fills };
+}
+
 export async function getVehicleOptions(registerKey: string): Promise<VehicleOptions | { error: string }> {
   await requireRole("SECURITY", "ADMIN", "SECURITY_SUPERVISOR");
   const book = VEHICLE_BOOKS[registerKey];
@@ -1403,7 +1473,7 @@ export async function getVehicleOptions(registerKey: string): Promise<VehicleOpt
   const drivers = new Map<string, { name: string; phone: string | null }>();
   const vehicles = new Map<string, { name: string; number: string }>();
   const purposes = new Map<string, string>();
-  const squash = (v: string) => v.toLowerCase().replace(/s+/g, " ");
+  const squash = (v: string) => v.toLowerCase().replace(/\s+/g, " ");
   for (const row of learned) {
     const d = (row.data ?? {}) as Record<string, unknown>;
     const driver = text(d.driverName);
@@ -1413,7 +1483,7 @@ export async function getVehicleOptions(registerKey: string): Promise<VehicleOpt
     if (registerKey === "CAR_BOOK") {
       const name = text(d.vehicleName);
       const number = text(d[book.numberKey]);
-      const k = (number || name).toUpperCase().replace(/s+/g, "");
+      const k = (number || name).toUpperCase().replace(/\s+/g, "");
       if (!k) continue;
       const have = vehicles.get(k);
       if (!have) vehicles.set(k, { name, number });

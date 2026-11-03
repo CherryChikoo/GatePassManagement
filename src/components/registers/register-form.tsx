@@ -8,15 +8,18 @@ import { VoicePanel, useVoiceFill } from "@/components/voice/voice-fill";
 import { HostPicker } from "@/components/visits/host-picker";
 import { VisitCodeFields, visitInputReady, type VisitExitInput } from "@/components/visits/visit-code";
 import type { VoiceFill } from "@/lib/voice/spec";
-import { CalendarDays, Camera, CheckCircle2, FileX, ChevronDown, Clock, History, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
+import { AlertCircle, FileText, CalendarDays, Camera, CheckCircle2, FileX, ChevronDown, Clock, History, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, PlusCircle, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
 import { DepartmentSelect } from "@/components/ui/department-select";
-import { CooliePicker, SirosNewPeople, contractorItems, useSirosPeople } from "./siros-people";
+import { CooliePicker, SirosNewPeople, SirosPersonDialog, contractorItems, useSirosPeople } from "./siros-people";
 import { ComboInput, useVehicleOptions, type ComboItem } from "./combo-input";
 import { compressPhoto } from "@/lib/images/compress-photo";
 import type { Direction, EntryRegister, FieldDef, GroupDef } from "@/lib/registers/definitions";
 import { isFieldRequired, pendingActions, yesNoWords } from "@/lib/registers/definitions";
 import { cn, formatDate } from "@/lib/utils";
+import { Modal } from "@/components/ui/primitives";
+import type { readBillPhoto } from "@/server/actions/bill-reader";
+import { useGateData } from "@/lib/gate-cache";
 import { displayValue } from "./localize";
 
 export type StaffOption = { id: string; name: string; employeeId: string | null };
@@ -331,7 +334,7 @@ function numericOnly(v: string): string {
 const stickyFooterCls =
   "sticky -bottom-4 sm:-bottom-6 z-10 -mx-4 -mb-4 sm:-mx-6 sm:-mb-6 !mt-6 space-y-2 rounded-b-3xl border-t border-zinc-800 bg-zinc-900 px-4 pt-3 pb-4 sm:px-6 sm:pb-6 shadow-[0_-12px_24px_-14px_rgba(16,24,40,0.25)]";
 const saveBtnCls =
-  "inline-flex w-full h-14 sm:h-12 items-center justify-center gap-2 rounded-full text-base sm:text-sm font-semibold text-white transition-[background-color,transform] active:scale-[0.98] disabled:opacity-60 disabled:active:scale-100";
+  "inline-flex w-full h-14 items-center justify-center gap-2 rounded-full text-base font-semibold text-white transition-[background-color,transform] active:scale-[0.98] disabled:opacity-60 disabled:active:scale-100";
 
 /** Today's date and a live clock. The server records its own time when saving. */
 export function LiveDateTime() {
@@ -381,12 +384,19 @@ function CompactDateTime() {
 }
 
 /** Fields the new-entry form shows (no date / time boxes, only the chosen side's reading) */
-function visibleFields(def: EntryRegister, direction: Direction | null): FieldDef[] {
+function visibleFields(def: EntryRegister, direction: Direction | null, values: Record<string, unknown> = {}): FieldDef[] {
   const m = def.movement;
   const side = m && direction ? (direction === "IN" ? m.in : m.out) : null;
   const readingKeys = new Set([m?.in.readingKey, m?.out.readingKey].filter(Boolean) as string[]);
   return def.fields.filter(
-    (f) => f.type !== "date" && f.type !== "time" && f.key !== m?.directionField && (!readingKeys.has(f.key) || f.key === side?.readingKey) && !f.formHidden
+    (f) =>
+      f.type !== "date" &&
+      f.type !== "time" &&
+      f.key !== m?.directionField &&
+      (!readingKeys.has(f.key) || f.key === side?.readingKey) &&
+      !f.formHidden &&
+      // Shown only after its button (e.g. Supplier name after "Supplier known")
+      (!f.showWhen || values[f.showWhen] === "yes")
   );
 }
 
@@ -394,8 +404,12 @@ function visibleFields(def: EntryRegister, direction: Direction | null): FieldDe
  * Required fields (and photos at the very top of the definition) show first;
  * everything else folds under "More details".
  */
-function splitFields(def: EntryRegister, direction: Direction | null): { primary: FieldDef[]; more: FieldDef[] } {
-  const all = visibleFields(def, direction);
+function splitFields(
+  def: EntryRegister,
+  direction: Direction | null,
+  values: Record<string, unknown> = {}
+): { primary: FieldDef[]; more: FieldDef[] } {
+  const all = visibleFields(def, direction, values);
   const topPhotos = new Set<string>();
   for (const f of all) {
     // A leading In / Out button pair (stock registers) sits above the photos
@@ -410,7 +424,16 @@ function splitFields(def: EntryRegister, direction: Direction | null): { primary
   // Car Book / Auto Book: the few shown fields are all up front
   let primary = def.highlightRequired
     ? all
-    : all.filter((f) => def.required.includes(f.key) || f.upFront || anyOf.has(f.key) || topPhotos.has(f.key) || f.key === flagKey);
+    : all.filter(
+        (f) =>
+          def.required.includes(f.key) ||
+          f.upFront ||
+          !!f.showWhen ||
+          def.fields.some((x) => x.showWhen === f.key) ||
+          anyOf.has(f.key) ||
+          topPhotos.has(f.key) ||
+          f.key === flagKey
+      );
   // Nothing required: show the first few so the form is not just a toggle
   if (primary.length === 0) primary = all.slice(0, 3);
   const keys = new Set(primary.map((f) => f.key));
@@ -474,7 +497,7 @@ function PhotoInput({
 
   return (
     <div className="space-y-1.5">
-      <div className={`photo-tile relative aspect-square w-full max-w-40 ${dimmed ? "opacity-40" : ""}`}>
+      <div className={`photo-tile relative aspect-[4/3] w-full ${dimmed ? "opacity-40" : ""}`}>
         <label
           htmlFor={id}
           className={`flex h-full w-full flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl border-2 text-center transition-colors ${
@@ -639,17 +662,31 @@ function FieldInput({
           <div role="group" aria-labelledby={id} className="grid grid-cols-2 gap-2">
             {(f.options ?? []).map((o) => {
               const on = value === o;
+              // In / Inward green, Out / Outward blue (like the In / Out buttons); other choices coral
+              const dir = /^(in|inward)$/i.test(o) ? "in" : /^(out|outward)$/i.test(o) ? "out" : null;
+              const DirIcon = dir === "in" ? LogIn : LogOut;
               return (
                 <button
                   key={o}
                   type="button"
                   onClick={() => onChange(o)}
                   aria-pressed={on}
-                  className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 px-3 text-base font-semibold transition-colors ${
-                    on ? "border-orange-500 bg-orange-500/15 text-orange-600" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700"
+                  data-big-btn=""
+                  className={`flex min-h-12 items-center justify-center gap-2 rounded-2xl border-[1.5px] px-3 text-base font-semibold outline-none transition-[background-color,border-color,color,transform] focus-visible:ring-4 focus-visible:ring-orange-500/20 active:scale-[0.98] ${
+                    on
+                      ? dir === "in"
+                        ? "border-emerald-600 bg-emerald-600 text-white shadow-[0_6px_14px_-8px_rgba(5,150,105,0.7)]"
+                        : dir === "out"
+                        ? "border-sky-600 bg-sky-600 text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.7)]"
+                        : "border-orange-500 bg-orange-500/15 text-orange-600"
+                      : "border-zinc-700 bg-zinc-900 text-zinc-500 hover:bg-zinc-950"
                   }`}
                 >
-                  {on && <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />}
+                  {on ? (
+                    <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />
+                  ) : dir ? (
+                    <DirIcon className={`h-4 w-4 shrink-0 ${dir === "in" ? "text-emerald-600" : "text-sky-600"}`} aria-hidden="true" />
+                  ) : null}
                   {t(o)}
                 </button>
               );
@@ -675,8 +712,31 @@ function FieldInput({
         </ThemedSelect>
       );
     }
-    case "number":
-      return <input id={id} type="text" inputMode="decimal" autoComplete="off" value={value} required={required} onChange={(e) => onChange(numericOnly(e.target.value))} className={inputCls} />;
+    case "number": {
+      const box = (
+        <input
+          id={id}
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
+          value={value}
+          required={required}
+          onChange={(e) => onChange(numericOnly(e.target.value))}
+          className={`${inputCls} ${f.label.includes("₹") ? "pl-9" : ""}`}
+        />
+      );
+      // Money: a ₹ sign inside the box (numbers only)
+      return f.label.includes("₹") ? (
+        <div className="relative">
+          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base font-bold text-zinc-400" aria-hidden="true">
+            ₹
+          </span>
+          {box}
+        </div>
+      ) : (
+        box
+      );
+    }
     case "phone":
       return <input id={id} type="tel" maxLength={15} value={value} placeholder={f.placeholder} required={required} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
     default:
@@ -691,10 +751,16 @@ function FieldBlock({
   voice = false,
   missing = false,
   highlight = false,
+  error = null,
+  fieldKey,
   children,
 }: {
   f: FieldDef;
   id: string;
+  /** Marker the form scrolls to (default: the field key; worker rows use "group.row.field") */
+  fieldKey?: string;
+  /** Not filled / not valid: red border and this message under the box (the form scrolls here) */
+  error?: string | null;
   required?: boolean;
   /** Filled from the guard's voice: highlighted until they check / edit it */
   voice?: boolean;
@@ -705,10 +771,22 @@ function FieldBlock({
   children: React.ReactNode;
 }) {
   const t = useT();
-  if (f.type === "photo") return <div className="min-w-0">{children}</div>;
+  const buttonOnly = f.type === "yesno" && !!f.buttons;
+  const errorLine = error ? (
+    <p role="alert" className="flex items-start gap-1.5 text-sm font-medium text-red-600">
+      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {error}
+    </p>
+  ) : null;
+  if (f.type === "photo")
+    return (
+      <div data-field={fieldKey ?? f.key} className="min-w-0 space-y-1.5 scroll-mt-24">
+        <div className={error ? "rounded-2xl ring-2 ring-red-500" : undefined}>{children}</div>
+        {errorLine}
+      </div>
+    );
   return (
-    <div className={`space-y-1.5 min-w-0 ${f.type === "textarea" ? "sm:col-span-2" : ""}`}>
-      <label htmlFor={id} className="field-label flex flex-wrap items-baseline gap-1 text-sm font-medium text-zinc-200">
+    <div data-field={fieldKey ?? f.key} className={`space-y-1.5 min-w-0 scroll-mt-24 ${f.type === "textarea" || f.buttons ? "sm:col-span-2" : ""}`}>
+      <label htmlFor={id} className={cn("field-label flex flex-wrap items-baseline gap-1 text-sm font-medium text-zinc-200", buttonOnly && "sr-only")}>
         <span className="min-w-0">{f.label}</span>
         {required && (
           <span className="text-base leading-none font-semibold text-orange-500" aria-hidden="true">
@@ -724,7 +802,9 @@ function FieldBlock({
       </label>
       <div
         className={
-          voice
+          error
+            ? "rounded-2xl ring-2 ring-red-500 [&_input]:!border-red-500 [&_textarea]:!border-red-500 [&_button[role=combobox]]:!border-red-500"
+            : voice
             ? "rounded-2xl ring-2 ring-amber-400/60"
             : missing
             ? "rounded-2xl ring-2 ring-red-400/60"
@@ -733,7 +813,8 @@ function FieldBlock({
             : undefined
         }
       >{children}</div>
-      {f.hint && <p className="text-[11px] leading-snug text-zinc-500">{f.hint}</p>}
+      {errorLine}
+      {f.hint && <p className="field-hint text-[11px] leading-snug text-zinc-500">{f.hint}</p>}
     </div>
   );
 }
@@ -769,15 +850,21 @@ function DirectionPicker({
                 type="button"
                 onClick={() => onChange(d)}
                 aria-pressed={active}
-                className={`flex min-h-12 items-center justify-center gap-1.5 rounded-2xl border px-3 text-base font-semibold leading-tight shadow-card transition-[background-color,border-color,color,transform] active:scale-[0.98] ${
+                data-big-btn=""
+                className={`flex min-h-12 items-center justify-center gap-1.5 rounded-2xl border-[1.5px] px-3 text-base font-semibold leading-tight transition-[background-color,border-color,color,transform] outline-none focus-visible:ring-4 focus-visible:ring-orange-500/20 active:scale-[0.98] ${
+                  // Only the chosen one is coloured (In green, Out blue); the other is plain
                   active
                     ? d === "IN"
-                      ? "border-emerald-500/70 bg-emerald-500/15 text-emerald-600"
-                      : "border-sky-500/70 bg-sky-500/15 text-sky-600"
-                    : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                      ? "border-emerald-600 bg-emerald-600 text-white shadow-[0_6px_14px_-8px_rgba(5,150,105,0.7)]"
+                      : "border-sky-600 bg-sky-600 text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.7)]"
+                    : "border-zinc-700 bg-zinc-900 text-zinc-500 hover:bg-zinc-950"
                 }`}
               >
-                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                {active ? (
+                  <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />
+                ) : (
+                  <Icon className={`h-4 w-4 shrink-0 ${d === "IN" ? "text-emerald-600" : "text-sky-600"}`} aria-hidden="true" />
+                )}
                 <span className="min-w-0 text-center">{side.label}</span>
               </button>
             );
@@ -845,18 +932,59 @@ export function RegisterForm({
   const [draft] = useState(() => readDraft(def.key));
   const defaultDirection: Direction | null = m ? m.startWith ?? (m.firstDirections.length === 1 ? m.firstDirections[0] : null) : null;
   // The last one used here wins (when this register may start either way)
-  const [lastDirection] = useState(() => (m && m.firstDirections.length > 1 ? readLastDirection(def.key) : null));
-  const startDirection: Direction | null = lastDirection ?? defaultDirection;
+  const [lastDirection] = useState(() => (m && m.firstDirections.length > 1 && !m.chooseEachTime ? readLastDirection(def.key) : null));
+  // Car Book: nothing chosen when the form opens
+  const startDirection: Direction | null = m?.chooseEachTime ? null : lastDirection ?? defaultDirection;
   // Car Book / Auto Book: drivers, cars and faculty behind the "Select" buttons (one request, kept for the session)
-  const vehicleOpts = useVehicleOptions(def.key, def.fields.some((f) => !!f.combo && f.combo !== "sirosContractor"));
+  const vehicleOpts = useVehicleOptions(
+    def.key,
+    def.fields.some((f) => !!f.combo && f.combo !== "sirosContractor" && f.combo !== "options" && f.combo !== "suggest")
+  );
+  // Boxes that suggest what was typed before (e.g. Work Area, officer): one request for all of them
+  const suggestKeys = def.fields.filter((f) => (f.combo === "suggest" || f.combo === "sirosContractor") && !f.formHidden).map((f) => f.key);
+  const suggestions = useGateData<{ values?: Record<string, string[]>; fills?: Record<string, Record<string, Record<string, string>>> }>(
+    suggestKeys.length ? `suggest|${def.key}|${suggestKeys.join(",")}` : null,
+    () =>
+      callGate("getFieldSuggestions", [def.key, suggestKeys], 15_000) as Promise<{
+        values?: Record<string, string[]>;
+        fills?: Record<string, Record<string, Record<string, string>>>;
+      }>,
+    [`reg:${def.key}`]
+  );
   // Siros Venture labour: registered coolies and contractors (picked by name or number)
   const sirosBook = !!def.groups?.some((g) => g.picker === "sirosCoolie");
   const sirosPeople = useSirosPeople(sirosBook);
+  // Details pop-up for a registered contractor / coolie (by number)
+  const [sirosView, setSirosView] = useState<number | null>(null);
+  const contractorNo = (name: unknown) => {
+    const n = String(name ?? "").trim().toLowerCase();
+    return n ? sirosPeople?.people.find((p) => p.kind === "CONTRACTOR" && p.name.trim().toLowerCase() === n)?.no ?? null : null;
+  };
   const comboFor = (f: FieldDef) => {
     if (!f.combo) return undefined;
+    if (f.combo === "options") {
+      // A fixed list (e.g. Work Type); anything else can be typed
+      return { items: (f.options ?? []).map((o) => ({ fill: o, label: t(o) })), loading: false };
+    }
+    if (f.combo === "suggest") {
+      const first = f.suggestFirst ?? [];
+      const typed = (suggestions.data?.values?.[f.key] ?? []).filter((v) => !first.some((x) => x.toLowerCase() === v.toLowerCase()));
+      // The fixed first choices in the guard's language (saved in English, like other choices)
+      return {
+        items: [...first.map((v) => ({ fill: v, label: t(v) })), ...typed.map((v) => ({ fill: v }))],
+        loading: !suggestions.data && suggestions.loading,
+        // A past name: also fill its designation / department from that earlier entry
+        onPick: f.suggestFills?.length
+          ? (item: ComboItem) => {
+              const more = suggestions.data?.fills?.[f.key]?.[item.fill.trim().toLowerCase()];
+              if (more) setValues((v) => ({ ...v, ...more }));
+            }
+          : undefined,
+      };
+    }
     if (f.combo === "sirosContractor") {
       return {
-        items: contractorItems(sirosPeople),
+        items: contractorItems(sirosPeople, suggestions.data?.values?.[f.key] ?? []),
         loading: sirosPeople === null,
         // Picking a contractor fills their phone too (still editable)
         onPick: (item: ComboItem) => setValues((v) => ({ ...v, ...(item.extra ? { phone: item.extra } : {}) })),
@@ -901,6 +1029,29 @@ export function RegisterForm({
   const [values, setValues] = useState<Values>(draft?.values ?? {});
   const [rows, setRows] = useState<Record<string, Values[]>>(() => draft?.rows ?? emptyRows());
   const [localError, setLocalError] = useState<string | null>(null);
+  // Boxes not filled / not valid on the last Save (red, with a message); cleared when changed
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const formRef = useRef<HTMLFormElement>(null);
+  const errorFor = (key: string): string | null => {
+    const msg = fieldErrors[key];
+    if (!msg) return null;
+    // "Not filled" messages go away once it is filled; others (e.g. a wrong phone number) when the box is changed
+    if (msg !== t("Fill this in") && msg !== t("Fill at least one of these") && msg !== t("Choose In or Out")) return msg;
+    if (key === "__direction") return direction ? null : msg;
+    if (key.startsWith("__group.")) return (rows[key.slice(8)] ?? []).length > 0 ? null : msg;
+    const parts = key.split(".");
+    if (parts.length === 3) return String(rows[parts[0]]?.[Number(parts[1])]?.[parts[2]] ?? "").trim() ? null : msg;
+    const anyOf = (def.requiredAny ?? []).find((g) => g.includes(key));
+    if (anyOf) return anyOf.some((k) => filledIn(values[k])) ? null : msg;
+    return filledIn(values[key]) || !isFieldRequired(def, key, values) ? null : msg;
+  };
+  const clearFieldError = (key: string) =>
+    setFieldErrors((e) => {
+      if (!e[key]) return e;
+      const next = { ...e };
+      delete next[key];
+      return next;
+    });
   // "Your unsaved details were kept." while showing a brought-back draft
   const [restored, setRestored] = useState(() => !!draft && hasTyped(draft.values, draft.rows, draft.visitHost));
   // Bumped by "Clear form" so pickers and photo boxes start empty too
@@ -934,9 +1085,47 @@ export function RegisterForm({
   const voiceDir = useRef<Direction | null>(null);
   const beforeVoice = useRef<{ values: Values; rows: Record<string, Values[]>; direction: Direction | null } | null>(null);
   const [voiceKeys, setVoiceKeys] = useState<string[]>([]);
-  const [voiceGroups, setVoiceGroups] = useState<string[]>([]);
   // Re-mounts boxes voice changed (pickers keep their own copy of the value)
   const [voiceVer, setVoiceVer] = useState<Record<string, number>>({});
+  // Bill photo read (stock registers): "reading" while Gemini looks at it, then a short result line
+  const [billRead, setBillRead] = useState<{ path: string; state: "reading" | "done" | "error"; message?: string } | null>(null);
+  const billPath = def.readsBill ? String(values[def.readsBill] ?? "") : "";
+  useEffect(() => {
+    if (!billPath || billRead?.path === billPath) return;
+    let alive = true;
+    const start = window.setTimeout(() => {
+      setBillRead({ path: billPath, state: "reading" });
+      // Through the gate route (not a server action from an effect); Gemini may take up to ~36 s
+      (callGate("readBillPhoto", [billPath], 45_000) as ReturnType<typeof readBillPhoto>)
+        .then((res) => {
+          if (!alive) return;
+          if ("error" in res) return setBillRead({ path: billPath, state: "error", message: t(res.error) });
+          const filled: string[] = [];
+          setValues((v) => {
+            const next = { ...v };
+            for (const [k, val] of Object.entries(res.details)) {
+              // Only boxes on this form that are still empty: never over what the guard typed
+              if (!def.fields.some((f) => f.key === k) || filledIn(next[k])) continue;
+              next[k] = String(val);
+              filled.push(k);
+            }
+            return next;
+          });
+          // Marked "Check" like voice filling, and the boxes show the new value
+          setVoiceKeys((ks) => [...new Set([...ks, ...filled])]);
+          setVoiceVer((vv) => Object.fromEntries([...Object.entries(vv), ...filled.map((k) => [k, (vv[k] ?? 0) + 1])]));
+          setBillRead({ path: billPath, state: "done", message: filled.length ? t("Filled from the bill — check each one.") : t("Nothing new found on the bill.") });
+        })
+        .catch(() => alive && setBillRead({ path: billPath, state: "error", message: t("Could not read the bill. Type the details.") }));
+    }, 0);
+    return () => {
+      alive = false;
+      window.clearTimeout(start);
+    };
+    // Read once per photo; values / def are read inside on purpose
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [billPath]);
+  const [voiceGroups, setVoiceGroups] = useState<string[]>([]);
   const [rowsVer, setRowsVer] = useState(0);
 
   const applyVoice = (fill: VoiceFill) => {
@@ -1015,6 +1204,7 @@ export function RegisterForm({
   const voiceDone = voice.status === "done";
 
   const clearAll = () => {
+    setFieldErrors({});
     setValues({});
     setRows(emptyRows());
     setDirection(startDirection);
@@ -1035,7 +1225,7 @@ export function RegisterForm({
   };
 
   const side = m && direction ? (direction === "IN" ? m.in : m.out) : null;
-  const { primary, more } = splitFields(def, direction);
+  const { primary, more } = splitFields(def, direction, values);
   const showMore = moreOpen && more.length > 0;
 
   const renderField = (f: FieldDef) => (
@@ -1043,10 +1233,11 @@ export function RegisterForm({
       key={f.key}
       f={f}
       id={`rf-${f.key}`}
-      required={isFieldRequired(def, f.key, values)}
+      required={isFieldRequired(def, f.key, values) || (!!f.showWhen && !!f.requiredWhenShown)}
       voice={voiceKeys.includes(f.key)}
       highlight={!!def.highlightRequired}
       missing={voiceDone && isFieldRequired(def, f.key, values) && String(values[f.key] ?? "").trim() === ""}
+      error={errorFor(f.key)}
     >
       <FieldInput
         key={`${f.key}-${clearNo}-${fillTargets.has(f.key) ? fillNo : 0}-${voiceVer[f.key] ?? 0}`}
@@ -1058,6 +1249,7 @@ export function RegisterForm({
         combo={comboFor(f)}
         onChange={(v) => {
           setValues((s) => ({ ...s, [f.key]: v }));
+          clearFieldError(f.key);
           // The guard checked / changed it: no longer marked as voice
           if (voiceKeys.includes(f.key)) setVoiceKeys((ks) => ks.filter((k) => k !== f.key));
         }}
@@ -1086,6 +1278,15 @@ export function RegisterForm({
             : undefined
         }
       />
+      {f.combo === "sirosContractor" && contractorNo(values[f.key]) !== null && (
+        <button
+          type="button"
+          onClick={() => setSirosView(contractorNo(values[f.key]))}
+          className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm font-semibold text-zinc-200 hover:bg-zinc-950"
+        >
+          <Info className="h-4 w-4" aria-hidden="true" /> {t("No.")} {contractorNo(values[f.key])} · {t("View details")}
+        </button>
+      )}
     </FieldBlock>
   );
 
@@ -1095,6 +1296,24 @@ export function RegisterForm({
     const out: React.ReactNode[] = [];
     let i = 0;
     while (i < list.length) {
+      const opens = def.fields.filter((x) => x.showWhen === list[i].key);
+      if (opens.length > 0) {
+        const toggle = list[i++];
+        // The boxes it opened come right after it in the list: drawn inside the panel
+        const inside: FieldDef[] = [];
+        while (i < list.length && list[i].showWhen === toggle.key) inside.push(list[i++]);
+        const on = values[toggle.key] === "yes";
+        out.push(
+          <div
+            key={`group-${toggle.key}`}
+            className={cn("col-span-full space-y-4", on && "rounded-2xl border-[1.5px] border-orange-500/35 bg-orange-500/5 p-3 sm:p-4")}
+          >
+            {renderField(toggle)}
+            {inside.length > 0 && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{inside.map((x) => renderField(x))}</div>}
+          </div>
+        );
+        continue;
+      }
       if (list[i].type !== "photo") {
         out.push(renderField(list[i]));
         i++;
@@ -1117,7 +1336,7 @@ export function RegisterForm({
             className={
               run.length === 1
                 ? "grid grid-cols-1 [&_.photo-tile]:aspect-auto [&_.photo-tile]:h-36 [&_.photo-tile]:max-w-none"
-                : "grid grid-cols-2 items-start gap-3 sm:grid-cols-3"
+                : "grid grid-cols-2 items-start gap-3"
             }
           >
             {run.map(({ p }) => (
@@ -1157,27 +1376,62 @@ export function RegisterForm({
   return (
     <form
       autoComplete="off"
+      ref={formRef}
+      data-look="clear"
+      // The form checks the boxes itself: a problem box turns red with a message, and the form scrolls to it
+      noValidate
       onSubmit={(e) => {
         e.preventDefault();
-        if (m && !direction) {
-          setLocalError(t("Choose In or Out"));
-          return;
+        const errs: Record<string, string> = {};
+        if (m && !direction) errs.__direction = t("Choose In or Out");
+        const shown = visibleFields(def, direction, values);
+        for (const f of shown) {
+          const v = values[f.key];
+          if (f.type === "yesno" && !f.buttons) continue;
+          if ((isFieldRequired(def, f.key, values) || (f.showWhen && f.requiredWhenShown)) && !filledIn(v)) errs[f.key] = t("Fill this in");
+          else if (f.type === "phone" && filledIn(v) && !/^\+?[0-9]{10,15}$/.test(String(v).replace(/[\s-]/g, ""))) {
+            errs[f.key] = t("Enter a valid phone number (10–15 digits)");
+          }
         }
-        // Photos and button choices have no browser "required" check
-        const unfilled = visibleFields(def, direction).find(
-          (f) => (f.type === "photo" || f.buttons) && f.type !== "yesno" && isFieldRequired(def, f.key, values) && !filledIn(values[f.key])
-        );
-        if (unfilled) {
-          setLocalError(t("{field} is required", { field: t(unfilled.label) }));
-          return;
+        for (const keys of def.requiredAny ?? []) {
+          if (keys.every((k) => !filledIn(values[k]))) for (const k of keys) errs[k] ??= t("Fill at least one of these");
         }
-        const lacking = (def.requiredAny ?? []).find((keys) => keys.every((k) => !filledIn(values[k])));
-        if (lacking) {
-          setLocalError(
-            t("{names}: fill at least one", { names: lacking.map((k) => def.fields.find((f) => f.key === k)?.label ?? k).join(" / ") })
+        // Typed worker rows: a started row needs its required boxes
+        const rowKeys: string[] = [];
+        for (const g of def.groups ?? []) {
+          if (g.minRows && (rows[g.key] ?? []).length < g.minRows) {
+            errs[`__group.${g.key}`] = t("Add at least one {item}", { item: t(g.itemLabel).toLowerCase() });
+            rowKeys.push(`__group.${g.key}`);
+          }
+          if (g.picker === "sirosCoolie") continue;
+          (rows[g.key] ?? []).forEach((row, i) => {
+            const started = g.fields.some((f) => f.type !== "time" && String(row[f.key] ?? "").trim() !== "");
+            for (const f of g.fields) {
+              if (f.type === "time") continue;
+              const k = `${g.key}.${i}.${f.key}`;
+              rowKeys.push(k);
+              if (started && g.required?.includes(f.key) && !String(row[f.key] ?? "").trim()) errs[k] = t("Fill this in");
+            }
+          });
+        }
+        const topRows = rowKeys.filter((k) => (def.groups ?? []).some((g) => g.picker === "typedRows" && (k === `__group.${g.key}` || k.startsWith(`${g.key}.`))));
+        const order = ["__direction", ...topRows, ...primary.map((f) => f.key), ...more.map((f) => f.key), ...rowKeys.filter((k) => !topRows.includes(k))];
+        const first = order.find((k) => errs[k]);
+        if (first) {
+          setFieldErrors(errs);
+          setLocalError(t("Fill in the boxes marked in red"));
+          // A problem under "More details": open it first
+          if (more.some((f) => errs[f.key])) setMoreOpen(true);
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+              const box = formRef.current?.querySelector<HTMLElement>(`[data-field="${first}"]`);
+              box?.scrollIntoView({ block: "center", behavior: "smooth" });
+              box?.querySelector<HTMLElement>('input:not([type="file"]):not([role="combobox"]), textarea')?.focus({ preventScroll: true });
+            })
           );
           return;
         }
+        setFieldErrors({});
         setLocalError(null);
         // The next fresh form here starts on this side too
         if (m && m.firstDirections.length > 1) rememberDirection(def.key, direction);
@@ -1228,7 +1482,22 @@ export function RegisterForm({
         </p>
       )}
 
-      {m && !m.fixedStart && <DirectionPicker compact def={def} value={direction} onChange={(d) => { setDirection(d); setLocalError(null); }} />}
+      {/* "* must fill" note */}
+      {def.required.length > 0 && (
+        <p className="text-sm text-zinc-500 md:text-base">
+          <span className="font-bold text-orange-500">*</span> {t("Boxes with * must be filled; the rest are optional.")}
+        </p>
+      )}
+      {m && !m.fixedStart && (
+        <div data-field="__direction" className="scroll-mt-24 space-y-1.5">
+          <DirectionPicker compact def={def} value={direction} onChange={(d) => { setDirection(d); setLocalError(null); clearFieldError("__direction"); }} />
+          {errorFor("__direction") && (
+            <p role="alert" className="flex items-center gap-1.5 text-sm font-medium text-red-600">
+              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" /> {errorFor("__direction")}
+            </p>
+          )}
+        </div>
+      )}
 
       {m && !m.single && !m.fixedStart && !m.noOneWay && side && (
         <fieldset>
@@ -1288,26 +1557,86 @@ export function RegisterForm({
         </div>
       )}
 
+      {sirosBook && <SirosPersonDialog no={sirosView} onClose={() => setSirosView(null)} />}
+      {/* Siros: register a first-timer (top of the form) */}
+      {sirosBook && (
+        <SirosNewPeople
+          renderPhoto={(v, onPhoto) => <PhotoInput id="rf-siros-new-photo" value={v} onChange={onPhoto} registerKey={def.key} label={t("Photo")} required />}
+          onRegistered={(p) =>
+            p.kind === "CONTRACTOR"
+              ? setValues((v) => ({ ...v, contractorName: p.name, ...(p.phone ? { phone: p.phone } : {}) }))
+              : setRows((st) => ({
+                  ...st,
+                  workers: [...(st.workers ?? []).filter((x) => String(x.name ?? "").trim() !== ""), { no: String(p.no), name: p.name, gender: p.gender ?? "" }],
+                }))
+          }
+        />
+      )}
+
+      {billRead && def.readsBill && billRead.path === billPath && (
+        <p
+          role="status"
+          className={cn(
+            "flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold",
+            billRead.state === "reading" ? "bg-zinc-950 text-zinc-300" : billRead.state === "done" ? "bg-amber-500/10 text-amber-700" : "bg-red-500/10 text-red-600"
+          )}
+        >
+          {billRead.state === "reading" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" /> : <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />}
+          {billRead.state === "reading" ? t("Reading the bill…") : billRead.message}
+        </p>
+      )}
+      {/* College Daily Labour: the workers first */}
+      {(def.groups ?? [])
+        .filter((g) => g.picker === "typedRows")
+        .map((g) => (
+          <TypedRows
+            key={g.key}
+            group={g}
+            rows={rows[g.key] ?? []}
+            onChange={(list) => setRows((st) => ({ ...st, [g.key]: list }))}
+            errorFor={errorFor}
+          />
+        ))}
       {primary.length > 0 && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{renderGrid(primary)}</div>}
 
       {more.length > 0 && (
         <div className="space-y-4">
+          {/* A full-width button with the number of extra fields */}
           <button
             type="button"
             onClick={() => setMoreOpen((o) => !o)}
             aria-expanded={showMore}
-            className="inline-flex h-10 items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-900"
+            className="flex h-14 w-full items-center gap-3 rounded-2xl border-[1.5px] border-zinc-600 bg-zinc-900 px-4 text-base font-semibold text-zinc-100 transition-colors hover:bg-zinc-950"
           >
-            {t("More details")}
-            <ChevronDown className={`h-4 w-4 transition-transform ${showMore ? "rotate-180" : ""}`} aria-hidden="true" />
+            <PlusCircle className={`h-5 w-5 shrink-0 text-zinc-400 transition-transform ${showMore ? "rotate-45" : ""}`} aria-hidden="true" />
+            <span className="min-w-0 flex-1 text-left">
+              {showMore ? t("Fewer details") : t("More details")} <span className="font-normal text-zinc-500 tabular-nums">({more.length})</span>
+            </span>
+            <ChevronDown className={`h-5 w-5 shrink-0 text-zinc-400 transition-transform ${showMore ? "rotate-180" : ""}`} aria-hidden="true" />
           </button>
-          {showMore && <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{renderGrid(more)}</div>}
+          {showMore && (
+            // White panel with a border: the grey boxes stand out, and it reads as part of "More details"
+            <div className="grid grid-cols-1 gap-4 rounded-2xl border border-zinc-700 bg-zinc-900 p-3 sm:grid-cols-2 sm:p-4">{renderGrid(more)}</div>
+          )}
         </div>
       )}
 
       {(def.groups ?? []).map((g) => {
         if (g.picker === "sirosCoolie") {
           return <CooliePicker key={g.key} rows={rows[g.key] ?? []} onChange={(list) => setRows((st) => ({ ...st, [g.key]: list }))} people={sirosPeople} />;
+        }
+        // Drawn at the top of the form instead
+        if (g.picker === "typedRows") return null;
+        if (g.picker === "itemsPopup") {
+          return (
+            <ItemsPopup
+              key={g.key}
+              group={g}
+              rows={rows[g.key] ?? []}
+              onChange={(list) => setRows((st) => ({ ...st, [g.key]: list }))}
+              error={errorFor(`__group.${g.key}`)}
+            />
+          );
         }
         const list = rows[g.key] ?? [];
         const atMax = g.max !== null && list.length >= g.max;
@@ -1347,7 +1676,14 @@ export function RegisterForm({
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {typed.map((f) => (
-                    <FieldBlock key={f.key} f={f} id={`rf-${g.key}-${i}-${f.key}`} required={!!g.required?.includes(f.key)}>
+                    <FieldBlock
+                      key={f.key}
+                      f={f}
+                      id={`rf-${g.key}-${i}-${f.key}`}
+                      required={!!g.required?.includes(f.key)}
+                      fieldKey={`${g.key}.${i}.${f.key}`}
+                      error={errorFor(`${g.key}.${i}.${f.key}`)}
+                    >
                       <FieldInput
                         registerKey={def.key}
                         required={!!g.required?.includes(f.key) && rowStarted(row)}
@@ -1374,27 +1710,13 @@ export function RegisterForm({
         );
       })}
 
-      {sirosBook && (
-        <SirosNewPeople
-          renderPhoto={(v, onPhoto) => <PhotoInput id="rf-siros-new-photo" value={v} onChange={onPhoto} registerKey={def.key} label={t("Photo")} required />}
-          onRegistered={(p) =>
-            p.kind === "CONTRACTOR"
-              ? setValues((v) => ({ ...v, contractorName: p.name, ...(p.phone ? { phone: p.phone } : {}) }))
-              : setRows((st) => ({
-                  ...st,
-                  workers: [...(st.workers ?? []).filter((x) => String(x.name ?? "").trim() !== ""), { no: String(p.no), name: p.name, gender: p.gender ?? "" }],
-                }))
-          }
-        />
-      )}
-
       <div className={stickyFooterCls}>
         {localError && (
           <p role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-400">
             {localError}
           </p>
         )}
-        <button type="submit" disabled={busy} className={`${saveBtnCls} bg-orange-600 hover:bg-orange-700 shadow-[0_6px_16px_-8px_rgba(207,62,37,0.55)]`}>
+        <button type="submit" data-big-btn="" disabled={busy} className={`${saveBtnCls} bg-orange-600 hover:bg-orange-700 shadow-[0_6px_16px_-8px_rgba(207,62,37,0.55)]`}>
           {!busy && <Save className="h-5 w-5 sm:h-4 sm:w-4" />}
           {busy ? t("Saving…") : side ? t("Save — {side} now", { side: side.label }) : t("Save record")}
         </button>
@@ -1422,13 +1744,27 @@ export function MovementForm({
   visit?: { hostName: string; open: boolean; locked: boolean } | null;
   canOverrideVisit?: boolean;
   busy: boolean;
-  onSubmit: (payload: { markMovement: boolean; reading?: string; groupMarks: Record<string, number[]> } & VisitExitInput) => void;
+  onSubmit: (payload: { markMovement: boolean; reading?: string; groupMarks: Record<string, number[]>; exitCounts?: Record<string, number> } & VisitExitInput) => void;
 }) {
   const t = useT();
   const pending = pendingActions(def, current);
   const [mark, setMark] = useState<boolean>(!!pending.next);
   const [reading, setReading] = useState("");
   const [marks, setMarks] = useState<Record<string, number[]>>({});
+  // Out with counts by type (College Daily Labour): each starts at the number that came in
+  const countsGroup = def.movement?.exitCounts;
+  const countsIn = (() => {
+    const m: Record<string, number> = {};
+    const list = countsGroup && Array.isArray(current[countsGroup]) ? (current[countsGroup] as Record<string, unknown>[]) : [];
+    for (const r of list) {
+      const type = String(r.workerType ?? "");
+      if (type) m[type] = (m[type] ?? 0) + (Number(r.count) || 0);
+    }
+    return m;
+  })();
+  const [exitCounts, setExitCounts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(Object.entries(countsIn).map(([k, v]) => [k, String(v)]))
+  );
   const [visitInput, setVisitInput] = useState<VisitExitInput>({ visitCode: "" });
 
   if (!pending.any)
@@ -1443,9 +1779,16 @@ export function MovementForm({
   return (
     <form
       autoComplete="off"
+      data-look="clear"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({ markMovement: mark && !!next, reading, groupMarks: marks, ...(needsCode ? visitInput : {}) });
+        onSubmit({
+          markMovement: mark && !!next,
+          reading,
+          groupMarks: marks,
+          ...(needsCode ? visitInput : {}),
+          ...(countsGroup && next?.direction === "OUT" ? { exitCounts: Object.fromEntries(Object.entries(exitCounts).map(([k, v]) => [k, Number(v) || 0])) } : {}),
+        });
       }}
       className="space-y-4"
     >
@@ -1471,6 +1814,29 @@ export function MovementForm({
                 {def.fields.find((f) => f.key === next.readingKey)?.label ?? t("Reading")}
               </label>
               <input id="mv-reading" type="text" autoComplete="off" maxLength={100} value={reading} onChange={(e) => setReading(e.target.value)} className={inputCls} />
+            </div>
+          )}
+          {countsGroup && next.direction === "OUT" && mark && Object.keys(countsIn).length > 0 && (
+            // How many of each are leaving (everyone at once)
+            <div className="space-y-2 rounded-2xl border-[1.5px] border-zinc-700 p-3 sm:p-4">
+              <p className="field-label text-sm font-medium text-zinc-200">{t("How many are leaving?")}</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {Object.entries(countsIn).map(([type, came]) => (
+                  <label key={type} className="block space-y-1.5">
+                    <span className="flex items-baseline justify-between gap-2 text-sm font-semibold text-zinc-200">
+                      {t(type)} <span className="text-xs font-normal text-zinc-500 tabular-nums">{t("came in: {n}", { n: came })}</span>
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={exitCounts[type] ?? ""}
+                      onChange={(e) => setExitCounts((s) => ({ ...s, [type]: e.target.value.replace(/[^0-9]/g, "") }))}
+                      className={inputCls}
+                    />
+                  </label>
+                ))}
+              </div>
             </div>
           )}
           {needsCode && visit && (
@@ -1516,7 +1882,7 @@ export function MovementForm({
         );
       })}
       <div className={stickyFooterCls}>
-        <button type="submit" disabled={busy || (needsCode && !visitInputReady(visitInput))} className={`${saveBtnCls} bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50`}>
+        <button type="submit" data-big-btn="" disabled={busy || (needsCode && !visitInputReady(visitInput))} className={`${saveBtnCls} bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50`}>
           {!busy && <Save className="h-5 w-5 sm:h-4 sm:w-4" />}
           {busy ? t("Saving…") : t("Save")}
         </button>
@@ -1544,6 +1910,7 @@ export function CloseRecordForm({
   return (
     <form
       autoComplete="off"
+      data-look="clear"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit({ close: true, note });
@@ -1568,7 +1935,7 @@ export function CloseRecordForm({
         />
       </div>
       <div className={stickyFooterCls}>
-        <button type="submit" disabled={busy} className={`${saveBtnCls} bg-orange-600 hover:bg-orange-700`}>
+        <button type="submit" data-big-btn="" disabled={busy} className={`${saveBtnCls} bg-orange-600 hover:bg-orange-700`}>
           {!busy && <CheckCircle2 className="h-5 w-5 sm:h-4 sm:w-4" />}
           {busy ? t("Saving…") : t("Close record")}
         </button>
@@ -1623,6 +1990,7 @@ export function AdminEditForm({
   return (
     <form
       autoComplete="off"
+      data-look="clear"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit({ fields: values, groups: rows, direction: direction ?? undefined });
@@ -1694,11 +2062,284 @@ export function AdminEditForm({
         );
       })}
       <div className={stickyFooterCls}>
-        <button type="submit" disabled={busy} className={`${saveBtnCls} bg-orange-600 hover:bg-orange-700 shadow-[0_6px_16px_-8px_rgba(207,62,37,0.55)]`}>
+        <button type="submit" data-big-btn="" disabled={busy} className={`${saveBtnCls} bg-orange-600 hover:bg-orange-700 shadow-[0_6px_16px_-8px_rgba(207,62,37,0.55)]`}>
           {!busy && <Save className="h-5 w-5 sm:h-4 sm:w-4" />}
           {busy ? t("Saving…") : t("Save changes")}
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Workers by type (College Daily Labour) as counters: every type (Peddamestri,
+ * Chinnamestri, Cooli) is always listed with − / + and its count (the number can
+ * also be typed). A name box shows under a type once its count is above 0.
+ * Stored as one row per type that has workers; the total is counted automatically.
+ */
+function TypedRows({
+  group,
+  rows,
+  onChange,
+  errorFor,
+}: {
+  group: GroupDef;
+  rows: Values[];
+  onChange: (rows: Values[]) => void;
+  errorFor: (key: string) => string | null;
+}) {
+  const t = useT();
+  const types = group.fields.find((f) => f.type === "select")?.options ?? [];
+  const total = rows.reduce((n, r) => n + (Number(r.count) > 0 ? Number(r.count) : 0), 0);
+  const listError = errorFor(`__group.${group.key}`);
+  const rowOf = (type: string) => rows.findIndex((r) => r.workerType === type);
+  // Set a type's count: 0 removes its row; a new count adds one (rows kept in the types' order)
+  const setCount = (type: string, count: string) => {
+    const n = count === "" ? "" : String(Math.min(999, Math.max(0, Number(count) || 0)));
+    const i = rowOf(type);
+    if (n === "0") return onChange(rows.filter((r) => r.workerType !== type));
+    if (i >= 0) return onChange(rows.map((r, idx) => (idx === i ? { ...r, count: n } : r)));
+    const next = [...rows, { workerType: type, name: "", count: n }];
+    onChange(types.flatMap((ty) => next.filter((r) => r.workerType === ty)));
+  };
+  const setName = (type: string, name: string) => onChange(rows.map((r) => (r.workerType === type ? { ...r, name } : r)));
+  const stepBtn =
+    "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-[1.5px] text-xl font-bold leading-none transition-[background-color,transform] active:scale-95 disabled:opacity-35";
+  return (
+    <fieldset data-field={`__group.${group.key}`} data-compact="" className="scroll-mt-24 space-y-2">
+      <legend className="flex w-full items-center justify-between gap-3 pb-2">
+        <span className="field-label text-sm font-medium text-zinc-200">
+          {t(group.label)} <span className="text-orange-500">*</span>
+        </span>
+        <span className="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1 text-sm font-bold tabular-nums text-zinc-100">
+          {t("Total")}: {total}
+        </span>
+      </legend>
+      <div className="divide-y divide-zinc-800 rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900">
+        {types.map((type) => {
+          const i = rowOf(type);
+          const row = i >= 0 ? rows[i] : null;
+          const count = row ? row.count ?? "" : "0";
+          const n = Number(count) || 0;
+          const countErr = i >= 0 ? errorFor(`${group.key}.${i}.count`) : null;
+          return (
+            <div
+              key={type}
+              data-field={i >= 0 ? `${group.key}.${i}.count` : undefined}
+              className={`scroll-mt-24 space-y-2 px-3 py-2.5 first:rounded-t-2xl last:rounded-b-2xl sm:px-4 ${n > 0 ? "bg-emerald-500/10" : ""}`}
+            >
+              <div className="flex items-center gap-2">
+                <span className={`min-w-0 flex-1 text-base font-semibold ${n > 0 ? "text-zinc-100" : "text-zinc-500"}`}>{t(type)}</span>
+                <button
+                  type="button"
+                  aria-label={`${t(type)} −1`}
+                  disabled={n <= 0}
+                  onClick={() => setCount(type, String(n - 1))}
+                  className={`${stepBtn} border-red-500/40 bg-red-500/10 text-red-600 hover:bg-red-500/15`}
+                >
+                  −
+                </button>
+                <input
+                  aria-label={`${t(type)} — ${t("Count")}`}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={3}
+                  value={count}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setCount(type, e.target.value.replace(/[^0-9]/g, ""))}
+                  className={`${inputCls} !w-16 shrink-0 px-1 text-center text-lg font-bold tabular-nums ${countErr ? "!border-red-500" : ""}`}
+                />
+                <button
+                  type="button"
+                  aria-label={`${t(type)} +1`}
+                  onClick={() => setCount(type, String(n + 1))}
+                  className={`${stepBtn} border-emerald-500/50 bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25`}
+                >
+                  +
+                </button>
+              </div>
+              {row && (
+                <input
+                  aria-label={`${t(type)} — ${t("Name")}`}
+                  type="text"
+                  maxLength={100}
+                  value={row.name ?? ""}
+                  placeholder={t("Name")}
+                  onChange={(e) => setName(type, e.target.value)}
+                  className={inputCls}
+                />
+              )}
+              {countErr && (
+                <p role="alert" className="flex items-center gap-1.5 text-sm font-medium text-red-600">
+                  <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" /> {countErr}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {listError && (
+        <p role="alert" className="flex items-center gap-1.5 text-sm font-medium text-red-600">
+          <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" /> {listError}
+        </p>
+      )}
+    </fieldset>
+  );
+}
+
+/**
+ * Items added through a pop-up (Returnable book): the added items as a list (✕ to remove);
+ * "+ Add item" opens Item details / Quantity / Remarks with "Add & next" (stays open, cleared)
+ * and "Add & close".
+ */
+function ItemsPopup({
+  group,
+  rows,
+  onChange,
+  error,
+}: {
+  group: GroupDef;
+  rows: Values[];
+  onChange: (rows: Values[]) => void;
+  error: string | null;
+}) {
+  const t = useT();
+  const items = rows.filter((r) => String(r.description ?? "").trim() !== "");
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<Values>({ description: "", quantity: "", remarks: "" });
+  const [missing, setMissing] = useState(false);
+  const [addedNo, setAddedNo] = useState(0);
+  const full = group.max !== null && items.length >= group.max;
+  const add = (close: boolean) => {
+    if (!String(draft.description ?? "").trim()) return setMissing(true);
+    onChange([...items, { description: draft.description.trim(), quantity: draft.quantity ?? "", remarks: (draft.remarks ?? "").trim() }]);
+    setDraft({ description: "", quantity: "", remarks: "" });
+    setMissing(false);
+    setAddedNo((n) => n + 1);
+    if (close || (group.max !== null && items.length + 1 >= group.max)) setOpen(false);
+  };
+  const box = "flex h-12 w-full rounded-2xl border-[1.5px] border-zinc-600 bg-zinc-950 px-4 text-base text-zinc-100 outline-none focus:border-orange-500 focus:bg-zinc-900";
+  return (
+    <fieldset data-field={`__group.${group.key}`} className="scroll-mt-24 space-y-2">
+      <legend className="flex w-full items-center justify-between gap-3 pb-2">
+        <span className="field-label text-sm font-medium text-zinc-200">
+          {t(group.label)} <span className="text-orange-500">*</span>
+        </span>
+        <span className="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1 text-sm font-bold tabular-nums text-zinc-100">{items.length}</span>
+      </legend>
+      {items.length > 0 && (
+        <ul className="divide-y divide-zinc-800 overflow-hidden rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900">
+          {items.map((it, i) => (
+            <li key={i} className="flex items-center gap-3 px-4 py-2.5">
+              <span className="flex h-9 min-w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-950 text-sm font-bold tabular-nums text-zinc-300">{i + 1}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block break-words text-base font-semibold text-zinc-100">{it.description}</span>
+                {(it.quantity || it.remarks) && (
+                  <span className="block text-sm text-zinc-500">
+                    {[it.quantity ? `${t("Quantity")} ${it.quantity}` : "", it.remarks].filter(Boolean).join(" · ")}
+                  </span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => onChange(items.filter((_, idx) => idx !== i))}
+                aria-label={t("Remove")}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 hover:bg-red-500/10 hover:text-red-500"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {error && (
+        <p role="alert" className="flex items-center gap-1.5 text-sm font-medium text-red-600">
+          <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" /> {error}
+        </p>
+      )}
+      <button
+        type="button"
+        disabled={full}
+        onClick={() => {
+          setMissing(false);
+          setOpen(true);
+        }}
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border-[1.5px] border-orange-500/40 bg-orange-500/10 text-base font-semibold text-orange-600 hover:bg-orange-500/15 disabled:opacity-40"
+      >
+        <Plus className="h-5 w-5" /> {t("Add item")}
+      </button>
+
+      <Modal open={open} onClose={() => setOpen(false)} title={t("Add item")} className="max-w-lg">
+        <div className="space-y-4">
+          {addedNo > 0 && (
+            <p role="status" className="flex items-center gap-2 rounded-2xl bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-700">
+              <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" /> {t("{n} items added", { n: items.length })}
+            </p>
+          )}
+          <label className="block space-y-1.5">
+            <span className="text-sm font-semibold text-zinc-200">
+              {t("Item Details")} <span className="text-orange-500">*</span>
+            </span>
+            <input
+              key={addedNo}
+              autoFocus
+              value={draft.description ?? ""}
+              maxLength={200}
+              autoComplete="off"
+              onChange={(e) => {
+                setDraft((d) => ({ ...d, description: e.target.value }));
+                setMissing(false);
+              }}
+              className={`${box} ${missing ? "!border-red-500" : ""}`}
+            />
+            {missing && <span className="block text-sm font-medium text-red-600">{t("Fill this in")}</span>}
+          </label>
+          <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
+            <label className="block space-y-1.5">
+              <span className="text-sm font-semibold text-zinc-200">{t("Quantity")}</span>
+              <input
+                value={draft.quantity ?? ""}
+                inputMode="numeric"
+                maxLength={6}
+                autoComplete="off"
+                onChange={(e) => setDraft((d) => ({ ...d, quantity: e.target.value.replace(/[^0-9.]/g, "") }))}
+                className={`${box} text-center`}
+              />
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-sm font-semibold text-zinc-200">{t("Remarks")}</span>
+              <input
+                value={draft.remarks ?? ""}
+                maxLength={200}
+                autoComplete="off"
+                onChange={(e) => setDraft((d) => ({ ...d, remarks: e.target.value }))}
+                className={box}
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => add(false)}
+              className="flex h-12 items-center justify-center gap-1.5 rounded-2xl border-[1.5px] border-emerald-600 bg-emerald-500/10 text-base font-semibold text-emerald-700 hover:bg-emerald-500/15"
+            >
+              <Plus className="h-5 w-5" /> {t("Add & next")}
+            </button>
+            <button
+              type="button"
+              onClick={() => add(true)}
+              className="flex h-12 items-center justify-center gap-1.5 rounded-2xl bg-orange-600 text-base font-semibold text-white hover:bg-orange-700"
+            >
+              <CheckCircle2 className="h-5 w-5" /> {t("Add & close")}
+            </button>
+          </div>
+          {addedNo > 0 && (
+            <button type="button" onClick={() => setOpen(false)} className="h-11 w-full rounded-2xl text-sm font-semibold text-zinc-400 hover:bg-zinc-950">
+              {t("Close")}
+            </button>
+          )}
+        </div>
+      </Modal>
+    </fieldset>
   );
 }

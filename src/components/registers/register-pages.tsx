@@ -4,6 +4,7 @@ import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 import {
   ArrowLeftRight,
   BedDouble,
@@ -13,6 +14,7 @@ import {
   CarTaxiFront,
   ChevronRight,
   CalendarClock,
+  Truck,
   ClipboardCheck,
   ClipboardList,
   ContactRound,
@@ -70,12 +72,24 @@ const BASE: Record<RegisterViewer, string> = {
 const REGISTER_GROUPS: { title: string; keys: string[] }[] = [
   { title: "Passes", keys: ["BOYS_HOSTEL_OUTING", "LADIES_HOSTEL_OUTING", "FACULTY_BOOK", "STUDENT_BOOK", "HOME_OUTING_SUMMARY"] },
   { title: "Visitors", keys: ["VISITORS", "ADMISSION"] },
-  { title: "Vehicles", keys: ["CAR_BOOK", "AUTO_IN_OUT", "AUTO_BOOK"] },
+  { title: "Vehicles", keys: ["CAR_BOOK", "AUTO_IN_OUT", "WORK_VEHICLES", "AUTO_BOOK"] },
   { title: "Stock & materials", keys: ["SIROS_STOCK", "COLLEGE_STOCK", "RETURNABLE"] },
   { title: "Labour", keys: ["DAILY_LABOUR", "LABOUR_CONTRACT", "SIROS_DAILY_LABOUR", "SIROS_LABOUR_CONTRACT", "COOLI_BOOK"] },
   { title: "Daily & keys", keys: ["COLLEGE_DAILY", "KEYS"] },
   { title: "Staff", keys: ["SECURITY_DAILY", "SECURITY_ATTENDANCE"] },
 ];
+/** Each section's own colour (tile icon, border and heading) */
+const GROUP_TONE: Record<string, { icon: string; border: string; text: string; dot: string }> = {
+  Passes: { icon: "bg-sky-500/15 text-sky-700", border: "border-sky-500/25", text: "text-sky-700", dot: "bg-sky-500" },
+  Visitors: { icon: "bg-emerald-500/15 text-emerald-700", border: "border-emerald-500/25", text: "text-emerald-700", dot: "bg-emerald-500" },
+  Vehicles: { icon: "bg-purple-500/15 text-purple-700", border: "border-purple-500/25", text: "text-purple-700", dot: "bg-purple-500" },
+  "Stock & materials": { icon: "bg-amber-500/15 text-amber-700", border: "border-amber-500/25", text: "text-amber-700", dot: "bg-amber-500" },
+  Labour: { icon: "bg-orange-500/15 text-orange-600", border: "border-orange-500/25", text: "text-orange-600", dot: "bg-orange-500" },
+  "Daily & keys": { icon: "bg-cyan-500/15 text-cyan-700", border: "border-cyan-500/25", text: "text-cyan-700", dot: "bg-cyan-500" },
+  Staff: { icon: "bg-blue-500/15 text-blue-700", border: "border-blue-500/25", text: "text-blue-700", dot: "bg-blue-500" },
+};
+const OTHER_TONE = { icon: "bg-zinc-950 text-zinc-300", border: "border-zinc-700", text: "text-zinc-400", dot: "bg-zinc-400" };
+
 /** Registers in no section above (e.g. created in the portal) */
 const OTHER_GROUP = "Other registers";
 
@@ -106,6 +120,7 @@ const REGISTER_ICON: Record<RegisterKey, LucideIcon> = {
   SECURITY_ATTENDANCE: ClipboardCheck,
   HOME_OUTING_SUMMARY: House,
   AUTO_IN_OUT: ArrowLeftRight,
+  WORK_VEHICLES: Truck,
   KEYS: KeyRound,
   RETURNABLE: Undo2,
   VEHICLE_FLEET: Car,
@@ -146,6 +161,7 @@ export function RegistersHub({
   hidden = [],
   creatable = [],
   registers,
+  extraRegisters,
   canBuild = false,
 }: {
   viewer: RegisterViewer;
@@ -154,6 +170,8 @@ export function RegistersHub({
   creatable?: string[];
   /** Built-in + portal-created registers (from the server); defaults to the built-in ones */
   registers?: RegisterDef[];
+  /** Only the registers made in the portal (the built-in ones are already in the app): a much smaller page */
+  extraRegisters?: RegisterDef[];
   /** Main Admin / Security Supervisor: show "Create & manage registers" */
   canBuild?: boolean;
 }) {
@@ -161,7 +179,7 @@ export function RegistersHub({
   const router = useRouter();
   const base = BASE[viewer];
   const isSecurity = viewer === "SECURITY";
-  const allRegisters = registers ?? REGISTERS;
+  const allRegisters = registers ?? [...REGISTERS, ...(extraRegisters ?? [])];
   // Today's counts: the last ones show at once; fetched again only when a register
   // changed (live) — the gate cache (src/lib/gate-cache.ts) keeps them between visits.
   // The live listener keeps the connection up while this list is open.
@@ -190,8 +208,10 @@ export function RegistersHub({
     if (!row) return;
     // After the router's own scroll on arrival
     const frame = requestAnimationFrame(() => row.scrollIntoView({ block: "center" }));
-    row.classList.add("bg-orange-500/10");
-    const timer = setTimeout(() => row.classList.remove("bg-orange-500/10"), 1500);
+    // A list row glows; a tile gets an orange ring (its own background would hide a glow)
+    const marks = ["bg-orange-500/10", "ring-4", "ring-orange-500/50"];
+    row.classList.add(...marks);
+    const timer = setTimeout(() => row.classList.remove(...marks), 1500);
     return () => {
       cancelAnimationFrame(frame);
       clearTimeout(timer);
@@ -285,9 +305,22 @@ export function RegistersHub({
         const rows = list.filter((r) => (group.title === OTHER_GROUP ? !known.has(r.key) : group.keys.includes(r.key)));
         if (rows.length === 0) return null;
         return (
-      <section key={group.title} className="space-y-2">
-        <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">{t(group.title)}</h2>
-      <ul className="overflow-hidden rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-card divide-y divide-zinc-800/70">
+      <section key={group.title} className="space-y-2.5">
+        {isSecurity ? (
+          <h2 className={cn("flex items-center gap-2 px-1 text-sm font-bold uppercase tracking-wide", (GROUP_TONE[group.title] ?? OTHER_TONE).text)}>
+            <span className={cn("h-2.5 w-2.5 rounded-full", (GROUP_TONE[group.title] ?? OTHER_TONE).dot)} aria-hidden="true" />
+            {t(group.title)}
+          </h2>
+        ) : (
+          <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">{t(group.title)}</h2>
+        )}
+      <ul
+        className={
+          isSecurity
+            ? "grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4"
+            : "overflow-hidden rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-card divide-y divide-zinc-800/70"
+        }
+      >
         {rows.map((r) => {
           const Icon = REGISTER_ICON[r.key as RegisterKey] ?? ClipboardList;
           // Security: the Visitors Book is the Visitors screen itself (its 4 buttons; no second visitors screen)
@@ -304,6 +337,57 @@ export function RegistersHub({
             if (isEntryRegister(r) && !["SECURITY_ATTENDANCE", "SECURITY_DAILY"].includes(r.key)) prefetchEntryList(r.key);
             if (r.key === "SECURITY_DAILY") prefetchSecurityDuty();
           };
+          const tone = GROUP_TONE[group.title] ?? OTHER_TONE;
+          const tileName = r.key === "VISITORS" ? t("Visitors Book") : t(r.title);
+          if (isSecurity) {
+            const action = checkInQr ? (
+              <button
+                type="button"
+                onPointerDown={() => warmQr(r.key as CheckInRegister)}
+                onFocus={() => warmQr(r.key as CheckInRegister)}
+                onClick={() => setQrKey(r.key as CheckInRegister)}
+                aria-label={`${t("Show QR")} — ${tileName}`}
+                className="absolute right-2.5 top-2.5 flex h-11 w-11 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)] transition-[background-color,transform] hover:bg-orange-700 active:scale-95"
+              >
+                <QrCode className="h-5 w-5" />
+              </button>
+            ) : quickAdd ? (
+              <button
+                type="button"
+                onClick={() => setQuickKey(r.key)}
+                aria-label={`${t("New entry")} — ${tileName}`}
+                className="absolute right-2.5 top-2.5 flex h-11 w-11 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)] transition-[background-color,transform] hover:bg-orange-700 active:scale-95"
+              >
+                <Plus className="h-5 w-5" />
+              </button>
+            ) : null;
+            return (
+              <li key={r.key} data-register-row={r.key} className="relative min-w-0 rounded-3xl transition-colors duration-700">
+                <Link
+                  href={href}
+                  onPointerDown={prefetch}
+                  onFocus={prefetch}
+                  onClick={() => rememberOpenedRegister(r.key)}
+                  className={cn(
+                    "flex h-full min-h-[8.5rem] flex-col gap-2 rounded-3xl border-[1.5px] bg-zinc-900 p-3.5 shadow-card transition-[background-color,transform] hover:bg-zinc-950 active:scale-[0.98]",
+                    tone.border,
+                    action && "pr-14"
+                  )}
+                >
+                  <span className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl", tone.icon)}>
+                    <Icon className="h-6 w-6" aria-hidden="true" />
+                  </span>
+                  <span className="break-words text-base font-bold leading-snug text-zinc-100 sm:text-lg">{tileName}</span>
+                  {n > 0 && (
+                    <span className="mt-auto w-fit rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-0.5 text-sm font-semibold tabular-nums text-zinc-300">
+                      {t("{n} today", { n })}
+                    </span>
+                  )}
+                </Link>
+                {action}
+              </li>
+            );
+          }
           return (
             <li key={r.key} data-register-row={r.key} className="flex items-center gap-2 pr-2 sm:pr-3 transition-colors duration-700">
               <Link
@@ -454,7 +538,7 @@ export function RegisterPage({
       <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
         {def.title}
       </h1>
-      <p className="text-sm text-zinc-400 mt-1">{def.description}</p>
+      {!isSecurity && <p className="text-sm text-zinc-400 mt-1">{def.description}</p>}
     </div>
   );
   // Home outing passbook: two buttons (Information / Counts); its screens have their own "←" heading

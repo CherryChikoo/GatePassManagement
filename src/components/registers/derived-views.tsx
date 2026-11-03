@@ -1,10 +1,11 @@
 "use client";
 import { ThemedSelect } from "@/components/ui/themed-select";
+import { ZoomablePhoto } from "@/components/ui/zoomable-photo";
 import { DateField } from "@/components/ui/date-field";
 import { LoadingPill } from "@/components/ui/loading-pill";
 import { useT } from "@/components/providers/language-provider";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { BarChart3, ChevronRight, FileText, Info, Loader2, LogIn, PencilLine, Plus, Trash2, UserPlus, Phone } from "lucide-react";
 import { adminDeleteVisitor, adminUpdateVisitor } from "@/server/actions/outsiders";
@@ -116,6 +117,35 @@ const chipCls = "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px]
 const markInBtnCls =
   "inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 font-semibold text-white transition-[background-color,transform] hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-50";
 const dtLabel = "text-[11px] font-medium uppercase tracking-wider text-zinc-500";
+/** Phone / tablet rows: a small grey label before each value. */
+function RowPairs({ pairs }: { pairs: [string, ReactNode][] }) {
+  const shown = pairs.filter(([, v]) => v !== null && v !== undefined && v !== "" && v !== false);
+  if (shown.length === 0) return null;
+  return (
+    <span className="flex flex-wrap gap-x-3 gap-y-1 text-base">
+      {shown.map(([label, value]) => (
+        <span key={label} className="min-w-0 break-words">
+          <span className="text-sm text-zinc-500">{label}</span> <span className="font-semibold text-zinc-200">{value}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+/** Out (blue) / In (green) time chip for the phone / tablet rows. */
+function TimeChip({ kind, time }: { kind: "out" | "in"; time: string }) {
+  const t = useT();
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-sm font-bold tabular-nums",
+        kind === "out" ? "bg-sky-500/15 text-sky-700" : "bg-emerald-500/15 text-emerald-700"
+      )}
+    >
+      {kind === "out" ? t("Out") : t("In")} {time}
+    </span>
+  );
+}
+const rowTitle = "min-w-0 break-words text-lg font-bold leading-snug text-zinc-100";
 
 // ─── Form 1 — Faculty Book ────────────────────────────────────
 
@@ -168,41 +198,32 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
   return (
     <div className="space-y-4">
       <RegisterToolbar filters={f} searchPlaceholder="Search name, department, employee ID…" />
-      <p className="text-xs leading-relaxed text-zinc-500">
-        {t("Requests come from the faculty portal and are approved there. The out-time is marked when security scans the pass;")}
-        {canMarkIn ? t(" use “Mark In” when the faculty member returns.") : t(" the in-time when they return.")}
-      </p>
       {msg && <div role="status" className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm font-medium text-zinc-200 shadow-card">{msg}</div>}
       <Shell loading={loading} error={error} onRetry={reload} empty={!!data && data.rows.length === 0}>
         {/* Phones */}
         {data?.rows.length > 0 && (
-          <ul className={cn(dt.mobileList, "lg:hidden")}>
+          <ul className={cn(dt.mobileList, "xl:hidden")}>
             {data.rows.map((r: any) => (
               <li key={r.id}>
                 <button type="button" onClick={() => setSelected(r)} className={mobileRowBtn}>
                   <Initial name={r.facultyName} />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span className="truncate text-base font-medium text-zinc-100">{r.facultyName}</span>
-                      <span className={cn(chipCls, "bg-orange-500/10 text-orange-400")}>{t(r.requestType)}</span>
+                  <span className="min-w-0 flex-1 space-y-1.5">
+                    <span className="flex items-start justify-between gap-2 min-w-0">
+                      <span className={rowTitle}>{r.facultyName}</span>
+                      <span className={cn(chipCls, "shrink-0 bg-orange-500/10 text-orange-400")}>{t(r.requestType)}</span>
                     </span>
-                    <span className="mt-0.5 block truncate text-sm text-zinc-400">
-                      {[r.designation, r.department].filter(Boolean).join(" · ") || "—"}
-                    </span>
-                    <span className="mt-1 block text-xs text-zinc-500 tabular-nums">
-                      {formatDay(r.startDate)}
-                      {formatDay(r.endDate) !== formatDay(r.startDate) ? ` – ${formatDay(r.endDate)}` : ""}
-                    </span>
-                    <span className="mt-2 grid grid-cols-2 gap-2">
-                      <span className="rounded-xl bg-zinc-950 px-3 py-2">
-                        <span className={cn(dtLabel, "block")}>{t("Out")}</span>
-                        <span className="block text-sm font-medium text-zinc-200 tabular-nums">{r.actualOut ? formatTime(r.actualOut.at) : "—"}</span>
-                      </span>
-                      <span className="rounded-xl bg-zinc-950 px-3 py-2">
-                        <span className={cn(dtLabel, "block")}>{t("In")}</span>
-                        <span className="block text-sm font-medium text-zinc-200 tabular-nums">{r.actualIn ? formatTime(r.actualIn.at) : "—"}</span>
-                        <DelayBadge delay={r.delay} className="mt-1" />
-                      </span>
+                    <RowPairs
+                      pairs={[
+                        [t("Designation"), r.designation],
+                        [t("Department"), r.department],
+                        [t("Start Date"), formatDay(r.startDate)],
+                        [t("End Date"), formatDay(r.endDate) !== formatDay(r.startDate) ? formatDay(r.endDate) : null],
+                      ]}
+                    />
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      {r.actualOut && <TimeChip kind="out" time={formatTime(r.actualOut.at)} />}
+                      {r.actualIn && <TimeChip kind="in" time={formatTime(r.actualIn.at)} />}
+                      <DelayBadge delay={r.delay} className="text-sm" />
                     </span>
                   </span>
                   <ChevronRight className="mt-3 h-5 w-5 shrink-0 text-zinc-600" aria-hidden="true" />
@@ -221,7 +242,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
 
         {/* Larger screens */}
         {data?.rows.length > 0 && (
-          <div className={cn(dt.wrap, "hidden lg:block")}>
+          <div className={cn(dt.wrap, "hidden xl:block")}>
             <table className={dt.table}>
               <thead>
                 <tr>
@@ -271,7 +292,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
       </Shell>
       {data && <PagerBar page={f.page} pageSize={data.pageSize} total={data.total} onPageChange={f.setPage} itemLabel={t("records")} />}
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title={t("Faculty pass")} className="max-w-xl">
+      <Modal open={!!selected} onClose={() => setSelected(null)} title={t("Faculty pass")} className="max-w-xl md:max-w-[min(92vw,1000px)] border-2 border-orange-500/80" frosted>
         {selected && (
           <div className="space-y-5">
             <RecordHeader
@@ -351,36 +372,33 @@ export function StudentBookView() {
   return (
     <div className="space-y-4">
       <RegisterToolbar filters={f} searchPlaceholder="Search name, roll number, department…" />
-      <p className="text-xs leading-relaxed text-zinc-500">
-        {t("Day scholars' approved gate passes. The times are recorded when security scans the pass at the gate.")}
-      </p>
       <Shell loading={loading} error={error} onRetry={reload} empty={!!data && data.rows.length === 0}>
         {/* Phones */}
         {data?.rows.length > 0 && (
-          <ul className={cn(dt.mobileList, "lg:hidden")}>
+          <ul className={cn(dt.mobileList, "xl:hidden")}>
             {data.rows.map((r: any) => (
               <li key={r.id}>
                 <button type="button" onClick={() => setSelected(r)} className={mobileRowBtn}>
                   <Initial name={r.studentName} />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span className="truncate text-base font-medium text-zinc-100">{r.studentName}</span>
-                      {passChip(r)}
+                  <span className="min-w-0 flex-1 space-y-1.5">
+                    <span className="flex items-start justify-between gap-2 min-w-0">
+                      <span className={rowTitle}>{r.studentName}</span>
+                      <span className="shrink-0">{passChip(r)}</span>
                     </span>
-                    <span className="mt-0.5 block truncate text-sm text-zinc-400">
-                      {[r.roll, r.department, r.year ? `${t("Year")} ${r.year}` : null].filter(Boolean).join(" · ") || "—"}
-                    </span>
-                    <span className="mt-1 block text-xs text-zinc-500 tabular-nums">{formatDay(r.date)}</span>
-                    <span className="mt-2 grid grid-cols-2 gap-2">
-                      <span className="rounded-xl bg-zinc-950 px-3 py-2">
-                        <span className={cn(dtLabel, "block")}>{t("Out")}</span>
-                        <span className="block text-sm font-medium text-zinc-200 tabular-nums">{r.actualOut ? formatTime(r.actualOut.at) : "—"}</span>
+                    <RowPairs
+                      pairs={[
+                        [t("Roll Number"), r.roll],
+                        [t("Department"), r.department],
+                        [t("Year"), r.year],
+                        [t("Date"), formatDay(r.date)],
+                      ]}
+                    />
+                    {(r.actualOut || r.actualIn) && (
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        {r.actualOut && <TimeChip kind="out" time={formatTime(r.actualOut.at)} />}
+                        {r.actualIn && <TimeChip kind="in" time={formatTime(r.actualIn.at)} />}
                       </span>
-                      <span className="rounded-xl bg-zinc-950 px-3 py-2">
-                        <span className={cn(dtLabel, "block")}>{t("In")}</span>
-                        <span className="block text-sm font-medium text-zinc-200 tabular-nums">{r.actualIn ? formatTime(r.actualIn.at) : "—"}</span>
-                      </span>
-                    </span>
+                    )}
                   </span>
                   <ChevronRight className="mt-3 h-5 w-5 shrink-0 text-zinc-600" aria-hidden="true" />
                 </button>
@@ -391,7 +409,7 @@ export function StudentBookView() {
 
         {/* Larger screens */}
         {data?.rows.length > 0 && (
-          <div className={cn(dt.wrap, "hidden lg:block")}>
+          <div className={cn(dt.wrap, "hidden xl:block")}>
             <table className={dt.table}>
               <thead>
                 <tr>
@@ -420,7 +438,7 @@ export function StudentBookView() {
       </Shell>
       {data && <PagerBar page={f.page} pageSize={data.pageSize} total={data.total} onPageChange={f.setPage} itemLabel={t("records")} />}
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title={t("Student pass")} className="max-w-xl">
+      <Modal open={!!selected} onClose={() => setSelected(null)} title={t("Student pass")} className="max-w-xl md:max-w-[min(92vw,1000px)] border-2 border-orange-500/80" frosted>
         {selected && (
           <div className="space-y-5">
             <RecordHeader
@@ -500,33 +518,26 @@ export function VisitorsBookView({ canRegister, canAdminEdit = false }: { canReg
       <Shell loading={loading} error={error} onRetry={reload} empty={!!data && data.rows.length === 0}>
         {/* Phones */}
         {data?.rows.length > 0 && (
-          <ul className={cn(dt.mobileList, "lg:hidden")}>
+          <ul className={cn(dt.mobileList, "xl:hidden")}>
             {data.rows.map((r: any) => (
               <li key={r.id}>
                 <button type="button" onClick={() => setSelectedId(r.id)} className={mobileRowBtn}>
                   <Initial name={r.name} />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span className="truncate text-base font-medium text-zinc-100">{r.name}</span>
-                      {!r.outTime && insideChip}
+                  <span className="min-w-0 flex-1 space-y-1.5">
+                    <span className="flex items-start justify-between gap-2 min-w-0">
+                      <span className={rowTitle}>{r.name}</span>
+                      {!r.outTime && <span className="shrink-0">{insideChip}</span>}
                     </span>
-                    <span className="mt-0.5 block truncate text-sm text-zinc-400">
-                      {[r.personToVisit, r.purpose].filter(Boolean).join(" · ") || "—"}
-                    </span>
-                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-zinc-500 tabular-nums">
-                      <span>{r.phone}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>
-                        {t("In")} {r.inTime ? formatTime(r.inTime) : "—"}
-                      </span>
-                      {r.outTime && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span>
-                            {t("Out")} {formatTime(r.outTime)}
-                          </span>
-                        </>
-                      )}
+                    <RowPairs
+                      pairs={[
+                        [t("Mobile"), r.phone],
+                        [t("Person to Visit"), r.personToVisit],
+                        [t("Purpose"), r.purpose],
+                      ]}
+                    />
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      {r.inTime && <TimeChip kind="in" time={formatTime(r.inTime)} />}
+                      {r.outTime && <TimeChip kind="out" time={formatTime(r.outTime)} />}
                     </span>
                   </span>
                   <ChevronRight className="mt-3 h-5 w-5 shrink-0 text-zinc-600" aria-hidden="true" />
@@ -538,7 +549,7 @@ export function VisitorsBookView({ canRegister, canAdminEdit = false }: { canReg
 
         {/* Larger screens */}
         {data?.rows.length > 0 && (
-          <div className={cn(dt.wrap, "hidden lg:block")}>
+          <div className={cn(dt.wrap, "hidden xl:block")}>
             <table className={dt.table}>
               <thead>
                 <tr>
@@ -570,7 +581,7 @@ export function VisitorsBookView({ canRegister, canAdminEdit = false }: { canReg
       </Shell>
       {data && <PagerBar page={f.page} pageSize={data.pageSize} total={data.total} onPageChange={f.setPage} itemLabel={t("records")} />}
 
-      <Modal open={!!selectedId} onClose={() => setSelectedId(null)} title={t("Visitor Details")} className="max-w-xl">
+      <Modal open={!!selectedId} onClose={() => setSelectedId(null)} title={t("Visitor Details")} className="max-w-xl md:max-w-[min(92vw,1000px)] border-2 border-orange-500/80" frosted>
         {selectedId && (
           <VisitorDetails
             key={`${selectedId}-${detailsNonce}`}
@@ -614,7 +625,7 @@ export function VisitorDetails({
       <div className="flex items-start gap-4">
         {v.photoUrl ? (
           <a href={v.photoUrl} target="_blank" rel="noreferrer" className="shrink-0" aria-label={t("Open photo")}>
-            <img src={v.photoUrl} alt={`Photo of ${v.name}`} className="h-24 w-24 sm:h-28 sm:w-28 rounded-2xl object-cover border border-zinc-800" />
+            <ZoomablePhoto src={v.photoUrl} alt={`Photo of ${v.name}`} className="h-24 w-24 sm:h-28 sm:w-28 rounded-2xl object-cover border border-zinc-800" />
           </a>
         ) : (
           <span className="flex h-24 w-24 sm:h-28 sm:w-28 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-3xl font-semibold text-orange-500">
@@ -694,7 +705,7 @@ export function VisitorDetails({
           </button>
         </p>
       )}
-      <Modal open={editing} onClose={() => setEditing(false)} title={t("Edit visitor")} className="max-w-xl">
+      <Modal open={editing} onClose={() => setEditing(false)} title={t("Edit visitor")} className="max-w-xl md:max-w-[min(92vw,1000px)] border-2 border-orange-500/80">
         {editing && (
           <AdminVisitorForm
             visitor={v}
@@ -755,7 +766,7 @@ function AdminVisitorForm({ visitor, onSaved }: { visitor: any; onSaved: () => v
     "h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 [color-scheme:light] outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10";
   const label = "field-label block space-y-1.5 text-sm font-medium text-zinc-200";
   return (
-    <form
+    <form data-look="clear"
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
@@ -837,7 +848,7 @@ function GatePhotos({ permissionId }: { permissionId: string }) {
       <div className="flex flex-wrap gap-3">
         {data.photos.map((p: any) => (
           <figure key={p.at} className="space-y-1.5">
-            <img src={p.url} alt={`${p.type === "EXIT" ? "Exit" : "Entry"} photo`} className="h-32 w-32 rounded-2xl object-cover border border-zinc-800" />
+            <ZoomablePhoto src={p.url} alt={`${p.type === "EXIT" ? "Exit" : "Entry"} photo`} className="h-32 w-32 rounded-2xl object-cover border border-zinc-800" />
             <figcaption className="text-[11px] text-zinc-500 tabular-nums">
               {p.type === "EXIT" ? t("Exit") : t("Entry")} • {formatInstant(p.at)}
             </figcaption>
@@ -864,9 +875,6 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
   return (
     <div className="space-y-4">
       <RegisterToolbar filters={f} searchPlaceholder="Search name, roll number, room…" />
-      <p className="text-xs leading-relaxed text-zinc-500">
-        {t("Outing passes are requested by the student and approved by the warden in the portal. Out and return times are the actual gate scans.")}
-      </p>
       {data?.unassignedHostellers > 0 && (
         <p className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-400">
           {t("{n} hosteller(s) have no Boys / Ladies hostel set in their profile and are not listed here. Set it in Admin → Users.", { n: data.unassignedHostellers })}
@@ -875,40 +883,31 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
       <Shell loading={loading} error={error} onRetry={reload} empty={!!data && data.rows.length === 0}>
         {/* Phones */}
         {data?.rows.length > 0 && (
-          <ul className={cn(dt.mobileList, "lg:hidden")}>
+          <ul className={cn(dt.mobileList, "xl:hidden")}>
             {data.rows.map((r: any) => (
               <li key={r.id}>
                 <button type="button" onClick={() => setSelected(r)} className={mobileRowBtn}>
                   <Initial name={r.studentName} />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span className="truncate text-base font-medium text-zinc-100">{r.studentName}</span>
-                      <span className={dt.chip}>{r.roll}</span>
+                  <span className="min-w-0 flex-1 space-y-1.5">
+                    <span className="flex items-start justify-between gap-2 min-w-0">
+                      <span className={rowTitle}>{r.studentName}</span>
+                      <span className={cn(dt.chip, "shrink-0")}>{r.roll}</span>
                     </span>
-                    <span className="mt-0.5 block truncate text-sm text-zinc-400">
-                      {[r.room, r.purpose].filter(Boolean).join(" · ") || "—"}
-                    </span>
-                    <span className="mt-1 block text-xs text-zinc-500 tabular-nums">{formatDay(r.requestedFrom)}</span>
-                    <span className="mt-2 grid grid-cols-2 gap-2">
-                      <span className="rounded-xl bg-zinc-950 px-3 py-2">
-                        <span className={cn(dtLabel, "block")}>{t("Out")}</span>
-                        <span className="block text-sm font-medium tabular-nums">
-                          {r.actualOut ? <span className="text-zinc-200">{formatTime(r.actualOut.at)}</span> : <span className="text-zinc-600">{t("Not yet out")}</span>}
-                        </span>
-                      </span>
-                      <span className="rounded-xl bg-zinc-950 px-3 py-2">
-                        <span className={cn(dtLabel, "block")}>{t("In")}</span>
-                        <span className="block text-sm font-medium tabular-nums">
-                          {r.actualReturn ? (
-                            <span className="text-zinc-200">{formatTime(r.actualReturn.at)}</span>
-                          ) : r.actualOut ? (
-                            <span className="text-amber-400">{t("Not returned")}</span>
-                          ) : (
-                            <span className="text-zinc-600">—</span>
-                          )}
-                        </span>
-                        <DelayBadge delay={r.delay} className="mt-1" />
-                      </span>
+                    <RowPairs
+                      pairs={[
+                        [t("Room"), r.room],
+                        [t("Outing Purpose"), r.purpose],
+                        [t("Date"), formatDay(r.requestedFrom)],
+                      ]}
+                    />
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      {r.actualOut ? <TimeChip kind="out" time={formatTime(r.actualOut.at)} /> : <span className="text-sm font-semibold text-zinc-500">{t("Not yet out")}</span>}
+                      {r.actualReturn ? (
+                        <TimeChip kind="in" time={formatTime(r.actualReturn.at)} />
+                      ) : r.actualOut ? (
+                        <span className="text-sm font-semibold text-amber-600">{t("Not returned")}</span>
+                      ) : null}
+                      <DelayBadge delay={r.delay} className="text-sm" />
                     </span>
                   </span>
                   <ChevronRight className="mt-3 h-5 w-5 shrink-0 text-zinc-600" aria-hidden="true" />
@@ -920,7 +919,7 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
 
         {/* Larger screens */}
         {data?.rows.length > 0 && (
-          <div className={cn(dt.wrap, "hidden lg:block")}>
+          <div className={cn(dt.wrap, "hidden xl:block")}>
             <table className={dt.table}>
               <thead>
                 <tr>
@@ -960,7 +959,7 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
       </Shell>
       {data && <PagerBar page={f.page} pageSize={data.pageSize} total={data.total} onPageChange={f.setPage} itemLabel={t("records")} />}
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title={t("Outing pass")} className="max-w-xl">
+      <Modal open={!!selected} onClose={() => setSelected(null)} title={t("Outing pass")} className="max-w-xl md:max-w-[min(92vw,1000px)] border-2 border-orange-500/80" frosted>
         {selected && (
           <div className="space-y-5">
             <RecordHeader
@@ -1179,9 +1178,6 @@ function OutingCounts({ range, onRange }: { range: DateRange; onRange: (r: DateR
         })}
       </div>
       <RangeFields range={range} onChange={onRange} maxTo={today} />
-      <p className="text-xs leading-relaxed text-zinc-500">
-        {t("Totals are counted from approved passes (by pass date) and actual gate exits (by exit date). Total covers the whole selected range.")}
-      </p>
       {/* Totals for the whole selected range: first thing under the dates */}
       {data && data.days.length > 0 && (
         <div className="rounded-3xl border border-zinc-800/80 bg-zinc-900 px-4 py-4 sm:px-5 shadow-card">
@@ -1445,7 +1441,7 @@ function AddNoteForm({ onSaved }: { onSaved: () => void }) {
   const inputCls =
     "h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 text-base sm:text-sm text-zinc-100 [color-scheme:light] outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10";
   return (
-    <form
+    <form data-look="clear"
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
@@ -1603,7 +1599,7 @@ export function MovementDetails({ id }: { id: string }) {
         <span className="text-sm font-medium text-zinc-200 tabular-nums">{formatInstant(m.at)}</span>
       </div>
       {m.photoUrl ? (
-        <img src={m.photoUrl} alt={`Gate photo of ${person?.name ?? "the person"}`} className="h-32 w-32 sm:h-40 sm:w-40 rounded-2xl object-cover border border-zinc-800" />
+        <ZoomablePhoto src={m.photoUrl} alt={`Gate photo of ${person?.name ?? "the person"}`} className="h-32 w-32 sm:h-40 sm:w-40 rounded-2xl object-cover border border-zinc-800" />
       ) : (
         <p className="rounded-2xl bg-zinc-950 px-4 py-3 text-xs text-zinc-500">{person?.kind === "Faculty" ? t("No photo for this faculty pass.") : t("No photo for this movement.")}</p>
       )}

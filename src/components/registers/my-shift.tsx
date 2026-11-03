@@ -88,7 +88,6 @@ export function MyShiftView() {
       <div>
         <GoBackButton className="mb-3" href="/security/registers" />
         <h1 className="text-xl font-bold tracking-tight text-zinc-100 sm:text-2xl">{t("My shift details")}</h1>
-        <p className="mt-1 text-sm text-zinc-400">{t("Your shifts — start and end your duty here.")}</p>
       </div>
       <LoadingPill active={loading} />
 

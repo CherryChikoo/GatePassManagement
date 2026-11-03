@@ -60,18 +60,30 @@ export type FieldDef = {
    * change is kept in the record history. Only "yesno", "text" and "textarea".
    */
   updatable?: boolean;
+  /** updatable: can't be changed any more once this Yes / No field is Yes (e.g. "Bill taken by" once the bill is marked taken) */
+  lockedBy?: string;
   /**
    * Plain text box with a "Select" button beside it that lists known values
    * (drivers, cars, autos, faculty: getVehicleOptions in
    * src/server/actions/registers.ts); typing is always free. Stored as ordinary text.
    */
-  combo?: "driver" | "vehicle" | "carName" | "purpose" | "faculty" | "sirosContractor";
+  combo?: "driver" | "vehicle" | "carName" | "purpose" | "faculty" | "sirosContractor" | "options" | "suggest";
+  /** combo "suggest": shown first, before what was typed in earlier entries (e.g. A Block, B Block, C Block) */
+  suggestFirst?: string[];
+  /** combo "suggest": picking a past value also fills these boxes from that earlier entry (e.g. designation, department) */
+  suggestFills?: string[];
   /** "vehicle" combos: the field that also gets the picked vehicle's name (e.g. vehicleName) */
   comboFills?: string;
   /** Kept in the record but not shown on the new-entry form (old records still show it) */
   formHidden?: boolean;
   /** Optional, but shown up front on the new-entry form (not under "More details") */
   upFront?: boolean;
+  /** Shown on the form only when this Yes / No button is on (e.g. Supplier name after "Supplier known") */
+  showWhen?: string;
+  /** With showWhen: must be filled while it is shown */
+  requiredWhenShown?: boolean;
+  /** A Yes / No button that, when on at save, also sets this Yes / No field (e.g. "Bill taken now" → Bill taken) */
+  setsFlag?: string;
   /** One-tap answers shown as buttons under the box (e.g. "Self" for a referral) */
   quickValues?: string[];
   /** List columns: the older field to show when this one is empty (old records) */
@@ -106,7 +118,9 @@ export type GroupDef = {
    * Rows are picked from registered people instead of typed (Siros Venture
    * coolies: "+ Add coolie" list, by name or number; new ones registered with a photo)
    */
-  picker?: "sirosCoolie";
+  picker?: "sirosCoolie" | "typedRows" | "itemsPopup";
+  /** At least this many rows (e.g. one worker) */
+  minRows?: number;
 };
 
 /** Is a field required for this entry? (the required list, minus the "requiredUnless" waiver) */
@@ -142,6 +156,10 @@ export type MovementDef = {
   startWith?: Direction;
   /** No "Out only" / "In only" choice: the other side is always recorded later on the same record */
   noOneWay?: boolean;
+  /** The new-entry form opens with neither side chosen (no default, no "last used"): the guard taps In or Out */
+  chooseEachTime?: boolean;
+  /** Out asks how many of each type in this list are leaving (e.g. College Daily Labour: "workers") */
+  exitCounts?: string;
   /** Field that shows the chosen direction as "In" / "Out" */
   directionField?: string;
 };
@@ -161,6 +179,8 @@ export type EntryRegister = {
   requiredAny?: string[][];
   /** New-entry form: required fields get a subtle highlight, and every shown field is up front (no "More details") */
   highlightRequired?: boolean;
+  /** The bill photo (this field) is read by Gemini and fills the empty bill boxes (bill number, amount, items…) */
+  readsBill?: string;
   /** Listed fields are required unless the yes / no flag field is on (e.g. no bill: no bill photo or amount) */
   requiredUnless?: { fields: string[]; flag: string };
   /** Fixed values printed on the form (e.g. the "To" block of Form 19) */
@@ -209,6 +229,7 @@ export const REGISTER_KEYS = [
   "AUTO_IN_OUT",
   "KEYS",
   "RETURNABLE",
+  "WORK_VEHICLES",
   /** Drivers / cars / autos registered at the Car Book and Auto Book (never listed as a register) */
   "VEHICLE_FLEET",
 ] as const;
@@ -232,30 +253,6 @@ const labourFields: FieldDef[] = [
   { key: "mainWorker", label: "Main Worker Details", type: "text", placeholder: "Name, phone" },
   { key: "estate", label: "Estate", type: "text" },
   { key: "authorizedBy", label: "Building Work Authorized By", type: "person" },
-];
-
-const stockFields: FieldDef[] = [
-  // Inward / Outward first, then the photos taken at the gate, then the details
-  { key: "direction", label: "Inward / Outward", type: "select", options: ["Inward", "Outward"], buttons: true },
-  { key: "materialPhoto", label: "Photo of the material", type: "photo" },
-  { key: "billPhoto", label: "Photo of the bill", type: "photo" },
-  { key: "noBill", label: "No bill", type: "yesno", buttons: true, options: ["No bill", "Has a bill"] },
-  { key: "date", label: "Date", type: "date" },
-  { key: "itemName", label: "Item / Material Name", type: "text" },
-  { key: "vehicleNumber", label: "Vehicle Number / Type", type: "text" },
-  { key: "billAmount", label: "Bill Amount (₹)", type: "number" },
-  { key: "handedOverTo", label: "Handing over to", type: "text" },
-  { key: "quantity", label: "Quantity / Size", type: "text", placeholder: "e.g. 10 bags, 2 m" },
-  { key: "unit", label: "Unit", type: "select", options: UNITS },
-  { key: "supplierName", label: "Supplier Name", type: "text" },
-  { key: "billNumber", label: "Bill Number", type: "text" },
-  { key: "condition", label: "Condition", type: "select", options: ["Good", "Damaged", "Partially damaged"] },
-  { key: "timeCame", label: "Time Came", type: "time" },
-  { key: "billTakenBy", label: "Bill Taken By", type: "person" },
-  { key: "inventoryStored", label: "Inventory Stored Details", type: "text", placeholder: "Where it is stored" },
-  { key: "managerDetails", label: "Manager (name & designation)", type: "text" },
-  { key: "purposeDestination", label: "Purpose / Destination", type: "text" },
-  { key: "remarks", label: "Remarks", type: "textarea" },
 ];
 
 const hostelOutingDescription =
@@ -387,8 +384,8 @@ export const REGISTERS: RegisterDef[] = [
       in: { label: "In", timeKey: "timeIn", readingKey: "inReading" },
       out: { label: "Out", timeKey: "timeOut", readingKey: "outReading" },
       firstDirections: BOTH,
-      // The car leaves first and comes back later (switchable); never "Out only"
-      startWith: "OUT",
+      // The guard chooses In or Out each time (nothing chosen when the form opens); never "Out only"
+      chooseEachTime: true,
       noOneWay: true,
     },
     listFields: ["vehicleName", "vehicleNumber", "timeOut", "timeIn"],
@@ -438,9 +435,53 @@ export const REGISTERS: RegisterDef[] = [
     number: 6,
     title: "College Daily Labour Book",
     description: "Daily labour arriving for college work.",
-    required: ["workerType", "workerCount", "mainWorker"],
+    required: [],
+    // In when they arrive; Out once for everyone in the evening, with the counts leaving (same entry)
+    movement: {
+      in: { label: "In", timeKey: "inTime" },
+      out: { label: "Out", timeKey: "outTime" },
+      firstDirections: ["IN"],
+      fixedStart: true,
+      exitCounts: "workers",
+    },
     listFields: ["workerType", "workerCount", "workType", "workArea"],
-    fields: labourFields,
+    fields: [
+      // Up front: work type, work area, the officer; the workers list below
+      { key: "workType", label: "Work Type", type: "text", combo: "options", options: WORK_TYPES, upFront: true },
+      { key: "workArea", label: "Work Area", type: "text", combo: "suggest", suggestFirst: ["A Block", "B Block", "C Block"], upFront: true },
+      // Not the faculty list: names typed before in this book are suggested
+      { key: "authorizedBy", label: "Work Related Officer Name", type: "text", combo: "suggest", upFront: true },
+      // More details
+      { key: "workDetails", label: "Work Details", type: "textarea" },
+      { key: "estate", label: "Estate", type: "text" },
+      { key: "date", label: "Date", type: "date" },
+      // Set from the workers list on save (older records typed them)
+      { key: "workerType", label: "Worker Type", type: "text", formHidden: true },
+      { key: "workerCount", label: "Total Workers", type: "number", formHidden: true },
+      { key: "mainWorker", label: "Main Worker Details", type: "text", formHidden: true },
+      { key: "inTime", label: "In Time", type: "time" },
+      { key: "outTime", label: "Out Time", type: "time" },
+      // Saved at Out
+      { key: "outCounts", label: "Counts at Out", type: "text", formHidden: true },
+      { key: "outTotal", label: "Total at Out", type: "number", formHidden: true },
+    ],
+    groups: [
+      {
+        key: "workers",
+        label: "Workers",
+        itemLabel: "Worker",
+        max: null,
+        minRows: 1,
+        required: ["workerType", "count"],
+        // "+ Peddamestri / + Chinnamestri / + Cooli" add a row: type, name, count
+        picker: "typedRows",
+        fields: [
+          { key: "workerType", label: "Type", type: "select", options: WORKER_TYPES },
+          { key: "name", label: "Name", type: "text" },
+          { key: "count", label: "Count", type: "number" },
+        ],
+      },
+    ],
   },
   {
     kind: "entry",
@@ -448,9 +489,55 @@ export const REGISTERS: RegisterDef[] = [
     number: 7,
     title: "College Labour Contract Book",
     description: "Contract labour arriving for college work.",
-    required: ["workerType", "workerCount", "mainWorker"],
+    required: [],
+    // In when they arrive; Out once for everyone in the evening, with the counts leaving (same entry)
+    movement: {
+      in: { label: "In", timeKey: "inTime" },
+      out: { label: "Out", timeKey: "outTime" },
+      firstDirections: ["IN"],
+      fixedStart: true,
+      exitCounts: "workers",
+    },
     listFields: ["workerType", "workerCount", "workType", "workArea"],
-    fields: [...labourFields, { key: "remarks", label: "Remarks", type: "textarea" }],
+    fields: [
+      // Up front: work type, work area, the officer; the workers list below
+      { key: "workType", label: "Work Type", type: "text", combo: "options", options: WORK_TYPES, upFront: true },
+      // Contract book: only areas typed before (no A / B / C Block)
+      { key: "workArea", label: "Work Area", type: "text", combo: "suggest", upFront: true },
+      // Not the faculty list: names typed before in this book are suggested
+      { key: "authorizedBy", label: "Work Related Officer Name", type: "text", combo: "suggest", upFront: true },
+      // More details
+      { key: "workDetails", label: "Work Details", type: "textarea" },
+      { key: "estate", label: "Estate", type: "text" },
+      { key: "remarks", label: "Remarks", type: "textarea" },
+      { key: "date", label: "Date", type: "date" },
+      // Set from the workers list on save (older records typed them)
+      { key: "workerType", label: "Worker Type", type: "text", formHidden: true },
+      { key: "workerCount", label: "Total Workers", type: "number", formHidden: true },
+      { key: "mainWorker", label: "Main Worker Details", type: "text", formHidden: true },
+      { key: "inTime", label: "In Time", type: "time" },
+      { key: "outTime", label: "Out Time", type: "time" },
+      // Saved at Out
+      { key: "outCounts", label: "Counts at Out", type: "text", formHidden: true },
+      { key: "outTotal", label: "Total at Out", type: "number", formHidden: true },
+    ],
+    groups: [
+      {
+        key: "workers",
+        label: "Workers",
+        itemLabel: "Worker",
+        max: null,
+        minRows: 1,
+        required: ["workerType", "count"],
+        // "+ Peddamestri / + Chinnamestri / + Cooli" add a row: type, name, count
+        picker: "typedRows",
+        fields: [
+          { key: "workerType", label: "Type", type: "select", options: WORKER_TYPES },
+          { key: "name", label: "Name", type: "text" },
+          { key: "count", label: "Count", type: "number" },
+        ],
+      },
+    ],
   },
   {
     // One entry with a list of coolies; each cooli has the inputs of the pink
@@ -503,10 +590,41 @@ export const REGISTERS: RegisterDef[] = [
     number: 8,
     title: "Siros Venture Main Gate Stock Register",
     description: "Material coming in or going out at the Siros Venture main gate.",
-    required: ["billPhoto", "itemName", "vehicleNumber", "billAmount", "handedOverTo", "quantity", "direction"],
-    requiredUnless: { fields: ["billPhoto", "billAmount"], flag: "noBill" },
-    listFields: ["itemName", "direction", "quantity", "unit", "supplierName"],
-    fields: stockFields,
+    // Up front: in / out, the photos (or No bill), item, vehicle, size, bill number, amount; the rest under "More details"
+    required: ["direction", "billPhoto", "itemName", "vehicleNumber", "quantity", "billNumber", "billAmount"],
+    readsBill: "billPhoto",
+    requiredUnless: { fields: ["billPhoto", "billNumber", "billAmount"], flag: "noBill" },
+    listFields: ["itemName", "direction", "quantity", "vehicleNumber", "billNumber"],
+    fields: [
+      { key: "direction", label: "Inward / Outward", type: "select", options: ["Inward", "Outward"], buttons: true },
+      { key: "materialPhoto", label: "Photo of the stock", type: "photo" },
+      { key: "billPhoto", label: "Photo of the bill", type: "photo" },
+      { key: "noBill", label: "No bill", type: "yesno", buttons: true, options: ["No bill", "Has a bill"] },
+      { key: "itemName", label: "Item Details", type: "text" },
+      { key: "vehicleNumber", label: "Vehicle Number", type: "text" },
+      { key: "quantity", label: "Item Size Details", type: "text", placeholder: "e.g. 10 bags, 2 m" },
+      { key: "billNumber", label: "Bill Number", type: "text" },
+      { key: "billAmount", label: "Amount (₹)", type: "number" },
+      // "Supplier known" shows the supplier box
+      { key: "supplierKnown", label: "Supplier known", type: "yesno", buttons: true, options: ["Supplier known", "Not known"] },
+      { key: "supplierName", label: "Supplier Name", type: "text", showWhen: "supplierKnown", requiredWhenShown: true },
+      // "Bill taken now" shows who took it (saved as taken); otherwise filled later on the record, until marked taken
+      { key: "billTakenNow", label: "Bill taken now", type: "yesno", buttons: true, options: ["Bill taken now", "Not yet"], setsFlag: "billTaken" },
+      { key: "billTakenBy", label: "Bill Taken By", type: "text", showWhen: "billTakenNow", requiredWhenShown: true, updatable: true, lockedBy: "billTaken" },
+      { key: "billTaken", label: "Bill taken", type: "yesno", updatable: true, formHidden: true, options: ["Bill taken", "Not taken yet"] },
+      // Given to someone right away: "Given now" shows who it was given to (or fill it later on the record)
+      { key: "givenNow", label: "Given now", type: "yesno", buttons: true, options: ["Given now", "Not given yet"] },
+      { key: "handedOverTo", label: "Given To", type: "text", showWhen: "givenNow", requiredWhenShown: true, updatable: true },
+      // More details
+      { key: "date", label: "Date", type: "date" },
+      { key: "unit", label: "Unit", type: "select", options: UNITS },
+      { key: "condition", label: "Condition", type: "select", options: ["Good", "Damaged", "Partially damaged"] },
+      { key: "timeCame", label: "Time Came", type: "time" },
+      { key: "inventoryStored", label: "Inventory Stored Details", type: "text", placeholder: "Where it is stored" },
+      { key: "managerDetails", label: "Manager (name & designation)", type: "text" },
+      { key: "purposeDestination", label: "Purpose / Destination", type: "text" },
+      { key: "remarks", label: "Remarks", type: "textarea" },
+    ],
   },
   {
     kind: "entry",
@@ -514,10 +632,41 @@ export const REGISTERS: RegisterDef[] = [
     number: 9,
     title: "College Main Gate Stock Entry Register",
     description: "Material coming in or going out at the college main gate.",
-    required: ["billPhoto", "itemName", "vehicleNumber", "billAmount", "handedOverTo", "quantity", "direction"],
-    requiredUnless: { fields: ["billPhoto", "billAmount"], flag: "noBill" },
-    listFields: ["itemName", "direction", "quantity", "unit", "supplierName"],
-    fields: stockFields,
+    // Photos when available; item, vehicle and the bill number (or "No bill") are needed; the rest is optional
+    required: ["direction", "itemName", "vehicleNumber", "billNumber"],
+    requiredUnless: { fields: ["billNumber"], flag: "noBill" },
+    readsBill: "billPhoto",
+    listFields: ["itemName", "direction", "vehicleNumber", "billNumber", "handedOverTo"],
+    fields: [
+      { key: "direction", label: "Inward / Outward", type: "select", options: ["Inward", "Outward"], buttons: true },
+      { key: "billPhoto", label: "Photo of the bill", type: "photo" },
+      { key: "materialPhoto", label: "Photo of the item", type: "photo" },
+      { key: "itemName", label: "Item Details (size, quantity)", type: "text", placeholder: "e.g. Cement, 50 bags" },
+      { key: "vehicleNumber", label: "Vehicle Details / Number", type: "text" },
+      { key: "billAmount", label: "Amount (₹)", type: "number", upFront: true },
+      // Bill number, or "No bill"
+      { key: "billNumber", label: "Bill Number", type: "text" },
+      { key: "noBill", label: "No bill", type: "yesno", buttons: true, options: ["No bill", "Has a bill"] },
+      // "Supplier known" shows the supplier box
+      { key: "supplierKnown", label: "Supplier known", type: "yesno", buttons: true, options: ["Supplier known", "Not known"] },
+      { key: "supplierName", label: "Supplier Name", type: "text", showWhen: "supplierKnown", requiredWhenShown: true },
+      // "Bill taken now" shows who took it (saved as taken); otherwise filled later on the record, until marked taken
+      { key: "billTakenNow", label: "Bill taken now", type: "yesno", buttons: true, options: ["Bill taken now", "Not yet"], setsFlag: "billTaken" },
+      { key: "billTakenBy", label: "Bill Taken By", type: "text", showWhen: "billTakenNow", requiredWhenShown: true, updatable: true, lockedBy: "billTaken" },
+      { key: "billTaken", label: "Bill taken", type: "yesno", updatable: true, formHidden: true, options: ["Bill taken", "Not taken yet"] },
+      // Given to someone right away: "Given now" shows who it was given to (or fill it later on the record)
+      { key: "givenNow", label: "Given now", type: "yesno", buttons: true, options: ["Given now", "Not given yet"] },
+      { key: "handedOverTo", label: "Given To", type: "text", showWhen: "givenNow", requiredWhenShown: true, updatable: true },
+      // More details
+      { key: "date", label: "Date", type: "date" },
+      { key: "unit", label: "Unit", type: "select", options: UNITS },
+      { key: "condition", label: "Condition", type: "select", options: ["Good", "Damaged", "Partially damaged"] },
+      { key: "timeCame", label: "Time Came", type: "time" },
+      { key: "inventoryStored", label: "Inventory Stored Details", type: "text", placeholder: "Where it is stored" },
+      { key: "managerDetails", label: "Manager (name & designation)", type: "text" },
+      { key: "purposeDestination", label: "Purpose / Destination", type: "text" },
+      { key: "remarks", label: "Remarks", type: "textarea" },
+    ],
   },
   {
     kind: "entry",
@@ -660,10 +809,38 @@ export const REGISTERS: RegisterDef[] = [
     ],
   },
   {
+    // Lorries, tractors and other vehicles coming for work (college work or Siros Venture)
+    kind: "entry",
+    key: "WORK_VEHICLES",
+    number: 22,
+    title: "Work Vehicles Book",
+    description: "Vehicles coming for work: photo, work area, vehicle details; In when they arrive, Out when they leave.",
+    required: ["vehiclePhoto", "workArea", "vehicleDetails"],
+    movement: {
+      in: { label: "In", timeKey: "timeIn" },
+      out: { label: "Out", timeKey: "timeOut" },
+      firstDirections: ["IN"],
+      fixedStart: true,
+    },
+    listFields: ["vehicleDetails", "workArea", "vehicleNumber", "timeIn", "timeOut"],
+    fields: [
+      // Photo first (at the top of the form)
+      { key: "vehiclePhoto", label: "Vehicle Photo", type: "photo" },
+      // General Work / Siros Venture first, then what was typed before
+      { key: "workArea", label: "Work Area", type: "text", combo: "suggest", suggestFirst: ["General Work", "Siros Venture"] },
+      { key: "vehicleDetails", label: "Vehicle Details", type: "text", placeholder: "e.g. Tractor with sand" },
+      { key: "vehicleNumber", label: "Vehicle Number", type: "text", upFront: true },
+      { key: "remarks", label: "Remarks", type: "textarea" },
+      { key: "date", label: "Date", type: "date" },
+      { key: "timeIn", label: "In Time", type: "time" },
+      { key: "timeOut", label: "Out Time", type: "time" },
+    ],
+  },
+  {
     kind: "entry",
     key: "KEYS",
     number: 18,
-    title: "College Purpose & Keys Book",
+    title: "College Keys Book",
     description: "Keys handed out and returned.",
     required: ["personName", "phone", "keyName"],
     highlightRequired: true,
@@ -696,36 +873,45 @@ export const REGISTERS: RegisterDef[] = [
     number: 19,
     title: "Returnable & Non-Returnable Book",
     description: "Material taken out by faculty or staff, returnable or not.",
-    required: ["fromName", "purpose", "itemType"],
+    // Up front: from (name, designation, department), to (name, phone), returnable or not, the items
+    required: ["fromName", "allowingRepresentative", "itemType"],
     movement: { in: { label: "In", timeKey: "inTime" }, out: { label: "Out", timeKey: "outTime" }, firstDirections: BOTH },
-    listFields: ["fromName", "itemType", "purpose", "outTime", "inTime"],
-    fixed: [
-      { label: "To (Recipient)", value: "Estate Manager" },
-      { label: "Institution", value: "Ramachandra College" },
-    ],
+    listFields: ["fromName", "itemType", "allowingRepresentative", "outTime", "inTime"],
+    fixed: [{ label: "Institution", value: "Ramachandra College" }],
     fields: [
-      { key: "fromName", label: "From — Name of Faculty / Staff", type: "person", fills: { designation: "fromDesignation", department: "fromDepartment" } },
-      { key: "fromDesignation", label: "From — Designation", type: "text" },
-      { key: "fromDepartment", label: "From — Department", type: "department" },
-      { key: "allowingRepresentative", label: "Allowing — Company Representative Name", type: "text" },
-      { key: "phone", label: "Allowing — Representative Mobile Number", type: "phone" },
-      { key: "allowingDesignation", label: "Allowing — Designation", type: "text" },
-      { key: "allowingOrganization", label: "Allowing — Belonging Organization", type: "text" },
-      { key: "allowingCity", label: "Allowing — City", type: "text" },
+      // Names typed before in this book are suggested; picking one fills their designation and department
+      {
+        key: "fromName",
+        label: "From — Name of Faculty / Staff",
+        type: "text",
+        combo: "suggest",
+        suggestFills: ["fromDesignation", "fromDepartment"],
+      },
+      { key: "fromDesignation", label: "From — Designation", type: "text", upFront: true },
+      { key: "fromDepartment", label: "From — Department", type: "department", upFront: true },
+      { key: "allowingRepresentative", label: "To — Name", type: "text" },
+      { key: "phone", label: "To — Phone Number", type: "phone", upFront: true },
+      { key: "itemType", label: "Returnable / Non-Returnable", type: "select", options: ["Returnable", "Non-Returnable"], buttons: true },
+      // More details
       { key: "purpose", label: "Taking Out Purpose", type: "text" },
-      { key: "itemType", label: "Item Type", type: "select", options: ["Returnable", "Non-Returnable"] },
+      { key: "allowingDesignation", label: "To — Designation", type: "text" },
+      { key: "allowingOrganization", label: "To — Organization", type: "text" },
+      { key: "allowingCity", label: "To — City", type: "text" },
       { key: "outTime", label: "Out-Time", type: "time" },
       { key: "inTime", label: "In-Time", type: "time" },
     ],
     groups: [
       {
         key: "items",
-        label: "Material Details",
+        label: "Items",
         itemLabel: "Item",
-        max: 5,
+        max: 30,
+        minRows: 1,
         required: ["description"],
+        // "+ Add item" opens a pop-up (details, quantity, remarks): add and next, or add and close
+        picker: "itemsPopup",
         fields: [
-          { key: "description", label: "Name and Description", type: "text" },
+          { key: "description", label: "Item Details", type: "text" },
           { key: "quantity", label: "Quantity", type: "number" },
           { key: "remarks", label: "Remarks", type: "text" },
         ],

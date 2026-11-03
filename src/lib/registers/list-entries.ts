@@ -89,16 +89,12 @@ export async function queryRegisterEntries(user: AuthUser, params: RegisterListP
       take: PAGE_SIZE,
       select,
     });
-  let rows: Awaited<ReturnType<typeof findRows>>;
-  let total: number;
-  if (page === 1 && range) {
-    // One day usually fits on the first page: then the rows give the total and
-    // the count query is skipped (one query instead of two)
-    rows = await findRows();
-    total = rows.length < PAGE_SIZE ? rows.length : await prisma.registerEntry.count({ where });
-  } else {
-    [rows, total] = await Promise.all([findRows(), prisma.registerEntry.count({ where })]);
-  }
+  // Rows, total and the override check together: one wait (a busy day no longer waits for the count after the rows)
+  const [rows, total, canOverrideVisit] = await Promise.all([
+    findRows(),
+    prisma.registerEntry.count({ where }),
+    def.visitHost ? canOverrideVisitExit(user) : Promise.resolve(false),
+  ]);
 
   return {
     success: true as const,
@@ -106,7 +102,7 @@ export async function queryRegisterEntries(user: AuthUser, params: RegisterListP
     pageSize: PAGE_SIZE,
     total,
     /** May this user let a visitor out without the meeting code (Head Security / Main Admin) */
-    canOverrideVisit: def.visitHost ? await canOverrideVisitExit(user) : false,
+    canOverrideVisit,
     entries: rows.map((r) => toListEntry(def, r)),
   };
 }

@@ -6,27 +6,37 @@
  * registering a new coolie / contractor with a photo (they get a number).
  */
 import { useState } from "react";
-import { Check, Plus, Search, UserPlus, X } from "lucide-react";
+import { ZoomablePhoto } from "@/components/ui/zoomable-photo";
+import { Check, Info, Loader2, Plus, Search, UserPlus, X } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { Modal } from "@/components/ui/primitives";
-import { useGateData } from "@/lib/gate-cache";
+import { prefetchGateData, useGateData } from "@/lib/gate-cache";
 import { callGate } from "@/lib/gate-call";
 import { actionErrorMessage } from "@/lib/deployment";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { addSirosPerson, type SirosPerson } from "@/server/actions/siros-people";
 
 type Values = Record<string, string>;
 const PEOPLE_KEY = "siros-people";
+// The people list changes only when someone registers; "who is inside" when an entry is saved / marked Out
 const LIVE = ["reg:SIROS_PERSON"];
+const INSIDE_LIVE = ["reg:SIROS_DAILY_LABOUR"];
+export type SirosPeopleData = { people: SirosPerson[]; inside: { coolies: string[]; contractors: string[] } };
 
 /** Everyone registered (shared by every box of the form; refreshed when someone registers). */
-export function useSirosPeople(enabled: boolean): SirosPerson[] | null {
+export function useSirosPeople(enabled: boolean): SirosPeopleData | null {
   const { data } = useGateData<{ people?: SirosPerson[] }>(
     enabled ? PEOPLE_KEY : null,
     () => callGate("listSirosPeople", [], 15_000) as Promise<{ people?: SirosPerson[] }>,
     LIVE
   );
-  return data?.people ?? null;
+  // Small and separate: a save elsewhere refreshes only this
+  const inside = useGateData<{ inside?: SirosPeopleData["inside"] }>(
+    enabled ? "siros-inside" : null,
+    () => callGate("getSirosInside", [], 15_000) as Promise<{ inside?: SirosPeopleData["inside"] }>,
+    INSIDE_LIVE
+  );
+  return data?.people ? { people: data.people, inside: inside.data?.inside ?? { coolies: [], contractors: [] } } : null;
 }
 
 /** "12 · Ramu" style label (the number is what the person tells the guard) */
@@ -48,16 +58,19 @@ export function CooliePicker({
 }: {
   rows: Values[];
   onChange: (rows: Values[]) => void;
-  people: SirosPerson[] | null;
+  people: SirosPeopleData | null;
 }) {
   const t = useT();
   const added = rows.filter((r) => (r.name ?? "").trim() !== "");
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
-  const coolies = (people ?? []).filter((p) => p.kind === "COOLIE");
+  const coolies = (people?.people ?? []).filter((p) => p.kind === "COOLIE");
+  // On another entry not yet marked Out: can't be added until then
+  const isInside = (p: SirosPerson) => !!people?.inside.coolies.includes(String(p.no));
   const shown = q ? coolies.filter((p) => String(p.no) === q || String(p.no).startsWith(q) || p.name.toLowerCase().includes(q)) : coolies;
   const isAdded = (p: SirosPerson) => added.some((r) => r.no === String(p.no));
+  const [viewNo, setViewNo] = useState<number | null>(null);
 
   return (
     <fieldset className="overflow-hidden rounded-2xl border border-zinc-800">
@@ -72,11 +85,20 @@ export function CooliePicker({
         <ul className="divide-y divide-zinc-800/70">
           {added.map((r) => (
             <li key={r.no || r.name} className="flex min-h-14 items-center gap-3 px-4 py-2">
-              <NoBadge no={r.no || "—"} />
-              <span className="min-w-0 flex-1">
-                <span className="block break-words text-base font-medium text-zinc-100">{r.name}</span>
-                {r.gender && <span className="block text-xs text-zinc-500">{t(r.gender)}</span>}
-              </span>
+              {/* Tap for the coolie's full details */}
+              <button
+                type="button"
+                onPointerDown={() => prefetchSirosPerson(r.no)}
+                onClick={() => r.no && setViewNo(Number(r.no))}
+                className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left transition-colors hover:bg-zinc-950"
+              >
+                <NoBadge no={r.no || "—"} />
+                <span className="min-w-0 flex-1">
+                  <span className="block break-words text-base font-medium text-zinc-100">{r.name}</span>
+                  {r.gender && <span className="block text-xs text-zinc-500">{t(r.gender)}</span>}
+                </span>
+                {r.no && <Info className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />}
+              </button>
               <button
                 type="button"
                 aria-label={t("Remove")}
@@ -95,7 +117,7 @@ export function CooliePicker({
           setQuery("");
           setOpen(true);
         }}
-        className="flex h-14 w-full items-center justify-center gap-2 border-t border-zinc-800/70 bg-zinc-900 text-base font-semibold text-orange-600 transition-colors hover:bg-orange-500/5"
+        className="flex h-14 w-full items-center justify-center gap-2 border-t border-zinc-800/70 bg-orange-500/10 text-base font-semibold text-orange-600 transition-colors hover:bg-orange-500/15"
       >
         <Plus className="h-5 w-5" /> {t("Add coolie")}
       </button>
@@ -122,13 +144,18 @@ export function CooliePicker({
             ) : (
               shown.map((p) => {
                 const on = isAdded(p);
+                const away = !on && isInside(p);
                 return (
-                  <li key={p.id}>
+                  <li key={p.id} className="flex items-center">
                     <button
                       type="button"
-                      disabled={on}
+                      disabled={on || away}
                       onClick={() => onChange([...added, { no: String(p.no), name: p.name, gender: p.gender ?? "" }])}
-                      className={cn("flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left transition-colors", on ? "bg-emerald-500/10" : "hover:bg-zinc-950")}
+                      className={cn(
+                        "flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left transition-colors",
+                        "min-w-0 flex-1",
+                        on ? "bg-emerald-500/10" : away ? "cursor-not-allowed opacity-60" : "hover:bg-zinc-950"
+                      )}
                     >
                       <NoBadge no={p.no} />
                       <span className="min-w-0 flex-1">
@@ -139,11 +166,22 @@ export function CooliePicker({
                         <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white">
                           <Check className="h-3.5 w-3.5" aria-hidden="true" /> {t("Added")}
                         </span>
+                      ) : away ? (
+                        <span className="shrink-0 rounded-full bg-zinc-950 px-2.5 py-1 text-xs font-semibold text-zinc-500">{t("Inside — mark Out first")}</span>
                       ) : (
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-orange-600">
                           <Plus className="h-5 w-5" aria-hidden="true" />
                         </span>
                       )}
+                    </button>
+                    <button
+                      type="button"
+                      onPointerDown={() => prefetchSirosPerson(p.no)}
+                      onClick={() => setViewNo(p.no)}
+                      aria-label={`${t("Details")} — ${p.name}`}
+                      className="flex h-14 w-12 shrink-0 items-center justify-center text-zinc-400 transition-colors hover:bg-zinc-950 hover:text-zinc-100"
+                    >
+                      <Info className="h-5 w-5" />
                     </button>
                   </li>
                 );
@@ -159,6 +197,7 @@ export function CooliePicker({
           </button>
         </div>
       </Modal>
+      <SirosPersonDialog no={viewNo} onClose={() => setViewNo(null)} />
     </fieldset>
   );
 }
@@ -210,17 +249,21 @@ export function SirosNewPeople({
   const inputCls =
     "h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 text-base text-zinc-100 outline-none focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10";
   const newBtn =
-    "flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-dashed border-orange-500/40 bg-zinc-900 px-3 text-base font-semibold text-orange-600 transition-colors hover:bg-orange-500/5 sm:flex-1";
+    "flex min-h-12 w-full min-w-0 items-center justify-center gap-1.5 rounded-2xl border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-center text-sm font-medium leading-tight text-zinc-200 shadow-card transition-colors hover:bg-zinc-950 sm:gap-2 sm:text-base";
 
   return (
     <>
-      <div className="flex flex-col gap-2 sm:flex-row">
+      {/* Registering a first-timer: plain buttons, so they are not mistaken for "+ Add coolie" */}
+      <div className="space-y-2.5 rounded-2xl border border-zinc-800 bg-zinc-950 p-3 sm:p-4">
+        <p className="text-sm font-medium text-zinc-400">{t("First time at the gate? Register them:")}</p>
+      <div className="grid grid-cols-2 gap-2">
         <button type="button" onClick={() => start("COOLIE")} className={newBtn}>
-          <UserPlus className="h-5 w-5" /> {t("New coolie")}
+          <UserPlus className="h-5 w-5 shrink-0" /> {t("New coolie")}
         </button>
         <button type="button" onClick={() => start("CONTRACTOR")} className={newBtn}>
-          <UserPlus className="h-5 w-5" /> {t("New contractor")}
+          <UserPlus className="h-5 w-5 shrink-0" /> {t("New contractor")}
         </button>
+      </div>
       </div>
 
       <Modal open={!!kind} onClose={() => !busy && setKind(null)} title={kind === "CONTRACTOR" ? t("New contractor") : t("New coolie")} className="max-w-lg">
@@ -241,7 +284,7 @@ export function SirosNewPeople({
         ) : (
           <div className="space-y-4">
             {/* Photo first (once, when they register) */}
-            {renderPhoto(photo, setPhoto)}
+            <div className="flex justify-center [&>*]:w-full [&>*]:max-w-[220px]">{renderPhoto(photo, setPhoto)}</div>
             <label className="block space-y-1.5">
               <span className="text-sm font-medium text-zinc-200">
                 {t("Name")} <span className="text-orange-500">*</span>
@@ -293,8 +336,115 @@ export function SirosNewPeople({
 }
 
 /** Contractor box items: "7 · Ravi Constructions" (fills the name; the phone comes along) */
-export function contractorItems(people: SirosPerson[] | null) {
-  return (people ?? [])
-    .filter((p) => p.kind === "CONTRACTOR")
+export function contractorItems(data: SirosPeopleData | null, typedBefore: string[] = []) {
+  // Contractors still inside on an entry not marked Out are left out of the list
+  const inside = new Set(data?.inside.contractors ?? []);
+  const registered = (data?.people ?? [])
+    .filter((p) => p.kind === "CONTRACTOR" && !inside.has(p.name.trim().toLowerCase()))
     .map((p) => ({ fill: p.name, label: tag(p), extra: p.phone ?? "" }));
+  // Then names typed in earlier entries (not registered, not inside now)
+  const known = new Set((data?.people ?? []).map((p) => p.name.trim().toLowerCase()));
+  const typed = typedBefore
+    .filter((n) => !known.has(n.trim().toLowerCase()) && !inside.has(n.trim().toLowerCase()))
+    .map((n) => ({ fill: n }));
+  return [...registered, ...typed];
+}
+
+type PersonDetails = {
+  no: number;
+  kind: "COOLIE" | "CONTRACTOR";
+  name: string;
+  gender: string | null;
+  phone: string | null;
+  photo: string | null;
+  registeredAt: string;
+  registeredBy: string;
+  inside: boolean;
+};
+
+const personKey = (no: number) => `siros-person|${no}`;
+const loadPerson = (no: number) => () =>
+  callGate("getSirosPersonDetails", [no], 15_000) as Promise<{ person?: PersonDetails; error?: string }>;
+/** Start loading a person's photo / registration before the details open (on touch). */
+export function prefetchSirosPerson(no: number | string | null | undefined) {
+  const n = Number(no);
+  if (n > 0) prefetchGateData(personKey(n), loadPerson(n), LIVE);
+}
+
+/**
+ * Full details of one coolie / contractor (by number). Name, number, gender / phone
+ * and "inside now" show at once (from the list already on the phone); the photo and
+ * "registered on / by" load in the background.
+ */
+export function SirosPersonDialog({ no, onClose }: { no: number | null; onClose: () => void }) {
+  const t = useT();
+  const list = useSirosPeople(no !== null);
+  const known = no !== null ? list?.people.find((x) => x.no === no) ?? null : null;
+  const { data, error, loading } = useGateData<{ person?: PersonDetails; error?: string }>(
+    no ? personKey(no) : null,
+    no ? loadPerson(no) : () => Promise.resolve({}),
+    LIVE
+  );
+  const full = data?.person;
+  const base = full ?? known;
+  const inside =
+    base && list
+      ? base.kind === "COOLIE"
+        ? list.inside.coolies.includes(String(base.no))
+        : list.inside.contractors.includes(base.name.trim().toLowerCase())
+      : !!full?.inside;
+  const row = (label: string, value: React.ReactNode) => (
+    <div className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] items-baseline gap-3 px-4 py-3">
+      <dt className="text-base font-semibold text-zinc-300">{label}</dt>
+      <dd className="min-w-0 break-words text-lg font-bold text-zinc-100">{value}</dd>
+    </div>
+  );
+  const waiting = <span className="inline-block h-4 w-28 animate-pulse rounded bg-zinc-800" aria-hidden="true" />;
+  return (
+    <Modal open={!!no} onClose={onClose} title={base ? (base.kind === "CONTRACTOR" ? t("Contractor") : t("Coolie")) : t("Details")} className="max-w-md">
+      {!base ? (
+        <p className="flex items-center justify-center gap-2 py-10 text-base text-zinc-500">
+          {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
+          {loading ? t("Loading…") : t(error ?? data?.error ?? "Not found")}
+        </p>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex flex-col items-center gap-3 text-center">
+            {full?.photo ? (
+              <ZoomablePhoto src={full.photo} alt={base.name} className="aspect-square w-44 rounded-3xl object-cover shadow-card" />
+            ) : (
+              <span className={cn("flex aspect-square w-44 items-center justify-center rounded-3xl bg-zinc-950 text-5xl font-bold text-zinc-400", !full && "animate-pulse")}>
+                {base.name.charAt(0).toUpperCase()}
+              </span>
+            )}
+            <div>
+              <p className="text-2xl font-bold text-zinc-100">{base.name}</p>
+              <p className="mt-1 inline-flex items-center gap-2">
+                <span className="rounded-xl bg-orange-500/10 px-3 py-1 text-lg font-bold tabular-nums text-orange-600">
+                  {t("No.")} {base.no}
+                </span>
+                <span className={cn("rounded-xl px-3 py-1 text-sm font-bold", inside ? "bg-emerald-500/15 text-emerald-700" : "bg-zinc-950 text-zinc-400")}>
+                  {inside ? t("Inside now") : t("Not inside")}
+                </span>
+              </p>
+            </div>
+          </div>
+          <dl className="divide-y divide-zinc-800 overflow-hidden rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900">
+            {row(t("Type"), base.kind === "CONTRACTOR" ? t("Contractor") : t("Coolie"))}
+            {base.gender && row(t("Gender"), t(base.gender))}
+            {base.phone && row(t("Phone Number"), base.phone)}
+            {row(t("Registered on"), full ? formatDate(full.registeredAt) : waiting)}
+            {row(t("Registered by"), full ? full.registeredBy || "—" : waiting)}
+          </dl>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-12 w-full items-center justify-center rounded-2xl border-[1.5px] border-zinc-600 bg-zinc-900 text-base font-semibold text-zinc-100 hover:bg-zinc-950"
+          >
+            {t("Close")}
+          </button>
+        </div>
+      )}
+    </Modal>
+  );
 }

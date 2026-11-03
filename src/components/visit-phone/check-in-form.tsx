@@ -495,7 +495,7 @@ export function CheckInForm({ token }: { token: string }) {
 
       <Card>
         <CardContent className="p-5">
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form data-look="clear" onSubmit={handleSubmit} className="space-y-6">
             {isVisitors ? (
               <>
                 {/* "Coming for" first: the rest of the form follows from it */}
