@@ -208,10 +208,9 @@ export function RegistersHub({
     if (!row) return;
     // After the router's own scroll on arrival
     const frame = requestAnimationFrame(() => row.scrollIntoView({ block: "center" }));
-    // A list row glows; a tile gets an orange ring (its own background would hide a glow)
-    const marks = ["bg-orange-500/10", "ring-4", "ring-orange-500/50"];
-    row.classList.add(...marks);
-    const timer = setTimeout(() => row.classList.remove(...marks), 1500);
+    // A soft pulse: the tile lifts a little and an orange glow spreads out and fades (twice)
+    row.classList.add("animate-return");
+    const timer = setTimeout(() => row.classList.remove("animate-return"), 1700);
     return () => {
       cancelAnimationFrame(frame);
       clearTimeout(timer);
@@ -365,6 +364,9 @@ export function RegistersHub({
               <li key={r.key} data-register-row={r.key} className="relative min-w-0 rounded-3xl transition-colors duration-700">
                 <Link
                   href={href}
+                  // Fully preloaded while on screen (live site): a tap opens the register without the loading screen.
+                  // Light: these pages do no database work of their own (kept lookups), and are reused for 5 minutes.
+                  prefetch={true}
                   onPointerDown={prefetch}
                   onFocus={prefetch}
                   onClick={() => rememberOpenedRegister(r.key)}

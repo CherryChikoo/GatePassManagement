@@ -72,10 +72,10 @@ export function RegisterToolbar({ filters, action, searchPlaceholder = "Searchâ€
           aria-pressed={filters.allDates}
           onClick={() => filters.setAllDates(!filters.allDates)}
           className={`inline-flex h-12 shrink-0 select-none items-center gap-2 rounded-full border-[1.5px] px-4 text-base font-semibold whitespace-nowrap transition-[background-color,border-color,color,transform] active:scale-[0.98] ${
-            // Off: light orange; selected: solid dark orange with white text
+            // Its own colour (blue): off light blue; selected solid blue with white text
             filters.allDates
-              ? "border-orange-600 bg-orange-600 text-white shadow-[0_6px_14px_-8px_rgba(207,62,37,0.7)]"
-              : "border-orange-500/40 bg-orange-500/10 text-orange-600 hover:bg-orange-500/15"
+              ? "border-sky-600 bg-sky-600 text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.7)]"
+              : "border-sky-500/40 bg-sky-500/10 text-sky-700 hover:bg-sky-500/15"
           }`}
         >
           {filters.allDates ? <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" /> : <CalendarRange className="h-5 w-5 shrink-0" aria-hidden="true" />}

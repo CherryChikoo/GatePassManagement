@@ -2,7 +2,10 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "framework": "nextjs",
-  "regions": ["bom1"],
+  "regions": [
+    "bom1"
+  ],
+  "fluid": true,
   "crons": [
     {
       "path": "/api/cron/cleanup",
