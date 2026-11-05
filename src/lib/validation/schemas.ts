@@ -125,7 +125,7 @@ export const createUserSchema = z.object({
   email: z.string().trim().max(254).email("Invalid email"),
   // Same rule as Settings and staff password changes
   password: z.string().min(8, "Password must be at least 8 characters").max(72, "Password must be at most 72 characters"),
-  role: z.enum(["STUDENT", "FACULTY", "WARDEN", "SECURITY", "HEAD_SECURITY", "SECURITY_SUPERVISOR", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "ADMIN"]),
+  role: z.enum(["STUDENT", "FACULTY", "WARDEN", "SECURITY", "HEAD_SECURITY", "SECURITY_SUPERVISOR", "ESTATE_MANAGER", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "ADMIN"]),
   phone: z.string().trim().max(20).optional().or(z.literal("")),
   // Student-specific
   // Roll numbers are stored uppercase so gate lookups use the unique index

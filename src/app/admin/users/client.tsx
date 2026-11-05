@@ -260,7 +260,7 @@ export function UserManagementClient({
     setAssigning(false);
   }
 
-  const ROLES = ["STUDENT", "FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "WARDEN", "SECURITY", "SECURITY_SUPERVISOR", "ADMIN"];
+  const ROLES = ["STUDENT", "FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "WARDEN", "SECURITY", "SECURITY_SUPERVISOR", "ESTATE_MANAGER", "ADMIN"];
 
   const filteredUsers = usersData.users.filter((u: any) => {
     const q = searchQuery.toLowerCase().trim();
@@ -566,7 +566,7 @@ export function UserManagementClient({
                   }`}
                 >
                   {isPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                  {tabRole === "FACULTY" ? "Faculty" : tabRole === "FACULTY_ADMIN" ? "HOD" : tabRole === "SECURITY" ? "Security" : tabRole === "SECURITY_SUPERVISOR" ? "Security Supervisors" : tabRole === "DIRECTOR" ? "Director" : tabRole === "DEAN" ? "Dean" : `${tabRole.toLowerCase()}s`}
+                  {tabRole === "FACULTY" ? "Faculty" : tabRole === "FACULTY_ADMIN" ? "HOD" : tabRole === "SECURITY" ? "Security" : tabRole === "SECURITY_SUPERVISOR" ? "Security Supervisors" : tabRole === "ESTATE_MANAGER" ? "Estate Manager" : tabRole === "DIRECTOR" ? "Director" : tabRole === "DEAN" ? "Dean" : `${tabRole.toLowerCase()}s`}
                 </button>
               );
             })}
@@ -595,7 +595,7 @@ export function UserManagementClient({
                 <div className="flex items-center gap-2 px-5 sm:px-6 pt-5 pb-3">
                   <span className="h-2 w-2 rounded-full bg-orange-500" />
                   <h2 className="text-xs font-semibold uppercase tracking-wider text-orange-400">
-                    {role === "FACULTY" ? "FACULTY" : role === "FACULTY_ADMIN" ? "HOD (HEAD OF DEPARTMENT)" : role === "SECURITY" ? "SECURITY" : role === "SECURITY_SUPERVISOR" ? "SECURITY SUPERVISOR" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : `${role}S`}
+                    {role === "FACULTY" ? "FACULTY" : role === "FACULTY_ADMIN" ? "HOD (HEAD OF DEPARTMENT)" : role === "SECURITY" ? "SECURITY" : role === "SECURITY_SUPERVISOR" ? "SECURITY SUPERVISOR" : role === "ESTATE_MANAGER" ? "ESTATE MANAGER" : role === "DIRECTOR" ? "DIRECTOR" : role === "DEAN" ? "DEAN" : `${role}S`}
                   </h2>
                 </div>
 

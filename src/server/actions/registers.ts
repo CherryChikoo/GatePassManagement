@@ -16,6 +16,7 @@ import {
   yesNoWords,
   type EntryRegister,
   type RegisterKey,
+  ESTATE_BOOKS,
 } from "@/lib/registers/definitions";
 import {
   buildSearchText,
@@ -57,7 +58,9 @@ import {
 } from "@/lib/registers/list-entries";
 
 const PAGE_SIZE = REGISTER_PAGE_SIZE;
-const VIEW_ROLES = REGISTER_VIEW_ROLES;
+// Pass books, counts and options: gate staff only (the Estate Manager reads its 7 books through the
+// book lists, which check each book: list-entries.ts)
+const VIEW_ROLES = ["SECURITY", "ADMIN", "SECURITY_SUPERVISOR"] as const;
 const TOKEN_RE = /^[A-Za-z0-9-]{8,100}$/;
 
 // ──────────────────────────────────────────────────────────────
@@ -1455,6 +1458,118 @@ export async function getFieldSuggestions(
     values[fieldKey] = [...seen.values()];
   }
   return { values, fills };
+}
+
+export type CarOnBoard = {
+  /** Number (or name) the car is known by */
+  key: string;
+  name: string;
+  number: string;
+  /** "out": left and not back yet; "in": on campus */
+  state: "in" | "out";
+  /** When it went out / came in (last move), ISO */
+  since: string | null;
+  /** The record waiting for its other side (Mark In after Out, or Mark Out after an In-first record) */
+  openId: string | null;
+  openNext: "IN" | "OUT" | null;
+};
+
+/**
+ * Car Book board: every car seen in the book (name + number), with where it is now —
+ * out (since when) or on campus — and the record waiting for its other side.
+ * One small read (the latest 400 records with their later In / Out).
+ */
+export async function getCarBoard(): Promise<{ success: true; cars: CarOnBoard[] } | { error: string }> {
+  await requireRole(...VIEW_ROLES);
+  const def = await getEntryRegister("CAR_BOOK");
+  if (!def || !def.movement) return { error: "Unknown register" };
+  const rows = await prisma.registerEntry.findMany({
+    where: { register: "CAR_BOOK", kind: "ORIGINAL" },
+    orderBy: { createdAt: "desc" },
+    take: 400,
+    select: { id: true, data: true, createdAt: true, supplements: { select: { kind: true, data: true, createdAt: true } } },
+  });
+  const seen = new Map<string, CarOnBoard>();
+  for (const r of rows) {
+    const d = effectiveData(def, r.data as RegisterData, r.supplements);
+    const name = typeof d.vehicleName === "string" ? d.vehicleName.trim() : "";
+    const number = typeof d.vehicleNumber === "string" ? d.vehicleNumber.trim() : "";
+    const key = (number || name).toUpperCase().replace(/[\s-]/g, "");
+    if (!key || seen.has(key)) continue; // the newest record of each car decides where it is
+    const next = pendingActions(def, d).next;
+    const lastMove = r.supplements.filter((x) => x.kind === "COMPLETION").map((x) => x.createdAt).sort((x, y) => y.getTime() - x.getTime())[0] ?? r.createdAt;
+    // Waiting for In = the car is out; waiting for Out (came in first) or complete = on campus
+    const out = next?.direction === "IN";
+    seen.set(key, {
+      key,
+      name,
+      number,
+      state: out ? "out" : "in",
+      since: lastMove.toISOString(),
+      openId: next ? r.id : null,
+      openNext: next?.direction ?? null,
+    });
+  }
+  // Cars that are out first, then by name
+  const cars = [...seen.values()].sort((x, y) => (x.state === y.state ? (x.name || x.number).localeCompare(y.name || y.number) : x.state === "out" ? -1 : 1));
+  return { success: true, cars };
+}
+
+// ─── Estate Manager: verifying the stock, labour and work-vehicle books ───
+
+const VERIFY_DAYS = 60;
+
+/** "Verified" on a saved entry (Estate Manager): a permanent record linked to it, with who and when. Once only. */
+export async function verifyRegisterEntry(entryId: string) {
+  const user = await requireRole("ESTATE_MANAGER", "ADMIN");
+  if (typeof entryId !== "string" || !/^[0-9a-f-]{36}$/i.test(entryId)) return { error: "Record not found" };
+  const entry = await prisma.registerEntry.findFirst({
+    where: { id: entryId, kind: "ORIGINAL" },
+    select: { id: true, register: true, entryDate: true },
+  });
+  if (!entry || !ESTATE_BOOKS.includes(entry.register)) return { error: "Record not found" };
+  try {
+    await prisma.registerEntry.create({
+      data: {
+        register: entry.register,
+        kind: "VERIFICATION",
+        parentId: entry.id,
+        entryDate: entry.entryDate,
+        data: { verified: true },
+        reason: "Verified by Estate Manager",
+        // One verification per entry: a second tap is refused by the database
+        clientToken: `verify-${entry.id}`,
+        recordedById: user.profileId,
+        recordedByName: user.name,
+        recordedByRole: user.role,
+      },
+    });
+  } catch (err: any) {
+    if (err?.code === "P2002") return { success: true, already: true };
+    console.error("[verifyRegisterEntry] failed:", err?.message);
+    return { error: "Could not save. Please try again." };
+  }
+  notifyLive(`reg:${entry.register}`, "estate");
+  return { success: true };
+}
+
+/** Estate Manager home: entries not verified yet in each of the 7 books (last 60 days). */
+export async function getEstateCounts(): Promise<{ success: true; counts: Record<string, number> } | { error: string }> {
+  await requireRole("ESTATE_MANAGER", "ADMIN");
+  const since = new Date(Date.now() - VERIFY_DAYS * 86_400_000);
+  const grouped = await prisma.registerEntry.groupBy({
+    by: ["register"],
+    where: {
+      register: { in: [...ESTATE_BOOKS] },
+      kind: "ORIGINAL",
+      createdAt: { gte: since },
+      supplements: { none: { kind: "VERIFICATION" } },
+    },
+    _count: { _all: true },
+  });
+  const counts: Record<string, number> = {};
+  for (const g of grouped) counts[g.register] = g._count._all;
+  return { success: true, counts };
 }
 
 export async function getVehicleOptions(registerKey: string): Promise<VehicleOptions | { error: string }> {

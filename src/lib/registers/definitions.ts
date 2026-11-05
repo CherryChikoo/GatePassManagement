@@ -236,6 +236,17 @@ export const REGISTER_KEYS = [
 
 export type RegisterKey = (typeof REGISTER_KEYS)[number];
 
+/** Books the Estate Manager checks and marks "Verified" (stock, returnable, labour, work vehicles) */
+export const ESTATE_BOOKS: readonly string[] = [
+  "SIROS_STOCK",
+  "COLLEGE_STOCK",
+  "RETURNABLE",
+  "DAILY_LABOUR",
+  "LABOUR_CONTRACT",
+  "SIROS_DAILY_LABOUR",
+  "WORK_VEHICLES",
+];
+
 /** Duty shifts; "Other" lets the guard type any other shift */
 const SHIFTS = ["A", "B", "C"] as const;
 const WORKER_TYPES = ["Peddamestri", "Chinnamestri", "Cooli"] as const;
@@ -791,7 +802,8 @@ export const REGISTERS: RegisterDef[] = [
       in: { label: "In", timeKey: "inTime" },
       out: { label: "Out", timeKey: "outTime" },
       firstDirections: BOTH,
-      startWith: "IN",
+      // The guard chooses In or Out each time (nothing chosen when the form opens)
+      chooseEachTime: true,
       noOneWay: true,
     },
     listFields: ["driverName", "purpose", "inTime", "outTime"],

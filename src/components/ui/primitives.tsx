@@ -309,7 +309,7 @@ export function Modal({ open, onClose, title, children, className, scrollTopKey,
 
   if (!open || !mounted) return null;
   // Blur behind the popup only where it is cheap: not on low-memory phones (4 GB or less reported as <= 4)
-  const lightBlur = frosted && (((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8) > 4);
+  const lightBlur = !goBackStyle || frosted && (((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8) > 4);
 
   // Drawn over the whole page (not inside the page's scroll area), so only the
   // popup scrolls while it is open and the page is free again once it closes.

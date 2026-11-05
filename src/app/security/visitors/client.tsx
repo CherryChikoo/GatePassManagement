@@ -14,23 +14,7 @@ import { Input } from "@/components/ui/input";
 import { dt, PersonCell } from "@/components/ui/data-table";
 import { PagerBar } from "@/components/ui/pager-bar";
 import { cn, formatDateTime, formatTime } from "@/lib/utils";
-import {
-  KeyRound,
-  Users,
-  UserPlus,
-  History,
-  MapPin,
-  LogOut,
-  Camera,
-  CheckCircle2,
-  AlertCircle,
-  Search,
-  RotateCcw,
-  Loader2,
-  Phone,
-  BellRing,
-  PencilLine,
-} from "lucide-react";
+import { AlertCircle, BellRing, CalendarRange, Camera, CheckCircle2, History, KeyRound, Loader2, LogOut, MapPin, PencilLine, Phone, RotateCcw, Search, UserPlus, Users } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
 import { loadGateData, prefetchGateData, seedGateData, useGateData } from "@/lib/gate-cache";
 import { FactList, InOutCard } from "@/components/registers/record-layout";
@@ -694,12 +678,12 @@ export function OutsidersClient() {
                     setLogDate("all");
                     setPage(1);
                   }}
-                  className={`h-12 whitespace-nowrap rounded-full border px-3 sm:px-4 text-sm font-medium transition-colors ${
-                    logDate === "all"
-                      ? "border-orange-600 bg-orange-600 text-white"
-                      : "border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-950"
+                  // Same as every list's "All dates": light blue, solid blue with ✓ when selected
+                  className={`inline-flex h-12 items-center gap-2 whitespace-nowrap rounded-full border-[1.5px] px-3 sm:px-4 text-base font-semibold transition-colors ${
+                    logDate === "all" ? "border-sky-600 bg-sky-600 text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.7)]" : "border-sky-500/40 bg-sky-500/10 text-sky-700 hover:bg-sky-500/15"
                   }`}
                 >
+                  {logDate === "all" ? <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" /> : <CalendarRange className="h-5 w-5 shrink-0" aria-hidden="true" />}
                   {t("All dates")}
                 </button>
               </div>

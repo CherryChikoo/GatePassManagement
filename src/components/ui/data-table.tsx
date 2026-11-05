@@ -27,9 +27,9 @@ export const dt = {
   wrap: "overflow-x-auto p-2",
   table: "w-full min-w-[640px] border-separate border-spacing-0 text-sm",
   /** Header band; the transparent bottom border leaves a small gap before the first row */
-  th: "bg-zinc-950 bg-clip-padding border-b-[6px] border-b-transparent px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500 whitespace-nowrap first:rounded-l-2xl last:rounded-r-2xl first:pl-4 last:pr-4",
+  th: "bg-zinc-950 [.security-text_&]:bg-clip-padding [.security-text_&]:border-b-[6px] [.security-text_&]:border-b-transparent px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500 whitespace-nowrap first:rounded-l-2xl last:rounded-r-2xl first:pl-4 last:pr-4",
   thRight:
-    "bg-zinc-950 bg-clip-padding border-b-[6px] border-b-transparent px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500 whitespace-nowrap first:rounded-l-2xl last:rounded-r-2xl",
+    "bg-zinc-950 [.security-text_&]:bg-clip-padding [.security-text_&]:border-b-[6px] [.security-text_&]:border-b-transparent px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500 whitespace-nowrap first:rounded-l-2xl last:rounded-r-2xl",
   tr: "group transition-colors",
   trClickable: "group cursor-pointer transition-colors",
   /** Cells carry the row hover (rounded ends) and the hairline between rows */
@@ -41,9 +41,8 @@ export const dt = {
   /** Small neutral chip, e.g. roll number / employee ID / department code */
   chip: "inline-flex items-center rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 font-mono text-[11px] text-zinc-400",
   /** Mobile stacked rows (same data, below the table breakpoint) */
-  // Each row its own card (border + shadow) with a gap, on a light grey tray: rows never blend together
-  mobileList:
-    "space-y-2.5 bg-zinc-950 p-2.5 sm:p-3 [&>li]:overflow-hidden [&>li]:rounded-2xl [&>li]:border-[1.5px] [&>li]:border-zinc-700 [&>li]:bg-zinc-900 [&>li]:shadow-card",
+  // Lines between rows; on Security each row is its own card on a grey tray (.dt-cards in globals.css)
+  mobileList: "dt-cards divide-y divide-zinc-800/70",
   mobileRow: "flex items-start gap-3 px-4 py-3.5 hover:bg-zinc-950/70 transition-colors",
 };
 

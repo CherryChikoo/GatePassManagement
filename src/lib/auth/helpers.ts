@@ -161,6 +161,8 @@ export function getRoleDashboardPath(role: Role): string {
       return "/dean";
     case "SECURITY_SUPERVISOR":
       return "/supervisor";
+    case "ESTATE_MANAGER":
+      return "/estate";
     default:
       return "/login";
   }

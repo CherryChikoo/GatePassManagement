@@ -7,7 +7,7 @@ import { useT } from "@/components/providers/language-provider";
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { BarChart3, ChevronRight, FileText, Info, Loader2, LogIn, PencilLine, Plus, Trash2, UserPlus, Phone } from "lucide-react";
+import { BarChart3, CalendarRange, CheckCircle2, ChevronRight, FileText, Info, Loader2, LogIn, PencilLine, Phone, Plus, Trash2, UserPlus } from "lucide-react";
 import { adminDeleteVisitor, adminUpdateVisitor } from "@/server/actions/outsiders";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Modal, StatusBadge } from "@/components/ui/primitives";
@@ -1319,10 +1319,11 @@ function OutingInfo({
           aria-pressed={!range}
           onClick={() => onRange(null)}
           className={cn(
-            "inline-flex h-11 sm:h-10 items-center rounded-full border px-4 text-sm font-medium transition-colors",
-            !range ? "border-orange-600 bg-orange-600 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+            "inline-flex h-12 items-center gap-2 rounded-full border-[1.5px] px-4 text-base font-semibold transition-colors",
+            !range ? "border-sky-600 bg-sky-600 text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.7)]" : "border-sky-500/40 bg-sky-500/10 text-sky-700 hover:bg-sky-500/15"
           )}
         >
+          {!range ? <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" /> : <CalendarRange className="h-5 w-5 shrink-0" aria-hidden="true" />}
           {t("All dates")}
         </button>
         <button
@@ -1331,7 +1332,7 @@ function OutingInfo({
           onClick={() => !range && onRange({ from: dayShift(-6), to: today })}
           className={cn(
             "inline-flex h-11 sm:h-10 items-center rounded-full border px-4 text-sm font-medium transition-colors",
-            range ? "border-orange-600 bg-orange-600 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
+            range ? "border-sky-600 bg-sky-600 text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.7)]" : "border-sky-500/40 bg-sky-500/10 text-sky-700 hover:bg-sky-500/15"
           )}
         >
           {t("Pick dates")}

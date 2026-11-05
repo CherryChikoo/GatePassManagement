@@ -53,17 +53,19 @@ import { warmCheckInQr } from "@/components/visits/checkin-qr-cache";
 import { CheckInQrFrame, CheckInQrPlaceholder } from "@/components/visits/checkin-qr-frame";
 import { AttendanceSheetView } from "./attendance-sheet";
 import { SecurityDutyView, prefetchSecurityDuty } from "./security-duty";
+import { CarBoard } from "./car-board";
 import { prefetchMyDuties } from "./my-shift";
 import { localizeRegister } from "./localize";
 import { FacultyBookView,
   StudentBookView, HomeOutingSummaryView, HostelOutingView, VisitorsBookView } from "./derived-views";
 
-export type RegisterViewer = "SECURITY" | "ADMIN" | "SECURITY_SUPERVISOR";
+export type RegisterViewer = "SECURITY" | "ADMIN" | "SECURITY_SUPERVISOR" | "ESTATE_MANAGER";
 
 const BASE: Record<RegisterViewer, string> = {
   SECURITY: "/security",
   ADMIN: "/admin",
   SECURITY_SUPERVISOR: "/supervisor",
+  ESTATE_MANAGER: "/estate",
 };
 
 /** One recognisable icon per register (the list is long; icons make it scannable). */
@@ -99,7 +101,7 @@ const passBookRank = (key: string) => {
   return i < 0 ? PASS_BOOK_ORDER.length : i;
 };
 
-const REGISTER_ICON: Record<RegisterKey, LucideIcon> = {
+export const REGISTER_ICON: Record<RegisterKey, LucideIcon> = {
   FACULTY_BOOK: Briefcase,
   VISITORS: ContactRound,
   STUDENT_BOOK: GraduationCap,
@@ -515,12 +517,17 @@ export function RegisterPage({
     body = <AttendanceSheetView />;
   } else if (isEntryRegister(def)) {
     body = (
-      <EntryRegisterView
-        def={def}
-        canCreate={canCreate}
-        canAdminEdit={viewer === "ADMIN"}
-        canEdit={isSecurity && SECURITY_EDITABLE_REGISTERS.includes(def.key)}
-      />
+      <>
+        {/* Car Book: the cars with one-tap Mark Out / Mark In, then the records as usual */}
+        {def.key === "CAR_BOOK" && <CarBoard canAct={canCreate && isSecurity} />}
+        <EntryRegisterView
+          def={def}
+          canCreate={canCreate}
+          canAdminEdit={viewer === "ADMIN"}
+          canEdit={isSecurity && SECURITY_EDITABLE_REGISTERS.includes(def.key)}
+          canVerify={viewer === "ESTATE_MANAGER"}
+        />
+      </>
     );
   } else if (def.key === "FACULTY_BOOK") {
     body = <FacultyBookView canMarkIn={isSecurity} />;
@@ -536,7 +543,7 @@ export function RegisterPage({
 
   const header = (
     <div>
-      {isSecurity ? <GoBackButton className="mb-3" /> : <BackButton href={`${base}/registers`} label={t("All registers")} />}
+      {isSecurity ? <GoBackButton className="mb-3" /> : <BackButton href={viewer === "ESTATE_MANAGER" ? base : `${base}/registers`} label={t("All registers")} />}
       <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
         {def.title}
       </h1>

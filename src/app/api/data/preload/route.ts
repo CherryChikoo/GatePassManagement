@@ -56,6 +56,8 @@ export async function GET(req: Request) {
       DIRECTOR: () => preloadDirector(user.profileId, light),
       DEAN: () => preloadDean(user.profileId, light),
       SECURITY_SUPERVISOR: () => preloadSupervisor(),
+      // Estate Manager: its screens load their own data (books to verify)
+      ESTATE_MANAGER: async () => ({}),
     };
     const loader = loaders[user.role];
     if (!loader) {

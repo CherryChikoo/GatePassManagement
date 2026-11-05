@@ -97,6 +97,12 @@ export function useGlassSupport(enabled = true) {
     const n = navigator as Navigator & { deviceMemory?: number };
     const weak = (typeof n.deviceMemory === "number" && n.deviceMemory <= 3) || (n.hardwareConcurrency || 8) <= 4;
 
+    // Local development is slow by nature: never judge (or remember) the glass as too heavy there
+    if (process.env.NODE_ENV === "development") {
+      root.classList.toggle("no-blur", weak);
+      return;
+    }
+
     let offSince = 0;
     try {
       offSince = Number(localStorage.getItem(GLASS_KEY)) || 0;

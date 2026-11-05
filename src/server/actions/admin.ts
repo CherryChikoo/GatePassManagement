@@ -44,7 +44,7 @@ function clearAdminCaches() {
   invalidateProfileCache();
 }
 
-const CACHE_CLEARING_ROLES: string[] = ["ADMIN", "SECURITY", "FACULTY_ADMIN", "WARDEN", "DEAN", "DIRECTOR", "SECURITY_SUPERVISOR"];
+const CACHE_CLEARING_ROLES: string[] = ["ADMIN", "SECURITY", "FACULTY_ADMIN", "WARDEN", "DEAN", "DIRECTOR", "SECURITY_SUPERVISOR", "ESTATE_MANAGER"];
 
 export async function invalidateAdminCaches() {
   // Exported from a "use server" module, so it is callable from the browser:
@@ -171,7 +171,7 @@ export async function createUser(formData: FormData) {
         email: data.email,
         phone: data.phone || null,
         // Faculty-type accounts keep their designation on the faculty record; the rest here
-        ...(["WARDEN", "SECURITY", "SECURITY_SUPERVISOR", "ADMIN"].includes(data.role)
+        ...(["WARDEN", "SECURITY", "SECURITY_SUPERVISOR", "ESTATE_MANAGER", "ADMIN"].includes(data.role)
           ? { designation: data.designation?.trim() || null }
           : {}),
       },

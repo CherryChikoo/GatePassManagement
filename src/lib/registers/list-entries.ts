@@ -21,7 +21,7 @@ export const REGISTER_PAGE_SIZE = 25;
 const PAGE_SIZE = REGISTER_PAGE_SIZE;
 
 /** Roles that can open the registers */
-export const REGISTER_VIEW_ROLES = ["SECURITY", "ADMIN", "SECURITY_SUPERVISOR"] as const;
+export const REGISTER_VIEW_ROLES = ["SECURITY", "ADMIN", "SECURITY_SUPERVISOR", "ESTATE_MANAGER"] as const;
 
 /** IST day range for a "YYYY-MM-DD" filter; null for "all" (no date filter). */
 export function registerDayFilter(date?: string | null) {

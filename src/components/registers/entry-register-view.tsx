@@ -13,8 +13,8 @@ import { dt, IconAction, RowActions } from "@/components/ui/data-table";
 import { PagerBar } from "@/components/ui/pager-bar";
 import { cn, withTimeout } from "@/lib/utils";
 import type { EntryRegister, FieldDef } from "@/lib/registers/definitions";
-import { isSirosLabour, pendingActions, updatableFields, yesNoWords } from "@/lib/registers/definitions";
-import { adminDeleteRegisterEntry, adminUpdateRegisterEntry } from "@/server/actions/registers";
+import { isSirosLabour, pendingActions, updatableFields, yesNoWords, ESTATE_BOOKS } from "@/lib/registers/definitions";
+import { adminDeleteRegisterEntry, adminUpdateRegisterEntry, verifyRegisterEntry } from "@/server/actions/registers";
 import { fetchEntryList, invalidateEntryLists, markEntryListsStale, peekEntryList } from "./entry-list-cache";
 import { visitExitMessage } from "@/components/visits/visit-code";
 import { useLiveTopics } from "@/lib/realtime/live";
@@ -81,11 +81,14 @@ export function EntryRegisterView({
   canCreate,
   canAdminEdit = false,
   canEdit = false,
+  canVerify = false,
   insideOnly = false,
   onInsideTotal,
 }: {
   def: EntryRegister;
   canCreate: boolean;
+  /** Estate Manager: "✓ Verify" on records of the stock / labour / work-vehicle books */
+  canVerify?: boolean;
   /** Main Admin: edit and delete saved records */
   canAdminEdit?: boolean;
   /** Security on registers they may edit (e.g. Cooli Book): edit, saved as a correction */
@@ -366,6 +369,21 @@ export function EntryRegisterView({
   const canUpdate = canCreate || canAdminEdit;
 
   /** Saves one status / remarks change; returns an error message, or null when saved. */
+  async function verifySelected(): Promise<string | null> {
+    const entry = selected;
+    if (!entry) return null;
+    try {
+      const res: any = await verifyRegisterEntry(entry.id);
+      if (res?.error) return t(res.error);
+      const entries = await load(true);
+      const fresh = entries?.find((x) => x.id === entry.id);
+      if (fresh) setSelected((cur) => (cur && cur.id === fresh.id ? fresh : cur));
+      return null;
+    } catch (err) {
+      return actionErrorMessage(err, t("Could not save. Please try again."));
+    }
+  }
+
   async function updateField(key: string, value: unknown): Promise<string | null> {
     const entry = selected;
     if (!entry) return null;
@@ -573,6 +591,7 @@ export function EntryRegisterView({
                             </span>
                           )}
                           {open && openChip}
+                          {ESTATE_BOOKS.includes(def.key) && <VerifyChip entry={e} />}
                         </span>
                       </span>
                       {/* Each value with its small label, so it is clear what it is */}
@@ -659,6 +678,7 @@ export function EntryRegisterView({
                         <span className="flex flex-col items-start gap-1">
                           {formatFieldValue({ key: "d", label: "", type: "date" }, e.entryDate)}
                           {open && openChip}
+                          {ESTATE_BOOKS.includes(def.key) && <VerifyChip entry={e} />}
                           {e.visit && <MeetingChip visit={e.visit} />}
                           {insideOnly && <span className="text-xs font-semibold text-amber-600">{insideForLabel(t, e.createdAt, now)}</span>}
                         </span>
@@ -723,6 +743,7 @@ export function EntryRegisterView({
             onEdit={canAdminEdit || canEdit ? () => openMode("edit") : undefined}
             onDelete={canAdminEdit ? () => setConfirmDelete(true) : undefined}
             onUpdateField={canUpdate ? updateField : undefined}
+            onVerify={canVerify ? verifySelected : undefined}
           />
         )}
       </Modal>
@@ -1312,9 +1333,12 @@ function EntryDetails({
   onEdit,
   onDelete,
   onUpdateField,
+  onVerify,
 }: {
   def: EntryRegister;
   entry: Entry;
+  /** Estate Manager: mark this record verified (returns an error message, or null) */
+  onVerify?: () => Promise<string | null>;
   onRecord?: () => void;
   /** Close without recording the other side */
   onCloseRecord?: () => void;
@@ -1374,6 +1398,8 @@ function EntryDetails({
         return <UpdatableSection key={f.key} field={f} value={entry.current[f.key]} onSave={onUpdateField ? (v) => onUpdateField(f.key, v) : undefined} />;
       })}
 
+      {ESTATE_BOOKS.includes(def.key) && <VerificationCard entry={entry} onVerify={onVerify} />}
+
       <HistoryCards def={def} entry={entry} />
 
       <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
@@ -1420,6 +1446,7 @@ function HistoryCards({ def, entry }: { def: EntryRegister; entry: HistoryStep &
   const m = def.movement;
   const what = (step: HistoryStep, first: boolean) => {
     if (first) return { text: t("Saved"), tone: "bg-emerald-500" };
+    if (step.kind === "VERIFICATION") return { text: t("Verified by Estate Manager"), tone: "bg-emerald-600" };
     if (step.kind === "CORRECTION") return { text: t("Correction"), tone: "bg-amber-500" };
     if (step.data?.oneWay === true) return { text: t("Closed"), tone: "bg-zinc-400" };
     if (m && step.data?.[m.out.timeKey]) return { text: t("{side} recorded", { side: m.out.label }), tone: "bg-sky-500" };
@@ -1605,6 +1632,69 @@ function TakenSection({
         </div>
       ) : (
         <p className="text-base font-semibold text-zinc-300">{saved || t("Not taken yet")}</p>
+      )}
+      {error && <p role="alert" className="text-sm font-medium text-red-600">{error}</p>}
+    </section>
+  );
+}
+
+/** The record's "Verified by Estate Manager" step, if any */
+function verificationOf(entry: Entry) {
+  return entry.supplements.find((x) => x.kind === "VERIFICATION") ?? null;
+}
+
+/** Small chip on list rows: ✓ Verified (green) / Not verified (grey) */
+function VerifyChip({ entry }: { entry: Entry }) {
+  const t = useT();
+  const v = verificationOf(entry);
+  return v ? (
+    <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/15 px-2 py-0.5 text-xs font-bold text-emerald-700">
+      <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> {t("Verified")}
+    </span>
+  ) : (
+    <span className="inline-flex items-center rounded-lg bg-zinc-950 px-2 py-0.5 text-xs font-semibold text-zinc-500">{t("Not verified")}</span>
+  );
+}
+
+/** In the record: verified by whom and when — or "Not verified yet", with ✓ Verify for the Estate Manager */
+function VerificationCard({ entry, onVerify }: { entry: Entry; onVerify?: () => Promise<string | null> }) {
+  const t = useT();
+  const v = verificationOf(entry);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (v) {
+    return (
+      <section className="flex items-start gap-3 rounded-2xl border-[1.5px] border-emerald-500/40 bg-emerald-500/10 px-4 py-3 shadow-card">
+        <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" aria-hidden="true" />
+        <div className="min-w-0">
+          <p className="text-base font-bold text-emerald-800">{t("Verified by Estate Manager")}</p>
+          <p className="text-sm font-medium text-emerald-700">
+            {v.recordedByName} · {formatInstant(v.createdAt)}
+          </p>
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section className="space-y-3 rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900 px-4 py-3 shadow-card">
+      <p className="flex items-center gap-2 text-base font-bold text-zinc-300">
+        <Clock className="h-5 w-5 shrink-0 text-zinc-400" aria-hidden="true" /> {t("Not verified yet")}
+      </p>
+      {onVerify && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            const err = await onVerify();
+            setBusy(false);
+            if (err) setError(err);
+          }}
+          className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-lg font-bold text-white shadow-card transition-[background-color,transform] hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-60"
+        >
+          {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />} {t("Verify")}
+        </button>
       )}
       {error && <p role="alert" className="text-sm font-medium text-red-600">{error}</p>}
     </section>

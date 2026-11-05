@@ -394,6 +394,8 @@ enum Role {
   DEAN
   /// View-only oversight of student and faculty passes and details
   SECURITY_SUPERVISOR
+  /// Checks and verifies the stock, labour and work-vehicle books
+  ESTATE_MANAGER
 }
 
 enum StudentType {

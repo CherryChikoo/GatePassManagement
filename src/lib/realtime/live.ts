@@ -29,8 +29,12 @@ type Chan = {
   channel: RealtimeChannel | null;
   connecting: boolean;
   live: boolean;
-  /** Not allowed, or no free connection: stop trying until the page reloads */
+  /** Kept for older callers; live updates are now always retried (never switched off for the session) */
   refused: boolean;
+  /** Failed tries in a row (for the retry delay); a missed-change refresh is due when it next joins */
+  failures: number;
+  /** The next retry, while one is waiting */
+  retryTimer: ReturnType<typeof setTimeout> | null;
   /** Closed while the tab was hidden: refresh once when it comes back */
   dropped: boolean;
 };
@@ -98,6 +102,18 @@ export function liveSince(): number | null {
   return gateLiveSince;
 }
 
+const RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000];
+function scheduleRetry(name: string) {
+  const c = chans.get(name);
+  if (!c || c.retryTimer || signedOut || !c.listeners.size) return;
+  const delay = RETRY_DELAYS_MS[c.failures] ?? 60_000;
+  c.failures++;
+  c.retryTimer = setTimeout(() => {
+    c.retryTimer = null;
+    void connect(name);
+  }, delay);
+}
+
 function setLive(c: Chan, live: boolean) {
   if (c.live === live) return;
   c.live = live;
@@ -111,7 +127,11 @@ async function connect(name: string) {
   if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
   c.connecting = true;
   try {
-    if (!(await getToken())) return;
+    // No pass yet (e.g. the server was waking up): try again shortly instead of staying off
+    if (!(await getToken())) {
+      scheduleRetry(name);
+      return;
+    }
     client ??= createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
       // Realtime only: the token comes from our server, never from browser storage
       accessToken: getToken as () => Promise<string>,
@@ -129,17 +149,17 @@ async function connect(name: string) {
     }).subscribe((status) => {
       if (c.channel !== ch) return;
       if (status === "SUBSCRIBED") {
-        // Joined again after a drop: changes may have been missed meanwhile
-        if (joined) emit(c, ["*"]);
+        // Joined again after a drop or after failed tries: changes may have been missed meanwhile
+        if (joined || c.failures > 0) emit(c, ["*"]);
         joined = true;
+        c.failures = 0;
         setLive(c, true);
       } else {
         setLive(c, false);
-        if (status === "CHANNEL_ERROR" && !joined) {
-          // Not allowed / no free connection: screens keep working without live updates
-          c.refused = true;
-          console.info(`[live] live updates are off (${name.startsWith("user:") ? "own passes" : name})`);
+        // Error / timed out / closed by the server: drop this try and join again shortly (never give up)
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           disconnect(c);
+          scheduleRetry(name);
         }
       }
     });
@@ -184,7 +204,7 @@ function onVisibility() {
 function listen(name: string, listener: Listener, onStatus?: (live: boolean) => void) {
   let c = chans.get(name);
   if (!c) {
-    c = { listeners: new Set(), statusListeners: new Set(), channel: null, connecting: false, live: false, refused: false, dropped: false };
+    c = { listeners: new Set(), statusListeners: new Set(), channel: null, connecting: false, live: false, refused: false, dropped: false, failures: 0, retryTimer: null };
     chans.set(name, c);
   }
   if (chans.size === 1 && !c.listeners.size && typeof document !== "undefined") {

@@ -47,7 +47,7 @@ function toPerson(r: { id: string; data: unknown }): SirosPerson | null {
 
 /** Everyone registered (coolies and contractors), by number. */
 export async function listSirosPeople() {
-  await requireRole("SECURITY", "ADMIN", "SECURITY_SUPERVISOR");
+  await requireRole("SECURITY", "ADMIN", "SECURITY_SUPERVISOR", "ESTATE_MANAGER");
   const rows = await prisma.registerEntry.findMany({
     where: { register: PEOPLE_KEY, kind: "ORIGINAL" },
     orderBy: { createdAt: "asc" },
@@ -60,7 +60,7 @@ export async function listSirosPeople() {
 
 /** Who is inside now (on Siros entries not yet marked Out): small, refreshed after each save / Out. */
 export async function getSirosInside() {
-  await requireRole("SECURITY", "ADMIN", "SECURITY_SUPERVISOR");
+  await requireRole("SECURITY", "ADMIN", "SECURITY_SUPERVISOR", "ESTATE_MANAGER");
   return { success: true, inside: await sirosInside() };
 }
 
@@ -123,7 +123,7 @@ export async function addSirosPerson(input: { kind: string; name: string; gender
 
 /** One coolie / contractor by number: photo, details, who registered them and when, and whether inside now. */
 export async function getSirosPersonDetails(no: number) {
-  await requireRole("SECURITY", "ADMIN", "SECURITY_SUPERVISOR");
+  await requireRole("SECURITY", "ADMIN", "SECURITY_SUPERVISOR", "ESTATE_MANAGER");
   const n = Math.floor(Number(no));
   if (!Number.isFinite(n) || n < 1) return { error: "Not found" };
   const row = await prisma.registerEntry.findUnique({

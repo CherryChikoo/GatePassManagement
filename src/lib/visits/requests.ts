@@ -133,6 +133,7 @@ const ROLE_TITLE: Record<string, string> = {
   WARDEN: "Warden",
   ADMIN: "Administration",
   SECURITY_SUPERVISOR: "Security Supervisor",
+  ESTATE_MANAGER: "Estate Manager",
 };
 
 export type PublicHost = { id: string; name: string; title: string; department: string | null };

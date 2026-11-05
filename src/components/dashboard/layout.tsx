@@ -52,6 +52,7 @@ const ROLE_FALLBACK: Record<string, string> = {
   WARDEN: "Warden",
   SECURITY: "Security",
   SECURITY_SUPERVISOR: "Security Supervisor",
+  ESTATE_MANAGER: "Estate Manager",
   STUDENT: "Student",
 };
 
@@ -195,6 +196,7 @@ export function DashboardLayout({
   else if (role === "DIRECTOR") navItems = directorNavItems;
   else if (role === "DEAN") navItems = deanNavItems;
   else if (role === "SECURITY_SUPERVISOR") navItems = supervisorNavItems;
+  else if (role === "ESTATE_MANAGER") navItems = estateNavItems;
 
   const handleNavigation = () => {
     setSidebarOpen(false);
@@ -244,7 +246,7 @@ export function DashboardLayout({
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/30 lg:hidden animate-fade-in"
+          className={cn("fixed inset-0 z-40 lg:hidden animate-fade-in", role === "SECURITY" ? "bg-black/30" : "bg-black/25 backdrop-blur-[2px]")}
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -630,6 +632,12 @@ export const deanNavItems: NavItem[] = [
 ];
 
 // Security Supervisor: view-only oversight (no approve / reject anywhere)
+/** Estate Manager: the books to verify, and settings */
+export const estateNavItems: NavItem[] = [
+  { label: "To verify", href: "/estate", icon: <ClipboardCheck className="h-5 w-5" /> },
+  { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
+];
+
 export const supervisorNavItems: NavItem[] = [
   { label: "Dashboard", href: "/supervisor", icon: <LayoutDashboard className="h-5 w-5" /> },
   { label: "Requests", href: "/supervisor/requests", icon: <Inbox className="h-5 w-5" /> },

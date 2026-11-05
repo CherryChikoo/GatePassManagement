@@ -2,6 +2,7 @@
 
 import { lockPageScroll } from "@/lib/ui/scroll-lock";
 import { useEffect } from "react";
+import { useSecurityLook } from "@/lib/ui/security-look";
 import { AlertCircle, CheckCircle2, XCircle, Info, X } from "lucide-react";
 
 interface AlertDialogProps {
@@ -29,6 +30,7 @@ export function AlertDialog({
   onCancel,
   showCancel = false,
 }: AlertDialogProps) {
+  const solid = useSecurityLook();
   useEffect(() => {
     if (!open) return;
     return lockPageScroll();
@@ -71,7 +73,7 @@ export function AlertDialog({
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/40 animate-in fade-in duration-200"
+        className={solid ? "absolute inset-0 bg-black/40 animate-in fade-in duration-200" : "absolute inset-0 bg-black/30 backdrop-blur-[3px] animate-in fade-in duration-200"}
         onClick={handleCancel}
       />
 

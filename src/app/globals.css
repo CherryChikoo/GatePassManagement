@@ -184,6 +184,25 @@ html.security-text .glass:not(.loading-pill) {
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 30px -18px rgba(16, 24, 40, 0.18);
 }
 
+/* Security: list rows on phones as separate cards with a gap (other logins keep plain lines) */
+.security-text .dt-cards {
+  padding: 0.625rem;
+  background: var(--color-zinc-950);
+}
+@media (min-width: 640px) {
+  .security-text .dt-cards { padding: 0.75rem; }
+}
+.security-text .dt-cards > li + li {
+  margin-top: 0.625rem;
+}
+.security-text .dt-cards > li {
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1.5px solid var(--color-zinc-700);
+  background: var(--color-zinc-900);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 30px -18px rgba(16, 24, 40, 0.18);
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
@@ -418,77 +437,77 @@ html::-webkit-scrollbar {
   font-size: 1.1875rem;
 }
 
-/* ── Clearer register forms (every register form: form[data-look="clear"]) ──
+/* ── Clearer register forms (every register form: [data-look="clear"]) ──
    Every box (text, dropdown, search) looks the same: a light grey fill with a clear
    border, so it stands out from the white card; the box being typed in turns white
    with a coral outline. Labels darker and bold. */
-form[data-look="clear"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]), textarea, select, button[role="combobox"]) {
+[data-look="clear"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]), textarea, select, button[role="combobox"]) {
   border-width: 1.5px;
   border-color: #c9c9cf;
   background-color: #f2f2f5;
   color: #18181b;
 }
-form[data-look="clear"] :is(input, textarea)::placeholder {
+[data-look="clear"] :is(input, textarea)::placeholder {
   color: #6b6b73;
 }
-form[data-look="clear"] :is(input, textarea, select, button[role="combobox"]):hover {
+[data-look="clear"] :is(input, textarea, select, button[role="combobox"]):hover {
   border-color: #a1a1aa;
 }
-form[data-look="clear"] :is(input, textarea, select, button[role="combobox"]):focus,
-form[data-look="clear"] button[role="combobox"][aria-expanded="true"] {
+[data-look="clear"] :is(input, textarea, select, button[role="combobox"]):focus,
+[data-look="clear"] button[role="combobox"][aria-expanded="true"] {
   border-color: #ff634a;
   background-color: #ffffff;
   box-shadow: 0 0 0 4px rgba(255, 99, 74, 0.16);
 }
-form[data-look="clear"] .field-label {
+[data-look="clear"] .field-label {
   font-weight: 600;
   color: #18181b;
 }
-form[data-look="clear"] .field-hint {
+[data-look="clear"] .field-hint {
   font-size: 0.8125rem;
   color: #5a5a62;
 }
 /* Type-or-select boxes (Car / Auto / Siros): the text box and its "Select" button read as one box */
-form[data-look="clear"] input[data-combo-input] {
+[data-look="clear"] input[data-combo-input] {
   border-right-width: 0;
 }
 /* The "Select" button: light orange, so it reads as a button next to the grey box */
-form[data-look="clear"] button[data-combo-select] {
+[data-look="clear"] button[data-combo-select] {
   border-width: 1.5px;
   border-color: #ffb8a8;
   background-color: #ffe9e3;
   color: #d9452e;
 }
-form[data-look="clear"] button[data-combo-select]:hover {
+[data-look="clear"] button[data-combo-select]:hover {
   background-color: #ffdcd3;
 }
 /* Tablets and larger (iPad etc.): the register forms are bigger — taller boxes, larger text and labels */
 @media (min-width: 768px) {
-  form[data-look="clear"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]), textarea, select, button[role="combobox"]) {
+  [data-look="clear"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]), textarea, select, button[role="combobox"]) {
     font-size: 1.1875rem;
   }
-  form[data-look="clear"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]), select, button[role="combobox"], button[data-combo-select]) {
+  [data-look="clear"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]), select, button[role="combobox"], button[data-combo-select]) {
     min-height: 3.875rem;
   }
-  form[data-look="clear"] .field-label {
+  [data-look="clear"] .field-label {
     font-size: 1.3125rem;
   }
-  form[data-look="clear"] .field-hint {
+  [data-look="clear"] .field-hint {
     font-size: 1rem;
   }
   /* In / Out, Save and the other big buttons of the form */
-  form[data-look="clear"] [data-big-btn] {
+  [data-look="clear"] [data-big-btn] {
     min-height: 4rem;
     font-size: 1.1875rem;
   }
 }
 /* Small cards inside a form (e.g. the workers of College Daily Labour): compact boxes on every screen */
-form[data-look="clear"] [data-compact] input {
+[data-look="clear"] [data-compact] input {
   min-height: 2.75rem !important;
   height: 2.75rem !important;
   font-size: 1rem !important;
 }
-form[data-look="clear"] [data-compact] .field-label {
+[data-look="clear"] [data-compact] .field-label {
   font-size: 0.9375rem !important;
 }
 

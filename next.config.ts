@@ -22,8 +22,10 @@ const nextConfig: NextConfig = {
     // Reuse recently visited pages from the client router cache, so switching
     // between sections is instant instead of a server round-trip every click.
     // Live data comes from the client store, which refreshes independently.
+    // 5 minutes: coming back to a section (e.g. the Security home) shows it at once; live data
+    // (counts, lists) still refreshes by itself on the page
     staleTimes: {
-      dynamic: 60,
+      dynamic: 300,
       static: 300,
     },
   },

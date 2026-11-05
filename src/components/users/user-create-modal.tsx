@@ -23,6 +23,7 @@ const ROLES: { value: string; label: string; hint: string }[] = [
   { value: "SECURITY", label: "Security", hint: "Scans passes at the gate and keeps the registers." },
   { value: "HEAD_SECURITY", label: "Head Security", hint: "Security, who also takes the staff attendance." },
   { value: "SECURITY_SUPERVISOR", label: "Security Supervisor", hint: "Sees the gate registers and logs; changes nothing." },
+  { value: "ESTATE_MANAGER", label: "Estate Manager", hint: "Checks the stock, labour and work-vehicle books and marks entries verified." },
   { value: "ADMIN", label: "Admin", hint: "Full access: users, records and settings." },
 ];
 
@@ -287,13 +288,13 @@ function CreateForm({
         </Part>
       )}
 
-      {(role === "SECURITY_SUPERVISOR" || role === "ADMIN") && (
+      {(role === "SECURITY_SUPERVISOR" || role === "ESTATE_MANAGER" || role === "ADMIN") && (
         <Part no={next()} title="Job" hint="Shown under “Gate Pass”">
           <Input
             label="Designation"
             name="designation"
             maxLength={100}
-            placeholder={role === "ADMIN" ? "e.g. System Administrator" : "e.g. Chief Security Officer"}
+            placeholder={role === "ADMIN" ? "e.g. System Administrator" : role === "ESTATE_MANAGER" ? "e.g. Estate Manager" : "e.g. Chief Security Officer"}
             wrapperClassName="sm:col-span-2"
           />
         </Part>

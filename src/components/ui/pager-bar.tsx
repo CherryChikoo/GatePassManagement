@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/components/providers/language-provider";
+import { useSecurityLook } from "@/lib/ui/security-look";
 
 /** The app frames (dashboard shell, student shell) render this slot at the bottom of the screen. */
 export const PAGE_FOOTER_SLOT_ID = "page-footer-slot";
@@ -45,6 +46,8 @@ function pageList(page: number, pages: number): (number | "…")[] {
 export function PagerBar({ page, pageSize, total, onPageChange, hrefForPage, itemLabel = "results", inline = false, className }: PagerBarProps) {
   // Translated where the screen offers Telugu (Security); English everywhere else
   const t = useT();
+  // Security: big, bold buttons; other logins: the portal's compact pager
+  const big = useSecurityLook();
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   useEffect(() => {
     if (!inline) setSlot(document.getElementById(PAGE_FOOTER_SLOT_ID));
@@ -56,14 +59,23 @@ export function PagerBar({ page, pageSize, total, onPageChange, hrefForPage, ite
   const to = Math.min(current * pageSize, total);
 
   const go = (p: number, label: React.ReactNode, opts: { disabled?: boolean; active?: boolean; ariaLabel?: string; wide?: boolean } = {}) => {
-    const cls = cn(
-      "inline-flex h-11 items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition-[background-color,transform] active:scale-95",
-      opts.wide ? "min-w-11 px-3 sm:px-4" : "min-w-11 px-2",
-      opts.active
-        ? "bg-orange-600 text-white shadow-[0_6px_14px_-8px_rgba(207,62,37,0.7)]"
-        : "border-[1.5px] border-zinc-600 bg-zinc-900 text-zinc-100 hover:bg-zinc-950",
-      opts.disabled && "pointer-events-none opacity-35"
-    );
+    const cls = big
+      ? cn(
+          "inline-flex h-11 items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition-[background-color,transform] active:scale-95",
+          opts.wide ? "min-w-11 px-3 sm:px-4" : "min-w-11 px-2",
+          opts.active
+            ? "bg-orange-600 text-white shadow-[0_6px_14px_-8px_rgba(207,62,37,0.7)]"
+            : "border-[1.5px] border-zinc-600 bg-zinc-900 text-zinc-100 hover:bg-zinc-950",
+          opts.disabled && "pointer-events-none opacity-35"
+        )
+      : cn(
+          "inline-flex h-9 items-center justify-center gap-1 rounded-full text-xs font-medium transition-colors",
+          opts.wide ? "px-3" : "min-w-9 px-2",
+          opts.active
+            ? "bg-zinc-100 text-zinc-900"
+            : "border border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950 hover:text-zinc-100",
+          opts.disabled && "pointer-events-none opacity-40"
+        );
     if (hrefForPage && !opts.disabled && !opts.active) {
       return (
         <Link key={`${p}-${String(opts.ariaLabel)}`} href={hrefForPage(p)} scroll={false} className={cls} aria-label={opts.ariaLabel}>
@@ -95,22 +107,22 @@ export function PagerBar({ page, pageSize, total, onPageChange, hrefForPage, ite
         className
       )}
     >
-      <p className="min-w-0 truncate text-sm text-zinc-400">
+      <p className={cn("min-w-0 truncate", big ? "text-sm text-zinc-400" : "text-xs text-zinc-500")}>
         {total === 0 ? (
           t("No {items}", { items: t(itemLabel) })
         ) : (
           <>
             <span className="hidden sm:inline">{t("Showing")} </span>
-            <span className="font-bold text-zinc-100 tabular-nums">
+            <span className={cn("tabular-nums", big ? "font-bold text-zinc-100" : "font-medium text-zinc-200")}>
               {from}–{to}
             </span>{" "}
-            {t("of")} <span className="font-bold text-zinc-100 tabular-nums">{total}</span>
+            {t("of")} <span className={cn("tabular-nums", big ? "font-bold text-zinc-100" : "font-medium text-zinc-200")}>{total}</span>
             <span className="hidden sm:inline"> {t(itemLabel)}</span>
           </>
         )}
       </p>
       <div className="flex shrink-0 items-center gap-1.5">
-        {go(current - 1, <><ChevronLeft className="h-5 w-5" /><span className="hidden sm:inline">{t("Previous")}</span></>, {
+        {go(current - 1, <><ChevronLeft className={big ? "h-5 w-5" : "h-4 w-4"} /><span className={big ? "hidden sm:inline" : "hidden md:inline"}>{t("Previous")}</span></>, {
           disabled: current <= 1,
           ariaLabel: t("Previous page"),
           wide: true,
@@ -118,16 +130,16 @@ export function PagerBar({ page, pageSize, total, onPageChange, hrefForPage, ite
         <span className="hidden sm:flex items-center gap-1">
           {pageList(current, pages).map((p, i) =>
             p === "…" ? (
-              <span key={`gap-${i}`} className="px-1 text-sm font-bold text-zinc-400">…</span>
+              <span key={`gap-${i}`} className={big ? "px-1 text-sm font-bold text-zinc-400" : "px-1 text-xs text-zinc-600"}>…</span>
             ) : (
               go(p, p, { active: p === current, ariaLabel: t("Page {page}", { page: p }) })
             )
           )}
         </span>
-        <span className="sm:hidden px-1.5 text-base font-bold text-zinc-100 tabular-nums">
+        <span className={cn("sm:hidden px-1.5 tabular-nums", big ? "text-base font-bold text-zinc-100" : "text-xs font-medium text-zinc-300")}>
           {current} / {pages}
         </span>
-        {go(current + 1, <><span className="hidden sm:inline">{t("Next")}</span><ChevronRight className="h-5 w-5" /></>, {
+        {go(current + 1, <><span className={big ? "hidden sm:inline" : "hidden md:inline"}>{t("Next")}</span><ChevronRight className={big ? "h-5 w-5" : "h-4 w-4"} /></>, {
           disabled: current >= pages,
           ariaLabel: t("Next page"),
           wide: true,

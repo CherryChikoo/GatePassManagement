@@ -47,7 +47,7 @@ export async function uploadRegisterPhoto(
 
 /** Everyone who can see the registers may view their photos (signed, short-lived link). */
 export async function getRegisterPhotoUrl(storagePath: string): Promise<string | null> {
-  await requireRole("SECURITY", "ADMIN", "SECURITY_SUPERVISOR");
+  await requireRole("SECURITY", "ADMIN", "SECURITY_SUPERVISOR", "ESTATE_MANAGER");
   if (typeof storagePath !== "string" || !storagePath.startsWith("registers/")) return null;
   return createSignedPhotoUrl(storagePath);
 }

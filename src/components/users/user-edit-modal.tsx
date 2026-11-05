@@ -21,6 +21,7 @@ const ROLE_NAME: Record<string, string> = {
   WARDEN: "Warden",
   SECURITY: "Security",
   SECURITY_SUPERVISOR: "Security Supervisor",
+  ESTATE_MANAGER: "Estate Manager",
   ADMIN: "Admin",
 };
 
@@ -323,7 +324,7 @@ function EditForm({
         </Part>
       )}
 
-      {user.role === "SECURITY_SUPERVISOR" && (
+      {(user.role === "SECURITY_SUPERVISOR" || user.role === "ESTATE_MANAGER") && (
         <Part no={next()} title="Job" hint="Shown under “Gate Pass”">
           <Input label="Designation" name="designation" maxLength={100} defaultValue={user.designation || ""} placeholder="e.g. Chief Security Officer" wrapperClassName="sm:col-span-2" />
         </Part>

@@ -188,11 +188,17 @@ export function ArrivalReview({
     }
   }
 
-  const labelCls = "field-label block text-sm font-medium text-zinc-300";
+  const labelCls = "field-label block text-sm font-semibold text-zinc-100";
 
   return (
-    <Modal open onClose={busy ? () => {} : onClose} title={arrival.name}>
-      <div className="space-y-5">
+    <Modal
+      open
+      onClose={busy ? () => {} : onClose}
+      title={arrival.name}
+      className="max-w-lg md:max-w-[min(92vw,1000px)] border-2 border-orange-500/80"
+    >
+      {/* The same clear look as the register forms (boxes, labels, coral outline while typing) */}
+      <div className="space-y-5" data-look="clear">
         <p className="text-sm text-zinc-500">
           {t("Sent at {time}", { time: formatTime(arrival.createdAt) })}
           {!arrival.mine && arrival.gate ? ` · ${t("Gate")}: ${arrival.gate}` : ""}
@@ -255,11 +261,15 @@ export function ArrivalReview({
 
         {/* Everything else, as typed */}
         {facts.length > 0 && (
-          <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          // One details card: label left, value right (like the register records)
+          <dl className="divide-y divide-zinc-800 overflow-hidden rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900 shadow-card">
             {facts.map((f) => (
-              <div key={f.label} className="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-950/60 px-3.5 py-2.5 sm:px-4 sm:py-3">
-                <dt className="break-words text-xs font-medium text-zinc-500">{f.label}</dt>
-                <dd className="mt-0.5 whitespace-pre-wrap break-words text-[15px] font-medium text-zinc-100">{f.value}</dd>
+              <div
+                key={f.label}
+                className="grid grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)] items-baseline gap-3 px-4 py-3 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)]"
+              >
+                <dt className="break-words text-base font-semibold text-zinc-300">{f.label}</dt>
+                <dd className="min-w-0 whitespace-pre-wrap break-words text-lg font-bold text-zinc-100">{f.value}</dd>
               </div>
             ))}
           </dl>
