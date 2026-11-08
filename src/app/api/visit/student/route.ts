@@ -17,7 +17,8 @@ export async function GET(req: Request) {
     return visitJson({ ok: false, error: TOO_MANY }, 429);
   }
   try {
-    return visitJson(await lookupVisitStudent(token, (params.get("roll") ?? "").slice(0, 40)));
+    // `roll`: a roll number or the student's name
+    return visitJson(await lookupVisitStudent(token, (params.get("roll") ?? "").slice(0, 60)));
   } catch (err: any) {
     console.error("[visit] student lookup failed:", err?.message);
     return visitJson({ ok: false, error: "Something went wrong. Please try again." }, 500);

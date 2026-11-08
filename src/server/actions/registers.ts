@@ -8,6 +8,7 @@ import { createSignedPhotoUrl } from "@/lib/storage/storage-admin";
 import { getRegisterAccess } from "@/lib/registers/access";
 import {
   REGISTER_BY_KEY,
+  REGISTERS,
   pendingActions,
   SECURITY_EDITABLE_REGISTERS,
   facultyRequestTypeLabel,
@@ -17,6 +18,7 @@ import {
   type EntryRegister,
   type RegisterKey,
   ESTATE_BOOKS,
+  ADD_LATER_ROLES,
 } from "@/lib/registers/definitions";
 import {
   buildSearchText,
@@ -46,11 +48,14 @@ function delayOf(p: { status: string; expectedReturn?: Date | null; endDate?: Da
 import { invalidateSecurityCache } from "./security";
 import { sirosAlreadyInside, sirosInside } from "@/lib/registers/siros-inside";
 import { getEntryRegister } from "@/lib/registers/catalog";
+import { checkRateLimit } from "@/lib/auth/rate-limiter";
 import { notifyLive, notifyPassHolder } from "@/lib/realtime/notify";
 import { canOverrideVisitExit, checkVisitExit, closeVisitPass, newVisitCode, notifyHost, resolveHost } from "@/lib/visits/passes";
 import {
   REGISTER_PAGE_SIZE,
   REGISTER_VIEW_ROLES,
+  countStillInside,
+  hasInsideChoice,
   queryInsideRegisterEntries,
   queryRegisterEntries,
   registerDayFilter,
@@ -138,13 +143,22 @@ const ROLE_DESIGNATION: Record<string, string> = {
   DIRECTOR: "Director",
 };
 
+/** Job titles of the other logins (Estate Manager, Supervisor…) when none is saved */
+const OTHER_ROLE_DESIGNATION: Record<string, string> = {
+  ADMIN: "Admin",
+  SECURITY_SUPERVISOR: "Security Supervisor",
+  ESTATE_MANAGER: "Estate Manager",
+};
+
 /**
- * Faculty, HODs, Deans, Directors and Wardens for the "Faculty / Staff" pickers
- * in register forms (name, employee ID, designation, department).
+ * Faculty, HODs, Deans, Directors, Wardens and the other staff logins (Estate
+ * Manager, Supervisors… and any added later; not students or guards) for the
+ * "Faculty / Staff" pickers in register forms: name, employee ID, designation,
+ * department.
  */
 export async function getRegisterPeopleOptions() {
   await requireRole(...VIEW_ROLES);
-  const [faculty, wardens] = await Promise.all([
+  const [faculty, wardens, others] = await Promise.all([
     prisma.faculty.findMany({
       where: { profile: { active: true } },
       select: { employeeId: true, designation: true, department: true, profile: { select: { name: true, role: true } } },
@@ -157,6 +171,12 @@ export async function getRegisterPeopleOptions() {
       orderBy: { profile: { name: "asc" } },
       take: 300,
     }),
+    prisma.profile.findMany({
+      where: { active: true, role: { notIn: ["STUDENT", "SECURITY"] }, faculty: { is: null }, warden: { is: null } },
+      select: { name: true, designation: true, role: true },
+      orderBy: { name: "asc" },
+      take: 300,
+    }),
   ]);
   return [
     ...faculty.map((p) => ({
@@ -167,7 +187,85 @@ export async function getRegisterPeopleOptions() {
       department: p.department,
     })),
     ...wardens.map((w) => ({ name: w.profile.name, employeeId: w.employeeId, designation: "Warden", department: null })),
+    ...others.map((p) => ({
+      name: p.name,
+      employeeId: null,
+      designation: p.designation?.trim() || OTHER_ROLE_DESIGNATION[p.role] || "Staff",
+      department: null,
+    })),
   ].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** A student for the Keys Book "Key taken by" box (no phone: the server adds it on save) */
+export type KeyStudent = { roll: string; name: string; department: string | null; year: number | null; section: string | null };
+
+/**
+ * Keys Book: students by roll number ("starts with", from 2 characters) or
+ * name ("contains", from 3 letters); at most 8.
+ */
+export async function searchKeyStudents(query: string): Promise<KeyStudent[]> {
+  const user = await requireRole("SECURITY", "ADMIN");
+  const q = typeof query === "string" ? query.trim().replace(/\s+/g, " ").slice(0, 40) : "";
+  const byRoll = /\d/.test(q);
+  if (q.length < (byRoll ? 2 : 3)) return [];
+  const limit = checkRateLimit(`key-student:${user.profileId}`, { maxAttempts: 300, windowMs: 10 * 60_000, blockDurationMs: 10 * 60_000 });
+  if (!limit.allowed) return [];
+  const rows = await prisma.student.findMany({
+    where: byRoll
+      ? { studentRoll: { startsWith: q.replace(/\s+/g, "").toUpperCase() }, profile: { active: true } }
+      : { profile: { active: true, name: { contains: q, mode: "insensitive" } } },
+    select: { studentRoll: true, department: true, year: true, section: true, profile: { select: { name: true } } },
+    orderBy: { studentRoll: "asc" },
+    take: 8,
+  });
+  return rows.map((s) => ({ roll: s.studentRoll, name: s.profile.name, department: s.department, year: s.year, section: s.section }));
+}
+
+/**
+ * Keys Book: fills the phone number and details of the person picked in "Key
+ * taken by" (holderId: employee ID or roll number) from their account. A name
+ * typed that is not in the list is kept as typed, without them.
+ */
+async function fillKeyHolder(data: RegisterData) {
+  const id = typeof data.holderId === "string" ? data.holderId.trim() : "";
+  data.phone = null;
+  data.holderDetails = null;
+  data.holderId = null;
+  if (!id) return;
+  const join = (parts: (string | null | undefined)[]) => parts.map((p) => p?.trim()).filter(Boolean).join(" · ") || null;
+  if (data.holderType === "Student") {
+    const s = await prisma.student.findFirst({
+      where: { studentRoll: id.toUpperCase(), profile: { active: true } },
+      select: { studentRoll: true, department: true, year: true, section: true, profile: { select: { name: true, phone: true } } },
+    });
+    if (!s) return;
+    data.personName = s.profile.name;
+    data.holderId = s.studentRoll;
+    data.phone = s.profile.phone?.trim() || null;
+    data.holderDetails = join([s.department, s.year ? `Year ${s.year}` : null, s.section ? `Section ${s.section}` : null]);
+    return;
+  }
+  const [f, w] = await Promise.all([
+    prisma.faculty.findFirst({
+      where: { employeeId: id, profile: { active: true } },
+      select: { employeeId: true, designation: true, department: true, profile: { select: { name: true, phone: true, role: true } } },
+    }),
+    prisma.warden.findFirst({
+      where: { employeeId: id, profile: { active: true } },
+      select: { employeeId: true, profile: { select: { name: true, phone: true } } },
+    }),
+  ]);
+  if (f) {
+    data.personName = `${f.profile.name} (${f.employeeId})`;
+    data.holderId = f.employeeId;
+    data.phone = f.profile.phone?.trim() || null;
+    data.holderDetails = join([f.designation?.trim() || ROLE_DESIGNATION[f.profile.role] || "Faculty", f.department]);
+  } else if (w) {
+    data.personName = `${w.profile.name} (${w.employeeId})`;
+    data.holderId = w.employeeId;
+    data.phone = w.profile.phone?.trim() || null;
+    data.holderDetails = "Warden";
+  }
 }
 
 /** Security records a new register entry. Saved records can never be edited or deleted. */
@@ -192,6 +290,8 @@ export async function createRegisterEntry(registerKey: string, payload: RawPaylo
     const busy = await sirosAlreadyInside(result.data as Record<string, unknown>, insideLookup);
     if (busy) return { error: busy };
   }
+  // Keys Book: the picked faculty / student's phone number and details, from their account
+  if (def.key === "KEYS") await fillKeyHolder(result.data);
   const host = def.visitHost && visitHost ? await resolveHost(visitHost) : null;
   if (def.visitHost && visitHost && !host) return { error: "Choose the faculty / staff member from the list" };
   // A meeting code only for someone coming in (not a record that starts with Out)
@@ -971,13 +1071,22 @@ export async function getRegisterCountsToday() {
   const user = await requireRole(...VIEW_ROLES);
   const { hidden } = await getRegisterAccess(user);
   const { start, end } = istDayRangeFromParam(istDateString());
-  const grouped = await prisma.registerEntry.groupBy({
-    by: ["register"],
-    where: { kind: "ORIGINAL", entryDate: { gte: start, lt: end }, register: { notIn: hidden } },
-    _count: { _all: true },
-  });
+  // In / Out books with someone still inside (not marked Out yet, any day lately):
+  // the Registers list then asks "Still inside" or "All records" when one is opened.
+  // The Admission Book has its own Inside now; the Car / Auto books their boards.
+  const openBooks = REGISTERS.filter(isEntryRegister).filter((d) => hasInsideChoice(d) && !hidden.includes(d.key));
+  const [grouped, open] = await Promise.all([
+    prisma.registerEntry.groupBy({
+      by: ["register"],
+      where: { kind: "ORIGINAL", entryDate: { gte: start, lt: end }, register: { notIn: hidden } },
+      _count: { _all: true },
+    }),
+    countStillInside(openBooks, end),
+  ]);
   const counts: Record<string, number> = {};
   for (const g of grouped) counts[g.register] = g._count._all;
+  // "open:<register>": how many are still inside
+  for (const [k, n] of Object.entries(open)) if (n > 0) counts[`open:${k}`] = n;
   return counts;
 }
 
@@ -1210,7 +1319,7 @@ export async function securityEditRegisterEntry(entryId: string, payload: RawPay
  * Security (on registers they record in) and Main Admin.
  */
 export async function updateRegisterField(entryId: string, fieldKey: string, value: unknown, clientToken: string) {
-  const user = await requireRole("SECURITY", "ADMIN");
+  const user = await requireRole("SECURITY", "ADMIN", "ESTATE_MANAGER");
   if (typeof entryId !== "string" || !entryId) return { error: "Record not found" };
   if (typeof fieldKey !== "string" || !fieldKey) return { error: "Unknown field" };
   if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
@@ -1229,12 +1338,21 @@ export async function updateRegisterField(entryId: string, fieldKey: string, val
       if (user.role === "SECURITY" && !access.canCreate(def.key)) return { error: "You are not allowed to update this register" };
       const field = updatableFields(def).find((f) => f.key === fieldKey);
       if (!field) return { error: "This field cannot be changed" };
+      // Estate Manager (and later a Civil Engineer): only a photo added later on their books (e.g. the bill photos)
+      if (user.role !== "SECURITY" && user.role !== "ADMIN") {
+        const allowed = ADD_LATER_ROLES.includes(user.role) && ESTATE_BOOKS.includes(def.key) && field.type === "photo" && !!field.addLaterWhen;
+        if (!allowed) return { error: "You are not allowed to update this register" };
+      }
 
       const checked = await validateFieldUpdate(field, value);
       if ("error" in checked) return { error: checked.error };
       const next = field.type === "yesno" ? checked.value === true : checked.value;
 
       const current = effectiveData(def, original.data as RegisterData, original.supplements);
+      // Added later (e.g. the bill after "No bill"): only on those records, and a photo only once
+      if (field.addLaterWhen && current[field.addLaterWhen] !== true) return { error: "This field cannot be changed" };
+      const had = current[field.key];
+      if (field.type === "photo" && ((typeof had === "string" && had) || (Array.isArray(had) && had.length > 0))) return { error: "The photo is already added" };
       // Locked: e.g. "Bill taken by" once the bill is marked taken
       if (field.lockedBy && current[field.lockedBy] === true) {
         const flag = def.fields.find((x) => x.key === field.lockedBy);
@@ -1472,6 +1590,14 @@ export type CarOnBoard = {
   /** The record waiting for its other side (Mark In after Out, or Mark Out after an In-first record) */
   openId: string | null;
   openNext: "IN" | "OUT" | null;
+  /** Boxes copied into a new record when it moves again (e.g. car name + number, or auto driver + purpose) */
+  fill: Record<string, string>;
+};
+
+/** Which boxes name a vehicle on the board: title, the smaller line, and what a new record copies */
+const BOARDS: Record<string, { title: string; sub: string[]; fill: string[] }> = {
+  CAR_BOOK: { title: "vehicleName", sub: ["vehicleNumber"], fill: ["vehicleName", "vehicleNumber"] },
+  AUTO_IN_OUT: { title: "driverName", sub: ["autoNumber", "purpose"], fill: ["driverName", "purpose"] },
 };
 
 /**
@@ -1479,12 +1605,13 @@ export type CarOnBoard = {
  * out (since when) or on campus — and the record waiting for its other side.
  * One small read (the latest 400 records with their later In / Out).
  */
-export async function getCarBoard(): Promise<{ success: true; cars: CarOnBoard[] } | { error: string }> {
+export async function getCarBoard(registerKey: string = "CAR_BOOK"): Promise<{ success: true; cars: CarOnBoard[] } | { error: string }> {
   await requireRole(...VIEW_ROLES);
-  const def = await getEntryRegister("CAR_BOOK");
-  if (!def || !def.movement) return { error: "Unknown register" };
+  const board = BOARDS[registerKey];
+  const def = board ? await getEntryRegister(registerKey) : null;
+  if (!board || !def || !def.movement) return { error: "Unknown register" };
   const rows = await prisma.registerEntry.findMany({
-    where: { register: "CAR_BOOK", kind: "ORIGINAL" },
+    where: { register: registerKey, kind: "ORIGINAL" },
     orderBy: { createdAt: "desc" },
     take: 400,
     select: { id: true, data: true, createdAt: true, supplements: { select: { kind: true, data: true, createdAt: true } } },
@@ -1492,14 +1619,19 @@ export async function getCarBoard(): Promise<{ success: true; cars: CarOnBoard[]
   const seen = new Map<string, CarOnBoard>();
   for (const r of rows) {
     const d = effectiveData(def, r.data as RegisterData, r.supplements);
-    const name = typeof d.vehicleName === "string" ? d.vehicleName.trim() : "";
-    const number = typeof d.vehicleNumber === "string" ? d.vehicleNumber.trim() : "";
-    const key = (number || name).toUpperCase().replace(/[\s-]/g, "");
-    if (!key || seen.has(key)) continue; // the newest record of each car decides where it is
+    const text = (k: string) => (typeof d[k] === "string" ? (d[k] as string).trim() : "");
+    const name = text(board.title);
+    const number = board.sub.map(text).find(Boolean) ?? "";
+    // Cars: by number (or name); autos: by driver
+    const key = (registerKey === "CAR_BOOK" ? number || name : name || number).toUpperCase().replace(/[\s-]/g, "");
+    if (!key || seen.has(key)) continue; // the newest record of each vehicle decides where it is
     const next = pendingActions(def, d).next;
     const lastMove = r.supplements.filter((x) => x.kind === "COMPLETION").map((x) => x.createdAt).sort((x, y) => y.getTime() - x.getTime())[0] ?? r.createdAt;
-    // Waiting for In = the car is out; waiting for Out (came in first) or complete = on campus
-    const out = next?.direction === "IN";
+    // Waiting for In = out now; waiting for Out = inside. Both sides done: where the last side left it
+    // (went out then came back = inside; came in then went out = out)
+    const out = next ? next.direction === "IN" : d.direction === "IN";
+    const fill: Record<string, string> = {};
+    for (const k of board.fill) if (text(k)) fill[k] = text(k);
     seen.set(key, {
       key,
       name,
@@ -1508,6 +1640,7 @@ export async function getCarBoard(): Promise<{ success: true; cars: CarOnBoard[]
       since: lastMove.toISOString(),
       openId: next ? r.id : null,
       openNext: next?.direction ?? null,
+      fill,
     });
   }
   // Cars that are out first, then by name

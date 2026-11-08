@@ -394,7 +394,7 @@ export function WardenRequestsClient({ user }: Props) {
                               </div>
                             ) : (
                               <div className="flex sm:flex-col items-center sm:items-end justify-between gap-1.5">
-                                <StatusBadge status={req.status} />
+                                <StatusBadge status={req.status} by="student" />
                                 {req.qr?.usedForExit && (
                                   <span className="text-[11px] font-medium text-zinc-500">
                                     {req.qr?.usedForEntry ? "Returned" : "Exited"}

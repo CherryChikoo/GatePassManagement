@@ -1032,7 +1032,7 @@ export function ActivityClient({ user }: Props) {
               <h3 className="text-lg font-medium text-zinc-100 min-w-0 break-words">
                 {selectedRecord.student?.profile?.name || selectedRecord.name || "Unknown"}
               </h3>
-              <StatusBadge status={selectedRecord.type || selectedRecord.status} />
+              <StatusBadge status={selectedRecord.type || selectedRecord.status} pass={selectedRecord} />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

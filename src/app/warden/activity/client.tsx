@@ -175,7 +175,7 @@ export function WardenActivityClient({
                           </span>
                         </span>
                         <span className="shrink-0 self-start sm:self-center">
-                          <StatusBadge status={perm.status} />
+                          <StatusBadge status={perm.status} by="student" />
                         </span>
                       </button>
                     </li>

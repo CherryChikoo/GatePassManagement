@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/primitives";
 import { useT } from "@/components/providers/language-provider";
+import { registerMessage } from "./localize";
 import { actionErrorMessage } from "@/lib/deployment";
 import { REGISTER_BY_KEY, isEntryRegister, type EntryRegister, type RegisterDef, type RegisterKey } from "@/lib/registers/definitions";
 import { callGate } from "@/lib/gate-call";
@@ -93,17 +94,18 @@ export function QuickEntryModal({
     <Modal open onClose={() => !busy && onClose()} title={def.title} className="max-w-2xl md:max-w-[min(92vw,1000px)] border-2 border-orange-500/80" scrollTopKey={resultNo}>
       <div className="space-y-4">
         {savedCount > 0 && (
-          <div role="status" className="flex items-center gap-2.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
-            <CheckCircle2 className="h-5 w-5 shrink-0" />
-            <span className="min-w-0 flex-1">{t("Saved. Ready for the next one.")}</span>
-            <span className="shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold tabular-nums">
+          // Solid green: easy to see at a glance that it was saved
+          <div role="status" className="flex items-center gap-3 rounded-2xl bg-emerald-600 px-4 py-3.5 text-white shadow-[0_10px_24px_-12px_rgba(5,150,105,0.7)] animate-scale-in">
+            <CheckCircle2 className="h-7 w-7 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1 text-lg font-bold leading-snug">{t("Saved. Ready for the next one.")}</span>
+            <span className="shrink-0 rounded-full bg-white px-3 py-1 text-sm font-bold tabular-nums text-emerald-700">
               {t("{n} saved", { n: savedCount })}
             </span>
           </div>
         )}
         {error && (
-          <div role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            {error}
+          <div role="alert" className="rounded-2xl border-2 border-red-500 bg-red-50 px-4 py-3 text-base font-bold leading-snug text-red-700">
+            {registerMessage(t, error)}
           </div>
         )}
         {saving > 0 && (

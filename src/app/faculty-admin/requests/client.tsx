@@ -659,7 +659,7 @@ export function FacultyAdminRequestsClient() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-x-2 gap-y-1.5 flex-wrap">
                           <h3 className="text-base font-medium text-zinc-100 break-words">{applicantName}</h3>
-                          <StatusBadge status={req.status} />
+                          <StatusBadge status={req.status} pass={req} />
                           {/* Faculty still out past the end of their pass (the QR keeps working) */}
                           {req.facultyId && req.status === "EXITED" && delayMinutes(returnDueAt(req)) > 0 && (
                             <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-600 whitespace-nowrap">

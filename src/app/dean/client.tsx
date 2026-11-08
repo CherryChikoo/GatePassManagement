@@ -303,7 +303,7 @@ export function DeanDashboardClient({ user, title }: Props & { title?: string })
                               </span>
                             </span>
                             <span className="flex flex-col items-end gap-1 shrink-0">
-                              <StatusBadge status={item.status} />
+                              <StatusBadge status={item.status} pass={item} />
                               <span className="text-[11px] text-zinc-500">{formatDateTime(item.createdAt)}</span>
                             </span>
                           </button>
@@ -429,7 +429,7 @@ export function DeanDashboardClient({ user, title }: Props & { title?: string })
                 <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
                   {selectedActivity.student ? "Student Applicant" : "Faculty Member"}
                 </span>
-                <StatusBadge status={selectedActivity.status} />
+                <StatusBadge status={selectedActivity.status} pass={selectedActivity} />
               </div>
               <p className="text-base font-medium text-zinc-100 break-words">
                 {selectedActivity.student?.profile?.name ||

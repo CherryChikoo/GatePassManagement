@@ -248,7 +248,7 @@ export function FacultyAdminDashboardClient({ user }: Props) {
                               </span>
                             </span>
                             <span className="flex flex-col items-end gap-1 shrink-0">
-                              <StatusBadge status={item.status} />
+                              <StatusBadge status={item.status} pass={item} />
                               <span className="text-[11px] text-zinc-500">{formatDateTime(item.createdAt)}</span>
                             </span>
                           </button>
@@ -364,7 +364,7 @@ export function FacultyAdminDashboardClient({ user }: Props) {
             </div>
             <div className="min-w-0">
               <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">Status</dt>
-              <dd><StatusBadge status={selectedActivity.status} /></dd>
+              <dd><StatusBadge status={selectedActivity.status} pass={selectedActivity} /></dd>
             </div>
             <div className="sm:col-span-2 min-w-0">
               <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">Purpose</dt>

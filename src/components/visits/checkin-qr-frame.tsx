@@ -36,7 +36,6 @@ export function CheckInQrFrame({ inModal = false, children }: { inModal?: boolea
       <p className="mt-3 text-balance text-center text-sm font-medium leading-snug text-zinc-200">
         {t("Use your phone's Camera or Google Lens (not PhonePe / Google Pay)")}
       </p>
-      <p className="mt-1.5 text-balance text-center text-xs text-zinc-500">{t("The QR changes by itself every few minutes. Keep this screen open.")}</p>
     </section>
   );
 }

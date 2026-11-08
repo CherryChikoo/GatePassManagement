@@ -12,16 +12,23 @@ import { useT } from "@/components/providers/language-provider";
 import type { VisitHostOption } from "@/server/actions/visits";
 import { callGate } from "@/lib/gate-call";
 
-// Shared by every picker; fetched again when over 30 s old (staff added elsewhere show up)
+// Shared by every picker; fetched again when over 30 s old (staff added elsewhere show up).
+// The last list shows at once meanwhile, so opening the form again never waits.
 let hostsCache: { at: number; list: Promise<VisitHostOption[]> } | null = null;
-function loadHosts(): Promise<VisitHostOption[]> {
+let lastHosts: VisitHostOption[] | null = null;
+export function loadHosts(): Promise<VisitHostOption[]> {
   if (!hostsCache || Date.now() - hostsCache.at > 30_000) {
     hostsCache = {
       at: Date.now(),
-      list: callGate("getVisitHostOptions", [], 15_000).catch(() => {
-        hostsCache = null;
-        return [];
-      }),
+      list: callGate("getVisitHostOptions", [], 15_000)
+        .then((list: VisitHostOption[]) => {
+          if (Array.isArray(list)) lastHosts = list;
+          return Array.isArray(list) ? list : lastHosts ?? [];
+        })
+        .catch(() => {
+          hostsCache = null;
+          return lastHosts ?? [];
+        }),
     };
   }
   return hostsCache.list;
@@ -32,7 +39,7 @@ const selectCls =
 
 export function HostPicker({ id, value, onChange }: { id: string; value: string; onChange: (profileId: string) => void }) {
   const t = useT();
-  const [hosts, setHosts] = useState<VisitHostOption[] | null>(null);
+  const [hosts, setHosts] = useState<VisitHostOption[] | null>(lastHosts);
 
   useEffect(() => {
     let alive = true;

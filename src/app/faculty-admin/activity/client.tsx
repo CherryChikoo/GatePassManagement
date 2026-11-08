@@ -358,7 +358,7 @@ export function HodActivityClient({ user, initialDate }: HodActivityClientProps)
                           </span>
 
                           <span className="shrink-0">
-                            <StatusBadge status={perm.status} />
+                            <StatusBadge status={perm.status} pass={perm} />
                           </span>
                         </button>
                       </li>
@@ -421,7 +421,7 @@ export function HodActivityClient({ user, initialDate }: HodActivityClientProps)
                           </span>
 
                           <span className="shrink-0">
-                            <StatusBadge status={perm.status} />
+                            <StatusBadge status={perm.status} pass={perm} />
                           </span>
                         </button>
                       </li>

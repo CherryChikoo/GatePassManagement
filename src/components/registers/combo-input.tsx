@@ -165,15 +165,15 @@ export function ComboInput({
                 onClick={() => pick(item)}
                 className={cn(
                   "flex w-full items-center justify-between gap-3 text-left transition-colors",
-                  sheet ? "min-h-14 border-b border-zinc-800/70 px-4 text-base last:border-b-0" : "min-h-11 rounded-xl px-3 text-sm",
+                  sheet ? "min-h-14 border-b border-zinc-800/70 px-4 text-base last:border-b-0" : "min-h-12 rounded-xl px-3 text-base sm:min-h-14 sm:px-4 sm:text-lg",
                   selected ? "bg-orange-500/10 font-medium text-orange-500" : "text-zinc-100 hover:bg-zinc-950"
                 )}
               >
                 <span className="min-w-0 py-2">
                   <span className="block break-words">{item.label ?? item.fill}</span>
-                  {item.sub && <span className="block text-xs text-zinc-500">{item.sub}</span>}
+                  {item.sub && <span className="block text-xs text-zinc-500 sm:text-sm">{item.sub}</span>}
                 </span>
-                {selected && <Check className="h-4 w-4 shrink-0" aria-hidden="true" />}
+                {selected && <Check className="h-5 w-5 shrink-0" aria-hidden="true" />}
               </button>
             </li>
           );
@@ -193,7 +193,6 @@ export function ComboInput({
           autoComplete="off"
           value={value}
           required={required}
-          placeholder={placeholder}
           onChange={(e) => {
             onChange(e.target.value);
             // Typing: the matching suggestions open under the box (empty box: closed)
@@ -225,7 +224,7 @@ export function ComboInput({
           aria-haspopup="listbox"
           aria-expanded={!!open}
           className={cn(
-            "flex h-12 shrink-0 items-center gap-1 rounded-r-2xl border border-zinc-800 bg-zinc-950 px-3.5 text-sm font-semibold text-zinc-200 transition-colors hover:bg-zinc-900 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/10",
+            "flex h-12 shrink-0 items-center gap-1 rounded-r-2xl border border-zinc-800 bg-zinc-950 px-3.5 text-sm font-semibold text-zinc-200 sm:text-base transition-colors hover:bg-zinc-900 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/10",
             open && "border-orange-500/50 text-orange-500"
           )}
         >

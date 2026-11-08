@@ -5,7 +5,7 @@
  * registered ones (by name or number, like adding security to a shift), and
  * registering a new coolie / contractor with a photo (they get a number).
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ZoomablePhoto } from "@/components/ui/zoomable-photo";
 import { Check, Info, Loader2, Plus, Search, UserPlus, X } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
@@ -50,38 +50,60 @@ function NoBadge({ no }: { no: number | string }) {
   );
 }
 
-/** The entry's coolies: the list with ✕, the count, and "+ Add coolie" (search by name or number). */
+/**
+ * The entry's coolies: the list with ✕, the count, and "+ Add coolie". The
+ * pop-up starts with an empty search box: typing a name or number shows the
+ * matching coolies (tap = added, the box clears for the next one); nobody
+ * matching → "+ New coolie" registers them (photo, gender) and adds them.
+ */
 export function CooliePicker({
   rows,
   onChange,
   people,
+  renderPhoto,
 }: {
   rows: Values[];
   onChange: (rows: Values[]) => void;
   people: SirosPeopleData | null;
+  /** The photo box of the new-coolie form */
+  renderPhoto: (value: string, onChange: (v: string) => void) => React.ReactNode;
 }) {
   const t = useT();
   const added = rows.filter((r) => (r.name ?? "").trim() !== "");
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [newName, setNewName] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const q = query.trim().toLowerCase();
   const coolies = (people?.people ?? []).filter((p) => p.kind === "COOLIE");
   // On another entry not yet marked Out: can't be added until then
   const isInside = (p: SirosPerson) => !!people?.inside.coolies.includes(String(p.no));
-  const shown = q ? coolies.filter((p) => String(p.no) === q || String(p.no).startsWith(q) || p.name.toLowerCase().includes(q)) : coolies;
   const isAdded = (p: SirosPerson) => added.some((r) => r.no === String(p.no));
+  // Nothing typed: no list (the guard types a name or number)
+  const shown = q
+    ? coolies.filter((p) => String(p.no).startsWith(q) || p.name.toLowerCase().includes(q)).slice(0, 8)
+    : [];
+  const exact = q !== "" && coolies.some((p) => p.name.trim().toLowerCase() === q || String(p.no) === q);
+  const canAddNew = q !== "" && !/^\d+$/.test(q) && !exact;
   const [viewNo, setViewNo] = useState<number | null>(null);
+  const add = (p: SirosPerson) => {
+    onChange([...added, { no: String(p.no), name: p.name, gender: p.gender ?? "" }]);
+    // Ready for the next one
+    setQuery("");
+    requestAnimationFrame(() => searchRef.current?.focus());
+  };
+  const remove = (r: Values) => onChange(added.filter((x) => x !== r));
 
   return (
-    <fieldset className="overflow-hidden rounded-2xl border border-zinc-800">
+    <fieldset className="overflow-hidden rounded-2xl border-[1.5px] border-zinc-700">
       <legend className="sr-only">{t("Coolies")}</legend>
-      <div className="flex items-center justify-between gap-3 border-b border-zinc-800/70 bg-zinc-950 px-4 py-3">
-        <p className="text-base font-semibold text-zinc-100">{t("Coolies")}</p>
-        <span className="rounded-full bg-orange-600 px-2.5 py-0.5 text-sm font-semibold tabular-nums text-white">{added.length}</span>
+      <div className="flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950 px-4 py-3">
+        <p className="text-lg font-bold text-zinc-100">{t("Coolies")}</p>
+        <span className={cn("rounded-full px-3 py-1 text-base font-bold tabular-nums", added.length ? "bg-orange-600 text-white" : "bg-zinc-900 text-zinc-400")}>
+          {added.length}
+        </span>
       </div>
-      {added.length === 0 ? (
-        <p className="px-4 py-5 text-center text-sm text-zinc-500">{t("No coolies added yet.")}</p>
-      ) : (
+      {added.length > 0 && (
         <ul className="divide-y divide-zinc-800/70">
           {added.map((r) => (
             <li key={r.no || r.name} className="flex min-h-14 items-center gap-3 px-4 py-2">
@@ -94,16 +116,16 @@ export function CooliePicker({
               >
                 <NoBadge no={r.no || "—"} />
                 <span className="min-w-0 flex-1">
-                  <span className="block break-words text-base font-medium text-zinc-100">{r.name}</span>
-                  {r.gender && <span className="block text-xs text-zinc-500">{t(r.gender)}</span>}
+                  <span className="block break-words text-lg font-semibold text-zinc-100">{r.name}</span>
+                  {r.gender && <span className="block text-sm text-zinc-500">{t(r.gender)}</span>}
                 </span>
-                {r.no && <Info className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />}
+                {r.no && <Info className="h-5 w-5 shrink-0 text-zinc-400" aria-hidden="true" />}
               </button>
               <button
                 type="button"
-                aria-label={t("Remove")}
-                onClick={() => onChange(added.filter((x) => x !== r))}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
+                aria-label={`${t("Remove")} — ${r.name}`}
+                onClick={() => remove(r)}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-600 text-white transition-colors hover:bg-red-700"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -117,122 +139,195 @@ export function CooliePicker({
           setQuery("");
           setOpen(true);
         }}
-        className="flex h-14 w-full items-center justify-center gap-2 border-t border-zinc-800/70 bg-orange-500/10 text-base font-semibold text-orange-600 transition-colors hover:bg-orange-500/15"
+        className={cn(
+          "flex h-14 w-full items-center justify-center gap-2 bg-orange-600 text-lg font-bold text-white transition-colors hover:bg-orange-700",
+          added.length > 0 && "border-t border-zinc-800"
+        )}
       >
         <Plus className="h-5 w-5" /> {t("Add coolie")}
       </button>
 
       <Modal open={open} onClose={() => setOpen(false)} title={t("Add coolie")} className="max-w-lg">
         <div className="space-y-3">
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
-            <input
-              type="search"
-              inputMode="search"
-              autoComplete="off"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("Type name or number")}
-              className="h-12 w-full rounded-full border border-zinc-800 bg-zinc-950 pl-11 pr-4 text-base text-zinc-100 outline-none focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
-            />
+          {/* Already on this entry: small tags, ✕ removes */}
+          {added.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {added.map((r) => (
+                <span key={r.no || r.name} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 py-1 pl-3 pr-1 text-sm font-semibold text-emerald-800">
+                  {r.no ? `${r.no} · ` : ""}
+                  {r.name}
+                  <button
+                    type="button"
+                    aria-label={`${t("Remove")} — ${r.name}`}
+                    onClick={() => remove(r)}
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-700 text-white hover:bg-emerald-800"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <label className="block space-y-1.5">
+            <span className="text-base font-bold text-zinc-100">{t("Name or number")}</span>
+            <span className="relative block">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
+              <input
+                ref={searchRef}
+                type="text"
+                inputMode="search"
+                autoComplete="off"
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  // Enter: the only match is added
+                  const free = shown.filter((p) => !isAdded(p) && !isInside(p));
+                  if (free.length === 1) add(free[0]);
+                }}
+                className="h-14 w-full rounded-2xl border-[1.5px] border-zinc-600 bg-zinc-950 pl-12 pr-4 text-lg text-zinc-100 outline-none focus:border-orange-500 focus:bg-zinc-900 focus:ring-4 focus:ring-orange-500/15"
+              />
+            </span>
           </label>
-          <ul className="max-h-[55dvh] overflow-y-auto overscroll-contain rounded-2xl border border-zinc-800 divide-y divide-zinc-800/70">
-            {people === null ? (
-              <li className="px-4 py-6 text-center text-sm text-zinc-500">{t("Loading…")}</li>
-            ) : shown.length === 0 ? (
-              <li className="px-4 py-6 text-center text-sm text-zinc-500">{t("Not found. Register them with “New coolie” below the form.")}</li>
-            ) : (
-              shown.map((p) => {
-                const on = isAdded(p);
-                const away = !on && isInside(p);
-                return (
-                  <li key={p.id} className="flex items-center">
-                    <button
-                      type="button"
-                      disabled={on || away}
-                      onClick={() => onChange([...added, { no: String(p.no), name: p.name, gender: p.gender ?? "" }])}
-                      className={cn(
-                        "flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left transition-colors",
-                        "min-w-0 flex-1",
-                        on ? "bg-emerald-500/10" : away ? "cursor-not-allowed opacity-60" : "hover:bg-zinc-950"
-                      )}
-                    >
-                      <NoBadge no={p.no} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block break-words text-base text-zinc-100">{p.name}</span>
-                        {p.gender && <span className="block text-xs text-zinc-500">{t(p.gender)}</span>}
-                      </span>
-                      {on ? (
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white">
-                          <Check className="h-3.5 w-3.5" aria-hidden="true" /> {t("Added")}
+
+          {q !== "" && (
+            <ul className="max-h-[45dvh] divide-y divide-zinc-800/70 overflow-y-auto overscroll-contain rounded-2xl border-[1.5px] border-zinc-700">
+              {people === null ? (
+                <li className="flex items-center justify-center gap-2 px-4 py-5 text-base text-zinc-500">
+                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> {t("Loading…")}
+                </li>
+              ) : shown.length === 0 ? (
+                <li className="px-4 py-4 text-center text-base font-semibold text-zinc-400">{t("No coolie with this name or number.")}</li>
+              ) : (
+                shown.map((p) => {
+                  const on = isAdded(p);
+                  const away = !on && isInside(p);
+                  return (
+                    <li key={p.id} className="flex items-center">
+                      <button
+                        type="button"
+                        disabled={on || away}
+                        onClick={() => add(p)}
+                        className={cn(
+                          "flex min-h-16 min-w-0 flex-1 items-center gap-3 px-4 py-2 text-left transition-colors",
+                          on ? "bg-emerald-500/10" : away ? "cursor-not-allowed opacity-60" : "hover:bg-orange-500/10 active:bg-orange-500/15"
+                        )}
+                      >
+                        <NoBadge no={p.no} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block break-words text-lg font-semibold text-zinc-100">{p.name}</span>
+                          {p.gender && <span className="block text-sm text-zinc-500">{t(p.gender)}</span>}
+                          {away && (
+                            <span className="mt-1 inline-block rounded-full bg-amber-500/15 px-2.5 py-0.5 text-sm font-semibold text-amber-700">
+                              {t("Inside — mark Out first")}
+                            </span>
+                          )}
                         </span>
-                      ) : away ? (
-                        <span className="shrink-0 rounded-full bg-zinc-950 px-2.5 py-1 text-xs font-semibold text-zinc-500">{t("Inside — mark Out first")}</span>
-                      ) : (
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-orange-600">
-                          <Plus className="h-5 w-5" aria-hidden="true" />
-                        </span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onPointerDown={() => prefetchSirosPerson(p.no)}
-                      onClick={() => setViewNo(p.no)}
-                      aria-label={`${t("Details")} — ${p.name}`}
-                      className="flex h-14 w-12 shrink-0 items-center justify-center text-zinc-400 transition-colors hover:bg-zinc-950 hover:text-zinc-100"
-                    >
-                      <Info className="h-5 w-5" />
-                    </button>
-                  </li>
-                );
-              })
-            )}
-          </ul>
+                        {on ? (
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-sm font-bold text-white">
+                            <Check className="h-4 w-4" aria-hidden="true" /> {t("Added")}
+                          </span>
+                        ) : away ? null : (
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-orange-600 px-3 py-1.5 text-sm font-bold text-white">
+                            <Plus className="h-4 w-4" aria-hidden="true" /> {t("Add")}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onPointerDown={() => prefetchSirosPerson(p.no)}
+                        onClick={() => setViewNo(p.no)}
+                        aria-label={`${t("Details")} — ${p.name}`}
+                        className="flex h-16 w-12 shrink-0 items-center justify-center text-zinc-400 transition-colors hover:bg-zinc-950 hover:text-zinc-100"
+                      >
+                        <Info className="h-5 w-5" />
+                      </button>
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+          )}
+
+          {/* Not registered yet: register this name now (photo, gender) */}
+          {canAddNew && (
+            <button
+              type="button"
+              onClick={() => setNewName(query.trim())}
+              className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-orange-500 bg-orange-50 px-4 py-2 text-center text-base font-bold text-orange-700 hover:bg-orange-100"
+            >
+              <UserPlus className="h-5 w-5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 break-words">{t("New coolie: {name}", { name: query.trim() })}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-orange-600 text-base font-semibold text-white shadow-card transition-[background-color,transform] hover:bg-orange-700 active:scale-[0.98]"
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-lg font-bold text-white shadow-card transition-[background-color,transform] hover:bg-emerald-700 active:scale-[0.98]"
           >
-            <Check className="h-5 w-5" /> {t("Done")}
+            <Check className="h-5 w-5" /> {t("Done")} {added.length > 0 && `· ${added.length}`}
           </button>
         </div>
       </Modal>
+      <NewSirosPersonDialog
+        kind={newName !== null ? "COOLIE" : null}
+        initialName={newName ?? ""}
+        renderPhoto={renderPhoto}
+        onClose={() => setNewName(null)}
+        onRegistered={(p) => {
+          add(p);
+        }}
+      />
       <SirosPersonDialog no={viewNo} onClose={() => setViewNo(null)} />
     </fieldset>
   );
 }
 
 /**
- * "+ New coolie" / "+ New contractor" (bottom of the form): photo, name, and
- * gender (coolie) or phone (contractor). Saved at once; the number is shown
- * big so the guard can tell the person, and they are put on this entry.
+ * Registering a coolie / contractor for the first time: photo, name, and gender
+ * (coolie) or phone (contractor). Saved at once; the number is shown big so
+ * the guard can tell the person.
  */
-export function SirosNewPeople({
+export function NewSirosPersonDialog({
+  kind,
+  initialName = "",
   renderPhoto,
+  onClose,
   onRegistered,
 }: {
+  /** Open for this kind; null = closed */
+  kind: "COOLIE" | "CONTRACTOR" | null;
+  initialName?: string;
   renderPhoto: (value: string, onChange: (v: string) => void) => React.ReactNode;
+  onClose: () => void;
   onRegistered: (p: SirosPerson) => void;
 }) {
   const t = useT();
-  const [kind, setKind] = useState<"COOLIE" | "CONTRACTOR" | null>(null);
   const [photo, setPhoto] = useState("");
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialName);
   const [gender, setGender] = useState("");
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<SirosPerson | null>(null);
+  // A fresh form each time it opens (with the typed name)
+  const [openedFor, setOpenedFor] = useState<string | null>(null);
+  const key = kind ? `${kind}|${initialName}` : null;
+  if (key !== openedFor) {
+    setOpenedFor(key);
+    if (key) {
+      setPhoto("");
+      setName(initialName);
+      setGender("");
+      setPhone("");
+      setError(null);
+      setDone(null);
+    }
+  }
 
-  const start = (k: "COOLIE" | "CONTRACTOR") => {
-    setKind(k);
-    setPhoto("");
-    setName("");
-    setGender("");
-    setPhone("");
-    setError(null);
-    setDone(null);
-  };
   const save = async () => {
     if (!kind || busy) return;
     setBusy(true);
@@ -247,91 +342,179 @@ export function SirosNewPeople({
   };
 
   const inputCls =
-    "h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 text-base text-zinc-100 outline-none focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10";
-  const newBtn =
-    "flex min-h-12 w-full min-w-0 items-center justify-center gap-1.5 rounded-2xl border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-center text-sm font-medium leading-tight text-zinc-200 shadow-card transition-colors hover:bg-zinc-950 sm:gap-2 sm:text-base";
+    "h-14 w-full rounded-2xl border-[1.5px] border-zinc-600 bg-zinc-950 px-4 text-lg text-zinc-100 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/15";
 
   return (
-    <>
-      {/* Registering a first-timer: plain buttons, so they are not mistaken for "+ Add coolie" */}
-      <div className="space-y-2.5 rounded-2xl border border-zinc-800 bg-zinc-950 p-3 sm:p-4">
-        <p className="text-sm font-medium text-zinc-400">{t("First time at the gate? Register them:")}</p>
-      <div className="grid grid-cols-2 gap-2">
-        <button type="button" onClick={() => start("COOLIE")} className={newBtn}>
-          <UserPlus className="h-5 w-5 shrink-0" /> {t("New coolie")}
-        </button>
-        <button type="button" onClick={() => start("CONTRACTOR")} className={newBtn}>
-          <UserPlus className="h-5 w-5 shrink-0" /> {t("New contractor")}
-        </button>
-      </div>
-      </div>
-
-      <Modal open={!!kind} onClose={() => !busy && setKind(null)} title={kind === "CONTRACTOR" ? t("New contractor") : t("New coolie")} className="max-w-lg">
-        {done ? (
-          <div className="space-y-4 text-center">
-            <p className="text-sm text-zinc-500">{t("Registered. Tell them their number:")}</p>
-            <p className="text-6xl font-bold tabular-nums text-orange-600">{done.no}</p>
-            <p className="text-lg font-semibold text-zinc-100">{done.name}</p>
-            <p className="text-sm text-zinc-500">{done.kind === "CONTRACTOR" ? t("Filled in as the contractor of this entry.") : t("Added to this entry.")}</p>
-            <button
-              type="button"
-              onClick={() => setKind(null)}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-orange-600 text-base font-semibold text-white hover:bg-orange-700"
-            >
-              <Check className="h-5 w-5" /> {t("Done")}
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Photo first (once, when they register) */}
-            <div className="flex justify-center [&>*]:w-full [&>*]:max-w-[220px]">{renderPhoto(photo, setPhoto)}</div>
+    <Modal open={!!kind} onClose={() => !busy && onClose()} title={kind === "CONTRACTOR" ? t("New contractor") : t("New coolie")} className="max-w-lg">
+      {done ? (
+        <div className="space-y-4 text-center">
+          <p className="text-base font-semibold text-zinc-400">{t("Registered. Tell them their number:")}</p>
+          <p className="text-6xl font-bold tabular-nums text-orange-600">{done.no}</p>
+          <p className="text-xl font-bold text-zinc-100">{done.name}</p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-lg font-bold text-white hover:bg-emerald-700"
+          >
+            <Check className="h-5 w-5" /> {t("Done")}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Photo first (once, when they register) */}
+          <div className="flex justify-center [&>*]:w-full [&>*]:max-w-[220px]">{renderPhoto(photo, setPhoto)}</div>
+          <label className="block space-y-1.5">
+            <span className="text-base font-bold text-zinc-100">
+              {t("Name")} <span className="text-orange-500">*</span>
+            </span>
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} autoComplete="off" className={inputCls} />
+          </label>
+          {kind === "COOLIE" ? (
+            <fieldset className="space-y-1.5">
+              <legend className="text-base font-bold text-zinc-100">
+                {t("Gender")} <span className="text-orange-500">*</span>
+              </legend>
+              <div className="grid grid-cols-2 gap-2">
+                {["Male", "Female"].map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    aria-pressed={gender === g}
+                    onClick={() => setGender(g)}
+                    className={cn(
+                      "h-14 rounded-2xl border-2 text-lg font-bold transition-colors",
+                      gender === g ? "border-orange-600 bg-orange-600 text-white" : "border-zinc-700 bg-zinc-900 text-zinc-200"
+                    )}
+                  >
+                    {t(g)}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          ) : (
             <label className="block space-y-1.5">
-              <span className="text-sm font-medium text-zinc-200">
-                {t("Name")} <span className="text-orange-500">*</span>
-              </span>
-              <input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} autoComplete="off" className={inputCls} />
+              <span className="text-base font-bold text-zinc-100">{t("Phone Number")}</span>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" maxLength={15} autoComplete="off" className={inputCls} />
             </label>
-            {kind === "COOLIE" ? (
-              <fieldset className="space-y-1.5">
-                <legend className="text-sm font-medium text-zinc-200">
-                  {t("Gender")} <span className="text-orange-500">*</span>
-                </legend>
-                <div className="grid grid-cols-2 gap-2">
-                  {["Male", "Female"].map((g) => (
-                    <button
-                      key={g}
-                      type="button"
-                      aria-pressed={gender === g}
-                      onClick={() => setGender(g)}
-                      className={cn(
-                        "h-12 rounded-2xl border text-base font-semibold transition-colors",
-                        gender === g ? "border-orange-500 bg-orange-500/10 text-orange-600" : "border-zinc-800 bg-zinc-900 text-zinc-300"
-                      )}
-                    >
-                      {t(g)}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
+          )}
+          {error && <p role="alert" className="rounded-2xl border-2 border-red-500 bg-red-50 px-4 py-3 text-base font-bold text-red-700">{error}</p>}
+          <button
+            type="button"
+            onClick={save}
+            disabled={busy}
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-orange-600 text-lg font-bold text-white hover:bg-orange-700 disabled:opacity-60"
+          >
+            {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />} {busy ? t("Saving…") : t("Register and get number")}
+          </button>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/**
+ * Contractor box: type, and the matching contractors show under the box
+ * (registered ones with their number, then names typed in earlier entries).
+ * A name not in the list is simply saved ("New contractor") and suggested
+ * from then on: no registering needed.
+ */
+export function ContractorInput({
+  id,
+  value,
+  onChange,
+  items,
+  loading,
+  onPick,
+  required,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  items: { fill: string; label?: string; extra?: string }[];
+  loading: boolean;
+  onPick?: (item: { fill: string; label?: string; extra?: string }) => void;
+  required?: boolean;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(-1);
+  const q = value.trim().toLowerCase();
+  const matches = (q ? items.filter((i) => (i.label ?? i.fill).toLowerCase().includes(q)) : items).slice(0, 8);
+  const known = q !== "" && items.some((i) => i.fill.trim().toLowerCase() === q);
+  const pick = (i: { fill: string; label?: string; extra?: string }) => {
+    onChange(i.fill);
+    onPick?.(i);
+    setOpen(false);
+    setHi(-1);
+  };
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
+        <input
+          id={id}
+          value={value}
+          required={required}
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={`${id}-list`}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setOpen(true);
+            setHi(-1);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown" && matches.length) {
+              e.preventDefault();
+              setOpen(true);
+              setHi((h) => Math.min(h + 1, matches.length - 1));
+            } else if (e.key === "ArrowUp" && matches.length) {
+              e.preventDefault();
+              setHi((h) => Math.max(h - 1, 0));
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              if (open && hi >= 0 && matches[hi]) pick(matches[hi]);
+            } else if (e.key === "Escape") setOpen(false);
+          }}
+          className="flex h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-900 pl-12 pr-4 text-base text-zinc-100 outline-none transition-colors focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
+        />
+        {open && (loading || matches.length > 0) && (
+          <ul id={`${id}-list`} role="listbox" className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-1 shadow-card">
+            {loading ? (
+              <li className="flex items-center gap-2 px-3 py-3 text-base text-zinc-500">
+                <Loader2 className="h-5 w-5 animate-spin" /> {t("Loading…")}
+              </li>
             ) : (
-              <label className="block space-y-1.5">
-                <span className="text-sm font-medium text-zinc-200">{t("Phone Number")}</span>
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" maxLength={15} autoComplete="off" className={inputCls} />
-              </label>
+              matches.map((i, n) => (
+                <li key={`${i.fill}|${n}`} role="option" aria-selected={n === hi}>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onPointerEnter={() => setHi(n)}
+                    onClick={() => pick(i)}
+                    className={cn(
+                      "flex min-h-12 w-full items-center rounded-xl border-l-4 px-3 py-2 text-left text-base font-semibold text-zinc-100 sm:min-h-14 sm:text-lg",
+                      n === hi ? "border-orange-500 bg-orange-500/15" : "border-transparent hover:bg-orange-500/10"
+                    )}
+                  >
+                    {i.label ?? i.fill}
+                  </button>
+                </li>
+              ))
             )}
-            {error && <p role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-500">{error}</p>}
-            <button
-              type="button"
-              onClick={save}
-              disabled={busy}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-orange-600 text-base font-semibold text-white hover:bg-orange-700 disabled:opacity-60"
-            >
-              <Check className="h-5 w-5" /> {busy ? t("Saving…") : t("Register and get number")}
-            </button>
-          </div>
+          </ul>
         )}
-      </Modal>
-    </>
+      </div>
+      {/* A name typed for the first time: saved with this entry and suggested next time */}
+      {q !== "" && !known && !loading && (
+        <span className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500/15 px-2.5 py-1 text-sm font-bold text-sky-700">
+          <UserPlus className="h-4 w-4" aria-hidden="true" /> {t("New contractor — saved for next time")}
+        </span>
+      )}
+    </div>
   );
 }
 

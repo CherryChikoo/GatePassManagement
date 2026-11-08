@@ -79,7 +79,7 @@ export function RequestCard({ r, compact = false }: { r: any; compact?: boolean 
           </div>
         </div>
         <div className="shrink-0">
-          <StatusBadge status={r.status} />
+          <StatusBadge status={r.status} pass={r} />
         </div>
       </div>
 

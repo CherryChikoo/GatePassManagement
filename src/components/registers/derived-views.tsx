@@ -298,7 +298,7 @@ export function FacultyBookView({ canMarkIn }: { canMarkIn: boolean }) {
             <RecordHeader
               title={selected.facultyName || "—"}
               subtitle={[selected.employeeId, selected.designation, selected.department].filter(Boolean).join(" · ") || null}
-              status={<StatusBadge status={selected.status} />}
+              status={<StatusBadge status={selected.status} by="faculty" />}
             />
             {/* The trip: out at the gate, back in */}
             <InOutCard
@@ -444,7 +444,7 @@ export function StudentBookView() {
             <RecordHeader
               title={selected.studentName || "—"}
               subtitle={[selected.roll, selected.department, selected.year ? `${t("Year")} ${selected.year}` : null, selected.section].filter(Boolean).join(" · ") || null}
-              status={<StatusBadge status={selected.status} />}
+              status={<StatusBadge status={selected.status} pass={selected} />}
             />
             <InOutCard
               sides={[
@@ -638,7 +638,7 @@ export function VisitorDetails({
             <span className="inline-flex items-center rounded-full bg-orange-500/10 px-2.5 py-0.5 text-xs font-semibold text-orange-500">
               {category[v.category] ?? v.category}
             </span>
-            <StatusBadge status={v.status} />
+            <StatusBadge status={v.status} pass={v} />
           </div>
           {v.phone && (
             <a
@@ -811,7 +811,6 @@ function AdminVisitorForm({ visitor, onSaved }: { visitor: any; onSaved: () => v
           <textarea value={form.remarks} onChange={set("remarks")} rows={2} className="flex min-h-[72px] w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-base sm:text-sm text-zinc-100 outline-none focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10" />
         </label>
       </div>
-      <p className="text-xs text-zinc-500">{t("Leave Out-Time empty if the visitor is still inside.")}</p>
       <button
         type="submit"
         disabled={busy}
@@ -971,7 +970,7 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
               ]
                 .filter(Boolean)
                 .join(" · ") || null}
-              status={<StatusBadge status={selected.status} />}
+              status={<StatusBadge status={selected.status} pass={selected} />}
             />
             {/* The trip: planned times under the actual ones */}
             <InOutCard
@@ -1479,7 +1478,6 @@ function AddNoteForm({ onSaved }: { onSaved: () => void }) {
           <DateField required value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} className={inputCls} />
         </label>
       </div>
-      <p className="-mt-2 text-xs text-zinc-500">{t("For one day, keep From and To the same.")}</p>
       <label className="block space-y-1.5 text-sm font-medium text-zinc-200">
         <span className="block">{t("Information")}</span>
         <textarea
@@ -1528,7 +1526,7 @@ function DayDetails({ date }: { date: string }) {
               <li key={r.id} className="px-4 py-3">
                 <div className="flex items-start justify-between gap-2">
                   <p className="min-w-0 truncate text-sm font-medium text-zinc-100">{r.name}</p>
-                  <StatusBadge status={r.status} />
+                  <StatusBadge status={r.status} pass={r} />
                 </div>
                 <p className="mt-0.5 truncate text-xs text-zinc-400">
                   {faculty ? r.department || "—" : [r.roll, r.room].filter(Boolean).join(" • ")}
@@ -1562,7 +1560,7 @@ function DayDetails({ date }: { date: string }) {
                     <td className="px-3 py-2.5 max-w-[180px] truncate">{faculty ? t(r.requestType) : r.purpose}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">{dates(r)}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">{r.exitedAt ? formatInstant(r.exitedAt) : "—"}</td>
-                    <td className="px-3 py-2.5"><StatusBadge status={r.status} /></td>
+                    <td className="px-3 py-2.5"><StatusBadge status={r.status} pass={r} /></td>
                   </tr>
                 ))}
               </tbody>

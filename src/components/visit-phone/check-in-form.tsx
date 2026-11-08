@@ -11,8 +11,8 @@
  *   category), "Who are you meeting?" (a faculty / staff member gives a 4-digit
  *   code the visitor tells Security when leaving), person to visit, department
  *   (workers), vehicle or on foot, remarks.
- * - Parent / Guardian: the student's roll number -> Find shows only the
- *   student's name / class and which parents are saved (Father / Mother /
+ * - Parent / Guardian: the student's roll number or name -> Find shows only
+ *   the student's name / class (a few to pick from for a name) and which parents are saved (Father / Mother /
  *   Guardian buttons). The parent's own name, mobile and address are never sent
  *   to the phone: the server fills them in from the student's record. "Not
  *   listed? Type my details" shows the usual boxes instead.
@@ -23,7 +23,7 @@
  * visit-sent.tsx): no more calls to the server.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Clock, GraduationCap, KeyRound, Loader2, PencilLine, QrCode, RotateCcw, Search, Send, UserRound, Users } from "lucide-react";
+import { CheckCircle2, Clock, GraduationCap, KeyRound, Loader2, PencilLine, QrCode, RotateCcw, Search, Send, UserRound, Users } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -46,7 +46,7 @@ import {
   visitMessage,
   type VisitFormOk,
   type VisitHost,
-  type VisitStudentOk,
+  type VisitStudentMatch,
 } from "@/components/visit-phone/visit-api";
 import {
   clearDraft,
@@ -92,8 +92,8 @@ const EMPTY_VISITORS: VisitorsValues = {
 type Meeting = { kind: "" | "HOST" | "NONE"; hostGroup: string; hostId: string };
 const EMPTY_MEETING: Meeting = { kind: "", hostGroup: "", hostId: "" };
 
-/** A parent: the student found by roll number (only what the server may tell the phone) */
-type FoundStudent = Omit<VisitStudentOk, "ok"> & { roll: string };
+/** A parent: the student found by roll number or name (only what the server may tell the phone) */
+type FoundStudent = VisitStudentMatch;
 type ParentWho = "FATHER" | "MOTHER" | "GUARDIAN";
 const PARENT_BUTTONS: { who: ParentWho; has: keyof FoundStudent["has"]; label: string }[] = [
   { who: "FATHER", has: "father", label: "Father" },
@@ -101,28 +101,32 @@ const PARENT_BUTTONS: { who: ParentWho; has: keyof FoundStudent["has"]; label: s
   { who: "GUARDIAN", has: "guardian", label: "Guardian" },
 ];
 type ParentState = {
-  /** The roll number as typed */
+  /** The roll number or name as typed */
   roll: string;
   found: FoundStudent | null;
+  /** A name matched several students: the parent picks theirs */
+  matches?: FoundStudent[];
   /** The last Find found nobody (the parent can still type their details) */
   notFound: boolean;
   /** A saved parent picked, or "TYPED": "Not listed? Type my details" */
   who: "" | ParentWho | "TYPED";
 };
-const EMPTY_PARENT: ParentState = { roll: "", found: null, notFound: false, who: "" };
-/** Server answer for an unknown roll number (see src/lib/visits/requests.ts) */
+const EMPTY_PARENT: ParentState = { roll: "", found: null, matches: [], notFound: false, who: "" };
+/** Server answers for an unknown roll number / name (see src/lib/visits/requests.ts) */
 const NO_STUDENT = "No student found with this roll number";
+const NO_NAME = "No student found with this name. Check the spelling or type the roll number.";
+/** A search with a digit is a roll number; otherwise a name */
+const isRollSearch = (v: string) => /\d/.test(v);
+/** What was typed, as sent: a roll number in CAPITALS without spaces, or the name with single spaces */
+const searchText = (v: string) => (isRollSearch(v) ? v.replace(/\s+/g, "").toUpperCase() : v.trim().replace(/\s+/g, " "));
 
 type Draft = { visitors: VisitorsValues; admission: Record<string, string>; meeting: Meeting; parent?: ParentState };
-
-/** Roll number as saved (CAPITALS, no spaces) */
-const cleanRoll = (v: string) => v.replace(/\s+/g, "").toUpperCase();
 
 /** A parent part of a draft, if it still makes sense */
 function restoreParent(p: unknown): ParentState {
   if (!p || typeof p !== "object") return EMPTY_PARENT;
   const v = p as Partial<ParentState>;
-  const roll = typeof v.roll === "string" ? v.roll.slice(0, 40) : "";
+  const roll = typeof v.roll === "string" ? v.roll.slice(0, 60) : "";
   const f = v.found as Partial<FoundStudent> | null | undefined;
   const found: FoundStudent | null =
     f && typeof f === "object" && typeof f.studentName === "string" && typeof f.roll === "string" && f.has && typeof f.has === "object"
@@ -138,7 +142,7 @@ function restoreParent(p: unknown): ParentState {
   let who: ParentState["who"] = v.who === "FATHER" || v.who === "MOTHER" || v.who === "GUARDIAN" || v.who === "TYPED" ? v.who : "";
   if (who === "TYPED" && !found && !notFound) who = "";
   if (who && who !== "TYPED" && !(found && found.has[who === "FATHER" ? "father" : who === "MOTHER" ? "mother" : "guardian"])) who = "";
-  return { roll, found, notFound, who };
+  return { roll, found, matches: [], notFound, who };
 }
 
 /** Group of a faculty / staff member: their department ("CSE" and "Computer Science" are one), else their title */
@@ -154,6 +158,38 @@ const chipCls = (selected: boolean) =>
     selected ? "border-orange-500/50 bg-orange-500/10 text-orange-500" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-950"
   );
 const Star = () => <span className="text-orange-500">*</span>;
+/** Same phone rule as the server (src/lib/visits/requests.ts) */
+const PHONE_RE = /^\+?[0-9][0-9\s-]{8,16}[0-9]$/;
+/** Admission Book boxes that must be filled (as the server checks them) */
+const ADMISSION_REQUIRED = ADMISSION_FIELDS.filter((f) => ADMISSION.required.includes(f.key));
+
+/**
+ * The box a server message is about, so it can be shown to the visitor
+ * (the server checks the same things in the same order).
+ */
+const FIELD_OF_MESSAGE: [RegExp, string][] = [
+  [/full name|your name|Visitor name/i, "v-name"],
+  [/phone number/i, "v-phone"],
+  [/address/i, "v-address"],
+  [/vehicle/i, "v-vehicle"],
+  [/faculty member|person you are meeting/i, "v-host-group"],
+  [/the work/i, "v-detail"],
+  [/roll number|Find the student/i, "v-roll"],
+];
+
+/** Brings the box into view and puts the cursor in it (the visitor sees what is missing) */
+function showField(id: string | null) {
+  if (!id) return;
+  // After React has drawn the message
+  requestAnimationFrame(() => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) {
+      el.focus({ preventScroll: true });
+    }
+  });
+}
 
 export function CheckInForm({ token }: { token: string }) {
   const t = useT();
@@ -175,6 +211,8 @@ export function CheckInForm({ token }: { token: string }) {
   const [findError, setFindError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The box the message above the button is about (outlined in red until it is changed) */
+  const [badField, setBadField] = useState<string | null>(null);
   /** The QR is too old to send the form: scan again (what was typed is kept) */
   const [tooLate, setTooLate] = useState(false);
 
@@ -314,29 +352,35 @@ export function CheckInForm({ token }: { token: string }) {
     setVisitors((v) => (v.comingFor === value ? v : { ...v, comingFor: value, detail: "" }));
   }
 
-  /** A parent's Find: the student by exact roll number (one call per tap) */
+  /** A parent's Find: the student by exact roll number, or by name (a few to pick from); one call per tap */
   async function findStudent() {
     if (finding) return;
-    const roll = cleanRoll(parent.roll);
+    const q = searchText(parent.roll);
     setFindError(null);
     setError(null);
-    if (!PATTERNS.STUDENT_ROLL.test(roll)) {
-      setFindError(t("Enter a valid roll number"));
+    if (isRollSearch(q) ? !PATTERNS.STUDENT_ROLL.test(q) : q.replace(/[^\p{L}]/gu, "").length < 3) {
+      setFindError(t(isRollSearch(q) ? "Enter a valid roll number" : "Type at least 3 letters of the student's name"));
       return;
     }
     setFinding(true);
-    const res = await findVisitStudent(token, roll);
+    const res = await findVisitStudent(token, q);
     setFinding(false);
     if (res.ok) {
-      const { ok: _ok, ...student } = res;
-      setParent((p) => ({ roll, found: { ...student, roll }, notFound: false, who: p.who === "TYPED" ? "TYPED" : "" }));
+      const keepTyped = (p: ParentState): ParentState["who"] => (p.who === "TYPED" ? "TYPED" : "");
+      if (res.students.length === 1) {
+        setParent((p) => ({ roll: q, found: res.students[0], matches: [], notFound: false, who: keepTyped(p) }));
+      } else {
+        setParent((p) => ({ roll: q, found: null, matches: res.students, notFound: false, who: keepTyped(p) }));
+      }
       return;
     }
     if (res.error === "expired" || res.error === "invalid") {
       setTooLate(true);
       return;
     }
-    if (res.error === NO_STUDENT) setParent((p) => ({ roll, found: null, notFound: true, who: p.who === "TYPED" ? "TYPED" : "" }));
+    if (res.error === NO_STUDENT || res.error === NO_NAME) {
+      setParent((p) => ({ roll: q, found: null, matches: [], notFound: true, who: p.who === "TYPED" ? "TYPED" : "" }));
+    }
     setFindError(visitMessage(t, res.error));
   }
 
@@ -344,8 +388,12 @@ export function CheckInForm({ token }: { token: string }) {
     e.preventDefault();
     if (sending || !form) return;
     setError(null);
-    const fail = (message: string) => {
+    setBadField(null);
+    // The message above the button, and the box it is about outlined in red and brought into view
+    const fail = (message: string, field: string | null = null) => {
       setError(t(message));
+      setBadField(field);
+      showField(field);
       return;
     };
 
@@ -353,49 +401,60 @@ export function CheckInForm({ token }: { token: string }) {
     let typedName: string;
     let host: VisitHost | undefined;
     if (isVisitors) {
-      if (!comingFor) return fail("Choose what you are coming for");
+      if (!comingFor) return fail("Choose what you are coming for", "v-coming");
       const vehicle = { vehicleNumber: visitors.onFoot ? "" : visitors.vehicleNumber.trim().toUpperCase(), onFoot: visitors.onFoot };
       const typed = { name: visitors.name.trim(), phone: visitors.phone.trim(), address: visitors.address.trim() };
       const detail = visitors.detail.trim();
-      const checkTyped = () => {
-        if (!typed.name) return "Enter the full name";
-        if (!typed.phone) return "Enter the phone number";
-        if (!typed.address) return "Enter the address or company";
+      const checkTyped = (): [string, string] | null => {
+        if (typed.name.length < 2) return ["Enter the full name", "v-name"];
+        if (!typed.phone) return ["Enter the phone number", "v-phone"];
+        if (!PHONE_RE.test(typed.phone)) return ["Enter a valid phone number (10–15 digits)", "v-phone"];
+        if (!typed.address) return ["Enter the address or company", "v-address"];
         return null;
       };
+      const noVehicle = () => fail("Enter the vehicle number, or choose On foot", "v-vehicle");
       if (isParent) {
         // The parent's details are filled in by the server from the student's record
         const typing = parentTyping;
-        if (!parent.found && !typing) return fail("Enter the student's roll number and tap Find");
-        if (!parent.who) return fail("Tap Father, Mother or Guardian, or type your details");
+        if (!parent.found && !typing) return fail("Enter the student's roll number or name and tap Find", "v-roll");
+        if (!parent.who) return fail("Tap Father, Mother or Guardian, or type your details", "v-parent-who");
         if (typing) {
           const missing = checkTyped();
-          if (missing) return fail(missing);
+          if (missing) return fail(...missing);
         }
-        if (!vehicle.onFoot && !vehicle.vehicleNumber) return fail("Enter the vehicle number, or choose On foot");
-        const student = parent.found ? `${parent.found.studentName} (${parent.found.roll})` : cleanRoll(parent.roll);
+        if (!vehicle.onFoot && !vehicle.vehicleNumber) return noVehicle();
+        const student = parent.found ? `${parent.found.studentName} (${parent.found.roll})` : searchText(parent.roll);
         const missing = missingComingForDetail(comingFor, { student });
-        if (missing) return fail(missing);
+        if (missing) return fail(missing, "v-roll");
         data = {
           comingFor,
           ...vehicle,
-          ...(parent.found ? { studentRoll: parent.found.roll } : { detail: cleanRoll(parent.roll) }),
+          ...(parent.found ? { studentRoll: parent.found.roll } : { detail: searchText(parent.roll) }),
           ...(typing ? typed : { parentWho: parent.who }),
         };
         typedName = typing ? typed.name : parent.found?.studentName ?? "";
       } else {
         host = comingFor === "MEETING" ? hosts.find((h) => h.id === meeting.hostId) : undefined;
-        const missing = checkTyped() ?? missingComingForDetail(comingFor, { detail, hostProfileId: host?.id });
-        if (missing) return fail(missing);
-        if (!vehicle.onFoot && !vehicle.vehicleNumber) return fail("Enter the vehicle number, or choose On foot");
+        const typedMissing = checkTyped();
+        if (typedMissing) return fail(...typedMissing);
+        const missing = missingComingForDetail(comingFor, { detail, hostProfileId: host?.id });
+        if (missing) return fail(missing, comingFor === "MEETING" ? (meeting.hostGroup ? "v-host" : "v-host-group") : "v-detail");
+        if (!vehicle.onFoot && !vehicle.vehicleNumber) return noVehicle();
         const f = comingForFields(comingFor, { detail, hostProfileId: host?.id });
         data = { comingFor, detail, hostProfileId: f.hostProfileId, ...typed, ...vehicle };
         typedName = typed.name;
       }
     } else {
-      if (!meeting.kind && hosts.length > 0) return fail("Choose who you are meeting");
+      for (const f of ADMISSION_REQUIRED) {
+        if (!(admission[f.key] ?? "").trim()) return fail(t("{field} is required", { field: t(f.label) }), `a-${f.key}`);
+      }
+      for (const f of ADMISSION_FIELDS) {
+        const v = (admission[f.key] ?? "").trim();
+        if (f.type === "phone" && v && !PHONE_RE.test(v)) return fail(`${t(f.label)}: ${t("Enter a valid phone number (10–15 digits)")}`, `a-${f.key}`);
+      }
+      if (!meeting.kind && hosts.length > 0) return fail("Choose who you are meeting", "v-meeting");
       host = meeting.kind === "HOST" ? hosts.find((h) => h.id === meeting.hostId) : undefined;
-      if (meeting.kind === "HOST" && !host) return fail("Choose the person you are meeting from the list");
+      if (meeting.kind === "HOST" && !host) return fail("Choose the person you are meeting from the list", meeting.hostGroup ? "v-host" : "v-host-group");
       data = Object.fromEntries(ADMISSION_FIELDS.map((f) => [f.key, (admission[f.key] ?? "").trim()]));
       typedName = (admission.parentName ?? "").trim();
     }
@@ -422,7 +481,19 @@ export function CheckInForm({ token }: { token: string }) {
       setTooLate(true);
       return;
     }
+    // The server's message, with its box shown when it names one
+    let field: string | null = null;
+    if (!isVisitors) {
+      const named = ADMISSION_FIELDS.find((f) => res.error.startsWith(f.label));
+      if (named) field = `a-${named.key}`;
+    } else {
+      field = FIELD_OF_MESSAGE.find(([re]) => re.test(res.error))?.[1] ?? null;
+      // A parent picked from the record has no name / phone / address boxes
+      if (isParent && !parentTyping && field && ["v-name", "v-phone", "v-address"].includes(field)) field = null;
+    }
     setError(visitMessage(t, res.error));
+    setBadField(field);
+    showField(field);
   }
 
   /** Full name, phone and address boxes (everyone except a parent picked from the record) */
@@ -439,7 +510,6 @@ export function CheckInForm({ token }: { token: string }) {
           maxLength={100}
           autoComplete="name"
           autoCapitalize="words"
-          placeholder={t("Enter full name")}
           value={visitors.name}
           onChange={(e) => setV({ name: e.target.value })}
           className="text-base"
@@ -456,7 +526,6 @@ export function CheckInForm({ token }: { token: string }) {
           inputMode="tel"
           autoComplete="tel"
           maxLength={15}
-          placeholder={t("Enter phone")}
           value={visitors.phone}
           onChange={(e) => setV({ phone: e.target.value })}
           className="text-base"
@@ -471,7 +540,6 @@ export function CheckInForm({ token }: { token: string }) {
           required
           maxLength={300}
           autoComplete="street-address"
-          placeholder={t("Your address or company")}
           value={visitors.address}
           onChange={(e) => setV({ address: e.target.value })}
           className="text-base"
@@ -489,13 +557,27 @@ export function CheckInForm({ token }: { token: string }) {
           {form.gate ? ` · ${form.gate}` : ""}
         </p>
         <p className="mt-2 text-sm leading-relaxed text-zinc-400">
-          {t("Send this form. The security officer will check it and take your photo at the gate.")}
+          {isVisitors
+            ? t("Send this form. The security officer will check it at the gate.")
+            : t("Send this form. The security officer will check it and take your photo at the gate.")}
         </p>
       </div>
 
       <Card>
         <CardContent className="p-5">
-          <form data-look="clear" onSubmit={handleSubmit} className="space-y-6">
+          <form
+            data-look="clear"
+            noValidate
+            onSubmit={handleSubmit}
+            // Typing or choosing in the box that was missing clears its red outline
+            onInput={(e) => badField && (e.target as HTMLElement).id === badField && setBadField(null)}
+            onChange={(e) => badField && (e.target as HTMLElement).id === badField && setBadField(null)}
+            className="space-y-6"
+          >
+            {/* The box that is missing: red outline (found by its id) */}
+            {badField && (
+              <style>{`#${CSS.escape(badField)}{border-color:#ef4444!important;box-shadow:0 0 0 3px rgba(239,68,68,.25)!important}`}</style>
+            )}
             {isVisitors ? (
               <>
                 {/* "Coming for" first: the rest of the form follows from it */}
@@ -544,7 +626,6 @@ export function CheckInForm({ token }: { token: string }) {
                           id="v-detail"
                           required={comingFor === "OTHER"}
                           maxLength={150}
-                          placeholder={t(COMING_FOR[comingFor].detailLabel)}
                           value={visitors.detail}
                           onChange={(e) => setV({ detail: e.target.value })}
                           className="text-base"
@@ -567,7 +648,7 @@ export function CheckInForm({ token }: { token: string }) {
                       maxLength={30}
                       autoComplete="off"
                       autoCapitalize="characters"
-                      placeholder={visitors.onFoot ? t("No vehicle") : t("E.g., TS 09 EA 1234")}
+                      placeholder={visitors.onFoot ? t("No vehicle") : undefined}
                       value={visitors.onFoot ? "" : visitors.vehicleNumber}
                       onChange={(e) => setV({ vehicleNumber: e.target.value.toUpperCase() })}
                       className="text-base disabled:opacity-60"
@@ -676,7 +757,7 @@ function ParentPart({
             </div>
             <button
               type="button"
-              onClick={() => setParent((p) => ({ ...p, found: null, notFound: false, who: "" }))}
+              onClick={() => setParent((p) => ({ ...p, found: null, matches: [], notFound: false, who: "" }))}
               className="h-11 shrink-0 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-sm font-medium text-orange-500 hover:bg-zinc-950"
             >
               {t("Change")}
@@ -685,21 +766,22 @@ function ParentPart({
         ) : (
           <div className="space-y-1.5">
             <label htmlFor="v-roll" className={labelCls}>
-              {t("Student's roll number")} <Star />
+              {t("Student's roll number or name")} <Star />
             </label>
             <div className="flex gap-2">
               <Input
                 id="v-roll"
                 maxLength={30}
                 autoComplete="off"
-                autoCapitalize="characters"
+                autoCapitalize="off"
                 spellCheck={false}
                 enterKeyHint="search"
-                placeholder="E.g., 23ME1A0501"
                 value={parent.roll}
                 onChange={(e) => {
                   onRollTyped();
-                  setParent((p) => ({ ...p, roll: e.target.value.toUpperCase() }));
+                  const v = e.target.value;
+                  // Roll numbers in CAPITALS as typed; names as typed. A new search hides the old list
+                  setParent((p) => ({ ...p, roll: isRollSearch(v) ? v.toUpperCase() : v, matches: [] }));
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -720,9 +802,36 @@ function ParentPart({
               </button>
             </div>
             {findError && (
-              <p role="alert" className="text-sm font-medium text-red-500">
+              <p role="alert" className="rounded-2xl border-2 border-red-500 bg-red-50 px-3 py-2.5 text-base font-bold leading-snug text-red-700">
                 {findError}
               </p>
+            )}
+            {/* A name matched several students: tap yours */}
+            {!!parent.matches?.length && (
+              <div className="space-y-2 pt-1">
+                <p className="text-sm font-semibold text-zinc-300">{t("Tap your child's name")}</p>
+                <ul className="space-y-2">
+                  {parent.matches.map((m) => {
+                    const dept = m.department ? listedDepartmentCode(m.department) || m.department : null;
+                    const line = [dept, m.year ? t("Year {n}", { n: m.year }) : null, m.roll].filter(Boolean).join(" · ");
+                    return (
+                      <li key={m.roll}>
+                        <button
+                          type="button"
+                          onClick={() => setParent((p) => ({ ...p, found: m, matches: [], notFound: false }))}
+                          className="flex min-h-14 w-full items-start gap-3 rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900 px-4 py-3 text-left transition-colors hover:border-orange-500/60 active:bg-orange-500/10"
+                        >
+                          <GraduationCap className="mt-0.5 h-5 w-5 shrink-0 text-orange-500" aria-hidden="true" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block break-words text-base font-semibold text-zinc-100">{m.studentName}</span>
+                            <span className="block break-words text-sm text-zinc-500">{line}</span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             )}
           </div>
         )}
@@ -748,6 +857,9 @@ function ParentPart({
                 ))}
               </div>
             )}
+            {saved.length === 0 && (
+              <p className="text-sm leading-relaxed text-zinc-500">{t("Your details are not saved for this student. Please type them.")}</p>
+            )}
             {parent.who && parent.who !== "TYPED" && (
               <p className="text-xs leading-relaxed text-zinc-500">
                 {t("Your name, mobile number and address are filled in from the student's record.")}
@@ -761,9 +873,14 @@ function ParentPart({
             type="button"
             aria-pressed={typing}
             onClick={() => setParent((p) => ({ ...p, who: "TYPED" }))}
-            className={cn(chipCls(typing), "w-full justify-start gap-3 px-4 text-left")}
+            className={cn(
+              "flex min-h-14 w-full items-center justify-center gap-2.5 rounded-2xl border-2 px-4 py-2 text-center text-base font-bold leading-snug transition-colors",
+              typing
+                ? "border-orange-600 bg-orange-600 text-white"
+                : "border-dashed border-orange-500 bg-orange-50 text-orange-700 hover:bg-orange-100"
+            )}
           >
-            <PencilLine className="h-5 w-5 shrink-0" aria-hidden="true" />
+            {typing ? <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" /> : <PencilLine className="h-5 w-5 shrink-0" aria-hidden="true" />}
             {t("Not listed? Type my details")}
           </button>
         )}
@@ -812,7 +929,6 @@ function AdmissionField({
           value={value}
           maxLength={1000}
           rows={3}
-          placeholder={f.placeholder ? t(f.placeholder) : undefined}
           required={required}
           onChange={(e) => onChange(e.target.value)}
           className={cn(fieldCls, "h-auto min-h-[96px] resize-none py-3")}
@@ -844,7 +960,6 @@ function AdmissionField({
           list={f.type === "person" ? "v-people" : undefined}
           autoComplete={f.key === "parentName" ? "name" : "off"}
           autoCapitalize={f.type === "person" || f.key === "parentName" ? "words" : undefined}
-          placeholder={f.placeholder ? t(f.placeholder) : undefined}
           required={required}
           onChange={(e) => onChange(e.target.value)}
           className={fieldCls}

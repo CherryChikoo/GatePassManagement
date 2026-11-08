@@ -770,7 +770,7 @@ export function FacultyApplyClient() {
                               {pass.type === "EXIT" ? <LogOut className="h-3 w-3" /> : <LogIn className="h-3 w-3" />}
                               {pass.type}
                             </span>
-                            <StatusBadge status={pass.status} />
+                            <StatusBadge status={pass.status} by="faculty" />
                           </div>
                           <p className="text-sm font-medium text-zinc-100 break-words">{pass.purpose}</p>
                           <div className="text-xs text-zinc-500 flex flex-wrap items-center gap-x-4 gap-y-1">

@@ -158,7 +158,7 @@ export function WardenDashboardClient({ user }: Props) {
                             <span className="block text-xs text-zinc-500 truncate">{item.purpose}</span>
                           </span>
                           <span className="flex flex-col items-end gap-1 shrink-0">
-                            <StatusBadge status={item.status} />
+                            <StatusBadge status={item.status} by="student" />
                             <span className="text-[11px] text-zinc-500 whitespace-nowrap">
                               {item.qr?.usedForExit && (
                                 <span className="font-medium text-zinc-400">
@@ -255,7 +255,7 @@ export function WardenDashboardClient({ user }: Props) {
             </div>
             <div className="min-w-0">
               <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Status</dt>
-              <dd className="mt-1"><StatusBadge status={selectedActivity.status} /></dd>
+              <dd className="mt-1"><StatusBadge status={selectedActivity.status} by="student" /></dd>
             </div>
             <div className="min-w-0 sm:col-span-2">
               <dt className="text-[11px] uppercase tracking-wider text-zinc-500">Purpose</dt>

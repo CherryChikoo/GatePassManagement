@@ -230,7 +230,7 @@ export function SecurityLogClient({ initialDate }: { initialDate?: string }) {
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2 min-w-0">
                         <span className="truncate text-base font-medium text-zinc-100">{outsider.name}</span>
-                        <StatusBadge status={outsider.status} />
+                        <StatusBadge status={outsider.status} pass={outsider} />
                       </span>
                       <span className="mt-0.5 block truncate text-sm text-zinc-400">
                         {outsider.category} • {purposeLine(outsider)}
@@ -301,7 +301,7 @@ export function SecurityLogClient({ initialDate }: { initialDate?: string }) {
                         )}
                       </td>
                       <td className={dt.td}>
-                        <StatusBadge status={outsider.status} />
+                        <StatusBadge status={outsider.status} pass={outsider} />
                       </td>
                       <td className={dt.tdActions}>
                         <RowActions>

@@ -53,9 +53,9 @@ export function PhoneLoading({ label }: { label?: string }) {
 /** A problem under a form or a card (server message already translated) */
 export function PhoneAlert({ children }: { children: React.ReactNode }) {
   return (
-    <div role="alert" className="flex items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-500">
-      <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-      <p className="text-sm font-medium leading-relaxed">{children}</p>
+    <div role="alert" className="flex items-start gap-3 rounded-2xl border-2 border-red-500 bg-red-50 px-4 py-3.5 text-red-700">
+      <AlertCircle className="mt-0.5 h-6 w-6 shrink-0" aria-hidden="true" />
+      <p className="text-base font-bold leading-snug">{children}</p>
     </div>
   );
 }

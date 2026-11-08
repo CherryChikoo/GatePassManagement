@@ -43,9 +43,16 @@ export function StoreHydrator({ user }: { user: StoreUser }) {
   // A request for this approver arrived, was cancelled or decided elsewhere:
   // a small refresh (requests and counts, not the directories).
   const isApprover = APPROVER_ROLES.includes(user.role);
+  // Everyone listens on their own private topic: approvers for "requests", and
+  // pass holders (students, faculty…) for "pass:<id>" — approved, rejected or
+  // scanned shows at once instead of on the next 5-minute refresh.
   const approverLive = useOwnLive((changed) => {
-    if (changed.includes("requests") || changed.includes("*")) void reloadRequests();
-  }, isApprover);
+    if (isApprover && (changed.includes("requests") || changed.includes("*"))) {
+      void reloadRequests();
+      return;
+    }
+    if (changed.includes("*") || changed.some((c) => c.startsWith("pass:"))) void useAppStore.getState().refresh(true);
+  }, user.role !== "SECURITY" && user.role !== "SECURITY_SUPERVISOR" && user.role !== "ESTATE_MANAGER");
   // If that live connection quietly died (laptop asleep, Wi-Fi change), new
   // requests must still show without reloading the page
   useSafetyReload(reloadRequests, {

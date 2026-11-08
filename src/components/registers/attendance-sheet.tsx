@@ -447,7 +447,6 @@ function CellPicker({
               );
             })}
           </div>
-          {!isAdmin && <p className="text-xs text-zinc-500">{t("You can change a mark for 2 days (today and yesterday).")}</p>}
           <button
             type="button"
             disabled={!choice || !changed}
@@ -526,7 +525,6 @@ function DayPanel({
               placeholder={t("e.g. K. Prakash on leave (family function); G. Eswara Rao double duty")}
               className="flex min-h-[110px] w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
             />
-            <p className="text-xs text-zinc-500">{t("Remarks can be written or changed for 2 days (today and yesterday). After that they are locked.")}</p>
             <button
               type="button"
               disabled={busy || text.trim() === (remark?.text ?? "")}

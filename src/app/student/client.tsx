@@ -451,7 +451,7 @@ function QrCodeView({
               {isExpired ? "Pass Expired" : timeLeft || "Calculating validity..."}
             </span>
           </div>
-          <StatusBadge status={permission.status} />
+          <StatusBadge status={permission.status} by="student" />
         </div>
 
         <CardContent className="p-5 sm:p-8 flex flex-col items-center text-center space-y-5 sm:space-y-6 min-w-0">

@@ -804,7 +804,7 @@ export function UserDetailClient({
                                 </p>
                               </div>
                               <div className="flex flex-col items-end gap-1 shrink-0">
-                                <StatusBadge status={item.status} />
+                                <StatusBadge status={item.status} pass={item} />
                                 <p className="text-[11px] text-zinc-500">
                                   {getRelativeTime(item.createdAt)}
                                 </p>
@@ -938,7 +938,7 @@ export function UserDetailClient({
                             )}
                           </div>
                           <div className="shrink-0">
-                            <StatusBadge status={p.status} />
+                            <StatusBadge status={p.status} pass={p} />
                           </div>
                         </div>
                         <dl className="grid grid-cols-2 gap-3 rounded-2xl bg-zinc-950 p-3 text-xs">
@@ -1061,7 +1061,7 @@ export function UserDetailClient({
 
                           {/* Status */}
                           <td className={dt.td}>
-                            <StatusBadge status={p.status} />
+                            <StatusBadge status={p.status} pass={p} />
                           </td>
 
                           {/* Gate Movement linked */}
@@ -1178,7 +1178,7 @@ function ApprovalSummary({ p }: { p: any }) {
       </div>
     );
   }
-  if (p.status === "CANCELLED") return <span className="text-zinc-500">Cancelled</span>;
+  if (p.status === "CANCELLED") return <span className="font-semibold text-purple-700">Cancelled by the requester (before approval)</span>;
   if (p.status === "EXPIRED") return <span className="text-zinc-500">Expired before approval</span>;
   return <span className="text-amber-400 italic">Pending review</span>;
 }

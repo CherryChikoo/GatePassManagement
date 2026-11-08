@@ -316,7 +316,7 @@ export function FacultyPassHistoryClient({ faculty, permissions, stats }: Props)
                         {pass.type} PASS
                       </span>
                       <h3 className="text-base font-medium text-zinc-100 break-words">{pass.purpose}</h3>
-                      <StatusBadge status={pass.status} />
+                      <StatusBadge status={pass.status} by="faculty" />
                     </div>
 
                     {pass.createdAt && (

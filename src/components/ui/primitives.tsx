@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { T } from "@/components/providers/language-provider";
 import { createPortal } from "react-dom";
 import { lockPageScroll } from "@/lib/ui/scroll-lock";
+import { Ban, CheckCheck, CheckCircle2, Clock, Hourglass, LogIn, LogOut, XCircle, type LucideIcon } from "lucide-react";
 
 // ──────────────────────────────────────────────────────────────
 // Badge
@@ -123,24 +124,66 @@ export { Textarea };
 // Status Badge (auto-colored from status string)
 // ──────────────────────────────────────────────────────────────
 
-export function StatusBadge({ status }: { status: string }) {
-  const variantMap: Record<string, BadgeProps["variant"]> = {
-    PENDING: "warning",
-    APPROVED: "success",
-    REJECTED: "danger",
-    CANCELLED: "outline",
-    EXPIRED: "outline",
-    EXITED: "info",
-    COMPLETED: "success",
-    INSIDE: "success",
-    OUTSIDE: "warning",
-    EXIT: "warning",
-    ENTRY: "info",
-  };
+/**
+ * Pass / movement status, told apart at a glance: each has its own colour, icon and word
+ * (Approved green, Rejected red, Cancelled purple with a strike-through sign, Expired grey…).
+ */
+const STATUS_LOOK: Record<string, { label: string; icon: LucideIcon; cls: string }> = {
+  PENDING: { label: "Pending", icon: Clock, cls: "border-amber-500/40 bg-amber-500/10 text-amber-700" },
+  APPROVED: { label: "Approved", icon: CheckCircle2, cls: "border-emerald-600 bg-emerald-600 text-white" },
+  REJECTED: { label: "Rejected", icon: XCircle, cls: "border-red-600 bg-red-600 text-white" },
+  CANCELLED: { label: "Cancelled", icon: Ban, cls: "border-purple-500/50 bg-purple-500/10 text-purple-700" },
+  EXPIRED: { label: "Expired", icon: Hourglass, cls: "border-zinc-600 bg-zinc-950 text-zinc-500" },
+  EXITED: { label: "Out", icon: LogOut, cls: "border-sky-500/50 bg-sky-500/10 text-sky-700" },
+  COMPLETED: { label: "Completed", icon: CheckCheck, cls: "border-emerald-500/50 bg-emerald-500/10 text-emerald-700" },
+  INSIDE: { label: "Inside", icon: LogIn, cls: "border-emerald-500/50 bg-emerald-500/10 text-emerald-700" },
+  OUTSIDE: { label: "Outside", icon: LogOut, cls: "border-amber-500/40 bg-amber-500/10 text-amber-700" },
+  EXIT: { label: "Exit", icon: LogOut, cls: "border-sky-500/50 bg-sky-500/10 text-sky-700" },
+  ENTRY: { label: "Entry", icon: LogIn, cls: "border-emerald-500/50 bg-emerald-500/10 text-emerald-700" },
+};
+
+/** Who asked for the pass (and so who cancelled it): from the pass itself */
+function requesterOf(pass: any): "student" | "faculty" | null {
+  if (!pass || typeof pass !== "object") return null;
+  if (pass.faculty || pass.facultyId || pass.requesterType === "FACULTY") return "faculty";
+  if (pass.student || pass.studentId || pass.rollNumber || pass.requesterType === "STUDENT") return "student";
+  return null;
+}
+
+export function StatusBadge({
+  status,
+  className,
+  pass,
+  by,
+}: {
+  status: string;
+  className?: string;
+  /** The pass: tells who cancelled it ("Cancelled by student" / "by faculty") */
+  pass?: unknown;
+  /** Or say it directly (e.g. a list of only student passes) */
+  by?: "student" | "faculty";
+}) {
+  const look = STATUS_LOOK[status];
+  const who = status === "CANCELLED" ? by ?? requesterOf(pass) : null;
+  if (!look) {
+    return (
+      <Badge variant="default" className={className}>
+        <T>{status}</T>
+      </Badge>
+    );
+  }
+  const Icon = look.icon;
   return (
-    <Badge variant={variantMap[status] || "default"}>
-      <T>{status}</T>
-    </Badge>
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border-[1.5px] px-2.5 py-0.5 text-xs font-bold",
+        look.cls,
+        className
+      )}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <T>{who === "student" ? "Cancelled by student" : who === "faculty" ? "Cancelled by faculty" : look.label}</T>
+    </span>
   );
 }
 

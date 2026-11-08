@@ -8,19 +8,22 @@ import { VoicePanel, useVoiceFill } from "@/components/voice/voice-fill";
 import { HostPicker } from "@/components/visits/host-picker";
 import { VisitCodeFields, visitInputReady, type VisitExitInput } from "@/components/visits/visit-code";
 import type { VoiceFill } from "@/lib/voice/spec";
-import { AlertCircle, FileText, CalendarDays, Camera, CheckCircle2, FileX, ChevronDown, Clock, History, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, PlusCircle, RotateCcw, Save, Trash2, X } from "lucide-react";
+import { AlertCircle, Briefcase, FileText, CalendarDays, Camera, CheckCircle2, FileX, ChevronDown, Clock, GraduationCap, History, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, PlusCircle, RotateCcw, Save, Search, Trash2, Undo2, X } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
 import { DepartmentSelect } from "@/components/ui/department-select";
-import { CooliePicker, SirosNewPeople, SirosPersonDialog, contractorItems, useSirosPeople } from "./siros-people";
+import { ContractorInput, CooliePicker, SirosPersonDialog, contractorItems, useSirosPeople } from "./siros-people";
 import { ComboInput, useVehicleOptions, type ComboItem } from "./combo-input";
 import { compressPhoto } from "@/lib/images/compress-photo";
 import type { Direction, EntryRegister, FieldDef, GroupDef } from "@/lib/registers/definitions";
 import { isFieldRequired, pendingActions, yesNoWords } from "@/lib/registers/definitions";
+import { workersInside } from "@/lib/registers/validate";
 import { cn, formatDate } from "@/lib/utils";
 import { Modal } from "@/components/ui/primitives";
 import type { readBillPhoto } from "@/server/actions/bill-reader";
+import type { KeyStudent } from "@/server/actions/registers";
 import { useGateData } from "@/lib/gate-cache";
 import { displayValue } from "./localize";
+import { ZoomablePhoto } from "@/components/ui/zoomable-photo";
 
 export type StaffOption = { id: string; name: string; employeeId: string | null };
 type Values = Record<string, any>;
@@ -181,7 +184,6 @@ function PersonInput({
         role="combobox"
         aria-expanded={open}
         aria-controls={`${id}-list`}
-        placeholder={t("Search name, or type it")}
         onFocus={() => setOpen(true)}
         onClick={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
@@ -241,7 +243,7 @@ function PersonInput({
                     setOpen(false);
                   }}
                   className={`flex w-full min-h-11 flex-col items-start justify-center rounded-xl px-3 py-2 text-left transition-colors ${
-                    personLabel(p) === value ? "bg-orange-500/10" : "hover:bg-zinc-950"
+                    personLabel(p) === value ? "bg-orange-500/15" : "hover:bg-orange-500/10 active:bg-orange-500/15"
                   }`}
                 >
                   <span className="flex items-center gap-2 text-sm font-medium text-zinc-100">
@@ -257,6 +259,293 @@ function PersonInput({
           )}
         </ul>
       )}
+    </div>
+  );
+}
+
+// ─── Keys Book: "Key taken by" (Faculty / Staff or Student) ──────────────────
+
+const HOLDER_TYPES = [
+  { value: "Faculty / Staff", icon: Briefcase },
+  { value: "Student", icon: GraduationCap },
+] as const;
+
+const isStudentValue = (v: string) => v === "Student";
+
+/** Student searches already answered (typing back or searching again is instant) */
+const keyStudentAnswers = new Map<string, KeyStudent[]>();
+
+/**
+ * A student by roll number or name: suggestions while typing (asked after a
+ * short pause, answers kept), pick one. The name typed is kept when the
+ * student is not in the list.
+ */
+function KeyStudentInput({
+  id,
+  value,
+  picked,
+  onType,
+  onPick,
+  required,
+}: {
+  id: string;
+  value: string;
+  /** Roll number of the picked student ("" while typing) */
+  picked: string;
+  onType: (v: string) => void;
+  onPick: (s: KeyStudent) => void;
+  required?: boolean;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [, answered] = useState(0);
+  // The search that could not be answered (its error shows only for it)
+  const [failedKey, setFailedKey] = useState<string | null>(null);
+  const q = value.trim().replace(/\s+/g, " ");
+  const byRoll = /\d/.test(q);
+  const key = q.length >= (byRoll ? 2 : 3) ? (byRoll ? `r:${q.replace(/\s+/g, "").toUpperCase()}` : `n:${q.toLowerCase()}`) : null;
+  const rows = key ? keyStudentAnswers.get(key) ?? null : null;
+  const failed = !!key && failedKey === key;
+  const searching = !!key && !picked && rows === null && !failed;
+  // The row under the finger / mouse or chosen with ↑ ↓ (for this search only); Enter picks it
+  const [hi, setHi] = useState<{ key: string | null; i: number }>({ key: null, i: -1 });
+  const active = rows && hi.key === key ? Math.min(hi.i, rows.length - 1) : -1;
+  const pick = (s: KeyStudent) => {
+    onPick(s);
+    setOpen(false);
+  };
+  // The typed part, in orange: the start of the roll number, or anywhere in the name
+  const marked = (text: string, isRoll: boolean) => {
+    const needle = isRoll ? q.replace(/\s+/g, "").toUpperCase() : q.toLowerCase();
+    const at = isRoll ? (text.toUpperCase().startsWith(needle) ? 0 : -1) : text.toLowerCase().indexOf(needle);
+    if (!needle || at < 0 || isRoll !== byRoll) return text;
+    return (
+      <>
+        {text.slice(0, at)}
+        <mark className="rounded bg-orange-500/15 px-0.5 font-bold text-orange-700">{text.slice(at, at + needle.length)}</mark>
+        {text.slice(at + needle.length)}
+      </>
+    );
+  };
+
+  useEffect(() => {
+    if (!key || picked || keyStudentAnswers.has(key)) return;
+    const timer = setTimeout(() => {
+      callGate("searchKeyStudents", [q], 15_000)
+        .then((res: KeyStudent[]) => {
+          if (Array.isArray(res)) {
+            keyStudentAnswers.set(key, res);
+            if (keyStudentAnswers.size > 300) keyStudentAnswers.delete(keyStudentAnswers.keys().next().value as string);
+            answered((n) => n + 1);
+          } else setFailedKey(key);
+        })
+        .catch(() => setFailedKey(key));
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [key, q, picked]);
+
+  if (picked) {
+    return (
+      <div className="flex items-center gap-3 rounded-2xl border-2 border-emerald-500/50 bg-emerald-500/10 px-4 py-3">
+        <GraduationCap className="h-6 w-6 shrink-0 text-emerald-600" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <p className="break-words text-lg font-bold leading-snug text-zinc-100">{value}</p>
+          <p className="break-all text-base font-semibold tabular-nums tracking-wide text-zinc-300">{picked}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onType("")}
+          className="h-11 shrink-0 rounded-full border border-zinc-700 bg-zinc-900 px-4 text-sm font-semibold text-orange-600 hover:bg-zinc-950"
+        >
+          {t("Change")}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      {searching ? (
+        <Loader2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-orange-500" aria-hidden="true" />
+      ) : (
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
+      )}
+      <input
+        id={id}
+        value={value}
+        required={required}
+        autoComplete="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={`${id}-list`}
+        aria-busy={searching}
+        aria-activedescendant={active >= 0 ? `${id}-opt-${active}` : undefined}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => {
+          const n = rows?.length ?? 0;
+          if (e.key === "ArrowDown" && n) {
+            e.preventDefault();
+            setOpen(true);
+            setHi({ key, i: active < 0 ? 0 : Math.min(active + 1, n - 1) });
+          } else if (e.key === "ArrowUp" && n) {
+            e.preventDefault();
+            setHi({ key, i: Math.max(active - 1, 0) });
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (open && rows && active >= 0) pick(rows[active]);
+          } else if (e.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+        onChange={(e) => {
+          const v = e.target.value;
+          onType(/\d/.test(v) ? v.toUpperCase() : v);
+          setOpen(true);
+        }}
+        className={`${inputCls} pl-11`}
+      />
+      {open && key && (
+        <ul id={`${id}-list`} role="listbox" className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-1 shadow-card">
+          {failed ? (
+            <li className="px-3 py-2.5 text-sm text-red-600">{t("Could not search. Please try again.")}</li>
+          ) : rows === null ? (
+            <li className="flex items-center gap-2 px-3 py-2.5 text-sm text-zinc-500">
+              <Loader2 className="h-4 w-4 animate-spin" /> {t("Searching…")}
+            </li>
+          ) : rows.length === 0 ? (
+            <li className="px-3 py-2.5 text-sm text-zinc-500">{t("No student found. The typed name will be saved.")}</li>
+          ) : (
+            rows.map((s, i) => (
+              <li key={s.roll} id={`${id}-opt-${i}`} role="option" aria-selected={i === active}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onPointerEnter={() => setHi({ key, i })}
+                  onPointerDown={() => setHi({ key, i })}
+                  onClick={() => pick(s)}
+                  className={cn(
+                    "flex min-h-12 w-full flex-col items-start justify-center rounded-xl border-l-4 px-3 py-2 text-left transition-colors",
+                    i === active ? "border-orange-500 bg-orange-500/15" : "border-transparent hover:bg-orange-500/10"
+                  )}
+                >
+                  <span className="text-base font-semibold text-zinc-100">{marked(s.name, false)}</span>
+                  <span className="text-sm text-zinc-500">
+                    <span className="font-bold tracking-wide text-zinc-300">{marked(s.roll, true)}</span>
+                    {[s.department, s.year ? t("Year {n}", { n: s.year }) : null, s.section ? `${t("Section")} ${s.section}` : null]
+                      .filter(Boolean)
+                      .map((x) => ` · ${x}`)
+                      .join("")}
+                  </span>
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Keys Book "Key taken by": Faculty / Staff or Student first; then the faculty
+ * list (type to search) or the student search. The phone number and details
+ * are added from their account when saved (no typing).
+ */
+function KeyHolderInput({
+  id,
+  value,
+  onChange,
+  values,
+  setValue,
+  required,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  values: Values;
+  setValue: (key: string, v: string) => void;
+  required?: boolean;
+}) {
+  const t = useT();
+  const type = String(values.holderType ?? "");
+  const holderId = String(values.holderId ?? "");
+  const choose = (next: string) => {
+    if (next === type) return;
+    setValue("holderType", next);
+    setValue("holderId", "");
+    onChange("");
+  };
+  const typed = (v: string) => {
+    onChange(v);
+    setValue("holderId", "");
+  };
+  const isStudent = type === "Student";
+  // Faculty are saved as "Name (Employee ID)": the card shows the name alone
+  const shownName = holderId && value.endsWith(` (${holderId})`) ? value.slice(0, -(holderId.length + 3)) : value;
+  const PickedIcon = isStudent ? GraduationCap : Briefcase;
+  return (
+    <div className="space-y-3">
+      <div role="group" aria-label={t("Faculty / Student")} className="grid grid-cols-2 gap-2">
+        {HOLDER_TYPES.map(({ value: v, icon: Icon }) => {
+          const on = type === v;
+          return (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={on}
+              onClick={() => choose(v)}
+              className={cn(
+                "flex min-h-14 min-w-0 items-center justify-center gap-1.5 rounded-2xl border-2 px-2 py-1.5 text-center text-base font-bold leading-tight outline-none transition-[background-color,border-color,color,transform] focus-visible:ring-4 focus-visible:ring-orange-500/30 active:scale-[0.98] sm:min-h-16 sm:gap-2 sm:text-lg",
+                on ? "border-orange-600 bg-orange-600 text-white shadow-sm" : "border-zinc-700 bg-zinc-900 text-zinc-200 hover:border-orange-500/60"
+              )}
+            >
+              {on ? <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" /> : <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />}
+              {/* Wraps onto two lines when the words are long (Telugu), never cut off */}
+              <span className="min-w-0 break-words">{t(isStudentValue(v) ? "Student" : "Faculty / Staff")}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {type && holderId ? (
+        /* The person picked: just the name, with Change (their ID, phone and details are saved with it) */
+        <div className="flex min-h-14 items-center gap-3 rounded-2xl border-2 border-emerald-500/50 bg-emerald-500/10 px-3 py-2">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">
+            <PickedIcon className="h-[18px] w-[18px]" aria-hidden="true" />
+          </span>
+          <p className="min-w-0 flex-1 break-words text-lg font-bold leading-snug text-zinc-100">{shownName}</p>
+          <button
+            type="button"
+            onClick={() => typed("")}
+            className="h-10 shrink-0 rounded-full border border-zinc-700 bg-zinc-900 px-4 text-sm font-semibold text-orange-600 hover:bg-zinc-950"
+          >
+            {t("Change")}
+          </button>
+        </div>
+      ) : type === "Faculty / Staff" ? (
+        <PersonInput
+          id={id}
+          value={value}
+          required={required}
+          onChange={typed}
+          onPick={(p) => setValue("holderId", p.employeeId ?? "")}
+        />
+      ) : isStudent ? (
+        <KeyStudentInput
+          id={id}
+          value={value}
+          picked=""
+          required={required}
+          onType={typed}
+          onPick={(s) => {
+            onChange(s.name);
+            setValue("holderId", s.roll);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -305,7 +594,6 @@ function ChoiceWithOther({
           maxLength={60}
           required={required}
           autoFocus
-          placeholder={t("Type here")}
           aria-label={t("Type here")}
           onChange={(e) => {
             setCustom(e.target.value);
@@ -360,7 +648,6 @@ export function LiveDateTime() {
           <Clock className="h-4 w-4 text-orange-400" /> {time}
         </span>
       </div>
-      <p className="mt-1 text-xs text-zinc-500">{tr("Date and time are recorded automatically when you save.")}</p>
     </div>
   );
 }
@@ -395,8 +682,10 @@ function visibleFields(def: EntryRegister, direction: Direction | null, values: 
       f.key !== m?.directionField &&
       (!readingKeys.has(f.key) || f.key === side?.readingKey) &&
       !f.formHidden &&
-      // Shown only after its button (e.g. Supplier name after "Supplier known")
-      (!f.showWhen || values[f.showWhen] === "yes")
+      // Shown only after its button (e.g. phone number after "No bill")
+      (!f.showWhen || values[f.showWhen] === "yes") &&
+      // Hidden while its button is on (e.g. bill details after "No bill")
+      (!f.hideWhen || values[f.hideWhen] !== "yes")
   );
 }
 
@@ -446,7 +735,7 @@ function emptyRow(g: GroupDef): Values {
 }
 
 /** Camera photo for a register entry: compressed in the browser, uploaded at once, the stored path is the value. */
-function PhotoInput({
+export function PhotoInput({
   id,
   value,
   onChange,
@@ -551,6 +840,150 @@ function PhotoInput({
   );
 }
 
+/** A photo box value as a list (one older photo is a list of one) */
+export const photoList = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((p): p is string => typeof p === "string" && p !== "") : typeof v === "string" && v ? [v] : [];
+
+/**
+ * Several camera photos of one kind (e.g. the stock photos), as one row: the
+ * name and count with a big Take / Add button beside it, the photos below
+ * (✕ removes one). Each photo is compressed and uploaded the moment it is taken.
+ * bare: drawn as a row of the form's photo list (no card of its own).
+ */
+export function MultiPhotoInput({
+  id,
+  value,
+  onChange,
+  registerKey,
+  label,
+  max,
+  required = false,
+  bare = false,
+}: {
+  id: string;
+  value: string[];
+  onChange: (v: string[]) => void;
+  registerKey: string;
+  label: string;
+  max: number;
+  required?: boolean;
+  bare?: boolean;
+}) {
+  const t = useT();
+  // What was just taken, shown at once (saved paths from a kept draft show as "added")
+  const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  // The latest list (uploads finish one by one)
+  const latest = useRef(value);
+  useEffect(() => {
+    latest.current = value;
+  }, [value]);
+
+  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []).slice(0, Math.max(0, max - latest.current.length));
+    e.target.value = "";
+    if (!files.length) return;
+    setError(null);
+    setBusy((n) => n + files.length);
+    for (const file of files) {
+      try {
+        const b64 = await compressPhoto(file);
+        const res: any = await callGate("uploadRegisterPhoto", [b64, registerKey], 30_000);
+        if (res.error || !res.path) {
+          setError(t("Photo upload failed:") + " " + (res.error || t("unknown error")));
+        } else if (latest.current.length < max) {
+          setPreviews((p) => ({ ...p, [res.path]: b64 }));
+          const next = [...latest.current, res.path];
+          latest.current = next;
+          onChange(next);
+        }
+      } catch (err: any) {
+        setError(t(err?.message || "Photo upload failed:"));
+      }
+      setBusy((n) => n - 1);
+    }
+  }
+
+  const full = value.length + busy >= max;
+  const empty = value.length === 0 && busy === 0;
+  return (
+    <div className={cn("space-y-3", bare ? "px-3 py-3 sm:px-4" : "rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900 p-3")}>
+      {/* The name and count, and the button on the same line */}
+      {/* Wraps on narrow screens, so the button is never cut off */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-base font-bold leading-snug text-zinc-100">
+          <span className="min-w-0 break-words">{t(label)}</span>
+          {required && <span className="leading-none text-orange-500" aria-hidden="true">*</span>}
+          <span
+            className={cn(
+              "rounded-md px-1.5 py-0.5 text-xs font-bold tabular-nums",
+              value.length ? "bg-emerald-500/15 text-emerald-700" : "bg-zinc-950 text-zinc-500"
+            )}
+          >
+            {value.length}/{max}
+          </span>
+        </p>
+        {!full ? (
+          <label
+            htmlFor={id}
+            className={cn(
+              "inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-full px-4 text-sm font-bold transition-[background-color,transform] active:scale-[0.97]",
+              empty
+                ? "bg-orange-600 text-white shadow-[0_6px_14px_-8px_rgba(207,62,37,0.7)] hover:bg-orange-700"
+                : "border-2 border-orange-500 bg-orange-50 text-orange-700 hover:bg-orange-100"
+            )}
+          >
+            {empty ? <Camera className="h-[18px] w-[18px]" aria-hidden="true" /> : <Plus className="h-[18px] w-[18px]" aria-hidden="true" />}
+            {t(empty ? "Take photo" : "Add photo")}
+          </label>
+        ) : (
+          <span className="inline-flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-500/15 px-4 text-sm font-bold text-emerald-700">
+            <CheckCircle2 className="h-[18px] w-[18px]" aria-hidden="true" /> {t("Done")}
+          </span>
+        )}
+      </div>
+      {/* The photos taken, as bigger thumbnails */}
+      {!empty && (
+        <div className="flex flex-wrap gap-3 pt-1.5 pr-1.5">
+          {value.map((p, i) => (
+            // Tap the photo to see it big; the red ✕ on its corner removes it
+            <div key={p} className="relative h-20 w-20 sm:h-24 sm:w-24">
+              {previews[p] ? (
+                <ZoomablePhoto
+                  src={previews[p]}
+                  alt={`${t(label)} ${i + 1}`}
+                  className="h-20 w-20 rounded-xl border-2 border-zinc-700 object-cover sm:h-24 sm:w-24"
+                />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center rounded-xl border-2 border-emerald-500/50 bg-emerald-500/10 text-emerald-600">
+                  <CheckCircle2 className="h-7 w-7" aria-label={t("Added")} />
+                </span>
+              )}
+              <span className="pointer-events-none absolute bottom-1 left-1 rounded-md bg-black/65 px-1.5 text-xs font-bold tabular-nums text-white">{i + 1}</span>
+              <button
+                type="button"
+                aria-label={`${t("Remove")} ${i + 1}`}
+                onClick={() => onChange(value.filter((x) => x !== p))}
+                className="absolute -right-2 -top-2 inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-red-600 text-white shadow-md hover:bg-red-700 active:scale-95"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+          {Array.from({ length: busy }).map((_, i) => (
+            <div key={`busy-${i}`} className="flex h-20 w-20 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-950 sm:h-24 sm:w-24">
+              <Loader2 className="h-6 w-6 animate-spin text-orange-600" aria-label={t("Uploading…")} />
+            </div>
+          ))}
+        </div>
+      )}
+      <input id={id} type="file" accept="image/*" capture="environment" className="hidden" onChange={pick} />
+      {error && <p role="alert" className="text-sm font-semibold text-red-600">{error}</p>}
+    </div>
+  );
+}
+
 function FieldInput({
   f,
   id,
@@ -562,6 +995,8 @@ function FieldInput({
   dimmed = false,
   onPickPerson,
   combo,
+  values,
+  setValue,
 }: {
   f: FieldDef;
   id: string;
@@ -576,8 +1011,18 @@ function FieldInput({
   onPickPerson?: (p: PersonOption) => void;
   /** Driver / car / faculty boxes (Car Book, Auto Book): the list behind the "Select" button */
   combo?: { items: ComboItem[]; loading: boolean; onPick?: (item: ComboItem) => void };
+  /** The form's values and a setter for another box (the Keys Book "Key taken by" sets who and their ID) */
+  values?: Values;
+  setValue?: (key: string, v: string) => void;
 }) {
   const t = useT();
+  if (f.type === "keyHolder" && values && setValue) {
+    return <KeyHolderInput id={id} value={value ?? ""} onChange={onChange} values={values} setValue={setValue} required={required} />;
+  }
+  // Siros contractor: type, and the matching names show (a new name is just saved)
+  if (f.combo === "sirosContractor" && combo) {
+    return <ContractorInput id={id} value={value ?? ""} onChange={onChange} items={combo.items} loading={combo.loading} onPick={combo.onPick} required={required} />;
+  }
   if (f.combo && combo) {
     return (
       <ComboInput
@@ -588,7 +1033,6 @@ function FieldInput({
         items={combo.items}
         loading={combo.loading}
         required={required}
-        placeholder={f.placeholder}
         title={f.label}
         inputClassName={inputCls}
       />
@@ -623,6 +1067,9 @@ function FieldInput({
     case "department":
       return <DepartmentSelect id={id} value={value ?? ""} onChange={onChange} required={required} allowOther />;
     case "photo":
+      if (f.maxPhotos) {
+        return <MultiPhotoInput id={id} value={photoList(value)} onChange={onChange} registerKey={registerKey} label={f.label} max={f.maxPhotos} required={required} bare />;
+      }
       return <PhotoInput id={id} value={value ?? ""} onChange={onChange} registerKey={registerKey} label={f.label} required={required} dimmed={dimmed} />;
     case "textarea":
       return (
@@ -631,7 +1078,6 @@ function FieldInput({
           value={value}
           maxLength={1000}
           rows={2}
-          placeholder={f.placeholder}
           required={required}
           onChange={(e) => onChange(e.target.value)}
           className={`${inputCls} h-auto min-h-[96px] py-3 resize-none`}
@@ -649,7 +1095,7 @@ function FieldInput({
             onClick={() => onChange(on ? "" : "yes")}
             aria-pressed={on}
             className={`flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border-2 px-3 text-base font-semibold transition-colors ${
-              on ? "border-orange-500 bg-orange-500/15 text-orange-600" : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700"
+              on ? "border-orange-600 bg-orange-600 text-white shadow-sm" : "border-zinc-700 bg-zinc-900 text-zinc-200 hover:border-orange-500/60"
             }`}
           >
             {on && <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />}
@@ -672,20 +1118,25 @@ function FieldInput({
                   onClick={() => onChange(o)}
                   aria-pressed={on}
                   data-big-btn=""
-                  className={`flex min-h-12 items-center justify-center gap-2 rounded-2xl border-[1.5px] px-3 text-base font-semibold outline-none transition-[background-color,border-color,color,transform] focus-visible:ring-4 focus-visible:ring-orange-500/20 active:scale-[0.98] ${
+                  data-inout={dir ? "" : undefined}
+                  className={`flex items-center justify-center rounded-2xl outline-none transition-[background-color,border-color,color,transform] focus-visible:ring-4 focus-visible:ring-orange-500/20 active:scale-[0.98] ${
+                    dir ? "min-h-[76px] gap-2.5 border-2 px-3 text-xl font-bold" : "min-h-16 gap-2 border-2 px-3 text-lg font-bold"
+                  } ${
                     on
                       ? dir === "in"
-                        ? "border-emerald-600 bg-emerald-600 text-white shadow-[0_6px_14px_-8px_rgba(5,150,105,0.7)]"
+                        ? "border-emerald-600 bg-emerald-600 text-white shadow-[0_8px_18px_-8px_rgba(5,150,105,0.7)]"
                         : dir === "out"
-                        ? "border-sky-600 bg-sky-600 text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.7)]"
+                        ? "border-sky-600 bg-sky-600 text-white shadow-[0_8px_18px_-8px_rgba(2,132,199,0.7)]"
                         : "border-orange-500 bg-orange-500/15 text-orange-600"
+                      : dir
+                      ? (dir === "in" ? "IN" : "OUT") === "IN" ? "border-emerald-500/50 bg-emerald-500/5 text-emerald-700 hover:bg-emerald-500/10" : "border-sky-500/50 bg-sky-500/5 text-sky-700 hover:bg-sky-500/10"
                       : "border-zinc-700 bg-zinc-900 text-zinc-500 hover:bg-zinc-950"
                   }`}
                 >
                   {on ? (
-                    <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />
+                    <CheckCircle2 className={dir ? "h-7 w-7 shrink-0" : "h-5 w-5 shrink-0"} aria-hidden="true" />
                   ) : dir ? (
-                    <DirIcon className={`h-4 w-4 shrink-0 ${dir === "in" ? "text-emerald-600" : "text-sky-600"}`} aria-hidden="true" />
+                    <DirIcon className="h-7 w-7 shrink-0" aria-hidden="true" />
                   ) : null}
                   {t(o)}
                 </button>
@@ -738,9 +1189,9 @@ function FieldInput({
       );
     }
     case "phone":
-      return <input id={id} type="tel" maxLength={15} value={value} placeholder={f.placeholder} required={required} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
+      return <input id={id} type="tel" maxLength={15} value={value} required={required} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
     default:
-      return <input id={id} type="text" maxLength={200} value={value} placeholder={f.placeholder} required={required} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
+      return <input id={id} type="text" maxLength={200} value={value} required={required} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
   }
 }
 
@@ -773,20 +1224,24 @@ function FieldBlock({
   const t = useT();
   const buttonOnly = f.type === "yesno" && !!f.buttons;
   const errorLine = error ? (
-    <p role="alert" className="flex items-start gap-1.5 text-sm font-medium text-red-600">
-      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {error}
+    <p role="alert" className="flex items-start gap-1.5 text-base font-bold leading-snug text-red-600">
+      <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" /> {error}
     </p>
   ) : null;
   if (f.type === "photo")
     return (
-      <div data-field={fieldKey ?? f.key} className="min-w-0 space-y-1.5 scroll-mt-24">
-        <div className={error ? "rounded-2xl ring-2 ring-red-500" : undefined}>{children}</div>
-        {errorLine}
+      <div data-field={fieldKey ?? f.key} className={cn("min-w-0 scroll-mt-24", f.maxPhotos ? "" : "space-y-1.5")}>
+        <div className={cn(error && (f.maxPhotos ? "bg-red-50 ring-[3px] ring-inset ring-red-500" : "rounded-2xl ring-[3px] ring-red-500 ring-offset-2 ring-offset-white"))}>
+          {children}
+          {/* A row of the photo list: the message inside the red row */}
+          {f.maxPhotos && errorLine && <div className="px-3 pb-3 sm:px-4">{errorLine}</div>}
+        </div>
+        {!f.maxPhotos && errorLine}
       </div>
     );
   return (
-    <div data-field={fieldKey ?? f.key} className={`space-y-1.5 min-w-0 scroll-mt-24 ${f.type === "textarea" || f.buttons ? "sm:col-span-2" : ""}`}>
-      <label htmlFor={id} className={cn("field-label flex flex-wrap items-baseline gap-1 text-sm font-medium text-zinc-200", buttonOnly && "sr-only")}>
+    <div data-field={fieldKey ?? f.key} className={`space-y-1.5 min-w-0 scroll-mt-24 ${f.type === "textarea" || f.buttons || f.wide ? "sm:col-span-2" : ""}`}>
+      <label htmlFor={id} className={cn("field-label flex flex-wrap items-baseline gap-1 text-sm font-medium text-zinc-200", error && "!text-red-600", buttonOnly && "sr-only")}>
         <span className="min-w-0">{f.label}</span>
         {required && (
           <span className="text-base leading-none font-semibold text-orange-500" aria-hidden="true">
@@ -803,7 +1258,7 @@ function FieldBlock({
       <div
         className={
           error
-            ? "rounded-2xl ring-2 ring-red-500 [&_input]:!border-red-500 [&_textarea]:!border-red-500 [&_button[role=combobox]]:!border-red-500"
+            ? "rounded-2xl ring-[3px] ring-red-500 ring-offset-2 ring-offset-white [&_input]:!border-red-500 [&_input]:!bg-red-50 [&_textarea]:!border-red-500 [&_textarea]:!bg-red-50 [&_button]:!border-red-400 [&_button[role=combobox]]:!border-red-500"
             : voice
             ? "rounded-2xl ring-2 ring-amber-400/60"
             : missing
@@ -814,7 +1269,6 @@ function FieldBlock({
         }
       >{children}</div>
       {errorLine}
-      {f.hint && <p className="field-hint text-[11px] leading-snug text-zinc-500">{f.hint}</p>}
     </div>
   );
 }
@@ -851,19 +1305,20 @@ function DirectionPicker({
                 onClick={() => onChange(d)}
                 aria-pressed={active}
                 data-big-btn=""
-                className={`flex min-h-12 items-center justify-center gap-1.5 rounded-2xl border-[1.5px] px-3 text-base font-semibold leading-tight transition-[background-color,border-color,color,transform] outline-none focus-visible:ring-4 focus-visible:ring-orange-500/20 active:scale-[0.98] ${
-                  // Only the chosen one is coloured (In green, Out blue); the other is plain
+                data-inout=""
+                className={`flex min-h-[76px] items-center justify-center gap-2.5 rounded-2xl border-2 px-3 text-xl font-bold leading-tight transition-[background-color,border-color,color,transform] outline-none focus-visible:ring-4 focus-visible:ring-orange-500/20 active:scale-[0.98] ${
+                  // Big and coloured: In green, Out blue; the chosen one is solid
                   active
                     ? d === "IN"
-                      ? "border-emerald-600 bg-emerald-600 text-white shadow-[0_6px_14px_-8px_rgba(5,150,105,0.7)]"
-                      : "border-sky-600 bg-sky-600 text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.7)]"
-                    : "border-zinc-700 bg-zinc-900 text-zinc-500 hover:bg-zinc-950"
+                      ? "border-emerald-600 bg-emerald-600 text-white shadow-[0_8px_18px_-8px_rgba(5,150,105,0.7)]"
+                      : "border-sky-600 bg-sky-600 text-white shadow-[0_8px_18px_-8px_rgba(2,132,199,0.7)]"
+                    : d === "IN" ? "border-emerald-500/50 bg-emerald-500/5 text-emerald-700 hover:bg-emerald-500/10" : "border-sky-500/50 bg-sky-500/5 text-sky-700 hover:bg-sky-500/10"
                 }`}
               >
                 {active ? (
-                  <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />
+                  <CheckCircle2 className="h-7 w-7 shrink-0" aria-hidden="true" />
                 ) : (
-                  <Icon className={`h-4 w-4 shrink-0 ${d === "IN" ? "text-emerald-600" : "text-sky-600"}`} aria-hidden="true" />
+                  <Icon className="h-7 w-7 shrink-0" aria-hidden="true" />
                 )}
                 <span className="min-w-0 text-center">{side.label}</span>
               </button>
@@ -1203,7 +1658,21 @@ export function RegisterForm({
   };
   const voiceDone = voice.status === "done";
 
+  // What "Clear" just removed: "Undo" brings it all back (until something new is typed)
+  const [cleared, setCleared] = useState<{ values: Values; rows: Record<string, Values[]>; direction: Direction | null; oneWay: boolean; visitHost: string } | null>(null);
+  const undoClear = () => {
+    if (!cleared) return;
+    setValues(cleared.values);
+    setRows(cleared.rows);
+    setDirection(cleared.direction);
+    setOneWay(cleared.oneWay);
+    setVisitHost(cleared.visitHost);
+    setCleared(null);
+    // Pickers and photo boxes show the brought-back values
+    setClearNo((n) => n + 1);
+  };
   const clearAll = () => {
+    if (typedSomething) setCleared({ values, rows, direction, oneWay, visitHost });
     setFieldErrors({});
     setValues({});
     setRows(emptyRows());
@@ -1255,6 +1724,8 @@ export function RegisterForm({
         }}
         staff={staff}
         required={isFieldRequired(def, f.key, values)}
+        values={values}
+        setValue={(k, v) => setValues((s) => ({ ...s, [k]: v }))}
         onPickPerson={
           f.fills
             ? (p) => {
@@ -1296,6 +1767,19 @@ export function RegisterForm({
     const out: React.ReactNode[] = [];
     let i = 0;
     while (i < list.length) {
+      // e.g. "Sent by" / "Given to": the boxes that belong together, in one bordered box
+      const sec = list[i].section;
+      if (sec) {
+        const inside: FieldDef[] = [];
+        while (i < list.length && list[i].section === sec) inside.push(list[i++]);
+        out.push(
+          <fieldset key={`section-${sec}`} className="col-span-full min-w-0 rounded-2xl border-[1.5px] border-zinc-600 px-3 pb-4 pt-1 sm:px-4">
+            <legend className="px-2 text-base font-bold text-orange-600">{t(sec)}</legend>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{inside.map((x) => renderField(x))}</div>
+          </fieldset>
+        );
+        continue;
+      }
       const opens = def.fields.filter((x) => x.showWhen === list[i].key);
       if (opens.length > 0) {
         const toggle = list[i++];
@@ -1310,6 +1794,16 @@ export function RegisterForm({
           >
             {renderField(toggle)}
             {inside.length > 0 && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{inside.map((x) => renderField(x))}</div>}
+          </div>
+        );
+        continue;
+      }
+      if (list[i].type === "photo" && list[i].maxPhotos) {
+        const kinds: FieldDef[] = [];
+        while (i < list.length && list[i].type === "photo" && list[i].maxPhotos) kinds.push(list[i++]);
+        out.push(
+          <div key={`photo-kinds-${kinds[0].key}`} className="col-span-full divide-y divide-zinc-800 rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900">
+            {kinds.map((k) => renderField(k))}
           </div>
         );
         continue;
@@ -1364,9 +1858,6 @@ export function RegisterForm({
               <span className="whitespace-nowrap">{t(flag.label)}</span>
             </button>
           )}
-          {flag && flagOn && (
-            <p className="text-center text-xs font-medium text-orange-600">{t("Bill photo and bill amount are not needed.")}</p>
-          )}
         </div>
       );
     }
@@ -1388,7 +1879,8 @@ export function RegisterForm({
         for (const f of shown) {
           const v = values[f.key];
           if (f.type === "yesno" && !f.buttons) continue;
-          if ((isFieldRequired(def, f.key, values) || (f.showWhen && f.requiredWhenShown)) && !filledIn(v)) errs[f.key] = t("Fill this in");
+          if (f.type === "keyHolder" && !filledIn(values.holderType)) errs[f.key] = t("Choose Faculty / Staff or Student");
+          else if ((isFieldRequired(def, f.key, values) || (f.showWhen && f.requiredWhenShown)) && !filledIn(v)) errs[f.key] = t("Fill this in");
           else if (f.type === "phone" && filledIn(v) && !/^\+?[0-9]{10,15}$/.test(String(v).replace(/[\s-]/g, ""))) {
             errs[f.key] = t("Enter a valid phone number (10–15 digits)");
           }
@@ -1419,7 +1911,23 @@ export function RegisterForm({
         const first = order.find((k) => errs[k]);
         if (first) {
           setFieldErrors(errs);
-          setLocalError(t("Fill in the boxes marked in red"));
+          // Which boxes, by name (In / Out, then the boxes in the form's order)
+          const names = order
+            .filter((k) => errs[k])
+            .map((k) => {
+              if (k === "__direction") return t("In / Out");
+              if (k.startsWith("__group.")) return t((def.groups ?? []).find((g) => `__group.${g.key}` === k)?.label ?? "");
+              const parts = k.split(".");
+              if (parts.length === 3) {
+                const g = (def.groups ?? []).find((x) => x.key === parts[0]);
+                const f = g?.fields.find((x) => x.key === parts[2]);
+                return g && f ? `${t(g.itemLabel)} ${Number(parts[1]) + 1} — ${t(f.label)}` : "";
+              }
+              return t(def.fields.find((x) => x.key === k)?.label ?? "");
+            })
+            .filter(Boolean);
+          const unique = Array.from(new Set(names));
+          setLocalError(`${t("Fill in the boxes marked in red")}: ${unique.slice(0, 4).join(", ")}${unique.length > 4 ? "…" : ""}`);
           // A problem under "More details": open it first
           if (more.some((f) => errs[f.key])) setMoreOpen(true);
           requestAnimationFrame(() =>
@@ -1445,22 +1953,12 @@ export function RegisterForm({
       }}
       className="space-y-5"
     >
-      {/* One small line: date and time, and the mic (speak everything once; the form fills itself) */}
+      {/* Top: the date and time, and the mic (speak everything once; the form fills itself) */}
       <div className="flex min-h-10 flex-nowrap items-center justify-between gap-2">
         <div className="min-w-0 truncate">
           <CompactDateTime />
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {typedSomething && (
-            <button
-              type="button"
-              onClick={clearAll}
-              className="inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-red-500/50 bg-transparent px-3 text-xs font-semibold leading-normal text-red-600 transition-[background-color,transform] hover:bg-red-500/10 active:scale-[0.97]"
-            >
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-              {t("Clear")}
-            </button>
-          )}
           {voice.status === "idle" && (
             <button
               type="button"
@@ -1474,6 +1972,29 @@ export function RegisterForm({
           )}
         </div>
       </div>
+      {/* Under it: Clear on the left, Undo (brings back what Clear removed) on the right */}
+      <div className="-mt-2 grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={clearAll}
+          disabled={!typedSomething}
+          aria-label={t("Clear the form")}
+          className="inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-red-600 px-4 text-base font-bold text-white shadow-[0_6px_14px_-8px_rgba(220,38,38,0.8)] transition-[background-color,transform,opacity] hover:bg-red-700 active:scale-[0.97] disabled:bg-zinc-950 disabled:text-zinc-500 disabled:shadow-none"
+        >
+          <RotateCcw className="h-5 w-5" aria-hidden="true" />
+          {t("Clear")}
+        </button>
+        <button
+          type="button"
+          onClick={undoClear}
+          disabled={!cleared || typedSomething}
+          aria-label={t("Undo clear")}
+          className="inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-sky-600 px-4 text-base font-bold text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.8)] transition-[background-color,transform,opacity] hover:bg-sky-700 active:scale-[0.97] disabled:bg-zinc-950 disabled:text-zinc-500 disabled:shadow-none"
+        >
+          <Undo2 className="h-5 w-5" aria-hidden="true" />
+          {t("Undo")}
+        </button>
+      </div>
       {voice.status !== "idle" && <VoicePanel voice={voice} onUndo={undoVoice} />}
 
       {restored && (
@@ -1482,18 +2003,14 @@ export function RegisterForm({
         </p>
       )}
 
-      {/* "* must fill" note */}
-      {def.required.length > 0 && (
-        <p className="text-sm text-zinc-500 md:text-base">
-          <span className="font-bold text-orange-500">*</span> {t("Boxes with * must be filled; the rest are optional.")}
-        </p>
-      )}
       {m && !m.fixedStart && (
         <div data-field="__direction" className="scroll-mt-24 space-y-1.5">
-          <DirectionPicker compact def={def} value={direction} onChange={(d) => { setDirection(d); setLocalError(null); clearFieldError("__direction"); }} />
+          <div className={errorFor("__direction") ? "rounded-2xl ring-[3px] ring-red-500 ring-offset-2 ring-offset-white" : undefined}>
+            <DirectionPicker compact def={def} value={direction} onChange={(d) => { setDirection(d); setLocalError(null); clearFieldError("__direction"); }} />
+          </div>
           {errorFor("__direction") && (
-            <p role="alert" className="flex items-center gap-1.5 text-sm font-medium text-red-600">
-              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" /> {errorFor("__direction")}
+            <p role="alert" className="flex items-center gap-1.5 text-base font-bold text-red-600">
+              <AlertCircle className="h-5 w-5 shrink-0" aria-hidden="true" /> {errorFor("__direction")}
             </p>
           )}
         </div>
@@ -1532,16 +2049,6 @@ export function RegisterForm({
           </span>
         </p>
       ))}
-      {def.fixed?.some((x) => !x.note) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-          {def.fixed.filter((x) => !x.note).map((x) => (
-            <div key={x.label}>
-              <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{x.label}</p>
-              <p className="mt-0.5 text-sm font-medium text-zinc-200">{x.value}</p>
-            </div>
-          ))}
-        </div>
-      )}
 
       {def.visitHost && direction !== "OUT" && (
         <div className="space-y-1.5">
@@ -1549,29 +2056,10 @@ export function RegisterForm({
             <KeyRound className="h-4 w-4 text-orange-500" aria-hidden="true" /> {t("Meeting (faculty / staff)")}
           </label>
           <HostPicker id="rf-visit-host" value={visitHost} onChange={setVisitHost} />
-          <p className="text-xs text-zinc-500">
-            {visitHost
-              ? t("They get a meeting code; the visitor needs it from them to go out.")
-              : t("Optional. Leave it empty if they came to meet a student or for other work — then no code is needed.")}
-          </p>
         </div>
       )}
 
       {sirosBook && <SirosPersonDialog no={sirosView} onClose={() => setSirosView(null)} />}
-      {/* Siros: register a first-timer (top of the form) */}
-      {sirosBook && (
-        <SirosNewPeople
-          renderPhoto={(v, onPhoto) => <PhotoInput id="rf-siros-new-photo" value={v} onChange={onPhoto} registerKey={def.key} label={t("Photo")} required />}
-          onRegistered={(p) =>
-            p.kind === "CONTRACTOR"
-              ? setValues((v) => ({ ...v, contractorName: p.name, ...(p.phone ? { phone: p.phone } : {}) }))
-              : setRows((st) => ({
-                  ...st,
-                  workers: [...(st.workers ?? []).filter((x) => String(x.name ?? "").trim() !== ""), { no: String(p.no), name: p.name, gender: p.gender ?? "" }],
-                }))
-          }
-        />
-      )}
 
       {billRead && def.readsBill && billRead.path === billPath && (
         <p
@@ -1623,7 +2111,15 @@ export function RegisterForm({
 
       {(def.groups ?? []).map((g) => {
         if (g.picker === "sirosCoolie") {
-          return <CooliePicker key={g.key} rows={rows[g.key] ?? []} onChange={(list) => setRows((st) => ({ ...st, [g.key]: list }))} people={sirosPeople} />;
+          return (
+            <CooliePicker
+              key={g.key}
+              rows={rows[g.key] ?? []}
+              onChange={(list) => setRows((st) => ({ ...st, [g.key]: list }))}
+              people={sirosPeople}
+              renderPhoto={(v, onPhoto) => <PhotoInput id="rf-siros-new-photo" value={v} onChange={onPhoto} registerKey={def.key} label={t("Photo")} required />}
+            />
+          );
         }
         // Drawn at the top of the form instead
         if (g.picker === "typedRows") return null;
@@ -1632,6 +2128,7 @@ export function RegisterForm({
             <ItemsPopup
               key={g.key}
               group={g}
+              registerKey={def.key}
               rows={rows[g.key] ?? []}
               onChange={(list) => setRows((st) => ({ ...st, [g.key]: list }))}
               error={errorFor(`__group.${g.key}`)}
@@ -1655,9 +2152,6 @@ export function RegisterForm({
               <p className="flex items-center gap-1.5 text-xs font-medium text-amber-600">
                 <Mic className="h-3.5 w-3.5" aria-hidden="true" /> {t("Filled from your voice — check each one.")}
               </p>
-            )}
-            {g.fields.some((f) => f.type === "time") && (
-              <p className="text-xs text-zinc-500">{t("In-time is recorded now; out-times are marked later from the record.")}</p>
             )}
             {list.map((row, i) => (
               <div key={`${rowsVer}-${clearNo}-${i}`} className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3 sm:p-4 space-y-3">
@@ -1712,15 +2206,15 @@ export function RegisterForm({
 
       <div className={stickyFooterCls}>
         {localError && (
-          <p role="alert" className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-400">
-            {localError}
+          <p role="alert" className="flex items-start gap-2.5 rounded-2xl border-2 border-red-500 bg-red-50 px-4 py-3 text-base font-bold leading-snug text-red-700">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0">{localError}</span>
           </p>
         )}
         <button type="submit" data-big-btn="" disabled={busy} className={`${saveBtnCls} bg-orange-600 hover:bg-orange-700 shadow-[0_6px_16px_-8px_rgba(207,62,37,0.55)]`}>
           {!busy && <Save className="h-5 w-5 sm:h-4 sm:w-4" />}
           {busy ? t("Saving…") : side ? t("Save — {side} now", { side: side.label }) : t("Save record")}
         </button>
-        <p className="text-[11px] text-zinc-500 text-center">{t("Saved records are permanent and cannot be edited.")}</p>
       </div>
     </form>
   );
@@ -1744,27 +2238,23 @@ export function MovementForm({
   visit?: { hostName: string; open: boolean; locked: boolean } | null;
   canOverrideVisit?: boolean;
   busy: boolean;
-  onSubmit: (payload: { markMovement: boolean; reading?: string; groupMarks: Record<string, number[]>; exitCounts?: Record<string, number> } & VisitExitInput) => void;
+  onSubmit: (payload: { markMovement: boolean; reading?: string; reason?: string; groupMarks: Record<string, number[]>; exitCounts?: Record<string, number> } & VisitExitInput) => void;
 }) {
   const t = useT();
   const pending = pendingActions(def, current);
   const [mark, setMark] = useState<boolean>(!!pending.next);
   const [reading, setReading] = useState("");
+  const [reason, setReason] = useState("");
+  const [reasonMissing, setReasonMissing] = useState(false);
   const [marks, setMarks] = useState<Record<string, number[]>>({});
-  // Out with counts by type (College Daily Labour): each starts at the number that came in
+  // Labour books: workers may go out in groups; each type starts at those still inside
   const countsGroup = def.movement?.exitCounts;
-  const countsIn = (() => {
-    const m: Record<string, number> = {};
-    const list = countsGroup && Array.isArray(current[countsGroup]) ? (current[countsGroup] as Record<string, unknown>[]) : [];
-    for (const r of list) {
-      const type = String(r.workerType ?? "");
-      if (type) m[type] = (m[type] ?? 0) + (Number(r.count) || 0);
-    }
-    return m;
-  })();
+  const inside = workersInside(def, current).filter((w) => w.inside > 0);
   const [exitCounts, setExitCounts] = useState<Record<string, string>>(() =>
-    Object.fromEntries(Object.entries(countsIn).map(([k, v]) => [k, String(v)]))
+    Object.fromEntries(inside.map((w) => [w.type, String(w.inside)]))
   );
+  const leavingNow = inside.reduce((sum, w) => sum + Math.min(w.inside, Number(exitCounts[w.type]) || 0), 0);
+  const insideTotal = inside.reduce((sum, w) => sum + w.inside, 0);
   const [visitInput, setVisitInput] = useState<VisitExitInput>({ visitCode: "" });
 
   if (!pending.any)
@@ -1782,9 +2272,15 @@ export function MovementForm({
       data-look="clear"
       onSubmit={(e) => {
         e.preventDefault();
+        const askReason = !!def.movement?.outReasonKey && mark && next?.direction === "OUT";
+        if (askReason && !reason.trim()) {
+          setReasonMissing(true);
+          return;
+        }
         onSubmit({
           markMovement: mark && !!next,
           reading,
+          ...(askReason ? { reason: reason.trim() } : {}),
           groupMarks: marks,
           ...(needsCode ? visitInput : {}),
           ...(countsGroup && next?.direction === "OUT" ? { exitCounts: Object.fromEntries(Object.entries(exitCounts).map(([k, v]) => [k, Number(v) || 0])) } : {}),
@@ -1795,6 +2291,8 @@ export function MovementForm({
       <LiveDateTime />
       {next && (
         <div className="space-y-3">
+          {/* Only when workers can also be marked out one by one: choose whether the record's own side is recorded too */}
+          {pending.groups.length > 0 && (
           <label
             className={`flex min-h-[64px] cursor-pointer items-center gap-3 rounded-2xl border-2 px-4 py-3 text-base font-semibold transition-colors ${
               mark
@@ -1808,6 +2306,28 @@ export function MovementForm({
             {next.direction === "OUT" ? <LogOut className="h-5 w-5 shrink-0" /> : <LogIn className="h-5 w-5 shrink-0" />}
             <span className="min-w-0">{t("Record {side} now", { side: next.label })}</span>
           </label>
+          )}
+          {def.movement?.outReasonKey && next.direction === "OUT" && mark && (
+            <div className="space-y-1.5">
+              <label htmlFor="mv-reason" className="field-label block text-sm font-medium text-zinc-200">
+                {t("Reason for going out")} <span className="text-orange-500">*</span>
+              </label>
+              <input
+                id="mv-reason"
+                type="text"
+                autoComplete="off"
+                autoFocus
+                maxLength={200}
+                value={reason}
+                onChange={(e) => {
+                  setReason(e.target.value);
+                  setReasonMissing(false);
+                }}
+                className={cn(inputCls, reasonMissing && "!border-red-500")}
+              />
+              {reasonMissing && <p role="alert" className="text-sm font-medium text-red-600">{t("Enter the reason for going out")}</p>}
+            </div>
+          )}
           {next.readingKey && mark && (
             <div className="space-y-1.5">
               <label htmlFor="mv-reading" className="field-label block text-sm font-medium text-zinc-200">
@@ -1816,26 +2336,66 @@ export function MovementForm({
               <input id="mv-reading" type="text" autoComplete="off" maxLength={100} value={reading} onChange={(e) => setReading(e.target.value)} className={inputCls} />
             </div>
           )}
-          {countsGroup && next.direction === "OUT" && mark && Object.keys(countsIn).length > 0 && (
-            // How many of each are leaving (everyone at once)
-            <div className="space-y-2 rounded-2xl border-[1.5px] border-zinc-700 p-3 sm:p-4">
-              <p className="field-label text-sm font-medium text-zinc-200">{t("How many are leaving?")}</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {Object.entries(countsIn).map(([type, came]) => (
-                  <label key={type} className="block space-y-1.5">
-                    <span className="flex items-baseline justify-between gap-2 text-sm font-semibold text-zinc-200">
-                      {t(type)} <span className="text-xs font-normal text-zinc-500 tabular-nums">{t("came in: {n}", { n: came })}</span>
-                    </span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={4}
-                      value={exitCounts[type] ?? ""}
-                      onChange={(e) => setExitCounts((s) => ({ ...s, [type]: e.target.value.replace(/[^0-9]/g, "") }))}
-                      className={inputCls}
-                    />
-                  </label>
-                ))}
+          {countsGroup && next.direction === "OUT" && mark && inside.length > 0 && (
+            // How many are going out now (the rest can go out later, each group with its own time)
+            <div className="space-y-3">
+              <p className="text-lg font-bold text-zinc-100">{t("How many are going out now?")}</p>
+              {/* One row per worker type: the name and how many are inside, then − count + */}
+              <div className="divide-y divide-zinc-800 overflow-hidden rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900">
+                {inside.map((w) => {
+                  const v = Number(exitCounts[w.type]) || 0;
+                  const set = (n: number) => setExitCounts((s) => ({ ...s, [w.type]: String(Math.max(0, Math.min(w.inside, n))) }));
+                  return (
+                    <div key={w.type} className="flex flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-4">
+                      <div className="min-w-0">
+                        <p className="break-words text-xl font-bold text-zinc-100">{t(w.type)}</p>
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-lg bg-sky-500/15 px-2 py-0.5 text-base font-bold tabular-nums text-sky-700">
+                          {t("Inside: {n}", { n: w.inside })}
+                        </span>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          aria-label={t("Less")}
+                          onClick={() => set(v - 1)}
+                          disabled={v <= 0}
+                          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-red-600 text-2xl font-bold text-white hover:bg-red-700 disabled:bg-zinc-950 disabled:text-zinc-500"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={4}
+                          aria-label={t(w.type)}
+                          value={exitCounts[w.type] ?? ""}
+                          onChange={(e) => setExitCounts((s) => ({ ...s, [w.type]: e.target.value.replace(/[^0-9]/g, "") }))}
+                          className={cn(inputCls, "!h-12 !w-20 shrink-0 px-1 text-center !text-2xl font-bold tabular-nums")}
+                        />
+                        <button
+                          type="button"
+                          aria-label={t("More")}
+                          onClick={() => set(v + 1)}
+                          disabled={v >= w.inside}
+                          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-2xl font-bold text-white hover:bg-emerald-700 disabled:bg-zinc-950 disabled:text-zinc-500"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* In all: going out now, and who stays inside */}
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-3 py-2 text-lg font-bold tabular-nums text-white">
+                  <LogOut className="h-5 w-5" aria-hidden="true" /> {t("Going out now: {n}", { n: leavingNow })}
+                </span>
+                {insideTotal - leavingNow > 0 && (
+                  <span className="inline-flex items-center rounded-xl bg-amber-500/15 px-3 py-2 text-lg font-bold tabular-nums text-amber-800">
+                    {t("Still inside after this: {n}", { n: insideTotal - leavingNow })}
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -1929,7 +2489,6 @@ export function CloseRecordForm({
           value={note}
           maxLength={200}
           rows={2}
-          placeholder={t("e.g. Left by another gate")}
           onChange={(e) => setNote(e.target.value)}
           className="flex min-h-[80px] w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
         />
@@ -2103,15 +2662,18 @@ function TypedRows({
     onChange(types.flatMap((ty) => next.filter((r) => r.workerType === ty)));
   };
   const setName = (type: string, name: string) => onChange(rows.map((r) => (r.workerType === type ? { ...r, name } : r)));
+  // Big, solid − and + (red / green), easy to hit and to read
   const stepBtn =
-    "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-[1.5px] text-xl font-bold leading-none transition-[background-color,transform] active:scale-95 disabled:opacity-35";
+    "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-2xl font-bold leading-none text-white transition-[background-color,transform] active:scale-95 disabled:bg-zinc-950 disabled:text-zinc-500";
   return (
-    <fieldset data-field={`__group.${group.key}`} data-compact="" className="scroll-mt-24 space-y-2">
+    <fieldset data-field={`__group.${group.key}`} className="scroll-mt-24 space-y-2">
       <legend className="flex w-full items-center justify-between gap-3 pb-2">
-        <span className="field-label text-sm font-medium text-zinc-200">
+        <span className="text-lg font-bold text-zinc-100 sm:text-xl">
           {t(group.label)} <span className="text-orange-500">*</span>
         </span>
-        <span className="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1 text-sm font-bold tabular-nums text-zinc-100">
+        <span
+          className={`rounded-full px-3.5 py-1.5 text-base font-bold tabular-nums ${total > 0 ? "bg-orange-600 text-white" : "border-[1.5px] border-zinc-700 bg-zinc-950 text-zinc-200"}`}
+        >
           {t("Total")}: {total}
         </span>
       </legend>
@@ -2129,13 +2691,13 @@ function TypedRows({
               className={`scroll-mt-24 space-y-2 px-3 py-2.5 first:rounded-t-2xl last:rounded-b-2xl sm:px-4 ${n > 0 ? "bg-emerald-500/10" : ""}`}
             >
               <div className="flex items-center gap-2">
-                <span className={`min-w-0 flex-1 text-base font-semibold ${n > 0 ? "text-zinc-100" : "text-zinc-500"}`}>{t(type)}</span>
+                <span className="min-w-0 flex-1 break-words text-lg font-bold text-zinc-100">{t(type)}</span>
                 <button
                   type="button"
                   aria-label={`${t(type)} −1`}
                   disabled={n <= 0}
                   onClick={() => setCount(type, String(n - 1))}
-                  className={`${stepBtn} border-red-500/40 bg-red-500/10 text-red-600 hover:bg-red-500/15`}
+                  className={`${stepBtn} bg-red-600 hover:bg-red-700`}
                 >
                   −
                 </button>
@@ -2147,13 +2709,13 @@ function TypedRows({
                   value={count}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setCount(type, e.target.value.replace(/[^0-9]/g, ""))}
-                  className={`${inputCls} !w-16 shrink-0 px-1 text-center text-lg font-bold tabular-nums ${countErr ? "!border-red-500" : ""}`}
+                  className={`${inputCls} !h-12 !w-20 shrink-0 px-1 text-center !text-2xl font-bold tabular-nums ${countErr ? "!border-red-500" : ""}`}
                 />
                 <button
                   type="button"
                   aria-label={`${t(type)} +1`}
                   onClick={() => setCount(type, String(n + 1))}
-                  className={`${stepBtn} border-emerald-500/50 bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25`}
+                  className={`${stepBtn} bg-emerald-600 hover:bg-emerald-700`}
                 >
                   +
                 </button>
@@ -2164,7 +2726,6 @@ function TypedRows({
                   type="text"
                   maxLength={100}
                   value={row.name ?? ""}
-                  placeholder={t("Name")}
                   onChange={(e) => setName(type, e.target.value)}
                   className={inputCls}
                 />
@@ -2189,16 +2750,18 @@ function TypedRows({
 
 /**
  * Items added through a pop-up (Returnable book): the added items as a list (✕ to remove);
- * "+ Add item" opens Item details / Quantity / Remarks with "Add & next" (stays open, cleared)
- * and "Add & close".
+ * "+ Add item" opens Item details and a photo (optional) with "Add" (stays open, cleared)
+ * and "Done".
  */
 function ItemsPopup({
   group,
+  registerKey,
   rows,
   onChange,
   error,
 }: {
   group: GroupDef;
+  registerKey: string;
   rows: Values[];
   onChange: (rows: Values[]) => void;
   error: string | null;
@@ -2206,14 +2769,18 @@ function ItemsPopup({
   const t = useT();
   const items = rows.filter((r) => String(r.description ?? "").trim() !== "");
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<Values>({ description: "", quantity: "", remarks: "" });
+  const [draft, setDraft] = useState<Values>({ description: "", photo: [] });
+  const maxPhotos = group.fields.find((f) => f.key === "photo")?.maxPhotos ?? 4;
   const [missing, setMissing] = useState(false);
   const [addedNo, setAddedNo] = useState(0);
   const full = group.max !== null && items.length >= group.max;
   const add = (close: boolean) => {
-    if (!String(draft.description ?? "").trim()) return setMissing(true);
-    onChange([...items, { description: draft.description.trim(), quantity: draft.quantity ?? "", remarks: (draft.remarks ?? "").trim() }]);
-    setDraft({ description: "", quantity: "", remarks: "" });
+    const typed = String(draft.description ?? "").trim();
+    // "Done" with nothing typed just closes
+    if (!typed && close && items.length > 0 && photoList(draft.photo).length === 0) return setOpen(false);
+    if (!typed) return setMissing(true);
+    onChange([...items, { description: typed, photo: photoList(draft.photo) }]);
+    setDraft({ description: "", photo: [] });
     setMissing(false);
     setAddedNo((n) => n + 1);
     if (close || (group.max !== null && items.length + 1 >= group.max)) setOpen(false);
@@ -2234,9 +2801,9 @@ function ItemsPopup({
               <span className="flex h-9 min-w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-950 text-sm font-bold tabular-nums text-zinc-300">{i + 1}</span>
               <span className="min-w-0 flex-1">
                 <span className="block break-words text-base font-semibold text-zinc-100">{it.description}</span>
-                {(it.quantity || it.remarks) && (
-                  <span className="block text-sm text-zinc-500">
-                    {[it.quantity ? `${t("Quantity")} ${it.quantity}` : "", it.remarks].filter(Boolean).join(" · ")}
+                {photoList(it.photo).length > 0 && (
+                  <span className="mt-0.5 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700">
+                    <Camera className="h-4 w-4" aria-hidden="true" /> {t("{n} photos", { n: photoList(it.photo).length })}
                   </span>
                 )}
               </span>
@@ -2277,7 +2844,7 @@ function ItemsPopup({
             </p>
           )}
           <label className="block space-y-1.5">
-            <span className="text-sm font-semibold text-zinc-200">
+            <span className="text-base font-bold text-zinc-100">
               {t("Item Details")} <span className="text-orange-500">*</span>
             </span>
             <input
@@ -2294,50 +2861,33 @@ function ItemsPopup({
             />
             {missing && <span className="block text-sm font-medium text-red-600">{t("Fill this in")}</span>}
           </label>
-          <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
-            <label className="block space-y-1.5">
-              <span className="text-sm font-semibold text-zinc-200">{t("Quantity")}</span>
-              <input
-                value={draft.quantity ?? ""}
-                inputMode="numeric"
-                maxLength={6}
-                autoComplete="off"
-                onChange={(e) => setDraft((d) => ({ ...d, quantity: e.target.value.replace(/[^0-9.]/g, "") }))}
-                className={`${box} text-center`}
-              />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-sm font-semibold text-zinc-200">{t("Remarks")}</span>
-              <input
-                value={draft.remarks ?? ""}
-                maxLength={200}
-                autoComplete="off"
-                onChange={(e) => setDraft((d) => ({ ...d, remarks: e.target.value }))}
-                className={box}
-              />
-            </label>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
+          {/* Photos of the item: optional, several */}
+          <MultiPhotoInput
+            key={`photo-${addedNo}`}
+            id="rf-item-photo"
+            value={photoList(draft.photo)}
+            onChange={(v) => setDraft((d) => ({ ...d, photo: v }))}
+            registerKey={registerKey}
+            label="Item photos"
+            max={maxPhotos}
+          />
+          {/* Add: saves this item and clears the boxes for the next one. Done: saves it (if typed) and closes */}
+          <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => add(false)}
-              className="flex h-12 items-center justify-center gap-1.5 rounded-2xl border-[1.5px] border-emerald-600 bg-emerald-500/10 text-base font-semibold text-emerald-700 hover:bg-emerald-500/15"
+              className="flex h-14 items-center justify-center gap-2 whitespace-nowrap rounded-2xl border-2 border-emerald-600 bg-emerald-500/10 text-lg font-bold text-emerald-700 hover:bg-emerald-500/15"
             >
-              <Plus className="h-5 w-5" /> {t("Add & next")}
+              <Plus className="h-5 w-5 shrink-0" /> {t("Add")}
             </button>
             <button
               type="button"
               onClick={() => add(true)}
-              className="flex h-12 items-center justify-center gap-1.5 rounded-2xl bg-orange-600 text-base font-semibold text-white hover:bg-orange-700"
+              className="flex h-14 items-center justify-center gap-2 whitespace-nowrap rounded-2xl bg-orange-600 text-lg font-bold text-white hover:bg-orange-700"
             >
-              <CheckCircle2 className="h-5 w-5" /> {t("Add & close")}
+              <CheckCircle2 className="h-5 w-5 shrink-0" /> {t("Done")}
             </button>
           </div>
-          {addedNo > 0 && (
-            <button type="button" onClick={() => setOpen(false)} className="h-11 w-full rounded-2xl text-sm font-semibold text-zinc-400 hover:bg-zinc-950">
-              {t("Close")}
-            </button>
-          )}
         </div>
       </Modal>
     </fieldset>

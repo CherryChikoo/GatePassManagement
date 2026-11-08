@@ -209,7 +209,7 @@ export function FacultyActivityClient({
                               {p.type === "EXIT" ? <DoorOpen className="h-3 w-3" /> : <DoorClosed className="h-3 w-3" />}
                               {p.type === "EXIT" ? "Exit Pass" : "Entry Pass"}
                             </span>
-                            <StatusBadge status={p.status} />
+                            <StatusBadge status={p.status} pass={p} />
                           </span>
                           <span className="block text-sm font-medium text-zinc-100 break-words">{p.purpose}</span>
                           <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
@@ -272,7 +272,7 @@ export function FacultyActivityClient({
                                 {perm.student?.profile?.name}
                                 <span className="font-normal text-zinc-500"> — {perm.student?.studentRoll}</span>
                               </span>
-                              <span className="shrink-0"><StatusBadge status={perm.status} /></span>
+                              <span className="shrink-0"><StatusBadge status={perm.status} pass={perm} /></span>
                             </span>
                             <span className="mt-0.5 block text-xs text-zinc-500 break-words">
                               {perm.purpose} {perm.destination ? `→ ${perm.destination}` : ""}

@@ -3,7 +3,7 @@
 /**
  * Security checks a visitor who filled the form on their own phone (Show QR →
  * arrivals): everything they typed in labelled boxes, the name / mobile /
- * vehicle can be corrected, the photo is taken here (required), then Accept
+ * vehicle can be corrected, the photo is taken here (Admission Book only), then Accept
  * (the normal Visitors Book visitor / Admission Book record is made) or
  * Reject with a reason (the phone says "Please speak to the security officer").
  *
@@ -34,9 +34,6 @@ const CATEGORY_LABEL: Record<string, string> = {
   WORKER: "Worker / Staff",
 };
 
-/** Reject chips (sent in English; "Other" sends the typed text) */
-const REJECT_REASONS = ["Wrong details", "Not allowed now"];
-const OTHER = "Other";
 
 const ADMISSION_DEF = REGISTER_BY_KEY.ADMISSION as EntryRegister;
 /** Shown as the correctable name / mobile, or set by the server at Accept */
@@ -71,9 +68,9 @@ export function ArrivalReview({
   const [busy, setBusy] = useState<"accept" | "reject" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Reject: a remarks box (why), then Reject
   const [rejecting, setRejecting] = useState(false);
-  const [reason, setReason] = useState<string | null>(null);
-  const [otherText, setOtherText] = useState("");
+  const [remarks, setRemarks] = useState("");
 
   const onPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -96,7 +93,7 @@ export function ArrivalReview({
   const accept = async () => {
     if (busy) return;
     setError(null);
-    if (!photo) {
+    if (!isVisitors && !photo) {
       setError(t("Take the visitor's photo before letting them in"));
       return;
     }
@@ -111,8 +108,8 @@ export function ArrivalReview({
     try {
       // The upload started when the photo was taken; once more if it failed
       let path: string | null = null;
-      if (upload.current?.data === photo) path = (await upload.current.promise).path;
-      if (!path) {
+      if (photo && upload.current?.data === photo) path = (await upload.current.promise).path;
+      if (photo && !path) {
         const res = await callGate("uploadOutsiderPhoto", [photo, fixName || "visitor"], 30_000);
         if (!res.path) {
           setError(t(res.error || "Photo upload failed"));
@@ -122,7 +119,7 @@ export function ArrivalReview({
         upload.current = { data: photo, promise: Promise.resolve(res) };
       }
 
-      const fixes: { photoUrl: string; name?: string; phone?: string; vehicleNumber?: string } = { photoUrl: path };
+      const fixes: { photoUrl?: string; name?: string; phone?: string; vehicleNumber?: string } = path ? { photoUrl: path } : {};
       if (fixName !== arrival.name) fixes.name = fixName;
       if (fixPhone !== arrival.phone) fixes.phone = fixPhone;
       if (isVisitors && fixVehicle.toUpperCase() !== sentVehicle.toUpperCase()) {
@@ -144,9 +141,9 @@ export function ArrivalReview({
   const reject = async () => {
     if (busy) return;
     setError(null);
-    const why = reason === OTHER ? otherText.trim() : reason ?? "";
+    const why = remarks.trim();
     if (why.length < 2) {
-      setError(t("Choose or write a reason"));
+      setError(t("Write the reason"));
       return;
     }
     setBusy("reject");
@@ -275,7 +272,8 @@ export function ArrivalReview({
           </dl>
         )}
 
-        {/* Photo (required) */}
+        {/* Photo (Admission Book only; required there) */}
+        {!isVisitors && (
         <div className="space-y-2">
           <p className={labelCls}>
             {t("Visitor Photo")} <span className="text-orange-400">*</span>
@@ -319,11 +317,12 @@ export function ArrivalReview({
           )}
           <input id="arrival-photo" type="file" accept="image/*" capture="environment" className="hidden" onChange={onPhoto} />
         </div>
+        )}
 
         {error && (
-          <div role="alert" className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-400">
-            <AlertCircle className="h-5 w-5 shrink-0" />
-            <p className="text-sm font-medium">{error}</p>
+          <div role="alert" className="flex items-start gap-3 rounded-2xl border-2 border-red-500 bg-red-50 px-4 py-3.5 text-red-700">
+            <AlertCircle className="mt-0.5 h-6 w-6 shrink-0" aria-hidden="true" />
+            <p className="text-lg font-bold leading-snug">{error}</p>
           </div>
         )}
 
@@ -338,7 +337,6 @@ export function ArrivalReview({
               {busy === "accept" ? <Loader2 className="h-5 w-5 animate-spin" /> : <UserCheck className="h-5 w-5" />}
               {busy === "accept" ? t("Letting in…") : t("Accept")}
             </button>
-            {!photo && <p className="text-center text-xs text-zinc-500">{t("Take the photo first, then tap Accept.")}</p>}
             <button
               type="button"
               onClick={() => {
@@ -346,69 +344,46 @@ export function ArrivalReview({
                 setRejecting(true);
               }}
               disabled={!!busy}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-full border border-red-500/30 bg-zinc-900 text-[15px] font-medium text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-60"
+              className="flex h-14 w-full items-center justify-center gap-2.5 rounded-full bg-red-600 text-lg font-semibold text-white shadow-[0_10px_24px_-12px_rgba(220,38,38,0.7)] transition-[background-color,transform] hover:bg-red-700 active:scale-[0.98] disabled:opacity-60"
             >
-              <ShieldX className="h-4 w-4" />
+              <ShieldX className="h-5 w-5" />
               {t("Reject")}
             </button>
           </div>
         ) : (
           <div className="space-y-3 rounded-3xl border border-red-500/25 bg-red-500/5 p-4">
-            <p id="reject-reason" className="text-sm font-medium text-zinc-200">
-              {t("Why is this visitor not allowed?")}
-            </p>
-            <div role="radiogroup" aria-labelledby="reject-reason" className="flex flex-wrap gap-2">
-              {[...REJECT_REASONS, OTHER].map((r) => {
-                const on = reason === r;
-                return (
-                  <button
-                    key={r}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    onClick={() => setReason(r)}
-                    className={
-                      "h-11 rounded-full border px-4 text-sm font-medium transition-colors " +
-                      (on ? "border-red-500 bg-red-600 text-white" : "border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-950")
-                    }
-                  >
-                    {t(r)}
-                  </button>
-                );
-              })}
-            </div>
-            {reason === OTHER && (
-              <textarea
-                value={otherText}
-                onChange={(e) => setOtherText(e.target.value)}
-                maxLength={200}
-                rows={2}
-                autoFocus
-                placeholder={t("Write the reason")}
-                aria-label={t("Write the reason")}
-                className="w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-base text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-red-500/50 focus:ring-2 focus:ring-red-500/20"
-              />
-            )}
+            <label htmlFor="reject-remarks" className="block text-base font-semibold text-zinc-100">
+              {t("Remarks")} — {t("Why is this visitor not allowed?")} <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              id="reject-remarks"
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              maxLength={200}
+              rows={3}
+              autoFocus
+              className="w-full resize-none rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900 px-4 py-3 text-base text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+            />
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => {
                   setRejecting(false);
-                  setReason(null);
+                  setRemarks("");
                   setError(null);
                 }}
                 disabled={!!busy}
-                className="h-12 flex-1 rounded-full border border-zinc-800 bg-zinc-900 text-[15px] font-medium text-zinc-200 hover:bg-zinc-950 disabled:opacity-60"
+                className="h-12 flex-1 rounded-full border-2 border-red-500 bg-red-50 font-bold text-red-600 hover:bg-red-100 text-[15px] disabled:opacity-60"
               >
-                {t("Cancel")}
+                ✕ {t("Cancel")}
               </button>
               <button
                 type="button"
                 onClick={reject}
-                disabled={!!busy || !reason}
-                className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-red-600 text-[15px] font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                disabled={!!busy || remarks.trim().length < 2}
+                className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-red-600 text-base font-bold text-white hover:bg-red-700 disabled:opacity-60"
               >
-                {busy === "reject" && <Loader2 className="h-4 w-4 animate-spin" />}
+                {busy === "reject" ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShieldX className="h-5 w-5" />}
                 {t("Reject")}
               </button>
             </div>

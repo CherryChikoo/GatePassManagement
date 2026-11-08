@@ -25,6 +25,8 @@ export type CompletionPayload = {
   markMovement?: unknown;
   /** Reading for that side (e.g. In Reading) */
   reading?: unknown;
+  /** Going out: the reason (registers with movement.outReasonKey, e.g. Auto Book) */
+  reason?: unknown;
   /** Out with counts by type (registers with movement.exitCounts), e.g. { Peddamestri: 1, Cooli: 4 } */
   exitCounts?: Record<string, unknown>;
   /** Group rows to mark out now, e.g. { workers: [0, 3] } */
@@ -38,7 +40,7 @@ export type CompletionPayload = {
 export type StaffSnapshot = { id: string; name: string; employeeId: string | null };
 export type StaffResolver = (id: string) => Promise<StaffSnapshot | null>;
 
-type FieldValue = string | number | boolean | StaffSnapshot | null;
+type FieldValue = string | number | boolean | StaffSnapshot | string[] | null;
 export type RegisterData = Record<string, FieldValue | Record<string, FieldValue>[]>;
 
 const PHONE_RE = /^\+?[0-9][0-9\s-]{8,16}[0-9]$/;
@@ -74,6 +76,17 @@ async function cleanValue(
     if (raw === false || raw === "no" || raw === "false") return { value: false };
     return { error: `${f.label}: choose Yes or No` };
   }
+  // Several photos (e.g. the stock photos): a list of our own upload paths
+  if (f.type === "photo" && f.maxPhotos) {
+    const list = Array.isArray(raw) ? raw : isBlank(raw) ? [] : [raw];
+    const paths: string[] = [];
+    for (const p of list) {
+      if (typeof p !== "string" || !/^registers\/[A-Za-z0-9_\-./]+$/.test(p) || p.includes("..")) return { error: `${f.label}: take the photo again` };
+      if (!paths.includes(p)) paths.push(p);
+    }
+    if (paths.length > f.maxPhotos) return { error: `${f.label}: at most ${f.maxPhotos} photos` };
+    return { value: paths.length ? paths : null };
+  }
   if (isBlank(raw)) return { value: null };
   if (typeof raw !== "string" && typeof raw !== "number") return { error: `${f.label}: invalid value` };
   const s = String(raw).trim();
@@ -81,6 +94,7 @@ async function cleanValue(
   switch (f.type) {
     case "text":
     case "person":
+    case "keyHolder":
       if (s.length > 200) return { error: `${f.label}: at most 200 characters` };
       return { value: s };
     case "textarea":
@@ -224,6 +238,8 @@ export async function validateNewRecord(
     if (m.directionField) data[m.directionField] = direction === "IN" ? "In" : "Out";
     data.direction = direction;
     if (payload?.oneWay === true && !m.single && !m.noOneWay) data.oneWay = true;
+    // e.g. Non-Returnable: goes out, never comes back
+    if (!m.single && m.oneWayWhen && data[m.oneWayWhen.field] === m.oneWayWhen.value) data.oneWay = true;
   }
 
   for (const g of def.groups ?? []) {
@@ -253,6 +269,8 @@ export async function validateNewRecord(
     data[g.key] = rows;
     details += rows.length;
   }
+  // Boxes hidden while their button is on (e.g. bill details after "No bill"): not saved
+  for (const f of def.fields) if (f.hideWhen && data[f.hideWhen] === true) data[f.key] = null;
   // Boxes shown only after their button: ignored when the button is off, required while on (if so marked)
   for (const f of def.fields) {
     if (!f.showWhen) continue;
@@ -309,6 +327,31 @@ export async function validateNewRecord(
   return { data, entryDateStr: today };
 }
 
+/** Each group of workers that went out (College Daily Labour / Contract): when, how many of each, and in all */
+export type ExitBatch = { time: string; total: number; counts: string; n: Record<string, number> };
+
+/** The groups that went out so far (newest last) */
+export function exitBatches(data: Record<string, unknown>): ExitBatch[] {
+  return Array.isArray(data.exits) ? (data.exits as unknown as ExitBatch[]).filter((b) => b && typeof b === "object" && typeof b.time === "string") : [];
+}
+
+/** Workers by type: how many came in, how many went out so far, how many are still inside */
+export function workersInside(def: EntryRegister, data: Record<string, unknown>): { type: string; came: number; out: number; inside: number }[] {
+  const key = def.movement?.exitCounts;
+  if (!key) return [];
+  const came = new Map<string, number>();
+  for (const r of Array.isArray(data[key]) ? (data[key] as Record<string, unknown>[]) : []) {
+    const type = String(r.workerType ?? "");
+    if (type) came.set(type, (came.get(type) ?? 0) + (Number(r.count) || 0));
+  }
+  const out = new Map<string, number>();
+  for (const b of exitBatches(data)) for (const [type, n] of Object.entries(b.n ?? {})) out.set(type, (out.get(type) ?? 0) + (Number(n) || 0));
+  return [...came].map(([type, c]) => {
+    const o = Math.min(c, out.get(type) ?? 0);
+    return { type, came: c, out: o, inside: c - o };
+  });
+}
+
 /**
  * Validates what is recorded later on a saved record: the other side of an
  * In / Out register (time = now, plus its reading), and/or group rows marked out now.
@@ -338,22 +381,46 @@ export async function validateCompletion(
     const side = pending.next;
     data[side.timeKey] = time;
     provided++;
-    // Out with the counts leaving, by type (College Daily Labour)
+    // Going out: the reason, every time (Auto Book)
+    const reasonKey = def.movement?.outReasonKey;
+    if (side.direction === "OUT" && reasonKey) {
+      const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+      if (!reason) return { error: "Enter the reason for going out" };
+      if (reason.length > 200) return { error: "Reason: at most 200 characters" };
+      data[reasonKey] = reason;
+    }
+    // Labour books: some workers go out now (their own time); the record's Out
+    // time is set when the last of them has gone
     const countsGroup = def.movement?.exitCounts;
     if (side.direction === "OUT" && countsGroup) {
       const raw = payload.exitCounts && typeof payload.exitCounts === "object" ? (payload.exitCounts as Record<string, unknown>) : {};
-      const rowsIn = Array.isArray(current[countsGroup]) ? (current[countsGroup] as Record<string, unknown>[]) : [];
-      const types = [...new Set(rowsIn.map((r) => String(r.workerType ?? "")).filter(Boolean))];
+      const now = workersInside(def, current);
       let total = 0;
       const parts: string[] = [];
-      for (const type of types) {
-        const n = Number(raw[type] ?? 0);
-        if (!Number.isInteger(n) || n < 0 || n > 1000) return { error: `${type}: enter a whole number` };
-        total += n;
-        parts.push(`${type} × ${n}`);
+      const n: Record<string, number> = {};
+      for (const w of now) {
+        const c = Number(raw[w.type] ?? 0);
+        if (!Number.isInteger(c) || c < 0) return { error: `${w.type}: enter a whole number` };
+        if (c > w.inside) return { error: `${w.type}: only ${w.inside} still inside` };
+        if (c === 0) continue;
+        total += c;
+        n[w.type] = c;
+        parts.push(`${w.type} × ${c}`);
       }
-      data.outCounts = parts.join(", ");
-      data.outTotal = total;
+      if (total === 0) return { error: "Enter how many are going out now" };
+      data.exits = [{ time, total, counts: parts.join(", "), n }] as unknown as RegisterData[string];
+      const stillInside = now.reduce((sum, w) => sum + w.inside, 0) - total;
+      if (stillInside > 0) {
+        // Not everyone yet: the record stays open for the rest
+        delete data[side.timeKey];
+      } else {
+        // The last group: the Out time, and how many went out in all
+        const all = [...exitBatches(current), { n }];
+        const totals = new Map<string, number>();
+        for (const b of all) for (const [type, c] of Object.entries(b.n ?? {})) totals.set(type, (totals.get(type) ?? 0) + (Number(c) || 0));
+        data.outCounts = [...totals].map(([type, c]) => `${type} × ${c}`).join(", ");
+        data.outTotal = [...totals.values()].reduce((a, b) => a + b, 0);
+      }
     }
     // Siros Venture labour: Out is for everyone at once (the contractor and every coolie still in)
     if (side.direction === "OUT" && isSirosLabour(def.key)) {
@@ -404,10 +471,17 @@ export function effectiveData(
     (corrections.length ? (corrections[corrections.length - 1].data as RegisterData) : original) ?? {}
   );
   const groupKeys = new Set((def.groups ?? []).map((g) => g.key));
+  // A correction already holds the groups that went out before it
+  const lastCorrection = corrections.length ? +new Date(corrections[corrections.length - 1].createdAt) : -Infinity;
   for (const c of sorted.filter((s) => s.kind === "COMPLETION")) {
     const d = (c.data ?? {}) as RegisterData;
     for (const [k, v] of Object.entries(d)) {
-      if (groupKeys.has(k)) {
+      if (k === "exits") {
+        // Workers going out in groups: every group is added to the list
+        if (+new Date(c.createdAt) > lastCorrection && Array.isArray(v)) {
+          base.exits = [...(Array.isArray(base.exits) ? (base.exits as unknown[]) : []), ...v] as RegisterData[string];
+        }
+      } else if (groupKeys.has(k)) {
         const rows = Array.isArray(base[k]) ? (base[k] as Record<string, FieldValue>[]) : [];
         for (const u of Array.isArray(v) ? (v as Record<string, FieldValue>[]) : []) {
           const row = rows[Number(u.index)];

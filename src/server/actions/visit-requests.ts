@@ -112,7 +112,7 @@ export async function countArrivals(): Promise<ArrivalCounts> {
 }
 
 const acceptSchema = z.object({
-  photoUrl: z.string().max(300),
+  photoUrl: z.string().max(300).optional(),
   name: z.string().trim().max(100).optional(),
   phone: z.string().trim().max(20).optional(),
   vehicleNumber: z.string().trim().max(30).optional(),
@@ -135,14 +135,15 @@ async function unclaim(id: string) {
  */
 export async function acceptArrival(
   id: string,
-  input: { photoUrl: string; name?: string; phone?: string; vehicleNumber?: string }
+  input: { photoUrl?: string; name?: string; phone?: string; vehicleNumber?: string }
 ): Promise<{ success: true; register: CheckInRegister; recordId: string } | { error: string }> {
   const user = await requireRole("SECURITY", "ADMIN");
   if (typeof id !== "string" || !UUID_RE.test(id)) return { error: "Request not found" };
   const parsed = acceptSchema.safeParse(input ?? {});
   if (!parsed.success) return { error: "Please check the details" };
   const fix = parsed.data;
-  if (!fix.photoUrl || !fix.photoUrl.startsWith("outsiders/") || !isSafeStoragePath(fix.photoUrl)) {
+  // Visitors Book: no photo. Admission Book: the photo taken at the gate
+  if (fix.photoUrl && (!fix.photoUrl.startsWith("outsiders/") || !isSafeStoragePath(fix.photoUrl))) {
     return { error: "Take the visitor's photo before letting them in" };
   }
   if (fix.name !== undefined && fix.name.length < 2) return { error: "Visitor name is required" };
@@ -165,6 +166,7 @@ export async function acceptArrival(
   if (req.register === "ADMISSION" && !(await getRegisterAccess(user)).canCreate("ADMISSION")) {
     return { error: "You are not allowed to add to the Admission Book." };
   }
+  if (req.register === "ADMISSION" && !fix.photoUrl) return { error: "Take the visitor's photo before letting them in" };
 
   // The person to meet is read while the request is claimed (one wait instead of two)
   const hostLookup = req.hostProfileId ? resolveHost(req.hostProfileId) : Promise.resolve(null);
@@ -173,7 +175,7 @@ export async function acceptArrival(
   // Only one guard can accept it (a double tap or two screens)
   const claimed = await prisma.visitRequest.updateMany({
     where: { id, status: "PENDING" },
-    data: { status: "ACCEPTED", decidedById: user.profileId, decidedByName: user.name, decidedAt: new Date(), photoUrl: fix.photoUrl },
+    data: { status: "ACCEPTED", decidedById: user.profileId, decidedByName: user.name, decidedAt: new Date(), photoUrl: fix.photoUrl ?? null },
   });
   if (claimed.count !== 1) return { error: "Another guard has already handled this visitor." };
 

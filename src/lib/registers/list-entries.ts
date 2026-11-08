@@ -7,17 +7,18 @@
  * waits behind every other action (staff list, a save…), while plain GET
  * requests run in parallel and can be prefetched.
  */
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import type { AuthUser } from "@/lib/auth/helpers";
 import { getRegisterAccess } from "./access";
 import { MAX_CODE_TRIES, canOverrideVisitExit } from "@/lib/visits/passes";
 import { getEntryRegister } from "./catalog";
+import { hasInsideChoice } from "./inside-choice";
 import { pendingActions, type EntryRegister } from "./definitions";
 import { effectiveData, type RegisterData } from "./validate";
 import { istDateString, istDayRangeFromParam, parseDateParam, parsePageParam } from "@/lib/time/ist";
 
-export const REGISTER_PAGE_SIZE = 25;
+export const REGISTER_PAGE_SIZE = 10;
 const PAGE_SIZE = REGISTER_PAGE_SIZE;
 
 /** Roles that can open the registers */
@@ -28,6 +29,55 @@ export function registerDayFilter(date?: string | null) {
   if (!date || date === "all") return null;
   const d = parseDateParam(date);
   return d ? istDayRangeFromParam(d) : istDayRangeFromParam(istDateString());
+}
+
+/** "Still inside": records not finished in the last this-many days (Admission Book: today and yesterday) */
+export const OPEN_LOOKBACK_DAYS = 60;
+
+/**
+ * Records whose other side is not recorded yet and that are not closed, as the
+ * database can check it (the exact rule, isStillInside, runs on what is left).
+ * Null for registers without In / Out.
+ */
+export function openRecordWhere(def: Pick<EntryRegister, "movement">): Prisma.RegisterEntryWhereInput | null {
+  const m = def.movement;
+  if (!m || m.single) return null;
+  const timeDone = (k: string): Prisma.RegisterEntryWhereInput => ({ data: { path: [k], string_contains: ":" } });
+  // Only "no later recording finished it" here: a check on the record's own data
+  // would leave out every record WITHOUT that value (the database reads a
+  // missing value as "unknown"); the exact rule (isStillInside) runs afterwards
+  return {
+    NOT: { supplements: { some: { kind: "COMPLETION", OR: [timeDone(m.in.timeKey), timeDone(m.out.timeKey), { data: { path: ["oneWay"], equals: true } }] } } },
+  };
+}
+
+export { hasInsideChoice };
+
+/**
+ * How many records of each such book are still inside (not marked Out, not
+ * closed), from the last OPEN_LOOKBACK_DAYS days: one small counting query.
+ */
+export async function countStillInside(books: Pick<EntryRegister, "key" | "movement">[], end: Date): Promise<Record<string, number>> {
+  const list = books.filter(hasInsideChoice);
+  if (!list.length) return {};
+  const since = new Date(end.getTime() - OPEN_LOOKBACK_DAYS * DAY_MS);
+  const keys = Prisma.join(list.map((d) => Prisma.sql`(${d.key}, ${d.movement!.in.timeKey}, ${d.movement!.out.timeKey})`));
+  // A missing value counts as "not filled" (COALESCE), so records without it are not lost
+  const rows = await prisma.$queryRaw<{ register: string; n: number }[]>`
+    SELECT e.register, COUNT(*)::int AS n
+    FROM register_entries e
+    JOIN (VALUES ${keys}) AS b(register, in_key, out_key) ON b.register = e.register
+    WHERE e.kind = 'ORIGINAL'
+      AND e.entry_date >= ${since} AND e.entry_date < ${end}
+      AND COALESCE(e.data->>'oneWay', 'false') <> 'true'
+      AND NOT (COALESCE(e.data->>b.in_key, '') LIKE '%:%' AND COALESCE(e.data->>b.out_key, '') LIKE '%:%')
+      AND NOT EXISTS (
+        SELECT 1 FROM register_entries s
+        WHERE s.parent_id = e.id AND s.kind = 'COMPLETION'
+          AND (COALESCE(s.data->>b.in_key, '') LIKE '%:%' OR COALESCE(s.data->>b.out_key, '') LIKE '%:%' OR COALESCE(s.data->>'oneWay', 'false') = 'true')
+      )
+    GROUP BY e.register`;
+  return Object.fromEntries(rows.map((r) => [r.register, Number(r.n)]));
 }
 
 /** Value of the "Shift" filter: one of the register's shifts, or "OTHER" (any typed shift). */
@@ -63,20 +113,20 @@ export async function queryRegisterEntries(user: AuthUser, params: RegisterListP
     ? { AND: shiftOptions.map((o) => ({ NOT: { data: { path: ["shift"], equals: o } } })) }
     : null;
 
+  const dateWhere: Prisma.RegisterEntryWhereInput | null = range ? { entryDate: { gte: range.start, lt: range.end } } : null;
+  const qWhere: Prisma.RegisterEntryWhereInput | null = q
+    ? {
+        OR: [
+          { searchText: { contains: q } },
+          { recordedByName: { contains: q, mode: "insensitive" } },
+          { supplements: { some: { kind: "CORRECTION", searchText: { contains: q } } } },
+        ],
+      }
+    : null;
   const where: Prisma.RegisterEntryWhereInput = {
     register: def.key,
     kind: "ORIGINAL",
-    ...(range ? { entryDate: { gte: range.start, lt: range.end } } : {}),
-    ...(shiftWhere ? { AND: [shiftWhere] } : {}),
-    ...(q
-      ? {
-          OR: [
-            { searchText: { contains: q } },
-            { recordedByName: { contains: q, mode: "insensitive" } },
-            { supplements: { some: { kind: "CORRECTION", searchText: { contains: q } } } },
-          ],
-        }
-      : {}),
+    AND: [dateWhere, shiftWhere, qWhere].filter((w): w is Prisma.RegisterEntryWhereInput => !!w),
   };
 
   const select = entrySelect(def);
@@ -174,8 +224,12 @@ const INSIDE_MAX_CHECKED = 2000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Came in and Out is still to be recorded (the register's own Record Out rule) */
+/**
+ * Still waiting for its other side: Out for those who came in (labour,
+ * Admission), In for what went out (a key not returned yet).
+ */
 export function isStillInside(def: EntryRegister, current: Record<string, unknown>) {
-  return pendingActions(def, current).next?.direction === "OUT";
+  return !!pendingActions(def, current).next;
 }
 
 /**
@@ -194,23 +248,17 @@ export async function queryInsideRegisterEntries(user: AuthUser, params: { regis
   if (!m || m.single) return empty;
 
   const today = istDayRangeFromParam(istDateString());
-  const outKey = m.out.timeKey;
-  // Step 1 (light): every record of the two days that may still be inside —
-  // records whose Out (or "close") was saved later are left out by the database
+  // Admission Book: today and yesterday; the other In / Out books: anything not finished lately
+  const days = def.key === "ADMISSION" ? 2 : OPEN_LOOKBACK_DAYS;
+  // Step 1 (light): every record of those days that may still be inside —
+  // records whose other side (or "close") was saved later are left out by the database
   const [candidates, canOverrideVisit] = await Promise.all([
     prisma.registerEntry.findMany({
       where: {
         register: def.key,
         kind: "ORIGINAL",
-        entryDate: { gte: new Date(today.start.getTime() - DAY_MS), lt: today.end },
-        NOT: {
-          supplements: {
-            some: {
-              kind: "COMPLETION",
-              OR: [{ data: { path: [outKey], string_contains: ":" } }, { data: { path: ["oneWay"], equals: true } }],
-            },
-          },
-        },
+        entryDate: { gte: new Date(today.start.getTime() - (days - 1) * DAY_MS), lt: today.end },
+        ...openRecordWhere(def),
       },
       orderBy: [{ entryDate: "desc" }, { createdAt: "desc" }],
       take: INSIDE_MAX_CHECKED,

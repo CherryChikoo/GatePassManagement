@@ -19,7 +19,7 @@ export function formatFieldValue(f: FieldDef, v: unknown): string {
     case "yesno":
       return v === true ? yesNoWords(f)[0] : v === false ? yesNoWords(f)[1] : "—";
     case "photo":
-      return "Photo";
+      return Array.isArray(v) ? `${v.length} photo${v.length === 1 ? "" : "s"}` : "Photo";
     case "staff": {
       const s = v as { name?: string; employeeId?: string | null };
       return s?.name ? `${s.name}${s.employeeId ? ` (${s.employeeId})` : ""}` : "—";

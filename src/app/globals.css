@@ -500,6 +500,11 @@ html::-webkit-scrollbar {
     min-height: 4rem;
     font-size: 1.1875rem;
   }
+  /* In / Out: bigger still on tablets */
+  [data-look="clear"] [data-big-btn][data-inout] {
+    min-height: 5.25rem;
+    font-size: 1.5rem;
+  }
 }
 /* Small cards inside a form (e.g. the workers of College Daily Labour): compact boxes on every screen */
 [data-look="clear"] [data-compact] input {

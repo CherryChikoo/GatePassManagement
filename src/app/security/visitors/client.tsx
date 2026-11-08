@@ -5,7 +5,7 @@ import { actionErrorMessage } from "@/lib/deployment";
 
 import { useState, useEffect, useRef } from "react";
 import { VoicePanel, useVoiceFill } from "@/components/voice/voice-fill";
-import { HostPicker } from "@/components/visits/host-picker";
+import { HostPicker, loadHosts } from "@/components/visits/host-picker";
 import { VisitExitDialog } from "@/components/visits/visit-code";
 import { VISITOR_SPEC_KEY, type VoiceFill } from "@/lib/voice/spec";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { dt, PersonCell } from "@/components/ui/data-table";
 import { PagerBar } from "@/components/ui/pager-bar";
 import { cn, formatDateTime, formatTime } from "@/lib/utils";
-import { AlertCircle, BellRing, CalendarRange, Camera, CheckCircle2, History, KeyRound, Loader2, LogOut, MapPin, PencilLine, Phone, RotateCcw, Search, UserPlus, Users } from "lucide-react";
+import { AlertCircle, BellRing, CalendarRange, CheckCircle2, History, KeyRound, Loader2, LogOut, MapPin, PencilLine, Phone, RotateCcw, Search, UserPlus, Users } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
 import { loadGateData, prefetchGateData, seedGateData, useGateData } from "@/lib/gate-cache";
 import { FactList, InOutCard } from "@/components/registers/record-layout";
@@ -47,7 +47,7 @@ const VISITOR_DRAFT_MAX_AGE_MS = 12 * 60 * 60_000;
 const EMPTY_VISITOR = {
   comingFor: "", name: "", phone: "", address: "", vehicleNumber: "", detail: "", hostProfileId: "", visitingStudent: "",
 };
-type VisitorDraft = { formData: typeof EMPTY_VISITOR; onFoot: boolean; photo: string | null; at: number };
+type VisitorDraft = { formData: typeof EMPTY_VISITOR; onFoot: boolean; at: number };
 
 /** "5 min" / "2 h 10 min" / "3 d 7 h": how long they have been inside */
 function insideDuration(t: ReturnType<typeof useT>, since: string | Date | null | undefined, now: number): string | null {
@@ -98,6 +98,8 @@ export function OutsidersClient() {
     if (!onHub) return;
     const today = istDateString();
     prefetchGateData(`visitors-log|${today}||1`, () => callGate("getVisitorsBook", [{ date: today, q: "", page: 1 }], 15_000), ["visitors"]);
+    // The faculty / staff list of the form's "Meeting", so the form opens without waiting
+    void loadHosts();
   }, [onHub]);
   // "Inside 2 h 10 min" moves on by itself, once a minute (no requests)
   const now = useMinuteClock(view === "inside");
@@ -241,15 +243,11 @@ export function OutsidersClient() {
     else if (vehicle) setOnFoot(false);
     setParentPicked(true);
     const whoLabel = who === "FATHER" ? t("Father") : who === "MOTHER" ? t("Mother") : t("Guardian");
-    setParentNote(t("Filled from {student}'s {who}. Check the details and take the photo.", { student: s.name, who: whoLabel }));
+    setParentNote(t("Filled from {student}'s {who}. Check the details.", { student: s.name, who: whoLabel }));
   };
-  const [photo, setPhoto] = useState<string | null>(null);
-  // The photo's upload, started when it is taken (see handlePhotoCapture)
-  const photoUpload = useRef<{ data: string; promise: Promise<{ path: string | null; error: string | null }> } | null>(null);
 
   // ── Unsaved details kept for this tab (see VISITOR_DRAFT_KEY) ──
-  const typedSomething =
-    !!photo || onFoot || Object.values(formData).some((v) => String(v ?? "").trim() !== "");
+  const typedSomething = onFoot || Object.values(formData).some((v) => String(v ?? "").trim() !== "");
   const [restoredDraft, setRestoredDraft] = useState(false);
   const draftChecked = useRef(false);
   // Opening the form: bring back what was typed before (read after the page is up, never while it is drawn on the server)
@@ -270,7 +268,6 @@ export function OutsidersClient() {
     if (!isComingFor(kept.comingFor)) kept.comingFor = "";
     setFormData(kept as typeof EMPTY_VISITOR);
     setOnFoot(!!d.onFoot);
-    setPhoto(d.photo ?? null);
     setFormNonce((n) => n + 1);
     setRestoredDraft(true);
   }, [formOpen]);
@@ -279,66 +276,13 @@ export function OutsidersClient() {
     if (!formOpen || !draftChecked.current) return;
     try {
       if (typedSomething) {
-        sessionStorage.setItem(VISITOR_DRAFT_KEY, JSON.stringify({ formData, onFoot, photo, at: Date.now() }));
+        sessionStorage.setItem(VISITOR_DRAFT_KEY, JSON.stringify({ formData, onFoot, at: Date.now() } satisfies VisitorDraft));
       } else {
         sessionStorage.removeItem(VISITOR_DRAFT_KEY);
       }
-    } catch {
-      // A large photo can be over the browser's limit: keep the details without it
-      try {
-        sessionStorage.setItem(VISITOR_DRAFT_KEY, JSON.stringify({ formData, onFoot, photo: null, at: Date.now() }));
-      } catch {}
-    }
-  }, [formOpen, typedSomething, formData, onFoot, photo]);
+    } catch {}
+  }, [formOpen, typedSomething, formData, onFoot]);
 
-  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 5 * 1024 * 1024) {
-      setError(t("Image must be less than 5MB")); setTimeout(() => setError(null), 3000);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      // Compress image
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 800;
-        const MAX_HEIGHT = 800;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("getContext" in canvas ? "2d" : "2d");
-        ctx?.drawImage(img, 0, 0, width, height);
-        
-        const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7);
-        setPhoto(compressedBase64);
-        // Upload now, in the background: by the time the form is filled it is usually done
-        photoUpload.current = { data: compressedBase64, promise: callGate("uploadOutsiderPhoto", [compressedBase64, "visitor"], 30_000).catch(() => ({ path: null, error: "upload failed" })) };
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
-  };
-
-  
   // Fetch photo URL when outsider is selected
   useEffect(() => {
     let cancelled = false;
@@ -368,7 +312,6 @@ export function OutsidersClient() {
   /** Empty form (after saving, or "Clear form"); the kept copy goes too */
   const clearVisitorForm = () => {
     setFormData(EMPTY_VISITOR);
-    setPhoto(null);
     setOnFoot(false);
     setFormNonce((n) => n + 1);
     setParentNote(null);
@@ -376,7 +319,6 @@ export function OutsidersClient() {
     setParentTyping(false);
     setRestoredDraft(false);
     resetVoice();
-    photoUpload.current = null;
     forgetVisitorDraft();
   };
 
@@ -394,7 +336,6 @@ export function OutsidersClient() {
     const comingOpts = { detail: formData.detail, hostProfileId: formData.hostProfileId, student: formData.visitingStudent };
     const missingComing = missingComingForDetail(coming, comingOpts);
     if (missingComing) return stop(missingComing);
-    if (!photo) return stop("Take the visitor's photo before registering");
     if (!formData.name.trim()) return stop("Enter the full name");
     if (!formData.phone.trim()) return stop("Enter the phone number");
     if (!formData.address.trim()) return stop("Enter the address");
@@ -403,25 +344,11 @@ export function OutsidersClient() {
 
     setLoading(true);
     try {
-      let path: string | undefined;
-      if (photo) {
-        // The upload started when the photo was taken; retried once here if it failed
-        const pre = photoUpload.current?.data === photo ? await photoUpload.current.promise : null;
-        const upload = pre && pre.path && !pre.error ? pre : await callGate("uploadOutsiderPhoto", [photo, formData.name], 30_000);
-        if (upload.error || !upload.path) {
-          setError(t("Photo upload failed:") + " " + (upload.error || t("unknown error"))); setTimeout(() => setError(null), 3000);
-          setLoading(false);
-          return;
-        }
-        path = upload.path;
-      }
-
       const result: any = await callGate("registerOutsider", [{
         name: formData.name.trim(),
         phone: formData.phone.trim(),
         address: formData.address.trim(),
         vehicleNumber: onFoot ? "On foot" : formData.vehicleNumber.trim(),
-        photoUrl: path,
         ...comingForFields(coming, comingOpts),
       }], 20_000);
       
@@ -510,9 +437,9 @@ export function OutsidersClient() {
   const paginatedHistory = log ? log.rows : [];
 
   const errorAlert = error && (
-    <div role="alert" className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-400">
-      <AlertCircle className="h-5 w-5 shrink-0" />
-      <p className="text-sm font-medium">{error}</p>
+    <div role="alert" className="flex items-start gap-3 rounded-2xl border-2 border-red-500 bg-red-50 px-4 py-3.5 text-red-700">
+      <AlertCircle className="mt-0.5 h-6 w-6 shrink-0" aria-hidden="true" />
+      <p className="text-lg font-bold leading-snug">{error}</p>
     </div>
   );
   const successAlert = success && (
@@ -573,7 +500,7 @@ export function OutsidersClient() {
                 key: "gate",
                 icon: BellRing,
                 title: t("Waiting to accept"),
-                hint: t("Visitors who sent the form — photo and accept"),
+                hint: t("Visitors who sent the form — check and accept"),
                 count: arrivals.data ? waiting : null,
                 primary: true,
                 onClick: () => openView("gate"),
@@ -614,7 +541,7 @@ export function OutsidersClient() {
         <HubScreenHeader
           onBack={back}
           title={view === "new" ? t("New visitor") : view === "inside" ? t("Inside now") : t("Old records")}
-          subtitle={formOpen ? t("Choose what they are coming for first, then the photo and details. Saving lets the visitor in.") : t("Visitors Book")}
+          subtitle={t("Visitors Book")}
           // Everyone inside (hidden while searching: the pager shows the matches)
           count={view === "inside" && insidePage && !listQuery ? insidePage.total : null}
           busy={view === "inside" && insideList.refreshing}
@@ -723,7 +650,7 @@ export function OutsidersClient() {
                   </div>
                 )}
 
-                {/* Speak the visitor's details once: the boxes fill themselves (photo still needed) */}
+                {/* Speak the visitor's details once: the boxes fill themselves */}
                 <VoicePanel voice={voice} onUndo={undoVoice} />
 
                 {/* 1. Coming for, first: the rest of the form follows it */}
@@ -742,7 +669,6 @@ export function OutsidersClient() {
                       <option key={k} value={k}>{t(COMING_FOR[k].label)}</option>
                     ))}
                   </ThemedSelect>
-                  {!comingFor && <p className="text-xs text-zinc-500">{t("Choose what they are coming for to see the form.")}</p>}
                 </div>
 
                 {/* Parent / Guardian: find the student; picking who came fills the boxes from the saved details */}
@@ -755,87 +681,39 @@ export function OutsidersClient() {
                       </p>
                     )}
                     {!showDetails && (
-                      <p className="px-1 text-sm text-zinc-500">
-                        {t("Student not found?")}{" "}
-                        <button
-                          type="button"
-                          onClick={() => setParentTyping(true)}
-                          className="inline-flex min-h-11 items-center font-medium text-orange-500 underline underline-offset-4 hover:text-orange-400"
-                        >
-                          {t("Type details instead")}
-                        </button>
-                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setParentTyping(true)}
+                        className="flex min-h-14 w-full items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed border-orange-500 bg-orange-50 px-4 py-2 text-center text-base font-bold leading-snug text-orange-700 transition-colors hover:bg-orange-100 active:scale-[0.99]"
+                      >
+                        <PencilLine className="h-5 w-5 shrink-0" aria-hidden="true" />
+                        {t("Not listed? Type the details")}
+                      </button>
                     )}
                   </div>
                 )}
 
                 {showDetails && (
                   <>
-                    {/* Photo Capture (mandatory) */}
-                    <div className="space-y-2">
-                      <p className={labelCls}>
-                        {t("Visitor Photo")} {requiredMark}
-                      </p>
-                      {photo ? (
-                        <div className="flex items-center gap-4 rounded-3xl border border-emerald-500/30 bg-emerald-500/5 p-3">
-                          <img src={photo} alt="Captured" className="h-28 w-28 shrink-0 rounded-2xl object-cover" />
-                          <div className="min-w-0 space-y-3">
-                            <p className="flex items-center gap-2 text-sm font-medium text-emerald-400">
-                              <CheckCircle2 className="h-4 w-4 shrink-0" />
-                              {t("Photo Captured")}
-                            </p>
-                            <label
-                              htmlFor="photo-upload"
-                              className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-950"
-                            >
-                              <RotateCcw className="h-4 w-4" />
-                              {t("Retake Photo")}
-                            </label>
-                          </div>
-                        </div>
-                      ) : (
-                        <label
-                          htmlFor="photo-upload"
-                          className="flex cursor-pointer flex-col items-center justify-center gap-2.5 rounded-3xl border-2 border-dashed border-orange-500/40 bg-orange-500/5 px-4 py-7 text-center transition-colors hover:bg-orange-500/10 active:bg-orange-500/10"
-                        >
-                          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-600 text-white">
-                            <Camera className="h-7 w-7" />
-                          </span>
-                          <span className="text-base font-medium text-zinc-100">{t("Take Photo")}</span>
-                          <span className="text-xs text-zinc-500">
-                            {t("Capture the visitor's face with the device camera.")}
-                          </span>
-                        </label>
-                      )}
-                      <input
-                        id="photo-upload"
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="hidden"
-                        onChange={handlePhotoCapture}
-                      />
-                    </div>
-
                     {/* Who: name, phone, address (all needed) */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <label htmlFor="visitor-name" className={labelCls}>
                           {t("Full Name")} {requiredMark}
                         </label>
-                        <Input id="visitor-name" required autoComplete="off" autoCapitalize="words" placeholder={t("Enter full name")} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className={`text-base sm:text-sm${voiceRing("name")}`} />
+                        <Input id="visitor-name" required autoComplete="off" autoCapitalize="words" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className={`text-base sm:text-sm${voiceRing("name")}`} />
                       </div>
                       <div className="space-y-1.5">
                         <label htmlFor="visitor-phone" className={labelCls}>
                           {t("Phone Number")} {requiredMark}
                         </label>
-                        <Input id="visitor-phone" required type="tel" inputMode="tel" autoComplete="off" maxLength={15} placeholder={t("Enter phone")} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className={`text-base sm:text-sm${voiceRing("phone")}`} />
+                        <Input id="visitor-phone" required type="tel" inputMode="tel" autoComplete="off" maxLength={15} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className={`text-base sm:text-sm${voiceRing("phone")}`} />
                       </div>
                       <div className="space-y-1.5 sm:col-span-2">
                         <label htmlFor="visitor-address" className={labelCls}>
                           {t("Address / Company")} {requiredMark}
                         </label>
-                        <Input id="visitor-address" required maxLength={300} placeholder={t("Address or company name")} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className={`text-base sm:text-sm${voiceRing("address")}`} />
+                        <Input id="visitor-address" required maxLength={300} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className={`text-base sm:text-sm${voiceRing("address")}`} />
                       </div>
                     </div>
 
@@ -851,7 +729,7 @@ export function OutsidersClient() {
                         autoComplete="off"
                         autoCapitalize="characters"
                         maxLength={30}
-                        placeholder={onFoot ? t("No vehicle") : t("E.g., TS 09 EA 1234")}
+                        placeholder={onFoot ? t("No vehicle") : undefined}
                         value={onFoot ? "" : formData.vehicleNumber}
                         onChange={(e) => setFormData({ ...formData, vehicleNumber: e.target.value.toUpperCase() })}
                         className={`w-full text-base sm:text-sm disabled:opacity-60${voiceRing("vehicleNumber")}`}
@@ -883,9 +761,6 @@ export function OutsidersClient() {
                           value={formData.hostProfileId}
                           onChange={(v) => setFormData({ ...formData, hostProfileId: v })}
                         />
-                        {formData.hostProfileId && (
-                          <p className="text-xs text-zinc-500">{t("They get a meeting code; the visitor needs it from them to go out.")}</p>
-                        )}
                       </div>
                     )}
                     {(comingFor === "DELIVERY" || comingFor === "OTHER") && (
@@ -910,9 +785,14 @@ export function OutsidersClient() {
                     {loading ? t("Registering…") : t("Save & let in")}
                   </Button>
                 )}
-                <Button type="button" variant="ghost" className="h-12 w-full" onClick={back} disabled={loading}>
-                  {t("Cancel")}
-                </Button>
+                <button
+                  type="button"
+                  onClick={back}
+                  disabled={loading}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border-2 border-red-500 bg-red-50 font-bold text-red-600 hover:bg-red-100 text-base disabled:opacity-60"
+                >
+                  ✕ {t("Cancel")}
+                </button>
               </form>
             </CardContent>
           </Card>
@@ -1023,7 +903,7 @@ export function OutsidersClient() {
                             name={mov.name || "—"}
                             sub={[mov.phone, t(mov.category)].filter(Boolean).join(" · ")}
                           />
-                          <StatusBadge status={mov.status} />
+                          <StatusBadge status={mov.status} pass={mov} />
                         </div>
                         <div className="grid grid-cols-2 gap-2 pl-[52px] text-xs">
                           <div className="min-w-0">
@@ -1069,7 +949,7 @@ export function OutsidersClient() {
                             <span className="tabular-nums">{mov.exitTime ? formatDateTime(new Date(mov.exitTime)) : "-"}</span>
                           </td>
                           <td className={`${dt.tdActions}`}>
-                            <StatusBadge status={mov.status} />
+                            <StatusBadge status={mov.status} pass={mov} />
                           </td>
                         </tr>
                       ))}
@@ -1118,7 +998,7 @@ export function OutsidersClient() {
                 <p className="text-lg font-semibold leading-snug text-zinc-100 break-words">{selectedOutsider.name}</p>
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                   <span className={categoryChip}>{t(selectedOutsider.category)}</span>
-                  <StatusBadge status={selectedOutsider.status} />
+                  <StatusBadge status={selectedOutsider.status} pass={selectedOutsider} />
                 </div>
                 {selectedOutsider.phone && (
                   <a

@@ -569,7 +569,7 @@ function PermissionRow({
         </span>
 
         <span className="shrink-0">
-          <StatusBadge status={perm.status} />
+          <StatusBadge status={perm.status} pass={perm} />
         </span>
       </button>
     </li>

@@ -228,7 +228,6 @@ export function ParentSearch({
               autoCapitalize="off"
               spellCheck={false}
               aria-busy={searching}
-              placeholder={t("Roll no or student name")}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);

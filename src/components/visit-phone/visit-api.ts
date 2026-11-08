@@ -60,18 +60,31 @@ export async function fetchVisitForm(token: string) {
   return res.ok ? { ...res, hosts: Array.isArray(res.hosts) ? res.hosts : [] } : res;
 }
 
-/** A parent's tap of Find (never while typing) */
-export async function findVisitStudent(token: string, roll: string) {
-  const res = await call<VisitStudentOk>(`/api/visit/student?t=${encodeURIComponent(token)}&roll=${encodeURIComponent(roll)}`);
+/** One student a parent can pick (by roll number: one; by name: a few) */
+export type VisitStudentMatch = Omit<VisitStudentOk, "ok"> & { roll: string };
+
+/** A parent's tap of Find (never while typing): `query` is a roll number or the student's name */
+export async function findVisitStudent(token: string, query: string): Promise<{ ok: true; students: VisitStudentMatch[] } | VisitFailure> {
+  const res = await call<VisitStudentOk & { students?: unknown }>(
+    `/api/visit/student?t=${encodeURIComponent(token)}&roll=${encodeURIComponent(query)}`
+  );
   if (!res.ok) return res;
-  const has = (res.has ?? {}) as Partial<VisitStudentOk["has"]>;
-  return {
-    ...res,
-    studentName: typeof res.studentName === "string" ? res.studentName : "",
-    department: typeof res.department === "string" ? res.department : null,
-    year: typeof res.year === "number" ? res.year : null,
-    has: { father: has.father === true, mother: has.mother === true, guardian: has.guardian === true },
-  };
+  const students: VisitStudentMatch[] = [];
+  for (const raw of Array.isArray(res.students) ? res.students : []) {
+    if (!raw || typeof raw !== "object") continue;
+    const s = raw as Record<string, unknown>;
+    if (typeof s.roll !== "string" || typeof s.studentName !== "string") continue;
+    const has = (s.has ?? {}) as Partial<VisitStudentOk["has"]>;
+    students.push({
+      roll: s.roll,
+      studentName: s.studentName,
+      department: typeof s.department === "string" ? s.department : null,
+      year: typeof s.year === "number" ? s.year : null,
+      has: { father: has.father === true, mother: has.mother === true, guardian: has.guardian === true },
+    });
+  }
+  if (students.length === 0) return { ok: false, error: "Something went wrong. Please try again.", status: 200 };
+  return { ok: true, students };
 }
 
 export function submitVisit(body: { t: string; data: Record<string, unknown>; hostProfileId?: string }) {

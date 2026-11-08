@@ -84,7 +84,7 @@ export function PassFullDetails({ permissionId, preview }: { permissionId: strin
               {idCode && <p className="mt-0.5 font-mono text-sm text-zinc-400">{idCode}</p>}
               {purpose && <p className="mt-2 text-sm text-zinc-300">{purpose}</p>}
             </div>
-            {preview?.status && <StatusBadge status={preview.status} />}
+            {preview?.status && <StatusBadge status={preview.status} pass={preview} />}
           </div>
         )}
         <div className="space-y-3" aria-hidden="true">
@@ -119,7 +119,7 @@ export function PassFullDetails({ permissionId, preview }: { permissionId: strin
               <p className="text-lg font-semibold text-zinc-100 break-words">{person.name}</p>
               <p className="mt-0.5 font-mono text-sm text-zinc-400">{person.idCode || "—"}</p>
             </div>
-            <StatusBadge status={p.status} />
+            <StatusBadge status={p.status} pass={p} />
           </div>
           <Grid
             items={

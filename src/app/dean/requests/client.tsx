@@ -576,7 +576,7 @@ export function DeanRequestsClient() {
                               Faculty
                             </span>
                           )}
-                          <StatusBadge status={item.status} />
+                          <StatusBadge status={item.status} pass={item} />
                           {/* Faculty still out past the end of their pass (the QR keeps working) */}
                           {item.facultyId && item.status === "EXITED" && delayMinutes(returnDueAt(item)) > 0 && (
                             <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-600 whitespace-nowrap">

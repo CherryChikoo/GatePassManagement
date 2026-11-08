@@ -1,5 +1,5 @@
 "use client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useMemo, useState } from "react";
@@ -7,6 +7,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeftRight,
+  LogIn,
   BedDouble,
   BedSingle,
   Briefcase,
@@ -17,6 +18,7 @@ import {
   Truck,
   ClipboardCheck,
   ClipboardList,
+  FileText,
   ContactRound,
   FileSignature,
   HardHat,
@@ -43,6 +45,7 @@ import { slugForKey } from "@/lib/registers/custom";
 import { useGateData } from "@/lib/gate-cache";
 import { REGISTER_COUNTS_QUERY } from "@/lib/gate-queries";
 import { EntryRegisterView } from "./entry-register-view";
+import { hasInsideChoice } from "@/lib/registers/inside-choice";
 import { prefetchEntryList } from "./entry-list-cache";
 import { useLiveTopics } from "@/lib/realtime/live";
 import dynamic from "next/dynamic";
@@ -152,6 +155,9 @@ function warmQr(register: CheckInRegister) {
 const LAST_OPENED_KEY = "gatepass:last-register";
 const LAST_OPENED_MAX_AGE_MS = 6 * 60 * 60_000;
 
+/** Security sees these two as one "Hostel" tile (Boys / Ladies chosen inside) */
+const HOSTEL_KEYS = ["BOYS_HOSTEL_OUTING", "LADIES_HOSTEL_OUTING"] as const;
+
 function rememberOpenedRegister(key: string) {
   try {
     sessionStorage.setItem(LAST_OPENED_KEY, JSON.stringify({ key, at: Date.now() }));
@@ -197,6 +203,18 @@ export function RegistersHub({
   const [quickKey, setQuickKey] = useState<string | null>(null);
   // Visitors Book / Admission Book: the check-in QR shown as a pop-up right on the list
   const [qrKey, setQrKey] = useState<CheckInRegister | null>(null);
+  // Security: one "Hostel" tile; tapping it asks Boys or Ladies
+  const [hostelPick, setHostelPick] = useState(false);
+  // An In / Out book with someone not marked Out yet: "Still inside" or "All records"
+  const [insideChoice, setInsideChoice] = useState<{ href: string; name: string; open: number } | null>(null);
+  /** Opening a register: asks first when someone is still inside (Security); otherwise opens it */
+  const openRegister = (e: React.MouseEvent, key: string, href: string, name: string) => {
+    rememberOpenedRegister(key);
+    const open = counts[`open:${key}`] ?? 0;
+    if (!isSecurity || open <= 0) return;
+    e.preventDefault();
+    setInsideChoice({ href, name, open });
+  };
 
   // Back from a register: the list opens where that register is (not at the top),
   // and its row glows for a moment so the guard sees where they were
@@ -239,9 +257,7 @@ export function RegistersHub({
             {t(isSecurity ? "Registers" : "Security Registers")}
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
-            {isSecurity
-              ? t("Tap + to add an entry straight away, or open a register to see its records.")
-              : t("All gate registers. Security cannot change saved records; only Main Admin can edit or delete them.")}
+            {isSecurity ? null : t("All gate registers. Security cannot change saved records; only Main Admin can edit or delete them.")}
           </p>
         </div>
         {canBuild && (
@@ -340,6 +356,40 @@ export function RegistersHub({
           };
           const tone = GROUP_TONE[group.title] ?? OTHER_TONE;
           const tileName = r.key === "VISITORS" ? t("Visitors Book") : t(r.title);
+          const bothHostels = isSecurity && rows.some((x) => x.key === "BOYS_HOSTEL_OUTING") && rows.some((x) => x.key === "LADIES_HOSTEL_OUTING");
+          if (bothHostels && r.key === "LADIES_HOSTEL_OUTING") return null;
+          if (bothHostels && r.key === "BOYS_HOSTEL_OUTING") {
+            const total = (counts.BOYS_HOSTEL_OUTING ?? 0) + (counts.LADIES_HOSTEL_OUTING ?? 0);
+            return (
+              <li key="HOSTEL" data-register-row="HOSTEL" className="relative min-w-0 rounded-3xl transition-colors duration-700">
+                <button
+                  type="button"
+                  onPointerDown={() => {
+                    // Both books start loading while the tap completes
+                    for (const k of HOSTEL_KEYS) {
+                      router.prefetch(`${base}/registers/${slugForKey(k)}`);
+                      prefetchEntryList(k);
+                    }
+                  }}
+                  onClick={() => setHostelPick(true)}
+                  className={cn(
+                    "flex h-full min-h-[8.5rem] w-full flex-col gap-2 rounded-3xl border-[1.5px] bg-zinc-900 p-3.5 text-left shadow-card transition-[background-color,transform] hover:bg-zinc-950 active:scale-[0.98]",
+                    tone.border
+                  )}
+                >
+                  <span className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl", tone.icon)}>
+                    <BedDouble className="h-6 w-6" aria-hidden="true" />
+                  </span>
+                  <span className="break-words text-base font-bold leading-snug text-zinc-100 sm:text-lg">{t("Hostel Student Outing Book & Pass")}</span>
+                  {total > 0 && (
+                    <span className="mt-auto w-fit rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-0.5 text-sm font-semibold tabular-nums text-zinc-300">
+                      {t("{n} today", { n: total })}
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          }
           if (isSecurity) {
             const action = checkInQr ? (
               <button
@@ -371,7 +421,7 @@ export function RegistersHub({
                   prefetch={true}
                   onPointerDown={prefetch}
                   onFocus={prefetch}
-                  onClick={() => rememberOpenedRegister(r.key)}
+                  onClick={(e) => openRegister(e, r.key, href, tileName)}
                   className={cn(
                     "flex h-full min-h-[8.5rem] flex-col gap-2 rounded-3xl border-[1.5px] bg-zinc-900 p-3.5 shadow-card transition-[background-color,transform] hover:bg-zinc-950 active:scale-[0.98]",
                     tone.border,
@@ -382,9 +432,18 @@ export function RegistersHub({
                     <Icon className="h-6 w-6" aria-hidden="true" />
                   </span>
                   <span className="break-words text-base font-bold leading-snug text-zinc-100 sm:text-lg">{tileName}</span>
-                  {n > 0 && (
-                    <span className="mt-auto w-fit rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-0.5 text-sm font-semibold tabular-nums text-zinc-300">
-                      {t("{n} today", { n })}
+                  {(n > 0 || (counts[`open:${r.key}`] ?? 0) > 0) && (
+                    <span className="mt-auto flex flex-wrap gap-1.5">
+                      {(counts[`open:${r.key}`] ?? 0) > 0 && (
+                        <span className="w-fit rounded-full bg-amber-500 px-2.5 py-0.5 text-sm font-bold tabular-nums text-white">
+                          {t("{n} inside", { n: counts[`open:${r.key}`] })}
+                        </span>
+                      )}
+                      {n > 0 && (
+                        <span className="w-fit rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-0.5 text-sm font-semibold tabular-nums text-zinc-300">
+                          {t("{n} today", { n })}
+                        </span>
+                      )}
                     </span>
                   )}
                 </Link>
@@ -399,7 +458,7 @@ export function RegistersHub({
                 // Start loading the list on tap, while the page opens
                 onPointerDown={prefetch}
                 onFocus={prefetch}
-                onClick={() => rememberOpenedRegister(r.key)}
+                onClick={(e) => openRegister(e, r.key, href, t(r.title))}
                 className="group flex min-w-0 flex-1 items-center gap-3 px-3 sm:px-4 py-3.5 hover:bg-zinc-950/70 transition-colors"
               >
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
@@ -462,6 +521,74 @@ export function RegistersHub({
         );
       })}
 
+      <Modal open={!!insideChoice} onClose={() => setInsideChoice(null)} title={insideChoice?.name ?? ""} className="max-w-md">
+        {insideChoice && (
+          <div className="grid grid-cols-1 gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                const href = insideChoice.href;
+                setInsideChoice(null);
+                router.push(`${href}?view=inside`);
+              }}
+              className="flex min-h-[5.5rem] items-center gap-4 rounded-3xl border-2 border-amber-500 bg-amber-500/15 px-5 text-left shadow-card transition-transform active:scale-[0.98]"
+            >
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white">
+                <LogIn className="h-6 w-6" aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-xl font-bold text-amber-800">{t("Still inside")}</span>
+                <span className="block text-sm font-semibold text-amber-700">{t("Mark Out for those still inside")}</span>
+              </span>
+              <span className="rounded-full bg-amber-600 px-3 py-1 text-lg font-bold tabular-nums text-white">{insideChoice.open}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const href = insideChoice.href;
+                setInsideChoice(null);
+                router.push(href);
+              }}
+              className="flex min-h-[5.5rem] items-center gap-4 rounded-3xl border-2 border-zinc-600 bg-zinc-900 px-5 text-left shadow-card transition-transform active:scale-[0.98]"
+            >
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-500/15 text-orange-600">
+                <FileText className="h-6 w-6" aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1 text-xl font-bold text-zinc-100">{t("All records")}</span>
+            </button>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={hostelPick} onClose={() => setHostelPick(false)} title={t("Choose the hostel")} className="max-w-md">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {HOSTEL_KEYS.map((k) => {
+            const boys = k === "BOYS_HOSTEL_OUTING";
+            const n = counts[k] ?? 0;
+            const Bed = boys ? BedDouble : BedSingle;
+            return (
+              <Link
+                key={k}
+                href={`${base}/registers/${slugForKey(k)}`}
+                prefetch={true}
+                onClick={() => {
+                  rememberOpenedRegister("HOSTEL");
+                  setHostelPick(false);
+                }}
+                className={cn(
+                  "flex min-h-[7.5rem] flex-col items-center justify-center gap-2 rounded-3xl border-2 p-4 text-center shadow-card transition-transform active:scale-[0.98]",
+                  boys ? "border-sky-500/50 bg-sky-500/10 text-sky-700" : "border-pink-500/50 bg-pink-500/10 text-pink-700"
+                )}
+              >
+                <Bed className="h-9 w-9" aria-hidden="true" />
+                <span className="text-xl font-bold">{t(boys ? "Boys Hostel" : "Ladies Hostel")}</span>
+                {n > 0 && <span className="text-sm font-semibold tabular-nums">{t("{n} today", { n })}</span>}
+              </Link>
+            );
+          })}
+        </div>
+      </Modal>
+
       {quickKey && (
         <QuickEntryModal
           registerKey={quickKey}
@@ -507,6 +634,33 @@ export function RegisterPage({
   );
   const base = BASE[viewer];
   const isSecurity = viewer === "SECURITY";
+  // Car Book / Auto Book (Security): the vehicle cards only; the records open with a button
+  const boardBook = def.key === "CAR_BOOK" || def.key === "AUTO_IN_OUT";
+  const [showRecords, setShowRecords] = useState(!isSecurity);
+  // "Still inside" (opened from the Registers list pop-up): only the records not marked Out yet
+  const params = useSearchParams();
+  const canInside = isEntryRegister(def) && hasInsideChoice(def) && !boardBook;
+  // The tab shown: switched here at once (only the address is updated, no page load)
+  const [insideTab, setInsideTab] = useState(() => params.get("view") === "inside");
+  const insideView = canInside && insideTab;
+  const showTab = (inside: boolean) => {
+    setInsideTab(inside);
+    try {
+      window.history.replaceState(window.history.state, "", inside ? "?view=inside" : window.location.pathname);
+    } catch {}
+  };
+  // How many are still inside: the Registers list's count (kept and live), then the list's own when open
+  const registerCounts = useGateData<Record<string, number>>(
+    canInside && isSecurity ? REGISTER_COUNTS_QUERY.key : null,
+    REGISTER_COUNTS_QUERY.fetch,
+    REGISTER_COUNTS_QUERY.topics
+  );
+  const [insideCount, setInsideCount] = useState<number | undefined>(undefined);
+  const insideShown = insideView && insideCount !== undefined ? insideCount : registerCounts.data?.[`open:${def.key}`] ?? 0;
+  // Nothing waiting any more (all marked meanwhile): straight to the records
+  useEffect(() => {
+    if (insideView && insideCount === 0) showTab(false);
+  }, [insideView, insideCount]);
 
   let body: React.ReactNode;
   if (def.key === "SECURITY_DAILY") {
@@ -518,15 +672,67 @@ export function RegisterPage({
   } else if (isEntryRegister(def)) {
     body = (
       <>
-        {/* Car Book: the cars with one-tap Mark Out / Mark In, then the records as usual */}
-        {def.key === "CAR_BOOK" && <CarBoard canAct={canCreate && isSecurity} />}
+        {/* Car Book / Auto Book: "View records" at the top, then the vehicles with one-tap Mark Out / Mark In */}
+        {boardBook && isSecurity && (
+          <button
+            type="button"
+            onClick={() => setShowRecords((v) => !v)}
+            aria-expanded={showRecords}
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-[1.5px] border-zinc-600 bg-zinc-900 text-lg font-bold text-zinc-100 shadow-card hover:bg-zinc-950 active:scale-[0.99]"
+          >
+            <FileText className="h-5 w-5 text-orange-500" aria-hidden="true" />
+            {showRecords ? t("Hide records") : t("View records")}
+          </button>
+        )}
+        {boardBook && !(isSecurity && showRecords) && <CarBoard registerKey={def.key as "CAR_BOOK" | "AUTO_IN_OUT"} canAct={canCreate && isSecurity} />}
+        {/* Still inside / All records: two tabs (Security) */}
+        {canInside && isSecurity && (
+          <div role="tablist" className="grid grid-cols-2 gap-2 rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-950 p-1.5">
+            {([
+              { inside: true, label: t("Still inside") },
+              { inside: false, label: t("All records") },
+            ] as const).map((tab) => {
+              const on = insideView === tab.inside;
+              return (
+                <button
+                  key={String(tab.inside)}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  onClick={() => {
+                    if (on) return;
+                    // A fresh count for the list that opens
+                    setInsideCount(undefined);
+                    showTab(tab.inside);
+                  }}
+                  className={cn(
+                    "flex min-h-12 items-center justify-center gap-2 rounded-xl px-3 text-base font-bold transition-colors",
+                    on ? (tab.inside ? "bg-amber-500 text-white shadow-sm" : "bg-orange-600 text-white shadow-sm") : "text-zinc-300 hover:bg-zinc-900"
+                  )}
+                >
+                  {tab.inside ? <LogIn className="h-5 w-5 shrink-0" aria-hidden="true" /> : <FileText className="h-5 w-5 shrink-0" aria-hidden="true" />}
+                  {tab.label}
+                  {/* The count always shows on the tab (also while All records is open) */}
+                  {tab.inside && (
+                    <span className={cn("rounded-full px-2 text-sm font-bold tabular-nums", on ? "bg-white/25" : "bg-amber-500 text-white")}>{insideShown}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {(!boardBook || showRecords) && (
         <EntryRegisterView
+          key={insideView ? "inside" : "all"}
           def={def}
           canCreate={canCreate}
           canAdminEdit={viewer === "ADMIN"}
           canEdit={isSecurity && SECURITY_EDITABLE_REGISTERS.includes(def.key)}
           canVerify={viewer === "ESTATE_MANAGER"}
+          insideOnly={insideView}
+          onInsideTotal={insideView ? setInsideCount : undefined}
         />
+        )}
       </>
     );
   } else if (def.key === "FACULTY_BOOK") {

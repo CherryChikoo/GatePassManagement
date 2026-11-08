@@ -111,7 +111,11 @@ export function AlertDialog({
             {showCancel && (
               <button
                 onClick={handleCancel}
-                className="flex-1 px-3 sm:px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-xl text-xs sm:text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-600"
+                className={
+                  solid
+                    ? "flex-1 rounded-xl border-2 border-red-500 bg-red-50 font-bold text-red-600 hover:bg-red-100 px-3 py-2.5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-red-300 sm:px-4"
+                    : "flex-1 px-3 sm:px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-xl text-xs sm:text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-600"
+                }
               >
                 {cancelText}
               </button>

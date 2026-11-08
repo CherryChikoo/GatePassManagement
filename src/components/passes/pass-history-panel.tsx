@@ -141,7 +141,7 @@ export function PassHistoryPanel({ person }: { person: Person }) {
                 <span className="min-w-0 truncate text-sm font-medium text-zinc-100">{p.title}</span>
               </div>
               <span className="shrink-0">
-                <StatusBadge status={p.status} />
+                <StatusBadge status={p.status} by={person.kind === "student" ? "student" : "faculty"} />
               </span>
             </div>
             <p className="text-xs text-zinc-500">

@@ -208,10 +208,17 @@ function cleanRoll(v: unknown): string | null {
 }
 
 /** An active student by exact roll number (unique index), with the parents' details (server only) */
+const STUDENT_FOR_VISIT_SELECT = {
+  studentRoll: true,
+  department: true,
+  year: true,
+  profile: { select: { name: true } },
+  ...PARENT_SELECT,
+} as const;
 function findStudentForVisit(roll: string) {
   return prisma.student.findFirst({
     where: { studentRoll: roll, profile: { active: true } },
-    select: { studentRoll: true, department: true, year: true, profile: { select: { name: true } }, ...PARENT_SELECT },
+    select: STUDENT_FOR_VISIT_SELECT,
   });
 }
 type StudentForVisit = NonNullable<Awaited<ReturnType<typeof findStudentForVisit>>>;
@@ -235,33 +242,64 @@ function savedParent(s: StudentForVisit, who: ParentWho): { name: string; phone:
  * GET /api/visit/student: what a parent's phone may know about the student.
  * NEVER the parents' names, mobiles or address: only which of them are saved.
  */
+export type VisitStudentMatch = {
+  roll: string;
+  studentName: string;
+  department: string | null;
+  year: number | null;
+  has: { father: boolean; mother: boolean; guardian: boolean };
+};
+/**
+ * `students`: one (roll number) or a few (name) to pick from. The first one is
+ * also sent at the top level, for a phone that opened the form before names
+ * could be searched.
+ */
 export type VisitStudentResult =
-  | {
-      ok: true;
-      studentName: string;
-      department: string | null;
-      year: number | null;
-      has: { father: boolean; mother: boolean; guardian: boolean };
-    }
+  | ({ ok: true; students: VisitStudentMatch[] } & Omit<VisitStudentMatch, "roll">)
   | { ok: false; error: string };
 
-export async function lookupVisitStudent(token: unknown, roll: unknown): Promise<VisitStudentResult> {
+/** A name search needs this many letters, and sends at most this many students */
+const NAME_MIN = 3;
+const NAME_MAX_ROWS = 5;
+const NO_NAME = "No student found with this name. Check the spelling or type the roll number.";
+const SHORT_NAME = "Type at least 3 letters of the student's name";
+
+const asMatch = (s: StudentForVisit): VisitStudentMatch => ({
+  roll: s.studentRoll,
+  studentName: s.profile.name,
+  department: s.department,
+  year: s.year,
+  has: { father: !!savedParent(s, "FATHER"), mother: !!savedParent(s, "MOTHER"), guardian: !!savedParent(s, "GUARDIAN") },
+});
+
+/** The student by roll number (has a digit) or by name (a few at most, A-Z) */
+export async function lookupVisitStudent(token: unknown, query: unknown): Promise<VisitStudentResult> {
   // Same check as sending the form (time to fill it in after opening it)
   const t = verifyCheckInToken(token, SUBMIT_GRACE_MS);
   if (!t.ok) return { ok: false, error: t.error };
   if (t.register !== "VISITORS") return { ok: false, error: "invalid" };
-  const r = cleanRoll(roll);
-  if (!r) return { ok: false, error: BAD_ROLL };
-  const [s, guard] = await Promise.all([findStudentForVisit(r), checkInGuard(t.guardProfileId)]);
+  const q = typeof query === "string" ? query.trim().replace(/\s+/g, " ").slice(0, 60) : "";
+  const byRoll = /\d/.test(q);
+  let find: Promise<StudentForVisit[]>;
+  if (byRoll) {
+    const r = cleanRoll(q);
+    if (!r) return { ok: false, error: BAD_ROLL };
+    find = findStudentForVisit(r).then((s) => (s ? [s] : []));
+  } else {
+    if (q.replace(/[^\p{L}]/gu, "").length < NAME_MIN) return { ok: false, error: SHORT_NAME };
+    find = prisma.student.findMany({
+      where: { profile: { active: true, name: { contains: q, mode: "insensitive" } } },
+      select: STUDENT_FOR_VISIT_SELECT,
+      orderBy: { studentRoll: "asc" },
+      take: NAME_MAX_ROWS,
+    });
+  }
+  const [rows, guard] = await Promise.all([find, checkInGuard(t.guardProfileId)]);
   if (!guard) return { ok: false, error: "invalid" };
-  if (!s) return { ok: false, error: NO_STUDENT };
-  return {
-    ok: true,
-    studentName: s.profile.name,
-    department: s.department,
-    year: s.year,
-    has: { father: !!savedParent(s, "FATHER"), mother: !!savedParent(s, "MOTHER"), guardian: !!savedParent(s, "GUARDIAN") },
-  };
+  if (rows.length === 0) return { ok: false, error: byRoll ? NO_STUDENT : NO_NAME };
+  const students = rows.map(asMatch);
+  const { roll: _roll, ...first } = students[0];
+  return { ok: true, students, ...first };
 }
 
 // ─── Sending the form ────────────────────────────────────────────────────────

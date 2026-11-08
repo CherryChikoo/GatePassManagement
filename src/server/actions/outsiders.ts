@@ -60,7 +60,6 @@ export async function registerOutsider(data: Record<string, unknown>) {
   if (!input.vehicleNumber || !input.vehicleNumber.trim()) {
     return { success: false, error: "Enter the vehicle number, or tap No vehicle" };
   }
-  if (!input.photoUrl) return { success: false, error: "Take the visitor's photo before registering" };
   // Address, and a purpose or a person to visit / meet: the same rules as Security's form
   // and the visitor's phone form (QR arrivals come here too). Main Admin's own
   // add-visitor tool (Activity) has no address box, so it keeps the older checks.
