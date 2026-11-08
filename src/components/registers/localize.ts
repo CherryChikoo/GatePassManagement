@@ -39,6 +39,14 @@ export function displayValue(f: FieldDef, v: unknown, t: Translate): string {
  * Worker counts saved as "Peddamestri × 4, Cooli × 2" shown clearly, each
  * type in the guard's language: "పెద్దమేస్త్రి → 4 · కూలీ → 2". Null when the text is not counts.
  */
+/** "Peddamestri × 4, Cooli × 2" as rows [{ type, n }] (null when the text is not counts) */
+export function countPairs(v: unknown): { type: string; n: number }[] | null {
+  if (typeof v !== "string" || !v.includes(" × ")) return null;
+  const rows = v.split(/,\s*/).map((p) => /^(.+?) × (\d+)$/.exec(p.trim()));
+  if (rows.some((m) => !m)) return null;
+  return rows.map((m) => ({ type: m![1], n: Number(m![2]) }));
+}
+
 export function countsText(s: string, t: Translate): string | null {
   const parts = s.split(/,\s*/);
   const pairs = parts.map((p) => /^(.+?) × (\d+)$/.exec(p.trim()));

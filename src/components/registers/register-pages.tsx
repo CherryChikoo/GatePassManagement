@@ -649,14 +649,8 @@ export function RegisterPage({
       window.history.replaceState(window.history.state, "", inside ? "?view=inside" : window.location.pathname);
     } catch {}
   };
-  // How many are still inside: the Registers list's count (kept and live), then the list's own when open
-  const registerCounts = useGateData<Record<string, number>>(
-    canInside && isSecurity ? REGISTER_COUNTS_QUERY.key : null,
-    REGISTER_COUNTS_QUERY.fetch,
-    REGISTER_COUNTS_QUERY.topics
-  );
+  // How many the Still inside list has (0: straight to All records)
   const [insideCount, setInsideCount] = useState<number | undefined>(undefined);
-  const insideShown = insideView && insideCount !== undefined ? insideCount : registerCounts.data?.[`open:${def.key}`] ?? 0;
   // Nothing waiting any more (all marked meanwhile): straight to the records
   useEffect(() => {
     if (insideView && insideCount === 0) showTab(false);
@@ -712,10 +706,6 @@ export function RegisterPage({
                 >
                   {tab.inside ? <LogIn className="h-5 w-5 shrink-0" aria-hidden="true" /> : <FileText className="h-5 w-5 shrink-0" aria-hidden="true" />}
                   {tab.label}
-                  {/* The count always shows on the tab (also while All records is open) */}
-                  {tab.inside && (
-                    <span className={cn("rounded-full px-2 text-sm font-bold tabular-nums", on ? "bg-white/25" : "bg-amber-500 text-white")}>{insideShown}</span>
-                  )}
                 </button>
               );
             })}

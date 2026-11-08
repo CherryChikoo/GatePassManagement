@@ -170,8 +170,29 @@ function PersonInput({
         (p.department ?? "").toLowerCase().includes(q) ||
         (p.designation ?? "").toLowerCase().includes(q)
     )
-    .slice(0, exact ? 50 : 8);
+    // Nothing typed: everyone (scroll); typing: the best matches
+    .slice(0, q ? 30 : 300);
   const inputRef = useRef<HTMLInputElement>(null);
+  // The row under the finger / chosen with ↑ ↓ (Enter picks it)
+  const [hi, setHi] = useState(-1);
+  const pick = (p: PersonOption) => {
+    onChange(personLabel(p));
+    onPick?.(p);
+    setOpen(false);
+    setHi(-1);
+  };
+  // The typed letters, in orange
+  const marked = (text: string) => {
+    const at = q ? text.toLowerCase().indexOf(q) : -1;
+    if (at < 0) return text;
+    return (
+      <>
+        {text.slice(0, at)}
+        <mark className="rounded bg-orange-500/15 px-0.5 font-bold text-orange-700">{text.slice(at, at + q.length)}</mark>
+        {text.slice(at + q.length)}
+      </>
+    );
+  };
 
   return (
     <div className="relative">
@@ -190,6 +211,20 @@ function PersonInput({
         onChange={(e) => {
           onChange(e.target.value);
           setOpen(true);
+          setHi(-1);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" && matches.length) {
+            e.preventDefault();
+            setOpen(true);
+            setHi((h) => Math.min(h + 1, matches.length - 1));
+          } else if (e.key === "ArrowUp" && matches.length) {
+            e.preventDefault();
+            setHi((h) => Math.max(h - 1, 0));
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (open && hi >= 0 && matches[hi]) pick(matches[hi]);
+          } else if (e.key === "Escape") setOpen(false);
         }}
         className={`${inputCls} ${value ? "pr-20" : "pr-11"}`}
       />
@@ -224,41 +259,103 @@ function PersonInput({
         </button>
       </div>
       {open && (
-        <ul ref={listRef} id={`${id}-list`} role="listbox" className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-1 shadow-card">
+        <ul ref={listRef} id={`${id}-list`} role="listbox" className="absolute z-20 mt-1 max-h-80 w-full overflow-y-auto overscroll-contain rounded-2xl border border-zinc-800 bg-zinc-900 p-1 shadow-card">
           {people === null ? (
-            <li className="flex items-center gap-2 px-3 py-2.5 text-sm text-zinc-500">
-              <Loader2 className="h-4 w-4 animate-spin" /> {t("Loading…")}
+            <li className="flex items-center gap-2 px-3 py-3 text-base text-zinc-500">
+              <Loader2 className="h-5 w-5 animate-spin" /> {t("Loading…")}
             </li>
           ) : matches.length === 0 ? (
-            <li className="px-3 py-2.5 text-xs text-zinc-500">{t("Not in the list: the typed name will be saved.")}</li>
+            <li className="px-3 py-3 text-base font-semibold text-zinc-500">{t("Not in the list: the typed name will be saved.")}</li>
           ) : (
-            matches.map((p) => (
-              <li key={personLabel(p)} role="option" aria-selected={personLabel(p) === value}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    onChange(personLabel(p));
-                    onPick?.(p);
-                    setOpen(false);
-                  }}
-                  className={`flex w-full min-h-11 flex-col items-start justify-center rounded-xl px-3 py-2 text-left transition-colors ${
-                    personLabel(p) === value ? "bg-orange-500/15" : "hover:bg-orange-500/10 active:bg-orange-500/15"
-                  }`}
-                >
-                  <span className="flex items-center gap-2 text-sm font-medium text-zinc-100">
-                    {personLabel(p)}
-                    {personLabel(p) === value && <CheckCircle2 className="h-4 w-4 text-orange-400" />}
-                  </span>
-                  {(p.designation || p.department) && (
-                    <span className="text-xs text-zinc-500">{[p.designation, p.department].filter(Boolean).join(" · ")}</span>
-                  )}
-                </button>
-              </li>
-            ))
+            matches.map((p, n) => {
+              const chosen = personLabel(p) === value;
+              return (
+                <li key={personLabel(p)} role="option" aria-selected={chosen}>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onPointerEnter={() => setHi(n)}
+                    onClick={() => pick(p)}
+                    className={`flex min-h-12 w-full flex-col items-start justify-center rounded-xl px-3 py-2 text-left transition-colors sm:min-h-14 ${
+                      chosen || n === hi ? "bg-orange-500/15" : "hover:bg-orange-500/10"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 text-base font-semibold text-zinc-100 sm:text-lg">
+                      {marked(p.name)}
+                      {p.employeeId && <span className="text-sm font-medium text-zinc-500">({p.employeeId})</span>}
+                      {chosen && <CheckCircle2 className="h-5 w-5 text-orange-500" />}
+                    </span>
+                    {(p.designation || p.department) && (
+                      <span className="text-sm text-zinc-500">{[p.designation, p.department].filter(Boolean).join(" · ")}</span>
+                    )}
+                  </button>
+                </li>
+              );
+            })
           )}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * Under a faculty / staff box: the person picked, in one clear green line
+ * (name, designation · department); or, when the typed name is not in the
+ * list, a box for their designation (saved in the field the pick would fill).
+ */
+function PersonPicked({
+  id,
+  value,
+  designationKey,
+  values,
+  setValue,
+}: {
+  id: string;
+  value: string;
+  designationKey: string;
+  values: Values;
+  setValue: (key: string, v: string) => void;
+}) {
+  const t = useT();
+  const [people, setPeople] = useState<PersonOption[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    loadPeople().then((list) => alive && setPeople(list));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const typed = value.trim();
+  if (!typed || people === null) return null;
+  const picked = people.find((p) => personLabel(p) === typed);
+  if (picked) {
+    return (
+      <p className="flex items-start gap-2 rounded-xl bg-emerald-500/10 px-3 py-2 text-base font-semibold text-emerald-800">
+        <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
+        <span className="min-w-0 break-words">
+          {picked.name}
+          {(picked.designation || picked.department) && (
+            <span className="block text-sm font-medium text-emerald-700">{[picked.designation, picked.department].filter(Boolean).join(" · ")}</span>
+          )}
+        </span>
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-1.5 rounded-xl border-[1.5px] border-sky-500/40 bg-sky-500/5 p-3">
+      <label htmlFor={`${id}-designation`} className="block text-base font-bold text-zinc-100">
+        {t("Not in the list — their designation")}
+      </label>
+      <input
+        id={`${id}-designation`}
+        type="text"
+        maxLength={100}
+        autoComplete="off"
+        value={String(values[designationKey] ?? "")}
+        onChange={(e) => setValue(designationKey, e.target.value)}
+        className={inputCls}
+      />
     </div>
   );
 }
@@ -427,8 +524,8 @@ function KeyStudentInput({
                   onPointerDown={() => setHi({ key, i })}
                   onClick={() => pick(s)}
                   className={cn(
-                    "flex min-h-12 w-full flex-col items-start justify-center rounded-xl border-l-4 px-3 py-2 text-left transition-colors",
-                    i === active ? "border-orange-500 bg-orange-500/15" : "border-transparent hover:bg-orange-500/10"
+                    "flex min-h-12 w-full flex-col items-start justify-center rounded-xl px-3 py-2 text-left transition-colors",
+                    i === active ? "bg-orange-500/15" : "hover:bg-orange-500/10"
                   )}
                 >
                   <span className="text-base font-semibold text-zinc-100">{marked(s.name, false)}</span>
@@ -1062,6 +1159,10 @@ function FieldInput({
               ))}
             </div>
           ) : null}
+          {/* Who was picked (clearly), or — for someone not in the list — their designation to type */}
+          {f.fills?.designation && values && setValue && (
+            <PersonPicked id={id} value={value ?? ""} designationKey={f.fills.designation} values={values} setValue={setValue} />
+          )}
         </div>
       );
     case "department":

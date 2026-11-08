@@ -1737,4 +1737,5 @@ export const te: Record<string, string> = {
   "No coolie with this name or number.": "ఈ పేరు లేదా నంబర్‌తో కూలీ లేరు.",
   "New coolie: {name}": "కొత్త కూలీ: {name}",
   "New contractor — saved for next time": "కొత్త కాంట్రాక్టర్ — తర్వాత కోసం గుర్తుంచుకుంటుంది",
+  "Not in the list — their designation": "జాబితాలో లేరు — వారి హోదా",
 };

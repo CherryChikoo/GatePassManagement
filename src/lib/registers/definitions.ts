@@ -882,17 +882,18 @@ export const REGISTERS: RegisterDef[] = [
     fields: [
       // First: Returnable or not (big buttons)
       { key: "itemType", label: "Returnable / Non-Returnable", type: "select", options: ["Returnable", "Non-Returnable"], buttons: true },
-      // Names typed before in this book are suggested; picking one fills their designation and department
+      // Picked from the portal's faculty / staff (type to search): their designation and
+      // department are filled in by themselves and saved with the record (no boxes to fill)
       {
         key: "fromName",
         section: "Sent by",
         label: "Sent by — Faculty / Staff Name",
-        type: "text",
-        combo: "suggest",
-        suggestFills: ["fromDesignation", "fromDepartment"],
+        type: "person",
+        fills: { designation: "fromDesignation", department: "fromDepartment" },
+        wide: true,
       },
-      { key: "fromDesignation", label: "Sent by — Designation", type: "text", upFront: true, section: "Sent by" },
-      { key: "fromDepartment", label: "Sent by — Department", type: "department", upFront: true, section: "Sent by" },
+      { key: "fromDesignation", label: "Sent by — Designation", type: "text", formHidden: true },
+      { key: "fromDepartment", label: "Sent by — Department", type: "department", formHidden: true },
       { key: "allowingRepresentative", label: "Given to — Name", type: "text", section: "Given to" },
       { key: "phone", label: "Given to — Phone Number", type: "phone", upFront: true, section: "Given to" },
       // More details

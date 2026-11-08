@@ -7,7 +7,7 @@
  */
 import { useRef, useState } from "react";
 import { ZoomablePhoto } from "@/components/ui/zoomable-photo";
-import { Check, Info, Loader2, Plus, Search, UserPlus, X } from "lucide-react";
+import { Check, Info, Loader2, Plus, Search, UserPlus, Users, X } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { Modal } from "@/components/ui/primitives";
 import { prefetchGateData, useGateData } from "@/lib/gate-cache";
@@ -95,11 +95,18 @@ export function CooliePicker({
   const remove = (r: Values) => onChange(added.filter((x) => x !== r));
 
   return (
-    <fieldset className="overflow-hidden rounded-2xl border-[1.5px] border-zinc-700">
+    <fieldset className="overflow-hidden rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900">
       <legend className="sr-only">{t("Coolies")}</legend>
-      <div className="flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950 px-4 py-3">
-        <p className="text-lg font-bold text-zinc-100">{t("Coolies")}</p>
-        <span className={cn("rounded-full px-3 py-1 text-base font-bold tabular-nums", added.length ? "bg-orange-600 text-white" : "bg-zinc-900 text-zinc-400")}>
+      <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-3">
+        <p className="flex items-center gap-2 text-lg font-bold text-zinc-100">
+          <Users className="h-5 w-5 text-orange-600" aria-hidden="true" /> {t("Coolies")}
+        </p>
+        <span
+          className={cn(
+            "rounded-full px-3 py-1 text-base font-bold tabular-nums",
+            added.length ? "bg-emerald-600 text-white" : "border-[1.5px] border-zinc-700 bg-zinc-950 text-zinc-300"
+          )}
+        >
           {added.length}
         </span>
       </div>
@@ -133,19 +140,19 @@ export function CooliePicker({
           ))}
         </ul>
       )}
-      <button
-        type="button"
-        onClick={() => {
-          setQuery("");
-          setOpen(true);
-        }}
-        className={cn(
-          "flex h-14 w-full items-center justify-center gap-2 bg-orange-600 text-lg font-bold text-white transition-colors hover:bg-orange-700",
-          added.length > 0 && "border-t border-zinc-800"
-        )}
-      >
-        <Plus className="h-5 w-5" /> {t("Add coolie")}
-      </button>
+      {/* Not like the Save button: an outlined button inside the card */}
+      <div className={cn("p-3", added.length > 0 && "border-t border-zinc-800")}>
+        <button
+          type="button"
+          onClick={() => {
+            setQuery("");
+            setOpen(true);
+          }}
+          className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-orange-500 bg-orange-50 text-lg font-bold text-orange-700 transition-[background-color,transform] hover:bg-orange-100 active:scale-[0.99]"
+        >
+          <UserPlus className="h-5 w-5" aria-hidden="true" /> {t("Add coolie")}
+        </button>
+      </div>
 
       <Modal open={open} onClose={() => setOpen(false)} title={t("Add coolie")} className="max-w-lg">
         <div className="space-y-3">
@@ -496,8 +503,8 @@ export function ContractorInput({
                     onPointerEnter={() => setHi(n)}
                     onClick={() => pick(i)}
                     className={cn(
-                      "flex min-h-12 w-full items-center rounded-xl border-l-4 px-3 py-2 text-left text-base font-semibold text-zinc-100 sm:min-h-14 sm:text-lg",
-                      n === hi ? "border-orange-500 bg-orange-500/15" : "border-transparent hover:bg-orange-500/10"
+                      "flex min-h-12 w-full items-center rounded-xl px-3 py-2 text-left text-base font-semibold text-zinc-100 sm:min-h-14 sm:text-lg",
+                      n === hi ? "bg-orange-500/15" : "hover:bg-orange-500/10"
                     )}
                   >
                     {i.label ?? i.fill}
@@ -508,8 +515,9 @@ export function ContractorInput({
           </ul>
         )}
       </div>
-      {/* A name typed for the first time: saved with this entry and suggested next time */}
-      {q !== "" && !known && !loading && (
+      {/* A name typed for the first time: saved with this entry and suggested next time.
+          Shown once the guard has finished typing (list closed), so nothing jumps while typing */}
+      {!open && q !== "" && !known && !loading && (
         <span className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500/15 px-2.5 py-1 text-sm font-bold text-sky-700">
           <UserPlus className="h-4 w-4" aria-hidden="true" /> {t("New contractor — saved for next time")}
         </span>

@@ -22,7 +22,7 @@ import { actionErrorMessage } from "@/lib/deployment";
 import { AdminEditForm, CloseRecordForm, MovementForm, PhotoInput, RegisterForm, restoreRegisterDraft, takeRegisterDraft, type StaffOption, MultiPhotoInput, photoList } from "./register-form";
 import { exitBatches, workersInside } from "@/lib/registers/validate";
 import { formatFieldValue, formatInstant, newClientToken, formatClock } from "./format";
-import { displayValue, registerMessage } from "./localize";
+import { displayValue, registerMessage, countPairs } from "./localize";
 import { FactList, InOutCard, RecordHeader, type Fact, type MoveSide } from "./record-layout";
 import { SirosPersonDialog, prefetchSirosPerson, useSirosPeople } from "./siros-people";
 import type { Translate } from "@/lib/i18n";
@@ -1086,7 +1086,26 @@ function ValuesGrid({ def, values, duration }: { def: EntryRegister; values: Rec
               <Info className="h-5 w-5 shrink-0 text-zinc-400" aria-hidden="true" />
             </button>
           ) : (
-            <p className="break-words text-2xl font-bold leading-snug text-zinc-100">{title ?? def.title}</p>
+            (() => {
+              // Worker counts (labour books): one row per type, the count on the right
+              const rows = headField ? countPairs(values[headField.key]) : null;
+              if (!rows) return <p className="break-words text-2xl font-bold leading-snug text-zinc-100">{title ?? def.title}</p>;
+              const total = rows.reduce((sum, r) => sum + r.n, 0);
+              return (
+                <div className="w-full max-w-md overflow-hidden rounded-xl border-[1.5px] border-zinc-700 bg-zinc-900">
+                  {rows.map((r) => (
+                    <div key={r.type} className="flex items-center justify-between gap-3 border-b border-zinc-800 px-3 py-2">
+                      <span className="min-w-0 break-words text-lg font-semibold text-zinc-100">{t(r.type)}</span>
+                      <span className="min-w-[2.25rem] rounded-lg bg-sky-600 px-2 py-0.5 text-center text-lg font-bold tabular-nums text-white">{r.n}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between gap-3 bg-zinc-950 px-3 py-2">
+                    <span className="text-lg font-bold text-zinc-100">{t("Total")}</span>
+                    <span className="min-w-[2.25rem] rounded-lg bg-orange-600 px-2 py-0.5 text-center text-lg font-bold tabular-nums text-white">{total}</span>
+                  </div>
+                </div>
+              );
+            })()
           );
         })()}
         {/* In / Out times as two clear chips */}
