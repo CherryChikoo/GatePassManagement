@@ -111,34 +111,33 @@ export function CooliePicker({
         </span>
       </div>
       {added.length > 0 && (
-        <ul className="divide-y divide-zinc-800/70">
-          {added.map((r) => (
-            <li key={r.no || r.name} className="flex min-h-14 items-center gap-3 px-4 py-2">
-              {/* Tap for the coolie's full details */}
-              <button
-                type="button"
-                onPointerDown={() => prefetchSirosPerson(r.no)}
-                onClick={() => r.no && setViewNo(Number(r.no))}
-                className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left transition-colors hover:bg-zinc-950"
-              >
-                <NoBadge no={r.no || "—"} />
-                <span className="min-w-0 flex-1">
-                  <span className="block break-words text-lg font-semibold text-zinc-100">{r.name}</span>
-                  {r.gender && <span className="block text-sm text-zinc-500">{t(r.gender)}</span>}
-                </span>
-                {r.no && <Info className="h-5 w-5 shrink-0 text-zinc-400" aria-hidden="true" />}
-              </button>
-              <button
-                type="button"
-                aria-label={`${t("Remove")} — ${r.name}`}
-                onClick={() => remove(r)}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-600 text-white transition-colors hover:bg-red-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </li>
-          ))}
-        </ul>
+        // 50+ coolies stay neat: small tiles, two or three per row, scrolling inside the card
+        <div className="max-h-80 overflow-y-auto overscroll-contain px-3 pb-1">
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {added.map((r) => (
+              <li key={r.no || r.name} className="flex min-h-12 items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950 py-1.5 pl-1.5 pr-1.5">
+                {/* Tap for the coolie's full details */}
+                <button
+                  type="button"
+                  onPointerDown={() => prefetchSirosPerson(r.no)}
+                  onClick={() => r.no && setViewNo(Number(r.no))}
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left"
+                >
+                  <NoBadge no={r.no || "—"} />
+                  <span className="min-w-0 flex-1 truncate text-base font-semibold text-zinc-100">{r.name}</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`${t("Remove")} — ${r.name}`}
+                  onClick={() => remove(r)}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-600 text-white transition-colors hover:bg-red-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {/* Not like the Save button: an outlined button inside the card */}
       <div className={cn("p-3", added.length > 0 && "border-t border-zinc-800")}>
@@ -156,11 +155,14 @@ export function CooliePicker({
 
       <Modal open={open} onClose={() => setOpen(false)} title={t("Add coolie")} className="max-w-lg">
         <div className="space-y-3">
-          {/* Already on this entry: small tags, ✕ removes */}
-          {added.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {added.map((r) => (
-                <span key={r.no || r.name} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 py-1 pl-3 pr-1 text-sm font-semibold text-emerald-800">
+          {/* Already on this entry: one line that scrolls sideways (the pop-up does not grow) */}
+          <div className="flex min-h-9 items-center gap-2">
+            <span className={cn("shrink-0 rounded-full px-2.5 py-0.5 text-sm font-bold tabular-nums", added.length ? "bg-emerald-600 text-white" : "bg-zinc-950 text-zinc-400")}>
+              {added.length}
+            </span>
+            <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto overscroll-contain pb-0.5">
+              {[...added].reverse().map((r) => (
+                <span key={r.no || r.name} className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-500/15 py-1 pl-3 pr-1 text-sm font-semibold text-emerald-800">
                   {r.no ? `${r.no} · ` : ""}
                   {r.name}
                   <button
@@ -174,7 +176,7 @@ export function CooliePicker({
                 </span>
               ))}
             </div>
-          )}
+          </div>
           <label className="block space-y-1.5">
             <span className="text-base font-bold text-zinc-100">{t("Name or number")}</span>
             <span className="relative block">
@@ -199,76 +201,84 @@ export function CooliePicker({
             </span>
           </label>
 
-          {q !== "" && (
-            <ul className="max-h-[45dvh] divide-y divide-zinc-800/70 overflow-y-auto overscroll-contain rounded-2xl border-[1.5px] border-zinc-700">
-              {people === null ? (
-                <li className="flex items-center justify-center gap-2 px-4 py-5 text-base text-zinc-500">
-                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> {t("Loading…")}
-                </li>
-              ) : shown.length === 0 ? (
-                <li className="px-4 py-4 text-center text-base font-semibold text-zinc-400">{t("No coolie with this name or number.")}</li>
-              ) : (
-                shown.map((p) => {
-                  const on = isAdded(p);
-                  const away = !on && isInside(p);
-                  return (
-                    <li key={p.id} className="flex items-center">
-                      <button
-                        type="button"
-                        disabled={on || away}
-                        onClick={() => add(p)}
-                        className={cn(
-                          "flex min-h-16 min-w-0 flex-1 items-center gap-3 px-4 py-2 text-left transition-colors",
-                          on ? "bg-emerald-500/10" : away ? "cursor-not-allowed opacity-60" : "hover:bg-orange-500/10 active:bg-orange-500/15"
-                        )}
-                      >
-                        <NoBadge no={p.no} />
-                        <span className="min-w-0 flex-1">
-                          <span className="block break-words text-lg font-semibold text-zinc-100">{p.name}</span>
-                          {p.gender && <span className="block text-sm text-zinc-500">{t(p.gender)}</span>}
-                          {away && (
-                            <span className="mt-1 inline-block rounded-full bg-amber-500/15 px-2.5 py-0.5 text-sm font-semibold text-amber-700">
-                              {t("Inside — mark Out first")}
+          {/* The results: always the same height, so the pop-up does not move while typing */}
+          <div className="h-[42dvh] min-h-56 overflow-y-auto overscroll-contain rounded-2xl border-[1.5px] border-zinc-700">
+            {q === "" ? (
+              <div className="flex h-full items-center justify-center text-zinc-600">
+                <Search className="h-10 w-10" aria-hidden="true" />
+              </div>
+            ) : (
+              <ul className="divide-y divide-zinc-800/70">
+                {people === null ? (
+                  <li className="flex items-center justify-center gap-2 px-4 py-5 text-base text-zinc-500">
+                    <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> {t("Loading…")}
+                  </li>
+                ) : shown.length === 0 ? (
+                  <li className="px-4 py-4 text-center text-base font-semibold text-zinc-400">{t("No coolie with this name or number.")}</li>
+                ) : (
+                  shown.map((p) => {
+                    const on = isAdded(p);
+                    const away = !on && isInside(p);
+                    return (
+                      <li key={p.id} className="flex items-center">
+                        <button
+                          type="button"
+                          disabled={on || away}
+                          onClick={() => add(p)}
+                          className={cn(
+                            "flex min-h-16 min-w-0 flex-1 items-center gap-3 px-4 py-2 text-left transition-colors",
+                            on ? "bg-emerald-500/10" : away ? "cursor-not-allowed opacity-60" : "hover:bg-orange-500/10 active:bg-orange-500/15"
+                          )}
+                        >
+                          <NoBadge no={p.no} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block break-words text-lg font-semibold text-zinc-100">{p.name}</span>
+                            {p.gender && <span className="block text-sm text-zinc-500">{t(p.gender)}</span>}
+                            {away && (
+                              <span className="mt-1 inline-block rounded-full bg-amber-500/15 px-2.5 py-0.5 text-sm font-semibold text-amber-700">
+                                {t("Inside — mark Out first")}
+                              </span>
+                            )}
+                          </span>
+                          {on ? (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-sm font-bold text-white">
+                              <Check className="h-4 w-4" aria-hidden="true" /> {t("Added")}
+                            </span>
+                          ) : away ? null : (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-orange-600 px-3 py-1.5 text-sm font-bold text-white">
+                              <Plus className="h-4 w-4" aria-hidden="true" /> {t("Add")}
                             </span>
                           )}
-                        </span>
-                        {on ? (
-                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-sm font-bold text-white">
-                            <Check className="h-4 w-4" aria-hidden="true" /> {t("Added")}
-                          </span>
-                        ) : away ? null : (
-                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-orange-600 px-3 py-1.5 text-sm font-bold text-white">
-                            <Plus className="h-4 w-4" aria-hidden="true" /> {t("Add")}
-                          </span>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onPointerDown={() => prefetchSirosPerson(p.no)}
-                        onClick={() => setViewNo(p.no)}
-                        aria-label={`${t("Details")} — ${p.name}`}
-                        className="flex h-16 w-12 shrink-0 items-center justify-center text-zinc-400 transition-colors hover:bg-zinc-950 hover:text-zinc-100"
-                      >
-                        <Info className="h-5 w-5" />
-                      </button>
-                    </li>
-                  );
-                })
-              )}
-            </ul>
-          )}
-
-          {/* Not registered yet: register this name now (photo, gender) */}
-          {canAddNew && (
-            <button
-              type="button"
-              onClick={() => setNewName(query.trim())}
-              className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-orange-500 bg-orange-50 px-4 py-2 text-center text-base font-bold text-orange-700 hover:bg-orange-100"
-            >
-              <UserPlus className="h-5 w-5 shrink-0" aria-hidden="true" />
-              <span className="min-w-0 break-words">{t("New coolie: {name}", { name: query.trim() })}</span>
-            </button>
-          )}
+                        </button>
+                        <button
+                          type="button"
+                          onPointerDown={() => prefetchSirosPerson(p.no)}
+                          onClick={() => setViewNo(p.no)}
+                          aria-label={`${t("Details")} — ${p.name}`}
+                          className="flex h-16 w-12 shrink-0 items-center justify-center text-zinc-400 transition-colors hover:bg-zinc-950 hover:text-zinc-100"
+                        >
+                          <Info className="h-5 w-5" />
+                        </button>
+                      </li>
+                    );
+                  })
+                )}
+                {/* Not registered yet: register this name now (photo, gender) */}
+                {canAddNew && people !== null && (
+                  <li className="p-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewName(query.trim())}
+                      className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-orange-500 bg-orange-50 px-4 py-2 text-center text-base font-bold text-orange-700 hover:bg-orange-100"
+                    >
+                      <UserPlus className="h-5 w-5 shrink-0" aria-hidden="true" />
+                      <span className="min-w-0 break-words">{t("New coolie: {name}", { name: query.trim() })}</span>
+                    </button>
+                  </li>
+                )}
+              </ul>
+            )}
+          </div>
 
           <button
             type="button"

@@ -649,12 +649,7 @@ export function RegisterPage({
       window.history.replaceState(window.history.state, "", inside ? "?view=inside" : window.location.pathname);
     } catch {}
   };
-  // How many the Still inside list has (0: straight to All records)
-  const [insideCount, setInsideCount] = useState<number | undefined>(undefined);
-  // Nothing waiting any more (all marked meanwhile): straight to the records
-  useEffect(() => {
-    if (insideView && insideCount === 0) showTab(false);
-  }, [insideView, insideCount]);
+  // (An empty Still inside list just says so: switching away by itself made the tabs flash)
 
   let body: React.ReactNode;
   if (def.key === "SECURITY_DAILY") {
@@ -695,8 +690,6 @@ export function RegisterPage({
                   aria-selected={on}
                   onClick={() => {
                     if (on) return;
-                    // A fresh count for the list that opens
-                    setInsideCount(undefined);
                     showTab(tab.inside);
                   }}
                   className={cn(
@@ -720,7 +713,6 @@ export function RegisterPage({
           canEdit={isSecurity && SECURITY_EDITABLE_REGISTERS.includes(def.key)}
           canVerify={viewer === "ESTATE_MANAGER"}
           insideOnly={insideView}
-          onInsideTotal={insideView ? setInsideCount : undefined}
         />
         )}
       </>
