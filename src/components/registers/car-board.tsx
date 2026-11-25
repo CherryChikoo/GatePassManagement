@@ -7,7 +7,8 @@
  * record) or starts a new one. "+ New" adds a car / auto the book has not seen.
  */
 import { useState } from "react";
-import { Car, CarTaxiFront, CheckCircle2, History, Loader2, LogIn, LogOut, Plus, X } from "lucide-react";
+import { useMinuteClock } from "@/components/visits/hub-tiles";
+import { Car, CarTaxiFront, CheckCircle2, History, Loader2, LogIn, LogOut, Plus, X, Timer } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { registerMessage } from "./localize";
 import { Modal } from "@/components/ui/primitives";
@@ -36,7 +37,10 @@ export function CarBoard({ registerKey = "CAR_BOOK", canAct }: { registerKey?: "
   const [ask, setAsk] = useState<{ car: CarOnBoard; dir: "IN" | "OUT" } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  // One page number per column (In / Out)
+  const [pages, setPages] = useState<{ in: number; out: number }>({ in: 1, out: 1 });
+  // "Out 2 h 10 min" moves on by itself each minute (no requests)
+  const now = useMinuteClock(true);
   const [adding, setAdding] = useState(false);
   // Autos going out: the reason, every time
   const [reason, setReason] = useState("");
@@ -48,9 +52,7 @@ export function CarBoard({ registerKey = "CAR_BOOK", canAct }: { registerKey?: "
     // The local tap until the server's board agrees
     return m && m.state !== c.state ? { ...c, state: m.state, since: m.since, openId: null, openNext: null } : c;
   });
-  const pages = Math.max(1, Math.ceil(cars.length / PER_PAGE));
-  const current = Math.min(page, pages);
-  const shown = cars.slice((current - 1) * PER_PAGE, current * PER_PAGE);
+
   const Icon = auto ? CarTaxiFront : Car;
 
   const mark = async (car: CarOnBoard, dir: "IN" | "OUT", why = "") => {
@@ -73,6 +75,69 @@ export function CarBoard({ registerKey = "CAR_BOOK", canAct }: { registerKey?: "
       });
     }
     reload();
+  };
+
+  /** "2 h 10 min" since a time (moves on each minute) */
+  const longFor = (since: string) => {
+    const mins = Math.max(0, Math.floor((now - new Date(since).getTime()) / 60_000));
+    if (mins < 60) return t("{m} min", { m: mins });
+    const h = Math.floor(mins / 60);
+    if (h < 24) return mins % 60 ? t("{h} h {m} min", { h, m: mins % 60 }) : t("{h} h", { h });
+    return t("{d} d {h} h", { d: Math.floor(h / 24), h: h % 24 });
+  };
+
+  /** One vehicle: name, number, since when, and Mark In / Mark Out */
+  const card = (c: CarOnBoard) => {
+          const out = c.state === "out";
+      const dir: "IN" | "OUT" = out ? "IN" : "OUT";
+      return (
+        <li
+          key={c.key}
+          className={cn(
+            "space-y-3 rounded-2xl bg-zinc-900 p-4 shadow-card"
+          )}
+        >
+          <div className="min-w-0">
+              <span className="block break-words text-lg font-bold leading-snug text-zinc-100">{c.name || c.number}</span>
+              {c.name && c.number && <span className="block break-words text-base font-semibold tracking-wide text-zinc-400">{c.number}</span>}
+            </div>
+          <p className={cn("flex items-center gap-2 text-base font-bold", out ? "text-sky-700" : "text-emerald-700")}>
+            <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", out ? "bg-sky-500" : "bg-emerald-500")} aria-hidden="true" />
+            {out
+              ? c.since
+                ? t("Out since {time}", { time: formatTime(c.since) })
+                : t("Out")
+              : auto
+              ? c.since
+                ? t("Inside since {time}", { time: formatTime(c.since) })
+                : t("Inside")
+              : t("On campus")}
+          </p>
+          {c.since && (out || auto) && (
+            <p className="flex items-center gap-1.5 text-base font-bold tabular-nums text-amber-800">
+              <Timer className="h-4 w-4" aria-hidden="true" /> {longFor(c.since)}
+            </p>
+          )}
+          {canAct && (
+            <button
+              type="button"
+              disabled={busy === c.key}
+              onClick={() => {
+                setReason("");
+                setReasonMissing(false);
+                setAsk({ car: c, dir });
+              }}
+              className={cn(
+                "flex h-14 w-full items-center justify-center gap-2 rounded-2xl text-lg font-bold text-white shadow-card transition-[background-color,transform] active:scale-[0.98] disabled:opacity-60",
+                out ? "bg-emerald-600 hover:bg-emerald-700" : "bg-sky-600 hover:bg-sky-700"
+              )}
+            >
+              {busy === c.key ? <Loader2 className="h-5 w-5 animate-spin" /> : out ? <LogIn className="h-5 w-5" /> : <LogOut className="h-5 w-5" />}
+              {out ? t("Mark In") : t("Mark Out")}
+            </button>
+          )}
+        </li>
+      );
   };
 
   return (
@@ -106,63 +171,40 @@ export function CarBoard({ registerKey = "CAR_BOOK", canAct }: { registerKey?: "
         </p>
       )}
       {!data && <div className="h-40 animate-pulse rounded-3xl bg-zinc-900" aria-hidden="true" />}
-      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {shown.map((c) => {
-          const out = c.state === "out";
-          const dir: "IN" | "OUT" = out ? "IN" : "OUT";
-          return (
-            <li
-              key={c.key}
-              className={cn(
-                "space-y-3 rounded-3xl border-[1.5px] bg-zinc-900 p-4 shadow-card",
-                out ? "border-sky-500/40" : "border-emerald-500/40"
-              )}
-            >
-              <div className="flex items-start gap-3">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-purple-500/15 text-purple-700">
-                  <Icon className="h-6 w-6" aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block break-words text-lg font-bold leading-snug text-zinc-100">{c.name || c.number}</span>
-                  {c.name && c.number && <span className="block break-words text-base font-semibold tracking-wide text-zinc-400">{c.number}</span>}
-                </span>
-              </div>
-              <p className={cn("flex items-center gap-2 text-base font-bold", out ? "text-sky-700" : "text-emerald-700")}>
-                <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", out ? "bg-sky-500" : "bg-emerald-500")} aria-hidden="true" />
-                {out
-                  ? c.since
-                    ? t("Out since {time}", { time: formatTime(c.since) })
-                    : t("Out")
-                  : auto
-                  ? c.since
-                    ? t("Inside since {time}", { time: formatTime(c.since) })
-                    : t("Inside")
-                  : t("On campus")}
-              </p>
-              {canAct && (
-                <button
-                  type="button"
-                  disabled={busy === c.key}
-                  onClick={() => {
-                    setReason("");
-                    setReasonMissing(false);
-                    setAsk({ car: c, dir });
-                  }}
-                  className={cn(
-                    "flex h-14 w-full items-center justify-center gap-2 rounded-2xl text-lg font-bold text-white shadow-card transition-[background-color,transform] active:scale-[0.98] disabled:opacity-60",
-                    out ? "bg-emerald-600 hover:bg-emerald-700" : "bg-sky-600 hover:bg-sky-700"
-                  )}
-                >
-                  {busy === c.key ? <Loader2 className="h-5 w-5 animate-spin" /> : out ? <LogIn className="h-5 w-5" /> : <LogOut className="h-5 w-5" />}
-                  {out ? t("Mark In") : t("Mark Out")}
-                </button>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-      {cars.length > PER_PAGE && (
-        <PagerBar inline page={current} pageSize={PER_PAGE} total={cars.length} onPageChange={setPage} itemLabel={t(auto ? "autos" : "cars")} />
+      {/* In and Out side by side (one above the other on phones): each column lists only its vehicles */}
+      {cars.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {(["in", "out"] as const).map((col) => {
+            const list = cars.filter((c) => c.state === col);
+            const total = Math.max(1, Math.ceil(list.length / PER_PAGE));
+            const cur = Math.min(pages[col], total);
+            const shown = list.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
+            const isOut = col === "out";
+            return (
+              <section
+                key={col}
+                // No fill: a dashed border in the column's colour (green In / blue Out)
+                className={cn("space-y-3 rounded-3xl border-2 border-dashed p-3 sm:p-4", isOut ? "border-sky-500" : "border-emerald-500")}
+              >
+                <h3 className={cn("flex items-center gap-2 px-1 text-xl font-bold", isOut ? "text-sky-700" : "text-emerald-700")}>
+                  {isOut ? <LogOut className="h-5 w-5" aria-hidden="true" /> : <LogIn className="h-5 w-5" aria-hidden="true" />}
+                  {isOut ? t("Out") : t("In")}
+                  <span className={cn("rounded-full px-2.5 text-base tabular-nums text-white", isOut ? "bg-sky-600" : "bg-emerald-600")}>{list.length}</span>
+                </h3>
+                {list.length === 0 ? (
+                  <p className="px-1 py-4 text-base font-semibold text-zinc-500">
+                    {isOut ? t(auto ? "No autos are out now." : "No cars are out now.") : t(auto ? "No autos are in now." : "No cars are in now.")}
+                  </p>
+                ) : (
+                  <ul className="space-y-3">{shown.map((c) => card(c))}</ul>
+                )}
+                {list.length > PER_PAGE && (
+                  <PagerBar inline page={cur} pageSize={PER_PAGE} total={list.length} onPageChange={(p) => setPages((x) => ({ ...x, [col]: p }))} itemLabel={t(auto ? "autos" : "cars")} />
+                )}
+              </section>
+            );
+          })}
+        </div>
       )}
 
       {/* Confirm: the vehicle, and the action in its own colour (blue Out / green In) */}
@@ -185,41 +227,26 @@ export function CarBoard({ registerKey = "CAR_BOOK", canAct }: { registerKey?: "
             </div>
             {needsReason(ask.dir) && (
               <div className="space-y-1.5">
-                <label htmlFor="board-reason" className="field-label block text-base font-semibold text-zinc-200">
+                <label htmlFor="board-reason" className="field-label block text-lg font-bold text-zinc-100">
                   {t("Reason for going out")} <span className="text-orange-500">*</span>
                 </label>
-                <input
+                <textarea
                   id="board-reason"
-                  type="text"
                   autoFocus
                   autoComplete="off"
                   maxLength={200}
+                  rows={3}
                   value={reason}
                   onChange={(e) => {
                     setReason(e.target.value);
                     setReasonMissing(false);
                   }}
                   className={cn(
-                    "flex h-14 w-full rounded-2xl border-[1.5px] border-zinc-600 bg-zinc-900 px-4 text-lg text-zinc-100 outline-none focus:border-orange-500",
-                    reasonMissing && "!border-red-500"
+                    "flex min-h-[7rem] w-full resize-none rounded-2xl border-2 border-zinc-600 bg-zinc-900 px-4 py-3 text-xl text-zinc-100 outline-none focus:border-orange-500",
+                    reasonMissing && "!border-emerald-500 !bg-emerald-50"
                   )}
                 />
-                {/* The last reason, one tap */}
-                {ask.car.fill.purpose && ask.car.fill.purpose !== reason && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setReason(ask.car.fill.purpose);
-                      setReasonMissing(false);
-                    }}
-                    className="flex min-h-11 w-full items-center gap-2 rounded-xl border-[1.5px] border-dashed border-zinc-600 bg-zinc-950 px-3 py-2 text-left text-base text-zinc-200 hover:bg-zinc-900"
-                  >
-                    <History className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
-                    <span className="shrink-0 text-sm text-zinc-500">{t("Last:")}</span>
-                    <span className="min-w-0 break-words font-semibold">{ask.car.fill.purpose}</span>
-                  </button>
-                )}
-                {reasonMissing && <p role="alert" className="text-sm font-medium text-red-600">{t("Enter the reason for going out")}</p>}
+                {reasonMissing && <p role="alert" className="text-base font-bold text-emerald-700">{t("Enter the reason for going out")}</p>}
               </div>
             )}
             <div className="flex flex-col gap-2.5">

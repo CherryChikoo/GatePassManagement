@@ -212,8 +212,6 @@ export type EntryRegister = {
   requiredAny?: string[][];
   /** New-entry form: required fields get a subtle highlight, and every shown field is up front (no "More details") */
   highlightRequired?: boolean;
-  /** The bill photo (this field) is read by Gemini and fills the empty bill boxes (bill number, amount, items…) */
-  readsBill?: string;
   /** Listed fields are required unless the yes / no flag field is on (e.g. no bill: no bill photo or amount) */
   requiredUnless?: { fields: string[]; flag: string };
   /** Fixed values printed on the form (e.g. the "To" block of Form 19) */
@@ -1085,4 +1083,23 @@ function stockForm(): Pick<EntryRegister, "required" | "requiredUnless" | "listF
       { key: "remarks", label: "Remarks", type: "textarea", formHidden: true },
     ],
   };
+}
+
+/**
+ * Details of a saved record that the other logins (Supervisor, Estate Manager,
+ * Admin) may add or change, with a reason: the optional ones, and any left
+ * empty. Not times, dates, photos, In / Out, statuses or values the app sets.
+ */
+export function detailEditFields(def: EntryRegister, current: Record<string, unknown>): FieldDef[] {
+  const m = def.movement;
+  const skip = new Set([m?.in.timeKey, m?.out.timeKey, m?.in.readingKey, m?.out.readingKey, m?.directionField, m?.outReasonKey, "direction"].filter(Boolean) as string[]);
+  const empty = (v: unknown) => v === null || v === undefined || v === "";
+  return def.fields.filter(
+    (f) =>
+      !["date", "time", "photo", "staff", "keyHolder", "yesno"].includes(f.type) &&
+      !f.formHidden &&
+      !f.updatable &&
+      !skip.has(f.key) &&
+      (!def.required.includes(f.key) || empty(current[f.key]))
+  );
 }

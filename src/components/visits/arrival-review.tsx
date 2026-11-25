@@ -102,7 +102,6 @@ export function ArrivalReview({
     const fixVehicle = vehicle.trim();
     if (fixName.length < 2) return setError(t("Visitor name is required"));
     if (!PHONE_RE.test(fixPhone)) return setError(t("Enter a valid phone number (10–15 digits)"));
-    if (isVisitors && !fixVehicle) return setError(t("Enter the vehicle number, or tap On foot"));
 
     setBusy("accept");
     try {

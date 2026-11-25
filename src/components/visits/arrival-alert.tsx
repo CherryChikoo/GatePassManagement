@@ -105,7 +105,7 @@ export function ArrivalAlert() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed inset-x-3 z-30 mx-auto max-w-lg animate-fade-in"
+      className="fixed inset-x-3 z-30 mx-auto max-w-lg animate-fade-in sm:max-w-2xl"
       style={{ top: "calc(var(--bar-top, 4.75rem) + 0.5rem)" }}
     >
       <ArrivalBanner
@@ -126,28 +126,28 @@ export function ArrivalAlert() {
 export function ArrivalBanner({ href, title, book, onHide }: { href: string; title: string; book: string; onHide: () => void }) {
   const t = useT();
   return (
-    <div className="flex items-stretch overflow-hidden rounded-2xl border border-orange-500/30 bg-zinc-900 shadow-[0_16px_40px_-16px_rgba(207,62,37,0.45)]">
+    // Solid orange with white text: it stands out from any page behind it (no pale card)
+    <div className="flex items-stretch overflow-hidden rounded-2xl border-2 border-white bg-orange-600 text-white shadow-[0_18px_44px_-14px_rgba(207,62,37,0.75)] ring-4 ring-orange-500/25">
       <Link
         href={href}
-        className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 pr-2 transition-colors hover:bg-orange-500/5 active:bg-orange-500/10"
+        className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-3.5 pr-2 transition-colors hover:bg-orange-700 active:bg-orange-700 sm:gap-4 sm:py-4 sm:pl-5"
       >
-        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white" aria-hidden="true">
-          <span className="absolute inset-0 animate-ping rounded-full bg-orange-500/30 motion-reduce:hidden" />
-          <BellRing className="relative h-5 w-5" />
+        <span className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-orange-600 sm:h-14 sm:w-14" aria-hidden="true">
+          <BellRing className="relative h-6 w-6 sm:h-7 sm:w-7" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="line-clamp-2 text-[15px] font-semibold leading-snug text-zinc-100">{title}</span>
-          <span className="block truncate text-xs text-zinc-500">{book}</span>
+          <span className="line-clamp-2 text-lg font-bold leading-snug sm:text-xl">{title}</span>
+          <span className="block truncate text-base font-semibold text-white/90">{book}</span>
         </span>
-        <ChevronRight className="h-5 w-5 shrink-0 text-orange-600" aria-hidden="true" />
+        <ChevronRight className="h-6 w-6 shrink-0" aria-hidden="true" />
       </Link>
       <button
         type="button"
         onClick={onHide}
         aria-label={t("Hide")}
-        className="flex w-11 shrink-0 items-center justify-center border-l border-zinc-800 text-zinc-500 transition-colors hover:bg-zinc-950 hover:text-zinc-300"
+        className="flex w-12 shrink-0 items-center justify-center border-l border-white/30 text-white transition-colors hover:bg-orange-700 sm:w-14"
       >
-        <X className="h-4 w-4" aria-hidden="true" />
+        <X className="h-5 w-5" aria-hidden="true" />
       </button>
     </div>
   );

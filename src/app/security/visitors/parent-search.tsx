@@ -186,12 +186,14 @@ export function ParentSearch({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {parentButtons.map(({ who, label }) => {
               const p = parentOf(student, who);
-              const relation = who === "GUARDIAN" && student.guardianRelation ? ` (${student.guardianRelation})` : "";
+              // Guardian: always open — the guard types whoever came
+              const guardian = who === "GUARDIAN";
+              const relation = "";
               return (
                 <button
                   key={who}
                   type="button"
-                  disabled={!p}
+                  disabled={!p && !guardian}
                   onClick={() => {
                     onPick(student, who);
                     clear();
@@ -202,7 +204,7 @@ export function ParentSearch({
                     {label}
                     {relation}
                   </span>
-                  <span className="max-w-full break-words text-xs text-zinc-500">{p ? p.name : t("Not saved")}</span>
+                  <span className="max-w-full break-words text-sm text-zinc-500">{guardian ? t("Type who came") : p ? p.name : t("Not saved")}</span>
                 </button>
               );
             })}

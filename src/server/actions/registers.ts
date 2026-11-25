@@ -19,6 +19,7 @@ import {
   type RegisterKey,
   ESTATE_BOOKS,
   ADD_LATER_ROLES,
+  detailEditFields,
 } from "@/lib/registers/definitions";
 import {
   buildSearchText,
@@ -1263,6 +1264,73 @@ export async function adminUpdateRegisterEntry(entryId: string, payload: RawPayl
 }
 
 /**
+ * Supervisor, Estate Manager or Admin adds / changes a saved record's optional
+ * (or empty) details, with a reason. Saved as a correction on top of the
+ * original, so what was first written, who changed it and why all stay.
+ */
+export async function addRegisterDetails(entryId: string, changes: Record<string, unknown>, reason: string, clientToken: string) {
+  const user = await requireRole("ADMIN", "SECURITY_SUPERVISOR", "ESTATE_MANAGER");
+  if (typeof entryId !== "string" || !entryId) return { error: "Record not found" };
+  if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
+  const why = typeof reason === "string" ? reason.trim() : "";
+  if (why.length < 3) return { error: "Write the reason for the change" };
+  if (why.length > 300) return { error: "Reason: at most 300 characters" };
+  if (!changes || typeof changes !== "object" || Array.isArray(changes)) return { error: "Nothing changed" };
+
+  try {
+    const access = await getRegisterAccess(user);
+    const res = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"register-entry:" + entryId}))`;
+      const original = await tx.registerEntry.findFirst({
+        where: { id: entryId, kind: "ORIGINAL" },
+        select: { id: true, register: true, entryDate: true, data: true, supplements: { select: { kind: true, data: true, createdAt: true } } },
+      });
+      if (!original) return { error: "Record not found" };
+      const def = await getEntryRegister(original.register, tx);
+      if (!def) return { error: "Unknown register" };
+      if (!access.canView(def.key)) return { error: "You do not have access to this register" };
+
+      const current = effectiveData(def, original.data as RegisterData, original.supplements);
+      const allowed = detailEditFields(def, current);
+      const next: RegisterData = { ...current };
+      const labels: string[] = [];
+      for (const [key, raw] of Object.entries(changes)) {
+        const f = allowed.find((x) => x.key === key);
+        if (!f) return { error: "This detail cannot be changed" };
+        const checked = await validateFieldUpdate(f, raw);
+        if ("error" in checked) return { error: checked.error };
+        const before = current[key] ?? null;
+        if (before === checked.value) continue;
+        next[key] = checked.value;
+        labels.push(f.label);
+      }
+      if (!labels.length) return { error: "Nothing changed" };
+
+      await tx.registerEntry.create({
+        data: {
+          register: def.key,
+          kind: "CORRECTION",
+          parentId: original.id,
+          entryDate: original.entryDate,
+          data: next as Prisma.InputJsonValue,
+          searchText: buildSearchText(def, next),
+          reason: `${labels.join(", ")} — ${why}`,
+          clientToken,
+          ...(await recorderSnapshot(user)),
+        },
+      });
+      return { success: true as const, register: def.key };
+    });
+    if ("success" in res) revalidateRegisters(res.register);
+    return res;
+  } catch (err: any) {
+    if (err?.code === "P2002") return { success: true };
+    console.error("[addRegisterDetails] failed:", err?.message);
+    return { error: "Could not save the changes. Please try again." };
+  }
+}
+
+/**
  * Security edits a record of a register they may edit (the Cooli Book). The
  * change is saved as a correction on top of the original, so the history of
  * what was first written, and who changed it, stays.
@@ -1597,7 +1665,9 @@ export type CarOnBoard = {
 /** Which boxes name a vehicle on the board: title, the smaller line, and what a new record copies */
 const BOARDS: Record<string, { title: string; sub: string[]; fill: string[] }> = {
   CAR_BOOK: { title: "vehicleName", sub: ["vehicleNumber"], fill: ["vehicleName", "vehicleNumber"] },
-  AUTO_IN_OUT: { title: "driverName", sub: ["autoNumber", "purpose"], fill: ["driverName", "purpose"] },
+  // The reason is asked every time it goes out: never carried over from the last trip
+  // The card shows the driver and the auto number only — no reason (it is new every trip)
+  AUTO_IN_OUT: { title: "driverName", sub: ["autoNumber"], fill: ["driverName", "autoNumber"] },
 };
 
 /**

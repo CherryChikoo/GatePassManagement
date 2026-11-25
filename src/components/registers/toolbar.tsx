@@ -1,6 +1,7 @@
 "use client";
 import { DateField } from "@/components/ui/date-field";
 import { useT } from "@/components/providers/language-provider";
+import { useSecurityLook } from "@/lib/ui/security-look";
 
 import { useEffect, useState } from "react";
 import { CalendarRange, CheckCircle2, ChevronLeft, ChevronRight, Search } from "lucide-react";
@@ -53,46 +54,72 @@ export function useRegisterFilters() {
 
 export function RegisterToolbar({ filters, action, searchPlaceholder = "Search…" }: { filters: RegisterFilters; action?: React.ReactNode; searchPlaceholder?: string }) {
   const t = useT();
+  // Security (tablets): the date and New entry on one line, the search on its own full line under them
+  const security = useSecurityLook();
+  const dates = (
+    <div className="flex min-w-0 items-center gap-2">
+      <DateField
+        aria-label={t("Date")}
+        value={filters.date}
+        max={istDateString()}
+        disabled={filters.allDates}
+        onChange={(e) => filters.setDate(e.target.value)}
+        className="h-12 min-w-0 flex-1 sm:flex-none rounded-full border-[1.5px] border-zinc-600 bg-zinc-950 px-4 text-base font-semibold text-zinc-100 [color-scheme:light] outline-none transition-colors hover:border-zinc-500 focus:border-orange-500 focus:bg-zinc-900 focus:ring-4 focus:ring-orange-500/15 disabled:opacity-40"
+      />
+      {/* A clear toggle (no small checkbox): on = solid blue with ✓ */}
+      <button
+        type="button"
+        aria-pressed={filters.allDates}
+        onClick={() => filters.setAllDates(!filters.allDates)}
+        className={`inline-flex h-12 shrink-0 select-none items-center gap-2 rounded-full border-[1.5px] px-4 text-base font-semibold whitespace-nowrap transition-[background-color,border-color,color,transform] active:scale-[0.98] ${
+          // Its own colour (blue): off light blue; selected solid blue with white text
+          filters.allDates
+            ? "border-sky-600 bg-sky-600 text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.7)]"
+            : "border-sky-500/40 bg-sky-500/10 text-sky-700 hover:bg-sky-500/15"
+        }`}
+      >
+        {filters.allDates ? <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" /> : <CalendarRange className="h-5 w-5 shrink-0" aria-hidden="true" />}
+        {t("All dates")}
+      </button>
+    </div>
+  );
+  const search = (wide: boolean) => (
+    <div className={wide ? "relative w-full" : "relative flex-1 min-w-0 sm:min-w-[220px]"}>
+      <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-zinc-400 pointer-events-none" />
+      <input
+        type="search"
+        aria-label={t("Search")}
+        value={filters.qInput}
+        onChange={(e) => filters.setQInput(e.target.value)}
+        placeholder={t(searchPlaceholder)}
+        className="h-12 w-full rounded-full border-[1.5px] border-zinc-600 bg-zinc-950 pl-12 pr-4 text-base text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-500 focus:border-orange-500 focus:bg-zinc-900 focus:ring-4 focus:ring-orange-500/15"
+      />
+    </div>
+  );
+
+  if (security) {
+    return (
+      <div className="space-y-2.5 sm:space-y-3">
+        {/* One line on every screen: the date, All dates and New entry (its words hide on very narrow phones) */}
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <div className="min-w-0 flex-1">{dates}</div>
+          {action && (
+            <div className="shrink-0 [&>*]:h-12 [&>*]:whitespace-nowrap max-[430px]:[&>*]:px-3.5 max-[430px]:[&_.toolbar-action-text]:sr-only">
+              {action}
+            </div>
+          )}
+        </div>
+        {/* The search: its own line, full width */}
+        {search(true)}
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
       {/* Primary action first on phones (full width), at the end of the row on larger screens */}
       {action && <div className="order-first sm:order-last sm:ml-auto [&>*]:w-full sm:[&>*]:w-auto">{action}</div>}
-      <div className="flex items-center gap-2 min-w-0">
-        <DateField
-          aria-label={t("Date")}
-          value={filters.date}
-          max={istDateString()}
-          disabled={filters.allDates}
-          onChange={(e) => filters.setDate(e.target.value)}
-          className="h-12 min-w-0 flex-1 sm:flex-none rounded-full border-[1.5px] border-zinc-600 bg-zinc-950 px-4 text-base font-semibold text-zinc-100 [color-scheme:light] outline-none transition-colors hover:border-zinc-500 focus:border-orange-500 focus:bg-zinc-900 focus:ring-4 focus:ring-orange-500/15 disabled:opacity-40"
-        />
-        {/* A clear toggle (no small checkbox): on = orange with ✓ */}
-        <button
-          type="button"
-          aria-pressed={filters.allDates}
-          onClick={() => filters.setAllDates(!filters.allDates)}
-          className={`inline-flex h-12 shrink-0 select-none items-center gap-2 rounded-full border-[1.5px] px-4 text-base font-semibold whitespace-nowrap transition-[background-color,border-color,color,transform] active:scale-[0.98] ${
-            // Its own colour (blue): off light blue; selected solid blue with white text
-            filters.allDates
-              ? "border-sky-600 bg-sky-600 text-white shadow-[0_6px_14px_-8px_rgba(2,132,199,0.7)]"
-              : "border-sky-500/40 bg-sky-500/10 text-sky-700 hover:bg-sky-500/15"
-          }`}
-        >
-          {filters.allDates ? <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" /> : <CalendarRange className="h-5 w-5 shrink-0" aria-hidden="true" />}
-          {t("All dates")}
-        </button>
-      </div>
-      <div className="relative flex-1 min-w-0 sm:min-w-[220px]">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-zinc-400 pointer-events-none" />
-        <input
-          type="search"
-          aria-label={t("Search")}
-          value={filters.qInput}
-          onChange={(e) => filters.setQInput(e.target.value)}
-          placeholder={t(searchPlaceholder)}
-          className="h-12 w-full rounded-full border-[1.5px] border-zinc-600 bg-zinc-950 pl-12 pr-4 text-base text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-500 focus:border-orange-500 focus:bg-zinc-900 focus:ring-4 focus:ring-orange-500/15"
-        />
-      </div>
+      {dates}
+      {search(false)}
     </div>
   );
 }

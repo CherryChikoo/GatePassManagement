@@ -41,8 +41,28 @@ async function post(url: string, fn: string, args: readonly unknown[], timeoutMs
   return data;
 }
 
+/**
+ * Calls that are safe to send twice: reads, and register saves that carry the
+ * form's one-time token (the server stores such a save once, however often it
+ * arrives). Photo uploads too (a second copy is only an unused file).
+ */
+const RETRY_SAFE = /^(get|list|search|count|lookup|fetch)[A-Z]|^(createRegisterEntry|completeRegisterEntry|updateRegisterField|uploadRegisterPhoto|uploadOutsiderPhoto)$/;
+
+/** A slow or dropped connection, or the server busy for a moment (not a real "no") */
+function isPassing(err: unknown): boolean {
+  const e = err as { name?: string; message?: string } | null;
+  return e?.name === "TimeoutError" || /^No internet|^Something went wrong/.test(e?.message ?? "");
+}
+
 export async function callGate<K extends Fn>(fn: K, args: Parameters<GateFunctions[K]>, timeoutMs = 20_000): Promise<Result<K>> {
-  return (await post("/api/gate", fn, args, timeoutMs)) as Result<K>;
+  try {
+    return (await post("/api/gate", fn, args, timeoutMs)) as Result<K>;
+  } catch (err) {
+    // Busy gate (weak mobile data in a crowd, many saves at once): once more after a short pause
+    if (!RETRY_SAFE.test(fn) || !isPassing(err)) throw err;
+    await new Promise((r) => setTimeout(r, 1200 + Math.random() * 800));
+    return (await post("/api/gate", fn, args, timeoutMs)) as Result<K>;
+  }
 }
 
 type ListFn = keyof ListFunctions;

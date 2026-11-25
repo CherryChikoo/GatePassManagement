@@ -7,6 +7,7 @@ import {
   completeRegisterEntry,
   securityEditRegisterEntry,
   updateRegisterField,
+  addRegisterDetails,
   getRegisterStaffOptions,
   getRegisterPeopleOptions,
   searchKeyStudents,
@@ -41,7 +42,6 @@ import { listCustomRegisters } from "@/server/actions/custom-registers";
 import { getAttendanceMonth } from "@/server/actions/attendance";
 import { getMyDuties, getSecurityDutyDay } from "@/server/actions/security-duty";
 import { getSirosInside, getSirosPersonDetails, listSirosPeople } from "@/server/actions/siros-people";
-import { readBillPhoto } from "@/server/actions/bill-reader";
 import {
   getCheckInQr,
   listArrivals,
@@ -78,6 +78,7 @@ const GATE_FUNCTIONS = {
   completeRegisterEntry,
   securityEditRegisterEntry,
   updateRegisterField,
+  addRegisterDetails,
   getRegisterStaffOptions,
   getRegisterPeopleOptions,
   searchKeyStudents,
@@ -135,7 +136,6 @@ const GATE_FUNCTIONS = {
   listSirosPeople,
   getSirosPersonDetails,
   getSirosInside,
-  readBillPhoto,
   // Visitor self check-in: Show QR, arrivals, Accept / Reject, parent search
   getCheckInQr,
   listArrivals,

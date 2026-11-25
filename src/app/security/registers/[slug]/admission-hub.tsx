@@ -138,10 +138,10 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
         <div>
           <GoBackButton className="mb-3" />
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-600 text-white">
               <School className="h-5 w-5" />
             </span>
-            <h1 className="min-w-0 text-xl sm:text-2xl font-bold tracking-tight text-zinc-100 break-words">{def.title}</h1>
+            <h1 className="min-w-0 truncate text-xl font-bold tracking-tight text-zinc-100 sm:text-2xl">{def.title}</h1>
             {/* The check-in QR, as a pop-up (like the registers list's QR button) */}
             {canCreate && <HubQrButton register="ADMISSION" label={`${t("Show QR")} — ${def.title}`} onClick={() => openView("qr")} />}
           </div>
@@ -155,7 +155,7 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
                     key: "gate",
                     icon: BellRing,
                     title: t("Waiting to accept"),
-                    hint: t("Parents who sent the form — photo and accept"),
+                    hint: t("Check and accept"),
                     count: arrivals.data ? waiting : null,
                     primary: true,
                     onClick: () => openView("gate"),
@@ -164,7 +164,7 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
                     key: "new",
                     icon: PencilLine,
                     title: t("Type it myself"),
-                    hint: t("Fill the admission details here"),
+                    hint: t("Fill here"),
                     onClick: () => openView("new"),
                   },
                 ]
@@ -173,7 +173,7 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
               key: "inside",
               icon: MapPin,
               title: t("Inside now"),
-              hint: t("Who is inside, and record Out"),
+              hint: t("Mark exit"),
               count: insideCount,
               onClick: () => openView("inside"),
             },
@@ -181,7 +181,7 @@ export function AdmissionHub({ register, canCreate }: { register: EntryRegister;
               key: "log",
               icon: History,
               title: t("Old records"),
-              hint: t("Records of any day"),
+              hint: t("Any day"),
               onClick: () => openView("log"),
             },
           ]}

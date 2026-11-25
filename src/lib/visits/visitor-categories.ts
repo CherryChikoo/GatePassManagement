@@ -106,7 +106,6 @@ export function missingVisitorDetail(f: {
   if (!isVisitorCategory(f.category)) return "Choose the category";
   if (!filled(f.name)) return "Enter the full name";
   if (!filled(f.phone)) return "Enter the phone number";
-  if (!filled(f.address)) return "Enter the address";
   if (!filled(f.purpose) && !filled(f.visitingStudent) && !filled(f.hostProfileId)) {
     return "Enter the purpose of the visit or the person to visit";
   }

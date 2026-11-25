@@ -4,10 +4,8 @@ import { DateField } from "@/components/ui/date-field";
 import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useRef, useState } from "react";
-import { VoicePanel, useVoiceFill } from "@/components/voice/voice-fill";
 import { HostPicker } from "@/components/visits/host-picker";
 import { VisitCodeFields, visitInputReady, type VisitExitInput } from "@/components/visits/visit-code";
-import type { VoiceFill } from "@/lib/voice/spec";
 import { AlertCircle, Briefcase, FileText, CalendarDays, Camera, CheckCircle2, FileX, ChevronDown, Clock, GraduationCap, History, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, PlusCircle, RotateCcw, Save, Search, Trash2, Undo2, X } from "lucide-react";
 import { callGate } from "@/lib/gate-call";
 import { DepartmentSelect } from "@/components/ui/department-select";
@@ -19,10 +17,10 @@ import { isFieldRequired, pendingActions, yesNoWords } from "@/lib/registers/def
 import { workersInside } from "@/lib/registers/validate";
 import { cn, formatDate } from "@/lib/utils";
 import { Modal } from "@/components/ui/primitives";
-import type { readBillPhoto } from "@/server/actions/bill-reader";
 import type { KeyStudent } from "@/server/actions/registers";
 import { useGateData } from "@/lib/gate-cache";
 import { displayValue } from "./localize";
+import { useSecurityLook } from "@/lib/ui/security-look";
 import { ZoomablePhoto } from "@/components/ui/zoomable-photo";
 
 export type StaffOption = { id: string; name: string; employeeId: string | null };
@@ -171,7 +169,7 @@ function PersonInput({
         (p.designation ?? "").toLowerCase().includes(q)
     )
     // Nothing typed: everyone (scroll); typing: the best matches
-    .slice(0, q ? 30 : 300);
+    .slice(0, q ? 30 : 60);
   const inputRef = useRef<HTMLInputElement>(null);
   // The row under the finger / chosen with ↑ ↓ (Enter picks it)
   const [hi, setHi] = useState(-1);
@@ -831,6 +829,47 @@ function emptyRow(g: GroupDef): Values {
   return Object.fromEntries(g.fields.filter((f) => f.type !== "time").map((f) => [f.key, ""]));
 }
 
+/** Links to saved photos, kept for this visit (each photo is asked for once) */
+const storedPhotoUrls = new Map<string, Promise<string | null>>();
+function storedPhotoUrl(path: string): Promise<string | null> {
+  let p = storedPhotoUrls.get(path);
+  if (!p) {
+    p = callGate("getRegisterPhotoUrl", [path], 15_000).then((u) => (typeof u === "string" ? u : null)).catch(() => null);
+    storedPhotoUrls.set(path, p);
+    // A failed link is asked for again next time
+    p.then((u) => {
+      if (!u) storedPhotoUrls.delete(path);
+    });
+  }
+  return p;
+}
+
+/**
+ * A photo already uploaded (e.g. an item added earlier, or a kept draft): its
+ * picture, tap to see it big. Shows a small spinner while the link loads.
+ */
+export function StoredPhoto({ path, className, alt = "" }: { path: string; className: string; alt?: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    storedPhotoUrl(path).then((u) => {
+      if (!alive) return;
+      if (u) setUrl(u);
+      else setFailed(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [path]);
+  if (url) return <ZoomablePhoto src={url} alt={alt} className={className} />;
+  return (
+    <span className={cn("flex items-center justify-center bg-zinc-950 text-zinc-500", className)}>
+      {failed ? <Camera className="h-5 w-5" aria-hidden="true" /> : <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />}
+    </span>
+  );
+}
+
 /** Camera photo for a register entry: compressed in the browser, uploaded at once, the stored path is the value. */
 export function PhotoInput({
   id,
@@ -884,24 +923,29 @@ export function PhotoInput({
   return (
     <div className="space-y-1.5">
       <div className={`photo-tile relative aspect-[4/3] w-full ${dimmed ? "opacity-40" : ""}`}>
-        <label
-          htmlFor={id}
-          className={`flex h-full w-full flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl border-2 text-center transition-colors ${
-            has ? "border-zinc-800 bg-zinc-950" : "border-dashed border-orange-500/50 bg-orange-500/5 hover:bg-orange-500/10"
-          } ${busy || dimmed ? "pointer-events-none" : "cursor-pointer"}`}
-        >
-          {preview ? (
-            <img src={preview} alt={t(label)} className="h-full w-full object-cover" />
-          ) : (
-            <>
-              {value ? <CheckCircle2 className="h-8 w-8 text-emerald-500" /> : <Camera className="h-8 w-8 text-orange-500" />}
-              <span className="px-2 text-xs font-semibold leading-tight text-zinc-300">
-                {dimmed ? t("No bill") : t(label)}
-                {required && !dimmed && <span className="ml-0.5 text-orange-500">*</span>}
-              </span>
-            </>
-          )}
-        </label>
+        {has && !dimmed ? (
+          // Taken: the photo itself — tap to see it big (Retake below opens the camera)
+          <div className="h-full w-full overflow-hidden rounded-2xl border-2 border-zinc-800 bg-zinc-950 [&>button]:block [&>button]:h-full [&>button]:w-full">
+            {preview ? (
+              <ZoomablePhoto src={preview} alt={t(label)} className="h-full w-full object-cover" />
+            ) : (
+              <StoredPhoto path={value} alt={t(label)} className="h-full w-full object-cover" />
+            )}
+          </div>
+        ) : (
+          <label
+            htmlFor={id}
+            className={`flex h-full w-full flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl border-2 border-dashed border-orange-500/50 bg-orange-500/5 text-center transition-colors hover:bg-orange-500/10 ${
+              busy || dimmed ? "pointer-events-none" : "cursor-pointer"
+            }`}
+          >
+            <Camera className="h-8 w-8 text-orange-500" />
+            <span className="px-2 text-xs font-semibold leading-tight text-zinc-300">
+              {dimmed ? t("No bill") : t(label)}
+              {required && !dimmed && <span className="ml-0.5 text-orange-500">*</span>}
+            </span>
+          </label>
+        )}
         {busy && (
           <span className="absolute inset-0 flex items-center justify-center rounded-2xl bg-white/70">
             <Loader2 className="h-6 w-6 animate-spin text-orange-600" aria-label={t("Uploading…")} />
@@ -1053,9 +1097,7 @@ export function MultiPhotoInput({
                   className="h-20 w-20 rounded-xl border-2 border-zinc-700 object-cover sm:h-24 sm:w-24"
                 />
               ) : (
-                <span className="flex h-full w-full items-center justify-center rounded-xl border-2 border-emerald-500/50 bg-emerald-500/10 text-emerald-600">
-                  <CheckCircle2 className="h-7 w-7" aria-label={t("Added")} />
-                </span>
+                <StoredPhoto path={p} alt={`${t(label)} ${i + 1}`} className="h-20 w-20 rounded-xl border-2 border-zinc-700 object-cover sm:h-24 sm:w-24" />
               )}
               <span className="pointer-events-none absolute bottom-1 left-1 rounded-md bg-black/65 px-1.5 text-xs font-bold tabular-nums text-white">{i + 1}</span>
               <button
@@ -1325,14 +1367,14 @@ function FieldBlock({
   const t = useT();
   const buttonOnly = f.type === "yesno" && !!f.buttons;
   const errorLine = error ? (
-    <p role="alert" className="flex items-start gap-1.5 text-base font-bold leading-snug text-red-600">
+    <p role="alert" className="flex items-start gap-1.5 text-base font-bold leading-snug text-emerald-700">
       <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" /> {error}
     </p>
   ) : null;
   if (f.type === "photo")
     return (
       <div data-field={fieldKey ?? f.key} className={cn("min-w-0 scroll-mt-24", f.maxPhotos ? "" : "space-y-1.5")}>
-        <div className={cn(error && (f.maxPhotos ? "bg-red-50 ring-[3px] ring-inset ring-red-500" : "rounded-2xl ring-[3px] ring-red-500 ring-offset-2 ring-offset-white"))}>
+        <div className={cn(error && (f.maxPhotos ? "bg-emerald-50 ring-[3px] ring-inset ring-emerald-500" : "rounded-2xl ring-[3px] ring-emerald-500 ring-offset-2 ring-offset-white"))}>
           {children}
           {/* A row of the photo list: the message inside the red row */}
           {f.maxPhotos && errorLine && <div className="px-3 pb-3 sm:px-4">{errorLine}</div>}
@@ -1342,8 +1384,9 @@ function FieldBlock({
     );
   return (
     <div data-field={fieldKey ?? f.key} className={`space-y-1.5 min-w-0 scroll-mt-24 ${f.type === "textarea" || f.buttons || f.wide ? "sm:col-span-2" : ""}`}>
-      <label htmlFor={id} className={cn("field-label flex flex-wrap items-baseline gap-1 text-sm font-medium text-zinc-200", error && "!text-red-600", buttonOnly && "sr-only")}>
-        <span className="min-w-0">{f.label}</span>
+      <label htmlFor={id} className={cn("field-label flex flex-wrap items-baseline gap-1 text-sm font-medium text-zinc-200", error && "!text-emerald-700", buttonOnly && "sr-only")}>
+        {/* Inside its section box the label leaves out the section's name ("Sent by — Name" → "Name") */}
+        <span className="min-w-0">{f.section && f.label.startsWith(`${t(f.section)} — `) ? f.label.slice(t(f.section).length + 3) : f.label}</span>
         {required && (
           <span className="text-base leading-none font-semibold text-orange-500" aria-hidden="true">
             *
@@ -1359,7 +1402,7 @@ function FieldBlock({
       <div
         className={
           error
-            ? "rounded-2xl ring-[3px] ring-red-500 ring-offset-2 ring-offset-white [&_input]:!border-red-500 [&_input]:!bg-red-50 [&_textarea]:!border-red-500 [&_textarea]:!bg-red-50 [&_button]:!border-red-400 [&_button[role=combobox]]:!border-red-500"
+            ? "rounded-2xl ring-[3px] ring-emerald-500 ring-offset-2 ring-offset-white [&_input]:!border-emerald-500 [&_input]:!bg-emerald-50 [&_textarea]:!border-emerald-500 [&_textarea]:!bg-emerald-50 [&_button]:!border-emerald-400 [&_button[role=combobox]]:!border-emerald-500"
             : voice
             ? "rounded-2xl ring-2 ring-amber-400/60"
             : missing
@@ -1584,6 +1627,7 @@ export function RegisterForm({
   const emptyRows = () => Object.fromEntries((def.groups ?? []).map((g) => [g.key, g.picker ? [] : [emptyRow(g)]])) as Record<string, Values[]>;
   const [values, setValues] = useState<Values>(draft?.values ?? {});
   const [rows, setRows] = useState<Record<string, Values[]>>(() => draft?.rows ?? emptyRows());
+  const securityView = useSecurityLook();
   const [localError, setLocalError] = useState<string | null>(null);
   // Boxes not filled / not valid on the last Save (red, with a message); cleared when changed
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -1629,135 +1673,8 @@ export function RegisterForm({
     } catch {}
   }, [def.key, values, rows, direction, oneWay, visitHost]);
 
-  // ── Voice filling ──────────────────────────────────────────
-  // What voice put in each box: a box is only (re)filled by voice while it is
-  // empty or still holds voice's value — never over what the guard typed.
-  const latestForm = useRef({ values, rows, direction });
-  useEffect(() => {
-    latestForm.current = { values, rows, direction };
-  });
-  const voiceSet = useRef<Record<string, string>>({});
-  const voiceRows = useRef<Record<string, string>>({});
-  const voiceDir = useRef<Direction | null>(null);
-  const beforeVoice = useRef<{ values: Values; rows: Record<string, Values[]>; direction: Direction | null } | null>(null);
-  const [voiceKeys, setVoiceKeys] = useState<string[]>([]);
-  // Re-mounts boxes voice changed (pickers keep their own copy of the value)
-  const [voiceVer, setVoiceVer] = useState<Record<string, number>>({});
-  // Bill photo read (stock registers): "reading" while Gemini looks at it, then a short result line
-  const [billRead, setBillRead] = useState<{ path: string; state: "reading" | "done" | "error"; message?: string } | null>(null);
-  const billPath = def.readsBill ? String(values[def.readsBill] ?? "") : "";
-  useEffect(() => {
-    if (!billPath || billRead?.path === billPath) return;
-    let alive = true;
-    const start = window.setTimeout(() => {
-      setBillRead({ path: billPath, state: "reading" });
-      // Through the gate route (not a server action from an effect); Gemini may take up to ~36 s
-      (callGate("readBillPhoto", [billPath], 45_000) as ReturnType<typeof readBillPhoto>)
-        .then((res) => {
-          if (!alive) return;
-          if ("error" in res) return setBillRead({ path: billPath, state: "error", message: t(res.error) });
-          const filled: string[] = [];
-          setValues((v) => {
-            const next = { ...v };
-            for (const [k, val] of Object.entries(res.details)) {
-              // Only boxes on this form that are still empty: never over what the guard typed
-              if (!def.fields.some((f) => f.key === k) || filledIn(next[k])) continue;
-              next[k] = String(val);
-              filled.push(k);
-            }
-            return next;
-          });
-          // Marked "Check" like voice filling, and the boxes show the new value
-          setVoiceKeys((ks) => [...new Set([...ks, ...filled])]);
-          setVoiceVer((vv) => Object.fromEntries([...Object.entries(vv), ...filled.map((k) => [k, (vv[k] ?? 0) + 1])]));
-          setBillRead({ path: billPath, state: "done", message: filled.length ? t("Filled from the bill — check each one.") : t("Nothing new found on the bill.") });
-        })
-        .catch(() => alive && setBillRead({ path: billPath, state: "error", message: t("Could not read the bill. Type the details.") }));
-    }, 0);
-    return () => {
-      alive = false;
-      window.clearTimeout(start);
-    };
-    // Read once per photo; values / def are read inside on purpose
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [billPath]);
-  const [voiceGroups, setVoiceGroups] = useState<string[]>([]);
-  const [rowsVer, setRowsVer] = useState(0);
-
-  const applyVoice = (fill: VoiceFill) => {
-    const cur = latestForm.current;
-    if (!beforeVoice.current) beforeVoice.current = { ...cur };
-    const next = { ...cur.values };
-    const changed: string[] = [];
-    for (const [k, v] of Object.entries(fill.fields ?? {})) {
-      const now = String(cur.values[k] ?? "");
-      if ((now !== "" && now !== voiceSet.current[k]) || now === v) continue;
-      next[k] = v;
-      voiceSet.current[k] = v;
-      changed.push(k);
-    }
-    if (changed.length) {
-      latestForm.current = { ...latestForm.current, values: next };
-      setValues(next);
-      setVoiceKeys((ks) => [...new Set([...ks, ...changed])]);
-      if (changed.some((k) => splitFields(def, latestForm.current.direction).more.some((f) => f.key === k))) setMoreOpen(true);
-      setVoiceVer((vv) => Object.fromEntries([...Object.entries(vv), ...changed.map((k) => [k, (vv[k] ?? 0) + 1])]));
-    }
-    // Lists (e.g. coolies): filled while the guard has not edited them; afterwards only extra items are added
-    const nextRows = { ...latestForm.current.rows };
-    const changedGroups: string[] = [];
-    for (const g of def.groups ?? []) {
-      const spoken = fill.groups?.[g.key];
-      if (!spoken?.length) continue;
-      const have = nextRows[g.key] ?? [];
-      const blank = have.every((r) => Object.values(r).every((v) => String(v ?? "").trim() === ""));
-      const untouched = blank || JSON.stringify(have) === voiceRows.current[g.key];
-      let list = untouched
-        ? spoken.map((r) => ({ ...emptyRow(g), ...r }))
-        : spoken.length > have.length
-        ? [...have, ...spoken.slice(have.length).map((r) => ({ ...emptyRow(g), ...r }))]
-        : null;
-      if (!list) continue;
-      if (g.max !== null) list = list.slice(0, g.max);
-      if (JSON.stringify(list) === JSON.stringify(have)) continue;
-      nextRows[g.key] = list;
-      voiceRows.current[g.key] = JSON.stringify(list);
-      changedGroups.push(g.key);
-    }
-    if (changedGroups.length) {
-      latestForm.current = { ...latestForm.current, rows: nextRows };
-      setRows(nextRows);
-      setVoiceGroups((gs) => [...new Set([...gs, ...changedGroups])]);
-      setRowsVer((n) => n + 1);
-    }
-    // In / Out, unless the guard already chose
-    const dirNow = latestForm.current.direction;
-    if (fill.direction && m && (dirNow === null || dirNow === voiceDir.current) && dirNow !== fill.direction) {
-      voiceDir.current = fill.direction;
-      latestForm.current = { ...latestForm.current, direction: fill.direction };
-      setDirection(fill.direction);
-      setLocalError(null);
-    }
-  };
-  const voice = useVoiceFill({ form: def.key, onFill: applyVoice });
-  const undoVoice = () => {
-    const b = beforeVoice.current;
-    if (b) {
-      setValues(b.values);
-      setRows(b.rows);
-      setDirection(b.direction);
-    }
-    setVoiceVer((vv) => Object.fromEntries([...Object.entries(vv), ...voiceKeys.map((k) => [k, (vv[k] ?? 0) + 1])]));
-    setRowsVer((n) => n + 1);
-    voiceSet.current = {};
-    voiceRows.current = {};
-    voiceDir.current = null;
-    beforeVoice.current = null;
-    setVoiceKeys([]);
-    setVoiceGroups([]);
-    voice.reset();
-  };
-  const voiceDone = voice.status === "done";
+  // Bumped when a list's rows are replaced, so their boxes show the new values
+  const [rowsVer] = useState(0);
 
   // What "Clear" just removed: "Undo" brings it all back (until something new is typed)
   const [cleared, setCleared] = useState<{ values: Values; rows: Record<string, Values[]>; direction: Direction | null; oneWay: boolean; visitHost: string } | null>(null);
@@ -1782,20 +1699,16 @@ export function RegisterForm({
     setVisitHost("");
     setLocalError(null);
     autoFilled.current = {};
-    voiceSet.current = {};
-    voiceRows.current = {};
-    voiceDir.current = null;
-    beforeVoice.current = null;
-    setVoiceKeys([]);
-    setVoiceGroups([]);
-    voice.reset();
     setClearNo((n) => n + 1);
     setRestored(false);
     clearRegisterDraft(def.key);
   };
 
   const side = m && direction ? (direction === "IN" ? m.in : m.out) : null;
-  const { primary, more } = splitFields(def, direction, values);
+  const split = splitFields(def, direction, values);
+  const primary = split.primary;
+  // Security: only the needed boxes (the other logins add the rest later on the record)
+  const more = securityView ? [] : split.more;
   const showMore = moreOpen && more.length > 0;
 
   const renderField = (f: FieldDef) => (
@@ -1804,13 +1717,11 @@ export function RegisterForm({
       f={f}
       id={`rf-${f.key}`}
       required={isFieldRequired(def, f.key, values) || (!!f.showWhen && !!f.requiredWhenShown)}
-      voice={voiceKeys.includes(f.key)}
       highlight={!!def.highlightRequired}
-      missing={voiceDone && isFieldRequired(def, f.key, values) && String(values[f.key] ?? "").trim() === ""}
       error={errorFor(f.key)}
     >
       <FieldInput
-        key={`${f.key}-${clearNo}-${fillTargets.has(f.key) ? fillNo : 0}-${voiceVer[f.key] ?? 0}`}
+        key={`${f.key}-${clearNo}-${fillTargets.has(f.key) ? fillNo : 0}`}
         registerKey={def.key}
         dimmed={f.type === "photo" && !!def.requiredUnless && def.requiredUnless.fields.includes(f.key) && values[def.requiredUnless.flag] === "yes"}
         f={f}
@@ -1820,8 +1731,6 @@ export function RegisterForm({
         onChange={(v) => {
           setValues((s) => ({ ...s, [f.key]: v }));
           clearFieldError(f.key);
-          // The guard checked / changed it: no longer marked as voice
-          if (voiceKeys.includes(f.key)) setVoiceKeys((ks) => ks.filter((k) => k !== f.key));
         }}
         staff={staff}
         required={isFieldRequired(def, f.key, values)}
@@ -1875,7 +1784,7 @@ export function RegisterForm({
         while (i < list.length && list[i].section === sec) inside.push(list[i++]);
         out.push(
           <fieldset key={`section-${sec}`} className="col-span-full min-w-0 rounded-2xl border-[1.5px] border-zinc-600 px-3 pb-4 pt-1 sm:px-4">
-            <legend className="px-2 text-base font-bold text-orange-600">{t(sec)}</legend>
+            <legend className="px-2 text-lg font-bold text-orange-600 sm:text-xl">{t(sec)}</legend>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{inside.map((x) => renderField(x))}</div>
           </fieldset>
         );
@@ -2028,7 +1937,7 @@ export function RegisterForm({
             })
             .filter(Boolean);
           const unique = Array.from(new Set(names));
-          setLocalError(`${t("Fill in the boxes marked in red")}: ${unique.slice(0, 4).join(", ")}${unique.length > 4 ? "…" : ""}`);
+          setLocalError(`${t("Fill in the boxes marked in green")}: ${unique.slice(0, 4).join(", ")}${unique.length > 4 ? "…" : ""}`);
           // A problem under "More details": open it first
           if (more.some((f) => errs[f.key])) setMoreOpen(true);
           requestAnimationFrame(() =>
@@ -2054,23 +1963,10 @@ export function RegisterForm({
       }}
       className="space-y-5"
     >
-      {/* Top: the date and time, and the mic (speak everything once; the form fills itself) */}
-      <div className="flex min-h-10 flex-nowrap items-center justify-between gap-2">
+      {/* Top: the date and time */}
+      <div className="flex min-h-10 items-center">
         <div className="min-w-0 truncate">
           <CompactDateTime />
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {voice.status === "idle" && (
-            <button
-              type="button"
-              onClick={() => void voice.start()}
-              aria-label={t("Speak the details")}
-              title={t("Speak the details")}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_6px_14px_-8px_rgba(207,62,37,0.7)] transition-[background-color,transform] hover:bg-orange-700 active:scale-95"
-            >
-              <Mic className="h-[18px] w-[18px]" />
-            </button>
-          )}
         </div>
       </div>
       {/* Under it: Clear on the left, Undo (brings back what Clear removed) on the right */}
@@ -2096,21 +1992,20 @@ export function RegisterForm({
           {t("Undo")}
         </button>
       </div>
-      {voice.status !== "idle" && <VoicePanel voice={voice} onUndo={undoVoice} />}
 
       {restored && (
-        <p className="-mt-3 flex min-w-0 items-center gap-1.5 text-xs font-medium text-emerald-600">
-          <History className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {t("Your unsaved details were kept.")}
+        <p className="-mt-3 flex min-w-0 items-center gap-1.5 text-base font-semibold text-emerald-700">
+          <History className="h-5 w-5 shrink-0" aria-hidden="true" /> {t("Your unsaved details were kept.")}
         </p>
       )}
 
       {m && !m.fixedStart && (
         <div data-field="__direction" className="scroll-mt-24 space-y-1.5">
-          <div className={errorFor("__direction") ? "rounded-2xl ring-[3px] ring-red-500 ring-offset-2 ring-offset-white" : undefined}>
+          <div className={errorFor("__direction") ? "rounded-2xl ring-[3px] ring-emerald-500 ring-offset-2 ring-offset-white" : undefined}>
             <DirectionPicker compact def={def} value={direction} onChange={(d) => { setDirection(d); setLocalError(null); clearFieldError("__direction"); }} />
           </div>
           {errorFor("__direction") && (
-            <p role="alert" className="flex items-center gap-1.5 text-base font-bold text-red-600">
+            <p role="alert" className="flex items-center gap-1.5 text-base font-bold text-emerald-700">
               <AlertCircle className="h-5 w-5 shrink-0" aria-hidden="true" /> {errorFor("__direction")}
             </p>
           )}
@@ -2162,18 +2057,6 @@ export function RegisterForm({
 
       {sirosBook && <SirosPersonDialog no={sirosView} onClose={() => setSirosView(null)} />}
 
-      {billRead && def.readsBill && billRead.path === billPath && (
-        <p
-          role="status"
-          className={cn(
-            "flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold",
-            billRead.state === "reading" ? "bg-zinc-950 text-zinc-300" : billRead.state === "done" ? "bg-amber-500/10 text-amber-700" : "bg-red-500/10 text-red-600"
-          )}
-        >
-          {billRead.state === "reading" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" /> : <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />}
-          {billRead.state === "reading" ? t("Reading the bill…") : billRead.message}
-        </p>
-      )}
       {/* College Daily Labour: the workers first */}
       {(def.groups ?? [])
         .filter((g) => g.picker === "typedRows")
@@ -2244,16 +2127,11 @@ export function RegisterForm({
         return (
           <fieldset
             key={g.key}
-            className={`space-y-3 rounded-2xl border p-3 sm:p-4 ${voiceGroups.includes(g.key) ? "border-amber-400/60 ring-2 ring-amber-400/30" : "border-zinc-800"}`}
+            className="space-y-3 rounded-2xl border border-zinc-800 p-3 sm:p-4"
           >
             <legend className="px-1.5 text-sm font-medium text-zinc-100">
               {g.label} <span className="text-xs font-normal text-zinc-500 tabular-nums">({list.length}{g.max !== null ? ` / ${g.max}` : ""})</span>
             </legend>
-            {voiceGroups.includes(g.key) && (
-              <p className="flex items-center gap-1.5 text-xs font-medium text-amber-600">
-                <Mic className="h-3.5 w-3.5" aria-hidden="true" /> {t("Filled from your voice — check each one.")}
-              </p>
-            )}
             {list.map((row, i) => (
               <div key={`${rowsVer}-${clearNo}-${i}`} className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3 sm:p-4 space-y-3">
                 <div className="flex min-h-10 items-center justify-between gap-2">
@@ -2307,7 +2185,7 @@ export function RegisterForm({
 
       <div className={stickyFooterCls}>
         {localError && (
-          <p role="alert" className="flex items-start gap-2.5 rounded-2xl border-2 border-red-500 bg-red-50 px-4 py-3 text-base font-bold leading-snug text-red-700">
+          <p role="alert" className="flex items-start gap-2.5 rounded-2xl border-2 border-emerald-500 bg-emerald-50 px-4 py-3 text-base font-bold leading-snug text-emerald-800">
             <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
             <span className="min-w-0">{localError}</span>
           </p>
@@ -2424,9 +2302,9 @@ export function MovementForm({
                   setReason(e.target.value);
                   setReasonMissing(false);
                 }}
-                className={cn(inputCls, reasonMissing && "!border-red-500")}
+                className={cn(inputCls, reasonMissing && "!border-emerald-500 !bg-emerald-50")}
               />
-              {reasonMissing && <p role="alert" className="text-sm font-medium text-red-600">{t("Enter the reason for going out")}</p>}
+              {reasonMissing && <p role="alert" className="text-base font-bold text-emerald-700">{t("Enter the reason for going out")}</p>}
             </div>
           )}
           {next.readingKey && mark && (
@@ -2810,7 +2688,7 @@ function TypedRows({
                   value={count}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setCount(type, e.target.value.replace(/[^0-9]/g, ""))}
-                  className={`${inputCls} !h-12 !w-20 shrink-0 px-1 text-center !text-2xl font-bold tabular-nums ${countErr ? "!border-red-500" : ""}`}
+                  className={`${inputCls} !h-12 !w-20 shrink-0 px-1 text-center !text-2xl font-bold tabular-nums ${countErr ? "!border-emerald-500 !bg-emerald-50" : ""}`}
                 />
                 <button
                   type="button"
@@ -2903,8 +2781,10 @@ function ItemsPopup({
               <span className="min-w-0 flex-1">
                 <span className="block break-words text-base font-semibold text-zinc-100">{it.description}</span>
                 {photoList(it.photo).length > 0 && (
-                  <span className="mt-0.5 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700">
-                    <Camera className="h-4 w-4" aria-hidden="true" /> {t("{n} photos", { n: photoList(it.photo).length })}
+                  <span className="mt-1.5 flex flex-wrap gap-1.5">
+                    {photoList(it.photo).map((p, n) => (
+                      <StoredPhoto key={p} path={p} alt={`${it.description} ${n + 1}`} className="h-14 w-14 rounded-lg border border-zinc-700 object-cover" />
+                    ))}
                   </span>
                 )}
               </span>
@@ -2958,9 +2838,9 @@ function ItemsPopup({
                 setDraft((d) => ({ ...d, description: e.target.value }));
                 setMissing(false);
               }}
-              className={`${box} ${missing ? "!border-red-500" : ""}`}
+              className={`${box} ${missing ? "!border-emerald-500 !bg-emerald-50" : ""}`}
             />
-            {missing && <span className="block text-sm font-medium text-red-600">{t("Fill this in")}</span>}
+            {missing && <span className="block text-base font-bold text-emerald-700">{t("Fill this in")}</span>}
           </label>
           {/* Photos of the item: optional, several */}
           <MultiPhotoInput

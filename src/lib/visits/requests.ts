@@ -408,8 +408,8 @@ async function cleanVisitorsForm(raw: unknown, hostId: string | null): Promise<C
   const parsed = visitorsFormSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message || "Please check the details" };
   const f = parsed.data;
+  // Optional: empty when not given
   const vehicle = f.onFoot ? "On foot" : (f.vehicleNumber ?? "").toUpperCase();
-  if (!vehicle) return { error: "Enter the vehicle number, or choose On foot" };
   const data: VisitorsFormData = {
     name: f.name,
     phone: f.phone,

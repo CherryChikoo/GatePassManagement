@@ -1079,8 +1079,8 @@ export function HomeOutingSummaryView({ header, title }: { header?: React.ReactN
         {header}
         <HubTiles
           tiles={[
-            { key: "info", icon: Info, title: t("Information"), hint: t("Add info for dates and see it"), count: infoCount, onClick: () => go("info") },
-            { key: "counts", icon: BarChart3, title: t("Counts"), hint: t("Pass totals for the dates you pick"), onClick: () => go("counts") },
+            { key: "info", icon: Info, title: t("Information"), hint: t("Notes by date"), count: infoCount, onClick: () => go("info") },
+            { key: "counts", icon: BarChart3, title: t("Counts"), hint: t("Totals by date"), onClick: () => go("counts") },
           ]}
         />
       </div>

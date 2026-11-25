@@ -38,53 +38,59 @@ export type HubTile = {
  */
 export const HUB_PAGE_TOP = "scroll-mt-[calc(var(--bar-top,4.75rem)_+_1.25rem)]";
 
+/** One colour per button (in order): the icon and the count use it; the card stays white */
+const TILE_TONES = [
+  { icon: "bg-orange-600", count: "bg-orange-600", ring: "border-orange-500 bg-orange-50" },
+  { icon: "bg-sky-600", count: "bg-sky-600", ring: "border-sky-500 bg-sky-50" },
+  { icon: "bg-emerald-600", count: "bg-emerald-600", ring: "border-emerald-500 bg-emerald-50" },
+  { icon: "bg-purple-600", count: "bg-purple-600", ring: "border-purple-500 bg-purple-50" },
+];
+
 /**
- * Big buttons in a 2 × 2 grid at every width (phones too), all with the same
- * layout and top-aligned: icon top-left, the title (+ count pill) under it, the
- * hint under the title. Buttons in a row are always the same height.
+ * Big buttons in a 2 × 2 grid at every width (phones too), all alike: a white
+ * card, its own coloured icon on the left and the count on the right, the
+ * title on one line under them. The main button (Waiting) lights up in its
+ * colour only while someone is waiting.
  */
 export function HubTiles({ tiles }: { tiles: HubTile[] }) {
   return (
-    <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:gap-4">
-      {tiles.map((tile) => {
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
+      {tiles.map((tile, i) => {
         const Icon = tile.icon;
         const hasCount = tile.count !== null && tile.count !== undefined;
+        const tone = TILE_TONES[i % TILE_TONES.length];
+        // Highlighted only when there is something to do (e.g. visitors waiting)
+        const lit = !!tile.primary && !!tile.count;
         return (
           <button
             key={tile.key}
             type="button"
             onClick={tile.onClick}
             className={cn(
-              "flex h-full w-full min-w-0 flex-col items-start justify-start gap-2.5 rounded-3xl border p-4 text-left shadow-card transition-[background-color,transform,border-color] active:scale-[0.98] sm:p-5",
-              tile.primary
-                ? "border-orange-600 bg-orange-600 text-white hover:bg-orange-700"
-                : "border-zinc-800 bg-zinc-900 text-zinc-100 hover:border-orange-500/40 hover:bg-zinc-950"
+              "flex h-full min-h-[8.5rem] w-full min-w-0 flex-col items-stretch justify-between gap-3 rounded-3xl border-2 p-4 text-left text-zinc-100 shadow-card transition-[background-color,transform,border-color] active:scale-[0.98] sm:min-h-[11rem] sm:p-6 lg:min-h-[12rem]",
+              lit ? tone.ring : "border-orange-500/60 bg-zinc-900 hover:border-orange-500"
             )}
           >
-            <span
-              className={cn(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl sm:h-12 sm:w-12",
-                tile.primary ? "bg-white/15 text-white" : "bg-orange-500/10 text-orange-500"
-              )}
-            >
-              <Icon className="h-5 w-5 sm:h-6 sm:w-6" aria-hidden="true" />
-            </span>
-            <span className="block w-full min-w-0">
-              <span className="flex items-start gap-2">
-                <span className="min-w-0 text-base font-semibold leading-snug break-words sm:text-lg">{tile.title}</span>
-                {hasCount && (
-                  <span
-                    className={cn(
-                      "flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-2 text-xs font-bold tabular-nums sm:h-7 sm:min-w-7",
-                      tile.primary ? "bg-white text-orange-600" : "bg-orange-600 text-white"
-                    )}
-                  >
-                    {tile.count}
-                  </span>
-                )}
+            {/* Top line: the icon, and the count on the right */}
+            <span className="flex w-full items-center justify-between gap-2">
+              <span
+                className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white sm:h-14 sm:w-14", tone.icon)}
+              >
+                <Icon className="h-6 w-6 sm:h-7 sm:w-7" aria-hidden="true" />
               </span>
-              <span className={cn("mt-0.5 block text-xs leading-snug sm:text-sm", tile.primary ? "text-white/90" : "text-zinc-500")}>{tile.hint}</span>
+              {hasCount && (
+                <span
+                  className={cn(
+                    "flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full px-2.5 text-base font-bold tabular-nums sm:h-10 sm:min-w-10 sm:text-lg",
+                    tile.count ? cn(tone.count, "text-white") : "border-[1.5px] border-zinc-700 bg-zinc-950 text-zinc-400"
+                  )}
+                >
+                  {tile.count}
+                </span>
+              )}
             </span>
+            {/* Just the title: one line, large (no second line under it) */}
+            <span className="block w-full min-w-0 truncate text-xl font-bold leading-snug sm:text-2xl lg:text-[1.75rem]">{tile.title}</span>
           </button>
         );
       })}
@@ -100,6 +106,7 @@ export function HubTiles({ tiles }: { tiles: HubTile[] }) {
  * server call).
  */
 export function HubQrButton({ onClick, label, register }: { onClick: () => void; label: string; register: CheckInRegister }) {
+  const t = useT();
   useEffect(() => {
     void loadQrLib().catch(() => {});
   }, []);
@@ -112,9 +119,12 @@ export function HubQrButton({ onClick, label, register }: { onClick: () => void;
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-600 text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)] transition-[background-color,transform] hover:bg-orange-700 active:scale-95"
+      className="ml-auto inline-flex h-14 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-full border-2 border-zinc-700 bg-zinc-900 pl-2 pr-5 text-lg font-bold text-zinc-100 shadow-card transition-[background-color,transform] hover:bg-zinc-950 active:scale-95"
     >
-      <QrCode className="h-5 w-5" aria-hidden="true" />
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-100 text-white">
+        <QrCode className="h-5 w-5" aria-hidden="true" />
+      </span>
+      {t("Show QR")}
     </button>
   );
 }
@@ -130,11 +140,11 @@ export function HubBackButton({ onClick, className }: { onClick: () => void; cla
       type="button"
       onClick={onClick}
       className={cn(
-        "group inline-flex h-12 w-fit shrink-0 items-center gap-3 rounded-full border-[1.5px] border-zinc-700 bg-zinc-900 pl-1.5 pr-5 text-base font-semibold text-zinc-100 shadow-card transition-[background-color,transform] hover:bg-zinc-950 active:scale-[0.98]",
+        "group inline-flex h-14 w-fit shrink-0 items-center gap-3 rounded-full border-2 border-zinc-700 bg-zinc-900 pl-2 pr-6 text-lg font-bold text-zinc-100 shadow-card transition-[background-color,transform] hover:bg-zinc-950 active:scale-[0.98]",
         className
       )}
     >
-      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-600 text-white transition-transform group-hover:-translate-x-0.5">
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-600 text-white transition-transform group-hover:-translate-x-0.5">
         <ArrowLeft className="h-5 w-5" aria-hidden="true" />
       </span>
       {t("Go Back")}
@@ -166,11 +176,11 @@ export function HubScreenHeader({
       <HubBackButton onClick={onBack} />
       <div className="flex min-w-0 items-center gap-3">
       <div className="min-w-0 flex-1">
-        <h1 className="min-w-0 break-words text-xl font-bold leading-tight tracking-tight text-zinc-100 sm:text-2xl">
+        <h1 className="min-w-0 truncate text-xl font-bold leading-tight tracking-tight text-zinc-100 sm:text-2xl">
           {title}
           {busy && <Loader2 className="ml-2 inline-block h-4 w-4 animate-spin align-middle text-zinc-500" aria-hidden="true" />}
         </h1>
-        {subtitle && <p className="mt-0.5 break-words text-sm leading-snug text-zinc-500">{subtitle}</p>}
+        {subtitle && <p className="mt-0.5 truncate text-base font-medium leading-snug text-zinc-400">{subtitle}</p>}
       </div>
       {/* The count in its own spot on the right: never drops onto a line of its own */}
       {!!count && (

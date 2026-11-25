@@ -409,10 +409,8 @@ export function CheckInForm({ token }: { token: string }) {
         if (typed.name.length < 2) return ["Enter the full name", "v-name"];
         if (!typed.phone) return ["Enter the phone number", "v-phone"];
         if (!PHONE_RE.test(typed.phone)) return ["Enter a valid phone number (10–15 digits)", "v-phone"];
-        if (!typed.address) return ["Enter the address or company", "v-address"];
         return null;
       };
-      const noVehicle = () => fail("Enter the vehicle number, or choose On foot", "v-vehicle");
       if (isParent) {
         // The parent's details are filled in by the server from the student's record
         const typing = parentTyping;
@@ -422,7 +420,6 @@ export function CheckInForm({ token }: { token: string }) {
           const missing = checkTyped();
           if (missing) return fail(...missing);
         }
-        if (!vehicle.onFoot && !vehicle.vehicleNumber) return noVehicle();
         const student = parent.found ? `${parent.found.studentName} (${parent.found.roll})` : searchText(parent.roll);
         const missing = missingComingForDetail(comingFor, { student });
         if (missing) return fail(missing, "v-roll");
@@ -439,7 +436,6 @@ export function CheckInForm({ token }: { token: string }) {
         if (typedMissing) return fail(...typedMissing);
         const missing = missingComingForDetail(comingFor, { detail, hostProfileId: host?.id });
         if (missing) return fail(missing, comingFor === "MEETING" ? (meeting.hostGroup ? "v-host" : "v-host-group") : "v-detail");
-        if (!vehicle.onFoot && !vehicle.vehicleNumber) return noVehicle();
         const f = comingForFields(comingFor, { detail, hostProfileId: host?.id });
         data = { comingFor, detail, hostProfileId: f.hostProfileId, ...typed, ...vehicle };
         typedName = typed.name;
@@ -533,11 +529,10 @@ export function CheckInForm({ token }: { token: string }) {
       </div>
       <div className="space-y-1.5">
         <label htmlFor="v-address" className={labelCls}>
-          {t("Address / Company")} <Star />
+          {t("Address / Company")}
         </label>
         <Input
           id="v-address"
-          required
           maxLength={300}
           autoComplete="street-address"
           value={visitors.address}
@@ -576,7 +571,7 @@ export function CheckInForm({ token }: { token: string }) {
           >
             {/* The box that is missing: red outline (found by its id) */}
             {badField && (
-              <style>{`#${CSS.escape(badField)}{border-color:#ef4444!important;box-shadow:0 0 0 3px rgba(239,68,68,.25)!important}`}</style>
+              <style>{`#${CSS.escape(badField)}{border-color:#10b981!important;background-color:#ecfdf5!important;box-shadow:0 0 0 3px rgba(16,185,129,.3)!important}`}</style>
             )}
             {isVisitors ? (
               <>
@@ -639,11 +634,10 @@ export function CheckInForm({ token }: { token: string }) {
                   /* Vehicle number: required ("No vehicle" when on foot) */
                   <div className="space-y-1.5">
                     <label htmlFor="v-vehicle" className={labelCls}>
-                      {t("Vehicle Number")} <Star />
+                      {t("Vehicle Number")}
                     </label>
                     <Input
                       id="v-vehicle"
-                      required={!visitors.onFoot}
                       disabled={visitors.onFoot}
                       maxLength={30}
                       autoComplete="off"
@@ -743,7 +737,8 @@ function ParentPart({
   const typing = parent.who === "TYPED" && (!!found || parent.notFound);
   const deptCode = found?.department ? listedDepartmentCode(found.department) || found.department : null;
   const classLine = found ? [deptCode, found.year ? t("Year {n}", { n: found.year }) : null, found.roll].filter(Boolean).join(" · ") : "";
-  const saved = found ? PARENT_BUTTONS.filter((b) => found.has[b.has]) : [];
+  // Father / Mother when saved; Guardian always (whoever came types their own details)
+  const saved = found ? PARENT_BUTTONS.filter((b) => b.who === "GUARDIAN" || found.has[b.has]) : [];
 
   return (
     <div className="space-y-4">
@@ -848,9 +843,9 @@ function ParentPart({
                     key={who}
                     type="button"
                     role="radio"
-                    aria-checked={parent.who === who}
-                    onClick={() => setParent((p) => ({ ...p, who }))}
-                    className={chipCls(parent.who === who)}
+                    aria-checked={who === "GUARDIAN" ? typing : parent.who === who}
+                    onClick={() => setParent((p) => ({ ...p, who: who === "GUARDIAN" ? "TYPED" : who }))}
+                    className={chipCls(who === "GUARDIAN" ? typing : parent.who === who)}
                   >
                     {t(label)}
                   </button>

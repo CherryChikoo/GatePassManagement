@@ -4,10 +4,8 @@ import { useT } from "@/components/providers/language-provider";
 import { actionErrorMessage } from "@/lib/deployment";
 
 import { useState, useEffect, useRef } from "react";
-import { VoicePanel, useVoiceFill } from "@/components/voice/voice-fill";
 import { HostPicker, loadHosts } from "@/components/visits/host-picker";
 import { VisitExitDialog } from "@/components/visits/visit-code";
-import { VISITOR_SPEC_KEY, type VoiceFill } from "@/lib/voice/spec";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -171,53 +169,6 @@ export function OutsidersClient() {
   // hostProfileId: faculty / staff they came to meet (meeting code)
   const [formData, setFormData] = useState(EMPTY_VISITOR);
 
-  // ── Voice filling ──────────────────────────────────────────
-  // Fills empty boxes (or ones voice filled before) — never what the guard typed.
-  const [voiceVals, setVoiceVals] = useState<Record<string, string>>({});
-  const latestVisitor = useRef({ formData, onFoot, voiceVals });
-  useEffect(() => {
-    latestVisitor.current = { formData, onFoot, voiceVals };
-  });
-  const beforeVoice = useRef<{ formData: typeof formData; onFoot: boolean } | null>(null);
-  const applyVoice = (fill: VoiceFill) => {
-    const cur = latestVisitor.current;
-    if (!beforeVoice.current) beforeVoice.current = { formData: cur.formData, onFoot: cur.onFoot };
-    const next: Record<string, string> = { ...cur.formData };
-    const set: Record<string, string> = {};
-    for (const [k, raw] of Object.entries(fill.fields ?? {})) {
-      // Only the boxes this form still has (not Coming for, host or student)
-      if (!["name", "phone", "address", "vehicleNumber"].includes(k)) continue;
-      const v = k === "vehicleNumber" ? raw.toUpperCase() : raw;
-      const now = String(next[k] ?? "");
-      if ((now !== "" && now !== cur.voiceVals[k]) || now === v) continue;
-      next[k] = v;
-      set[k] = v;
-    }
-    if (Object.keys(set).length) {
-      const vals = { ...cur.voiceVals, ...set };
-      latestVisitor.current = { ...cur, formData: next as typeof formData, voiceVals: vals };
-      setFormData(next as typeof formData);
-      setVoiceVals(vals);
-    }
-    if (fill.fields?.onFoot === "yes" && !cur.onFoot && !next.vehicleNumber) setOnFoot(true);
-  };
-  const voice = useVoiceFill({ form: VISITOR_SPEC_KEY, onFill: applyVoice });
-  const resetVoice = () => {
-    setVoiceVals({});
-    beforeVoice.current = null;
-    voice.reset();
-  };
-  const undoVoice = () => {
-    const b = beforeVoice.current;
-    if (b) {
-      setFormData(b.formData);
-      setOnFoot(b.onFoot);
-    }
-    resetVoice();
-  };
-  /** Highlight for a box filled by voice and not yet changed by the guard */
-  const voiceRing = (k: keyof typeof formData) =>
-    voiceVals[k] !== undefined && formData[k] === voiceVals[k] ? " ring-2 ring-amber-400/60" : "";
 
   // ── Parent of a student: found by roll no / name, the form fills itself ──
   const [parentNote, setParentNote] = useState<string | null>(null);
@@ -226,6 +177,13 @@ export function OutsidersClient() {
   // Student not found: "Type details instead" shows the normal boxes
   const [parentTyping, setParentTyping] = useState(false);
   const fillFromParent = (s: StudentParents, who: ParentWho) => {
+    // Guardian: anyone other than the father / mother — the guard types their name and phone
+    if (who === "GUARDIAN") {
+      setFormData((f) => ({ ...f, name: "", phone: "", address: s.homeAddress?.trim() || f.address, visitingStudent: `${s.name} (${s.roll})` }));
+      setParentPicked(true);
+      setParentNote(t("Guardian of {student}: type their name and phone.", { student: s.name }));
+      return;
+    }
     const p = parentOf(s, who);
     if (!p) return;
     const vehicle = (s.parentVehicle ?? "").trim().toUpperCase();
@@ -318,7 +276,6 @@ export function OutsidersClient() {
     setParentPicked(false);
     setParentTyping(false);
     setRestoredDraft(false);
-    resetVoice();
     forgetVisitorDraft();
   };
 
@@ -338,9 +295,6 @@ export function OutsidersClient() {
     if (missingComing) return stop(missingComing);
     if (!formData.name.trim()) return stop("Enter the full name");
     if (!formData.phone.trim()) return stop("Enter the phone number");
-    if (!formData.address.trim()) return stop("Enter the address");
-    // Vehicle number is required unless the visitor came on foot
-    if (!onFoot && !formData.vehicleNumber.trim()) return stop("Enter the vehicle number, or tap No vehicle");
 
     setLoading(true);
     try {
@@ -486,10 +440,10 @@ export function OutsidersClient() {
           <div className="min-w-0">
             <GoBackButton className="mb-3" />
             <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-600 text-white">
                 <Users className="h-5 w-5" />
               </span>
-              <h1 className="min-w-0 text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 break-words">{t("Visitors")}</h1>
+              <h1 className="min-w-0 truncate text-2xl font-bold tracking-tight text-zinc-100 sm:text-3xl">{t("Visitors")}</h1>
               {/* The check-in QR, as a pop-up (like the registers list's QR button) */}
               <HubQrButton register="VISITORS" label={`${t("Show QR")} — ${t("Visitors Book")}`} onClick={() => openView("qr")} />
             </div>
@@ -499,8 +453,8 @@ export function OutsidersClient() {
               {
                 key: "gate",
                 icon: BellRing,
-                title: t("Waiting to accept"),
-                hint: t("Visitors who sent the form — check and accept"),
+                title: t("Waiting"),
+                hint: t("Check and accept"),
                 count: arrivals.data ? waiting : null,
                 primary: true,
                 onClick: () => openView("gate"),
@@ -509,14 +463,14 @@ export function OutsidersClient() {
                 key: "new",
                 icon: PencilLine,
                 title: t("Type it myself"),
-                hint: t("Fill the visitor's details here"),
+                hint: t("Fill here"),
                 onClick: () => openView("new"),
               },
               {
                 key: "inside",
                 icon: MapPin,
                 title: t("Inside now"),
-                hint: t("Who is inside, and Mark exit"),
+                hint: t("Mark exit"),
                 count: insideFirst.data?.success ? insideFirst.data.total : null,
                 onClick: () => openView("inside"),
               },
@@ -524,7 +478,7 @@ export function OutsidersClient() {
                 key: "log",
                 icon: History,
                 title: t("Old records"),
-                hint: t("Visitors of any day"),
+                hint: t("Any day"),
                 onClick: () => openView("log"),
               },
             ]}
@@ -631,8 +585,8 @@ export function OutsidersClient() {
                 {(restoredDraft || typedSomething) && (
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     {restoredDraft ? (
-                      <p className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-emerald-600">
-                        <History className="h-4 w-4 shrink-0" aria-hidden="true" /> {t("Your unsaved details were kept.")}
+                      <p className="flex min-w-0 items-center gap-1.5 text-base font-semibold text-emerald-700">
+                        <History className="h-5 w-5 shrink-0" aria-hidden="true" /> {t("Your unsaved details were kept.")}
                       </p>
                     ) : (
                       <span />
@@ -649,9 +603,6 @@ export function OutsidersClient() {
                     )}
                   </div>
                 )}
-
-                {/* Speak the visitor's details once: the boxes fill themselves */}
-                <VoicePanel voice={voice} onUndo={undoVoice} />
 
                 {/* 1. Coming for, first: the rest of the form follows it */}
                 <div className="space-y-1.5">
@@ -695,36 +646,35 @@ export function OutsidersClient() {
 
                 {showDetails && (
                   <>
-                    {/* Who: name, phone, address (all needed) */}
+                    {/* Who: name and phone (needed), address (optional) */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <label htmlFor="visitor-name" className={labelCls}>
                           {t("Full Name")} {requiredMark}
                         </label>
-                        <Input id="visitor-name" required autoComplete="off" autoCapitalize="words" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className={`text-base sm:text-sm${voiceRing("name")}`} />
+                        <Input id="visitor-name" required autoComplete="off" autoCapitalize="words" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className={`text-base sm:text-sm`} />
                       </div>
                       <div className="space-y-1.5">
                         <label htmlFor="visitor-phone" className={labelCls}>
                           {t("Phone Number")} {requiredMark}
                         </label>
-                        <Input id="visitor-phone" required type="tel" inputMode="tel" autoComplete="off" maxLength={15} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className={`text-base sm:text-sm${voiceRing("phone")}`} />
+                        <Input id="visitor-phone" required type="tel" inputMode="tel" autoComplete="off" maxLength={15} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className={`text-base sm:text-sm`} />
                       </div>
                       <div className="space-y-1.5 sm:col-span-2">
                         <label htmlFor="visitor-address" className={labelCls}>
-                          {t("Address / Company")} {requiredMark}
+                          {t("Address / Company")}
                         </label>
-                        <Input id="visitor-address" required maxLength={300} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className={`text-base sm:text-sm${voiceRing("address")}`} />
+                        <Input id="visitor-address" maxLength={300} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className={`text-base sm:text-sm`} />
                       </div>
                     </div>
 
-                    {/* Vehicle number: required, full width; "No vehicle" on its own line for visitors on foot */}
+                    {/* Vehicle number (optional), full width; "No vehicle" on its own line for visitors on foot */}
                     <div className="space-y-2">
                       <label htmlFor="visitor-vehicle" className={labelCls}>
-                        {t("Vehicle Number")} {requiredMark}
+                        {t("Vehicle Number")}
                       </label>
                       <Input
                         id="visitor-vehicle"
-                        required={!onFoot}
                         disabled={onFoot}
                         autoComplete="off"
                         autoCapitalize="characters"
@@ -732,7 +682,7 @@ export function OutsidersClient() {
                         placeholder={onFoot ? t("No vehicle") : undefined}
                         value={onFoot ? "" : formData.vehicleNumber}
                         onChange={(e) => setFormData({ ...formData, vehicleNumber: e.target.value.toUpperCase() })}
-                        className={`w-full text-base sm:text-sm disabled:opacity-60${voiceRing("vehicleNumber")}`}
+                        className={`w-full text-base sm:text-sm disabled:opacity-60`}
                       />
                       <button
                         type="button"

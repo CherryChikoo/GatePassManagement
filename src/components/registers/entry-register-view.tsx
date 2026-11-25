@@ -13,13 +13,14 @@ import { dt, IconAction, RowActions } from "@/components/ui/data-table";
 import { PagerBar } from "@/components/ui/pager-bar";
 import { cn, withTimeout } from "@/lib/utils";
 import type { EntryRegister, FieldDef } from "@/lib/registers/definitions";
-import { isSirosLabour, pendingActions, updatableFields, yesNoWords, ESTATE_BOOKS } from "@/lib/registers/definitions";
+import { isSirosLabour, pendingActions, updatableFields, yesNoWords, ESTATE_BOOKS, detailEditFields } from "@/lib/registers/definitions";
 import { adminDeleteRegisterEntry, adminUpdateRegisterEntry, verifyRegisterEntry } from "@/server/actions/registers";
 import { fetchEntryList, invalidateEntryLists, markEntryListsStale, peekEntryList } from "./entry-list-cache";
 import { visitExitMessage } from "@/components/visits/visit-code";
 import { useLiveTopics } from "@/lib/realtime/live";
 import { actionErrorMessage } from "@/lib/deployment";
 import { AdminEditForm, CloseRecordForm, MovementForm, PhotoInput, RegisterForm, restoreRegisterDraft, takeRegisterDraft, type StaffOption, MultiPhotoInput, photoList } from "./register-form";
+import { useSecurityLook } from "@/lib/ui/security-look";
 import { exitBatches, workersInside } from "@/lib/registers/validate";
 import { formatFieldValue, formatInstant, newClientToken, formatClock } from "./format";
 import { displayValue, registerMessage, countPairs } from "./localize";
@@ -83,6 +84,7 @@ export function EntryRegisterView({
   canAdminEdit = false,
   canEdit = false,
   canVerify = false,
+  canAddDetails = false,
   insideOnly = false,
   onInsideTotal,
 }: {
@@ -90,6 +92,8 @@ export function EntryRegisterView({
   canCreate: boolean;
   /** Estate Manager: "✓ Verify" on records of the stock / labour / work-vehicle books */
   canVerify?: boolean;
+  /** Supervisor / Estate Manager / Admin: add or change a record's optional and empty details (with a reason) */
+  canAddDetails?: boolean;
   /** Main Admin: edit and delete saved records */
   canAdminEdit?: boolean;
   /** Security on registers they may edit (e.g. Cooli Book): edit, saved as a correction */
@@ -139,6 +143,19 @@ export function EntryRegisterView({
    */
   const load = useCallback(async (fresh = false, silent = false) => {
     const no = ++loadNo.current;
+    // A slow or dropped connection (weak mobile data when the gate is crowded): tried
+    // again by itself twice before anything is shown as an error
+    const tries = async <T,>(get: () => Promise<T>): Promise<T> => {
+      for (let i = 0; ; i++) {
+        try {
+          return await get();
+        } catch (err) {
+          const passing = /Taking too long|No internet|Could not load|Something went wrong/.test((err as Error)?.message ?? "");
+          if (i >= 2 || !passing || no !== loadNo.current) throw err;
+          await new Promise((r) => setTimeout(r, i === 0 ? 1000 : 3000));
+        }
+      }
+    };
     if (insideOnly) {
       if (fresh) {
         invalidateEntryLists(def.key);
@@ -153,7 +170,7 @@ export function EntryRegisterView({
       }
       try {
         // One page (20) of the records still inside; the server picks them
-        const res = await withTimeout(fetchInsideEntries(def, !fresh && !silent, filters.page));
+        const res = await tries(() => withTimeout(fetchInsideEntries(def, !fresh && !silent, filters.page)));
         if (no !== loadNo.current) return;
         setData({ entries: res.entries, total: res.total, pageSize: res.pageSize, canOverrideVisit: res.canOverrideVisit });
         // The page's last records just went out: its last page was sent instead
@@ -177,7 +194,7 @@ export function EntryRegisterView({
       setError(null);
     }
     try {
-      const res = await withTimeout(fetchEntryList(params, !fresh && !silent));
+      const res = await tries(() => withTimeout(fetchEntryList(params, !fresh && !silent)));
       if (no !== loadNo.current) return;
       setData(res);
       if (silent) setError(null);
@@ -197,10 +214,12 @@ export function EntryRegisterView({
     const regs = changed.filter((c) => c.startsWith("reg:")).map((c) => c.slice(4));
     markEntryListsStale(all ? "*" : regs);
     if (!all && !regs.includes(def.key)) return;
-    load(false, true).then((entries) => {
+    // Every tablet hears the same ping: each waits a random moment (under 1.5 s) so they do not all ask the server at once
+    const wait = Math.random() * 1500;
+    setTimeout(() => load(false, true).then((entries) => {
       // An open record shows its newest state (e.g. Out just recorded at another gate)
       if (entries) setSelected((cur) => (cur ? entries.find((e) => e.id === cur.id) ?? cur : cur));
-    });
+    }), wait);
   });
 
   useEffect(() => {
@@ -389,6 +408,22 @@ export function EntryRegisterView({
     }
   }
 
+  /** Other logins: optional / empty details, with the reason (kept in the history with who) */
+  async function addDetails(changes: Record<string, string>, reason: string): Promise<string | null> {
+    const entry = selected;
+    if (!entry) return null;
+    try {
+      const res: any = await callGate("addRegisterDetails", [entry.id, changes, reason, newClientToken()]);
+      if (res?.error) return registerMessage(t, res.error);
+      const entries = await load(true);
+      const fresh = entries?.find((x) => x.id === entry.id);
+      if (fresh) setSelected((cur) => (cur && cur.id === fresh.id ? fresh : cur));
+      return null;
+    } catch (err) {
+      return actionErrorMessage(err, t("Could not save. Please try again."));
+    }
+  }
+
   async function updateField(key: string, value: unknown): Promise<string | null> {
     const entry = selected;
     if (!entry) return null;
@@ -483,9 +518,10 @@ export function EntryRegisterView({
           canCreate ? (
             <button
               onClick={() => openMode("new", null)}
-              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 h-14 sm:h-10 px-6 rounded-full bg-orange-600 hover:bg-orange-700 active:scale-[0.98] text-white text-base sm:text-sm font-semibold shadow-[0_6px_16px_-8px_rgba(207,62,37,0.55)] transition-[background-color,transform]"
+              aria-label={t("New entry")}
+              className="inline-flex items-center justify-center gap-2 h-12 px-5 rounded-full bg-orange-600 hover:bg-orange-700 active:scale-[0.98] text-white text-base font-bold shadow-[0_6px_16px_-8px_rgba(207,62,37,0.55)] transition-[background-color,transform]"
             >
-              <FilePlus2 className="h-5 w-5 sm:h-4 sm:w-4" /> {t("New entry")}
+              <FilePlus2 className="h-5 w-5 shrink-0" /> <span className="toolbar-action-text">{t("New entry")}</span>
             </button>
           ) : null
         }
@@ -527,7 +563,16 @@ export function EntryRegisterView({
           <CheckCircle2 className="h-4 w-4 shrink-0" /> {notice}
         </div>
       )}
-      {error && (
+      {/* The list is on screen (an earlier copy): only a small note, the guard keeps working */}
+      {error && data && (
+        <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border-[1.5px] border-amber-500/50 bg-amber-500/10 px-4 py-2.5 text-base font-semibold text-amber-800">
+          <span className="min-w-0">{t("Could not refresh. Showing the last copy.")}</span>
+          <button type="button" onClick={() => load(true)} className="h-10 rounded-full bg-amber-600 px-4 text-sm font-bold text-white hover:bg-amber-700">
+            {t("Try again")}
+          </button>
+        </div>
+      )}
+      {error && !data && (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-red-500 bg-red-50 px-4 py-3.5 text-lg font-bold leading-snug text-red-700">
           <span className="flex min-w-0 items-start gap-2.5">
             <XCircle className="mt-0.5 h-6 w-6 shrink-0" aria-hidden="true" /> {registerMessage(t, error)}
@@ -769,6 +814,7 @@ export function EntryRegisterView({
             onDelete={canAdminEdit ? () => setConfirmDelete(true) : undefined}
             onUpdateField={canUpdate ? updateField : undefined}
             onAddLater={canVerify ? updateField : undefined}
+            onAddDetails={canAddDetails ? addDetails : undefined}
             onVerify={canVerify ? verifySelected : undefined}
           />
         )}
@@ -948,6 +994,159 @@ function ExitBatchesCard({ def, data }: { def: EntryRegister; data: Record<strin
   );
 }
 
+/**
+ * Other logins (Supervisor, Estate Manager, Admin): the record's optional
+ * details and the ones left empty, shown and changeable — with a reason, kept
+ * in the record history with who changed them (Security does not see this).
+ */
+function DetailsEditor({
+  def,
+  values,
+  onSave,
+}: {
+  def: EntryRegister;
+  values: Record<string, any>;
+  onSave: (changes: Record<string, string>, reason: string) => Promise<string | null>;
+}) {
+  const t = useT();
+  const fields = detailEditFields(def, values);
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (fields.length === 0) return null;
+  const text = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+  const start = () => {
+    setDraft(Object.fromEntries(fields.map((f) => [f.key, text(values[f.key])])));
+    setReason("");
+    setError(null);
+    setOpen(true);
+  };
+  const save = async () => {
+    const changes: Record<string, string> = {};
+    for (const f of fields) if ((draft[f.key] ?? "").trim() !== text(values[f.key]).trim()) changes[f.key] = (draft[f.key] ?? "").trim();
+    if (Object.keys(changes).length === 0) return setError(t("Nothing changed"));
+    if (reason.trim().length < 3) return setError(t("Write the reason for the change"));
+    setBusy(true);
+    setError(null);
+    const err = await onSave(changes, reason.trim());
+    setBusy(false);
+    if (err) setError(err);
+    else setOpen(false);
+  };
+  const box =
+    "flex h-12 w-full rounded-2xl border-[1.5px] border-zinc-600 bg-zinc-950 px-4 text-base text-zinc-100 outline-none focus:border-orange-500 focus:bg-zinc-900";
+
+  return (
+    <section className="space-y-3 rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900 p-4 shadow-card">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-base font-bold text-zinc-100">
+          <PencilLine className="h-5 w-5 text-orange-500" aria-hidden="true" /> {t("More details")}
+        </h3>
+        {!open && (
+          <button
+            type="button"
+            onClick={start}
+            className="inline-flex h-11 items-center gap-2 rounded-full border-2 border-orange-500 bg-orange-50 px-4 text-sm font-bold text-orange-700 hover:bg-orange-100"
+          >
+            <PencilLine className="h-4 w-4" aria-hidden="true" /> {t("Add / change details")}
+          </button>
+        )}
+      </div>
+      {!open ? (
+        <dl className="divide-y divide-zinc-800 overflow-hidden rounded-xl border border-zinc-800">
+          {fields.map((f) => {
+            const v = text(values[f.key]);
+            return (
+              <div key={f.key} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 px-3 py-2">
+                <dt className="text-sm font-medium text-zinc-400">{t(f.label)}</dt>
+                <dd className={cn("min-w-0 break-words text-right text-base", v ? "font-semibold text-zinc-100" : "text-zinc-500")}>{v ? (f.type === "select" ? t(v) : v) : "—"}</dd>
+              </div>
+            );
+          })}
+        </dl>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {fields.map((f) => (
+              <label key={f.key} className={cn("block space-y-1.5", f.type === "textarea" && "sm:col-span-2")}>
+                <span className="text-sm font-bold text-zinc-100">{t(f.label)}</span>
+                {f.type === "select" && !f.allowOther ? (
+                  <select
+                    value={draft[f.key] ?? ""}
+                    onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+                    className={box}
+                  >
+                    <option value="">{t("— Select —")}</option>
+                    {(f.options ?? []).map((o) => (
+                      <option key={o} value={o}>
+                        {t(o)}
+                      </option>
+                    ))}
+                  </select>
+                ) : f.type === "textarea" ? (
+                  <textarea
+                    value={draft[f.key] ?? ""}
+                    rows={2}
+                    maxLength={1000}
+                    onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+                    className={cn(box, "h-auto min-h-[80px] resize-none py-3")}
+                  />
+                ) : (
+                  <input
+                    type={f.type === "number" ? "number" : f.type === "phone" ? "tel" : "text"}
+                    inputMode={f.type === "number" ? "decimal" : f.type === "phone" ? "tel" : undefined}
+                    value={draft[f.key] ?? ""}
+                    maxLength={200}
+                    onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+                    className={box}
+                  />
+                )}
+              </label>
+            ))}
+          </div>
+          {/* Why: kept in the record history with who changed it */}
+          <label className="block space-y-1.5">
+            <span className="text-sm font-bold text-zinc-100">
+              {t("Reason for the change")} <span className="text-orange-500">*</span>
+            </span>
+            <textarea
+              value={reason}
+              rows={2}
+              maxLength={300}
+              onChange={(e) => setReason(e.target.value)}
+              className={cn(box, "h-auto min-h-[72px] resize-none py-3")}
+            />
+          </label>
+          {error && <p role="alert" className="rounded-xl border-2 border-red-500 bg-red-50 px-3 py-2 text-base font-bold text-red-700">{error}</p>}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              disabled={busy}
+              className="h-12 rounded-full border-2 border-red-500 bg-red-50 text-base font-bold text-red-600 hover:bg-red-100 disabled:opacity-60"
+            >
+              ✕ {t("Cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={busy}
+              className="flex h-12 items-center justify-center gap-2 rounded-full bg-emerald-600 text-base font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+            >
+              {busy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-5 w-5" aria-hidden="true" />} {t("Save")}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Who changed a record, when it was not a guard */
+const ROLE_TAG: Record<string, string> = { ADMIN: "Admin", SECURITY_SUPERVISOR: "Security Supervisor", ESTATE_MANAGER: "Estate Manager" };
+
 /** One photo, or several side by side (e.g. the stock photos) */
 function RegisterPhotos({ value, small = false }: { value: unknown; small?: boolean }) {
   const list = photoList(value);
@@ -985,8 +1184,21 @@ function CheckInPhoto({ recordId }: { recordId: string }) {
 }
 
 /** A register record, top to bottom: who it is, the In / Out card, then the filled details */
-function ValuesGrid({ def, values, duration }: { def: EntryRegister; values: Record<string, any>; duration?: string | null }) {
+function ValuesGrid({
+  def,
+  values,
+  duration,
+  startedAt = null,
+}: {
+  def: EntryRegister;
+  values: Record<string, any>;
+  duration?: string | null;
+  /** When the record started (for "so far" while it is still open) */
+  startedAt?: number | null;
+}) {
   const t = useT();
+  // Security sees only what was filled (the other logins also see what is empty)
+  const securityView = useSecurityLook();
   const [showEmpty, setShowEmpty] = useState(false);
   // Siros labour: tap a coolie / the contractor for their full details
   const sirosPeople = useSirosPeople(isSirosLabour(def.key));
@@ -1129,6 +1341,7 @@ function ValuesGrid({ def, values, duration }: { def: EntryRegister; values: Rec
               </span>
             )}
             {inside && <span className="text-sm font-semibold text-emerald-700">{t("Still inside")}</span>}
+            {inside && startedAt !== null && <SoFar startedAt={startedAt} />}
             {done && <span className="sr-only">{t("Completed")}</span>}
           </div>
         )}
@@ -1156,8 +1369,8 @@ function ValuesGrid({ def, values, duration }: { def: EntryRegister; values: Rec
           ))}
         </dl>
       )}
-      {/* Not filled: under their own button */}
-      {emptyFacts.length > 0 && (
+      {/* Not filled: under their own button (not on Security screens) */}
+      {!securityView && emptyFacts.length > 0 && (
         <div className="space-y-2">
           <button
             type="button"
@@ -1464,6 +1677,7 @@ function EntryDetails({
   onDelete,
   onUpdateField,
   onAddLater,
+  onAddDetails,
   onVerify,
 }: {
   def: EntryRegister;
@@ -1479,6 +1693,8 @@ function EntryDetails({
   onUpdateField?: (key: string, value: unknown) => Promise<string | null>;
   /** Only the photos added later (e.g. the bill photos): the Estate Manager, who changes nothing else */
   onAddLater?: (key: string, value: unknown) => Promise<string | null>;
+  /** Other logins: add / change optional or empty details, with a reason */
+  onAddDetails?: (changes: Record<string, string>, reason: string) => Promise<string | null>;
 }) {
   const t = useT();
   const label = nextActionLabel(def, entry.current, t);
@@ -1504,7 +1720,14 @@ function EntryDetails({
           </div>
         </div>
       )}
-      <ValuesGrid def={def} values={entry.current} duration={(() => { const tr = tripOf(def, entry); return tr && tr.minutes !== null ? durationText(t, tr.minutes) : null; })()} />
+      <ValuesGrid
+        def={def}
+        values={entry.current}
+        duration={(() => { const tr = tripOf(def, entry); return tr && tr.minutes !== null ? durationText(t, tr.minutes) : null; })()}
+        startedAt={tripOf(def, entry)?.startedAt ?? null}
+      />
+
+      {onAddDetails && <DetailsEditor def={def} values={entry.current} onSave={onAddDetails} />}
 
       {/* Labour books: the groups that went out, right under the workers */}
       {def.movement?.exitCounts && <ExitBatchesCard def={def} data={entry.current} />}
@@ -1655,7 +1878,9 @@ function HistoryCards({ def, entry }: { def: EntryRegister; entry: HistoryStep &
                   <span className="rounded-lg bg-zinc-950 px-2 py-0.5 text-sm font-semibold tabular-nums text-zinc-300">{step.recordedByEmployeeId}</span>
                 )}
                 {step.recordedAtGate && <span className="rounded-lg bg-orange-500/10 px-2 py-0.5 text-sm font-semibold text-orange-600">{step.recordedAtGate}</span>}
-                {step.recordedByRole === "ADMIN" && <span className="rounded-lg bg-zinc-950 px-2 py-0.5 text-sm font-semibold text-zinc-300">{t("Admin")}</span>}
+                {step.recordedByRole !== "SECURITY" && ROLE_TAG[step.recordedByRole] && (
+                  <span className="rounded-lg bg-sky-500/15 px-2 py-0.5 text-sm font-bold text-sky-700">{t(ROLE_TAG[step.recordedByRole])}</span>
+                )}
               </div>
               </div>
               {step.reason && (
@@ -1891,7 +2116,7 @@ function durationText(t: Translate, mins: number): string {
 }
 
 type TripSide = { dir: "IN" | "OUT"; label: string; time: string | null };
-type Trip = { first: TripSide; second: TripSide | null; pending: string | null };
+type Trip = { first: TripSide; second: TripSide | null; pending: string | null; startedAt: number | null };
 
 /** The day (India time) a step was saved: "2026-11-06" */
 const istDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -1916,8 +2141,10 @@ function tripOf(def: EntryRegister, e: Entry): (Trip & { minutes: number | null 
   const oneWay = v.oneWay === true;
   const second: TripSide | null = oneWay && !t2 ? null : { dir: otherDir, label: sideOf(otherDir).label, time: clock(t2) };
   let minutes: number | null = null;
+  const day1 = String(e.entryDate).slice(0, 10);
+  const startHm = t1.length === 4 ? "0" + t1 : t1.slice(0, 5);
+  const startedAt = Date.parse(`${day1}T${startHm}:00+05:30`);
   if (t2) {
-    const day1 = String(e.entryDate).slice(0, 10);
     const done = [...e.supplements].reverse().find((x) => x.data && Object.prototype.hasOwnProperty.call(x.data, sideOf(otherDir).timeKey));
     const day2 = done ? istDay(done.createdAt) : day1;
     const at = (day: string, hm: string) => Date.parse(`${day}T${hm.length === 4 ? "0" + hm : hm.slice(0, 5)}:00+05:30`);
@@ -1929,12 +2156,34 @@ function tripOf(def: EntryRegister, e: Entry): (Trip & { minutes: number | null 
       if (mins >= 0 && mins < 60 * 24 * 60) minutes = mins;
     }
   }
-  return { first, second, pending: second && !second.time ? (otherDir === "IN" ? "Not back yet" : "Still inside") : null, minutes };
+  return {
+    first,
+    second,
+    pending: second && !second.time ? (otherDir === "IN" ? "Not back yet" : "Still inside") : null,
+    minutes,
+    startedAt: Number.isFinite(startedAt) ? startedAt : null,
+  };
+}
+
+/** "⏱ 2 h 10 min so far": how long a record has been open, moving on each minute */
+function SoFar({ startedAt }: { startedAt: number }) {
+  const t = useT();
+  const now = useMinuteClock(true);
+  const mins = Math.max(0, Math.floor((now - startedAt) / 60_000));
+  if (mins >= 60 * 24 * 60) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500/15 px-3 py-1.5 text-lg font-bold tabular-nums text-amber-800">
+      <Timer className="h-5 w-5" aria-hidden="true" /> {t("{d} so far", { d: durationText(t, mins) })}
+    </span>
+  );
 }
 
 /** One clear line: "In 10:30 AM → Out 11:30 AM · ⏱ 1 h" (or "→ Out: Still inside") */
 function TripLine({ trip }: { trip: Trip & { minutes: number | null } }) {
   const t = useT();
+  const open = !!trip.second && !trip.second.time && trip.startedAt !== null;
+  const now = useMinuteClock(open);
+  const soFar = open && trip.startedAt !== null ? Math.max(0, Math.floor((now - trip.startedAt) / 60_000)) : null;
   const part = (x: TripSide) => (
     <span className={cn("inline-flex items-center gap-1 whitespace-nowrap", x.dir === "IN" ? "text-emerald-700" : "text-sky-700")}>
       {x.dir === "IN" ? <LogIn className="h-4 w-4" aria-hidden="true" /> : <LogOut className="h-4 w-4" aria-hidden="true" />}
@@ -1957,6 +2206,11 @@ function TripLine({ trip }: { trip: Trip & { minutes: number | null } }) {
       {trip.minutes !== null && (
         <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-zinc-900 px-2 py-0.5 text-sm text-zinc-100 shadow-sm">
           <Timer className="h-4 w-4 text-orange-500" aria-hidden="true" /> {durationText(t, trip.minutes)}
+        </span>
+      )}
+      {soFar !== null && soFar < 60 * 24 * 60 && (
+        <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-amber-500/15 px-2 py-0.5 text-sm text-amber-800">
+          <Timer className="h-4 w-4" aria-hidden="true" /> {t("{d} so far", { d: durationText(t, soFar) })}
         </span>
       )}
     </span>

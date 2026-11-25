@@ -291,11 +291,9 @@ export function RegistersHub({
           <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-orange-600 text-white">
             <CalendarClock className="h-6 w-6" aria-hidden="true" />
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-lg font-semibold leading-snug text-zinc-100">{t("My shift details")}</span>
-            <span className="block text-sm text-zinc-500">{t("Start and end your duty")}</span>
-          </span>
-          <ChevronRight className="h-5 w-5 shrink-0 text-zinc-500" aria-hidden="true" />
+          {/* Just the title: one line, large */}
+          <span className="min-w-0 flex-1 truncate text-xl font-bold leading-snug text-zinc-100">{t("My shift details")}</span>
+          <ChevronRight className="h-6 w-6 shrink-0 text-orange-600" aria-hidden="true" />
         </Link>
       )}
 
@@ -382,7 +380,7 @@ export function RegistersHub({
                   </span>
                   <span className="break-words text-base font-bold leading-snug text-zinc-100 sm:text-lg">{t("Hostel Student Outing Book & Pass")}</span>
                   {total > 0 && (
-                    <span className="mt-auto w-fit rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-0.5 text-sm font-semibold tabular-nums text-zinc-300">
+                    <span className="mt-auto w-fit rounded-full bg-sky-600 px-3 py-1 text-sm font-bold tabular-nums text-white shadow-sm">
                       {t("{n} today", { n: total })}
                     </span>
                   )}
@@ -440,7 +438,7 @@ export function RegistersHub({
                         </span>
                       )}
                       {n > 0 && (
-                        <span className="w-fit rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-0.5 text-sm font-semibold tabular-nums text-zinc-300">
+                        <span className="w-fit rounded-full bg-sky-600 px-3 py-1 text-sm font-bold tabular-nums text-white shadow-sm">
                           {t("{n} today", { n })}
                         </span>
                       )}
@@ -536,10 +534,7 @@ export function RegistersHub({
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white">
                 <LogIn className="h-6 w-6" aria-hidden="true" />
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-xl font-bold text-amber-800">{t("Still inside")}</span>
-                <span className="block text-sm font-semibold text-amber-700">{t("Mark Out for those still inside")}</span>
-              </span>
+              <span className="min-w-0 flex-1 truncate text-xl font-bold text-amber-800">{t("Still inside")}</span>
               <span className="rounded-full bg-amber-600 px-3 py-1 text-lg font-bold tabular-nums text-white">{insideChoice.open}</span>
             </button>
             <button
@@ -667,9 +662,9 @@ export function RegisterPage({
             type="button"
             onClick={() => setShowRecords((v) => !v)}
             aria-expanded={showRecords}
-            className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-[1.5px] border-zinc-600 bg-zinc-900 text-lg font-bold text-zinc-100 shadow-card hover:bg-zinc-950 active:scale-[0.99]"
+            className="flex h-14 w-full items-center justify-center gap-2.5 rounded-2xl border-2 border-orange-500 bg-orange-50 text-lg font-bold text-orange-700 shadow-card hover:bg-orange-100 active:scale-[0.99] sm:h-16 sm:text-xl"
           >
-            <FileText className="h-5 w-5 text-orange-500" aria-hidden="true" />
+            <FileText className="h-6 w-6" aria-hidden="true" />
             {showRecords ? t("Hide records") : t("View records")}
           </button>
         )}
@@ -712,6 +707,7 @@ export function RegisterPage({
           canAdminEdit={viewer === "ADMIN"}
           canEdit={isSecurity && SECURITY_EDITABLE_REGISTERS.includes(def.key)}
           canVerify={viewer === "ESTATE_MANAGER"}
+          canAddDetails={viewer !== "SECURITY"}
           insideOnly={insideView}
         />
         )}

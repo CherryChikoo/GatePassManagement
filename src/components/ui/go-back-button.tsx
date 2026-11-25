@@ -12,12 +12,12 @@ export function GoBackButton({ href = "/security", className }: { href?: string;
     <Link
       href={href}
       className={cn(
-        "group inline-flex h-12 items-center gap-3 rounded-full border border-zinc-800 bg-zinc-900 pl-1.5 pr-5 text-[15px] font-medium text-zinc-100 shadow-card transition-[background-color,transform] hover:bg-zinc-950 active:scale-[0.98]",
+        "group inline-flex h-14 items-center gap-3 rounded-full border-2 border-zinc-700 bg-zinc-900 pl-2 pr-6 text-lg font-bold text-zinc-100 shadow-card transition-[background-color,transform] hover:bg-zinc-950 active:scale-[0.98]",
         className
       )}
     >
-      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-600 text-white transition-transform group-hover:-translate-x-0.5">
-        <ArrowLeft className="h-[18px] w-[18px]" />
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-600 text-white transition-transform group-hover:-translate-x-0.5">
+        <ArrowLeft className="h-5 w-5" />
       </span>
       {t("Go Back")}
     </Link>

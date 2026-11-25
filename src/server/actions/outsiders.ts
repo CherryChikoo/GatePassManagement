@@ -54,12 +54,9 @@ export async function registerOutsider(data: Record<string, unknown>) {
   // Entry time is always the live time of registration (never typed in)
   const entryTime = new Date();
 
-  // Name, mobile number, vehicle (or on foot) and a photo are mandatory
+  // Name and mobile number are needed; the vehicle and address are optional
   if (!input.name || input.name.trim().length < 2) return { success: false, error: "Visitor name is required" };
   if (!input.phone) return { success: false, error: "Mobile number is required" };
-  if (!input.vehicleNumber || !input.vehicleNumber.trim()) {
-    return { success: false, error: "Enter the vehicle number, or tap No vehicle" };
-  }
   // Address, and a purpose or a person to visit / meet: the same rules as Security's form
   // and the visitor's phone form (QR arrivals come here too). Main Admin's own
   // add-visitor tool (Activity) has no address box, so it keeps the older checks.
