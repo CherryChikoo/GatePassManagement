@@ -1384,7 +1384,15 @@ function FieldBlock({
   if (f.type === "photo")
     return (
       <div data-field={fieldKey ?? f.key} className={cn("min-w-0 scroll-mt-24", f.maxPhotos ? "" : "space-y-1.5")}>
-        <div className={cn(error && (f.maxPhotos ? "bg-emerald-50 ring-[3px] ring-inset ring-emerald-500" : "rounded-2xl ring-[3px] ring-emerald-500 ring-offset-2 ring-offset-white"))}>
+        {/* A required photo not taken: the whole row / tile in green, and its Take photo button solid green */}
+        <div
+          className={cn(
+            error &&
+              (f.maxPhotos
+                ? "rounded-2xl bg-emerald-50 ring-4 ring-inset ring-emerald-500 [&_label]:!border-emerald-700 [&_label]:!bg-emerald-600 [&_label]:!text-white [&_label]:ring-4 [&_label]:ring-emerald-300"
+                : "rounded-2xl ring-4 ring-emerald-500 ring-offset-2 ring-offset-white [&_label]:!border-solid [&_label]:!border-emerald-500 [&_label]:!bg-emerald-50 [&_label_svg]:!text-emerald-600 [&_label_span]:!text-emerald-800")
+          )}
+        >
           {children}
           {/* A row of the photo list: the message inside the red row */}
           {f.maxPhotos && errorLine && <div className="px-3 pb-3 sm:px-4">{errorLine}</div>}

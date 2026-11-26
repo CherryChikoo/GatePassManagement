@@ -379,7 +379,15 @@ export function NewSirosPersonDialog({
       ) : (
         <div className="space-y-4">
           {/* Photo first (once, when they register) */}
-          <div className="flex justify-center [&>*]:w-full [&>*]:max-w-[220px]">{renderPhoto(photo, setPhoto)}</div>
+          {/* The photo is needed: highlighted in green when Register was tapped without it */}
+          <div
+            className={cn(
+              "flex justify-center [&>*]:w-full [&>*]:max-w-[220px]",
+              error && !photo && "rounded-2xl p-1 ring-4 ring-emerald-500 [&_label]:!border-solid [&_label]:!border-emerald-500 [&_label]:!bg-emerald-50"
+            )}
+          >
+            {renderPhoto(photo, setPhoto)}
+          </div>
           <label className="block space-y-1.5">
             <span className="text-base font-bold text-zinc-100">
               {t("Name")} <span className="text-orange-500">*</span>
