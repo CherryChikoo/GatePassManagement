@@ -18,6 +18,13 @@ export function formatFieldValue(f: FieldDef, v: unknown): string {
       return typeof v === "string" ? formatClock(v) : "—";
     case "yesno":
       return v === true ? yesNoWords(f)[0] : v === false ? yesNoWords(f)[1] : "—";
+    case "number": {
+      // A real number, grouped the Indian way (1,25,000); amounts with ₹ in front
+      const n = typeof v === "number" ? v : Number(String(v).replace(/[,\s₹]/g, ""));
+      if (!Number.isFinite(n)) return String(v);
+      const text = n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+      return /₹|amount/i.test(`${f.label} ${f.key}`) ? `₹ ${text}` : text;
+    }
     case "photo":
       return Array.isArray(v) ? `${v.length} photo${v.length === 1 ? "" : "s"}` : "Photo";
     case "staff": {

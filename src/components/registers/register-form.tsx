@@ -702,6 +702,15 @@ function ChoiceWithOther({
 }
 
 /** Plain number box (no up / down arrows): keeps digits and one decimal point. */
+/** "125000.5" → "1,25,000.5" (Indian grouping; what is being typed after the dot stays as it is) */
+function groupedNumber(v: string): string {
+  const raw = numericOnly(v);
+  if (!raw) return "";
+  const [int, dec] = raw.split(".");
+  const grouped = int ? Number(int).toLocaleString("en-IN") : "0";
+  return dec !== undefined ? `${grouped}.${dec}` : grouped;
+}
+
 function numericOnly(v: string): string {
   const cleaned = v.replace(/[^0-9.]/g, "");
   const dot = cleaned.indexOf(".");
@@ -1313,10 +1322,11 @@ function FieldInput({
           type="text"
           inputMode="decimal"
           autoComplete="off"
-          value={value}
+          // Shown grouped while typing (1,25,000); saved as a plain number
+          value={groupedNumber(String(value ?? ""))}
           required={required}
           onChange={(e) => onChange(numericOnly(e.target.value))}
-          className={`${inputCls} ${f.label.includes("₹") ? "pl-9" : ""}`}
+          className={`${inputCls} font-semibold tabular-nums ${f.label.includes("₹") ? "pl-9" : ""}`}
         />
       );
       // Money: a ₹ sign inside the box (numbers only)

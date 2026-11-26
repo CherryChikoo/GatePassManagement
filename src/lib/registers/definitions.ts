@@ -1066,10 +1066,10 @@ function stockForm(): Pick<EntryRegister, "required" | "requiredUnless" | "listF
       { key: "reference", label: "Reference — for whom it came", type: "person", wide: true },
       { key: "date", label: "Date", type: "date" },
       { key: "timeCame", label: "Time Came", type: "time" },
-      // Filled later on the saved record
-      { key: "handedOverTo", label: "Given To", type: "text", formHidden: true, updatable: true },
-      { key: "billTakenBy", label: "Bill Taken By", type: "text", formHidden: true, updatable: true, lockedBy: "billTaken" },
-      { key: "billTaken", label: "Bill taken", type: "yesno", updatable: true, formHidden: true, options: ["Bill taken", "Not taken yet"] },
+      // Not asked now (to be handled later): older records keep and show what they had
+      { key: "handedOverTo", label: "Given To", type: "text", formHidden: true },
+      { key: "billTakenBy", label: "Bill Taken By", type: "text", formHidden: true },
+      { key: "billTaken", label: "Bill taken", type: "yesno", formHidden: true, options: ["Bill taken", "Not taken yet"] },
       // Older records: kept and shown, not on the form any more
       { key: "direction", label: "Inward / Outward", type: "select", options: ["Inward", "Outward"], formHidden: true },
       { key: "vehicleNumber", label: "Vehicle Number", type: "text", formHidden: true },
