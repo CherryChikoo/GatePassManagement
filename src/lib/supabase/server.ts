@@ -5,7 +5,8 @@ import { cookies } from "next/headers";
 const timedFetch: typeof fetch = (input, init) =>
   fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(8_000) });
 
-export async function createServerSupabaseClient() {
+/** keepCookies: a failed renewal never removes the login cookies (Security: only Log out signs out) */
+export async function createServerSupabaseClient({ keepCookies = false }: { keepCookies?: boolean } = {}) {
   const cookieStore = await cookies();
 
   return createServerClient(
@@ -18,6 +19,8 @@ export async function createServerSupabaseClient() {
           return cookieStore.getAll();
         },
         setAll(cookiesToSet) {
+          // A cleared login (empty value) is ignored when keepCookies is set
+          if (keepCookies && cookiesToSet.some(({ value }) => !value)) return;
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)

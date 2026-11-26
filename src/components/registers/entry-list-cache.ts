@@ -13,6 +13,7 @@
  */
 import { istDateString } from "@/lib/time/ist";
 import { liveSince, onGatePing } from "@/lib/realtime/live";
+import { goToSignIn } from "@/lib/signed-out";
 
 export type EntryListParams = { register: string; date: string; q: string; page: number; shift: string };
 export type EntryListData = { entries: any[]; total: number; pageSize: number; canOverrideVisit?: boolean };
@@ -30,7 +31,7 @@ const MAX_UNTRUSTED_AGE_MS = 15_000;
 const REQUEST_TIMEOUT_MS = 15_000;
 
 const cache = new Map<string, Hit>();
-const inFlight = new Map<string, Promise<EntryListData>>();
+const inFlight = new Map<string, { req: Promise<EntryListData>; at: number }>();
 /** When each register (or "*": any) was last reported changed */
 const changedAt = new Map<string, number>();
 
@@ -60,13 +61,24 @@ export function fetchEntryList(p: EntryListParams, useCache = false): Promise<En
   const key = keyOf(p);
   const hit = cache.get(key);
   if (useCache && hit && isFresh(key, hit)) return Promise.resolve(hit.data);
+  // Shared with a request already running for the same list, unless the list changed after it started
   const running = inFlight.get(key);
-  if (running) return running;
+  const changed = Math.max(changedAt.get(registerOf(key)) ?? 0, changedAt.get("*") ?? 0);
+  if (running && running.at > changed) return running.req;
 
   const qs = new URLSearchParams({ register: p.register, date: p.date, q: p.q, page: String(p.page), shift: p.shift });
   const startedAt = Date.now();
   // Really cancelled after the time limit, so "Try again" sends a new request
-  const req = fetch(`/api/registers/entries?${qs}`, { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+  const get = () => fetch(`/api/registers/entries?${qs}`, { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  // Signed out on the server: once more (a login renewed a moment ago), then the sign-in page
+  const req = get()
+    .then(async (res) => {
+      if (res.status !== 401) return res;
+      await new Promise((r) => setTimeout(r, 1500));
+      const again = await get();
+      if (again.status === 401) goToSignIn();
+      return again;
+    })
     .catch((err) => {
       throw new Error(
         err?.name === "TimeoutError" || err?.name === "AbortError"
@@ -76,14 +88,16 @@ export function fetchEntryList(p: EntryListParams, useCache = false): Promise<En
     })
     .then(async (res) => {
       const body = await res.json().catch(() => null);
-      if (!res.ok || !body || body.error) throw new Error(body?.error || "Could not load the register.");
+      if (!res.ok || !body || body.error) throw Object.assign(new Error(body?.error || "Could not load the register."), { status: res.status });
       const data: EntryListData = { entries: body.entries, total: body.total, pageSize: body.pageSize, canOverrideVisit: !!body.canOverrideVisit };
       if (cache.size >= MAX_KEYS && !cache.has(key)) cache.delete(cache.keys().next().value!);
       cache.set(key, { data, at: startedAt });
       return data;
     })
-    .finally(() => inFlight.delete(key));
-  inFlight.set(key, req);
+    .finally(() => {
+      if (inFlight.get(key)?.req === req) inFlight.delete(key);
+    });
+  inFlight.set(key, { req, at: startedAt });
   return req;
 }
 
@@ -104,6 +118,8 @@ export function markEntryListsStale(registers: string[] | "*") {
 /** Forget a register's cached lists after it changed (save, edit, delete…). */
 export function invalidateEntryLists(register: string) {
   for (const key of cache.keys()) if (key.startsWith(`${register}|`)) cache.delete(key);
+  // A request already running started before this change: not reused, not trusted
+  changedAt.set(register, Date.now());
 }
 
 // Every register change on the gate channel, whichever screen is open

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth/helpers";
+import { reviveIfNeeded } from "@/lib/auth/revive";
 import { REGISTER_VIEW_ROLES, queryRegisterEntries } from "@/lib/registers/list-entries";
 
 /**
@@ -17,6 +18,7 @@ const NO_STORE = { "Cache-Control": "private, no-store" };
 export async function GET(req: Request) {
   const user = await getAuthUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401, headers: NO_STORE });
+  await reviveIfNeeded(user);
   if (!(REGISTER_VIEW_ROLES as readonly string[]).includes(user.role)) {
     return NextResponse.json({ error: "You do not have access to this register" }, { status: 403, headers: NO_STORE });
   }

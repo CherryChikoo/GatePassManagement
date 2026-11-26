@@ -28,6 +28,7 @@ import { formatDelay } from "@/lib/passes/return-scan";
 import { FactList, InOutCard, RecordHeader } from "./record-layout";
 import { callGate } from "@/lib/gate-call";
 import { HUB_PAGE_TOP, HubScreenHeader, HubTiles, useHubView } from "@/components/visits/hub-tiles";
+import { studyLabel, yearLabel } from "@/lib/students/study";
 
 type Move = { at: string; gate: string | null; guard: string | null; guardEmployeeId: string | null } | null;
 
@@ -443,7 +444,7 @@ export function StudentBookView() {
           <div className="space-y-5">
             <RecordHeader
               title={selected.studentName || "—"}
-              subtitle={[selected.roll, selected.department, selected.year ? `${t("Year")} ${selected.year}` : null, selected.section].filter(Boolean).join(" · ") || null}
+              subtitle={[selected.roll, selected.department, selected.year ? yearLabel(selected.year, t) : null, selected.section].filter(Boolean).join(" · ") || null}
               status={<StatusBadge status={selected.status} pass={selected} />}
             />
             <InOutCard
@@ -1005,7 +1006,7 @@ export function HostelOutingView({ hostel }: { hostel: "BOYS" | "LADIES" }) {
                       : formatDay(selected.requestedFrom),
                 },
                 { label: t("Mobile"), value: selected.mobile },
-                { label: t("Year & Semester"), value: [selected.year && `${t("Year")} ${selected.year}`, selected.semester && `${t("Sem")} ${selected.semester}`].filter(Boolean).join(" • ") || null },
+                { label: t("Year & Semester"), value: studyLabel(selected.year, selected.semester, t) || null },
               ]}
             />
             <FactList

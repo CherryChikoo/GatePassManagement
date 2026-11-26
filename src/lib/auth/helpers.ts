@@ -123,7 +123,8 @@ export const getAuthUser = cache(async (): Promise<AuthUser | null> => {
  */
 export async function requireAuth(): Promise<AuthUser> {
   const user = await getAuthUser();
-  if (!user) redirect("/login");
+  // Signed in, but the login is no longer accepted: the sign-in page says it ended
+  if (!user) redirect("/login?ended=1");
   return user;
 }
 
@@ -162,6 +163,8 @@ export function getRoleDashboardPath(role: Role): string {
     case "SECURITY_SUPERVISOR":
       return "/supervisor";
     case "ESTATE_MANAGER":
+    case "CIVIL_ENGINEER":
+    case "CIVIL_SUPERVISOR":
       return "/estate";
     default:
       return "/login";

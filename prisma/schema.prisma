@@ -55,9 +55,15 @@ model Student {
   id          String                @id @default(uuid())
   profileId   String                @unique @map("profile_id")
   studentRoll String                @unique @map("student_roll")
+  /// Course code (Course.code), e.g. "BTECH" — sets how many years the course has
+  course      String?
   department  String?
+  /// 1st Year … (up to the course's years)
   year        Int?
+  /// Counted through the whole course: 2nd Year = Sem 3 or Sem 4
   semester    Int?
+  /// Promoted past the final semester: login switched off, records kept
+  graduatedAt DateTime?             @map("graduated_at")
   section     String?
   studentType StudentType           @default(DAY_SCHOLAR) @map("student_type")
   /// Boys / Ladies hostel (hostellers only)
@@ -91,7 +97,38 @@ model Student {
   @@index([department])
   @@index([status])
   @@index([studentType])
+  @@index([course, year])
   @@map("students")
+}
+
+/// Courses the college runs (B.Tech, MBA, BBA…) and how many years each takes
+model Course {
+  id        String   @id @default(uuid())
+  /// Short code kept on each student, e.g. "BTECH"
+  code      String   @unique
+  name      String
+  /// 1–6
+  years     Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("courses")
+}
+
+/// One "Promote" press: every student's year / semester before it, so it can be undone
+model PromotionBatch {
+  id           String    @id @default(uuid())
+  createdAt    DateTime  @default(now()) @map("created_at")
+  createdById  String    @map("created_by_id")
+  createdBy    String    @map("created_by")
+  /// How many moved to the next semester / year, and how many graduated
+  moved        Int
+  graduated    Int
+  /// [{ id, profileId, year, semester }] — the values before the promotion
+  before       Json
+  undoneAt     DateTime? @map("undone_at")
+
+  @@index([createdAt(sort: Desc)])
+  @@map("promotion_batches")
 }
 
 model Faculty {
@@ -396,6 +433,9 @@ enum Role {
   SECURITY_SUPERVISOR
   /// Checks and verifies the stock, labour and work-vehicle books
   ESTATE_MANAGER
+  /// Checks the Siros stock bills (Civil Supervisor when the engineer is not there)
+  CIVIL_ENGINEER
+  CIVIL_SUPERVISOR
 }
 
 enum StudentType {

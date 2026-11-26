@@ -10,6 +10,7 @@ import { GraduationCap, Loader2, Search, UserRound, X } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { callGate } from "@/lib/gate-call";
 import type { StudentParents } from "@/server/actions/visit-requests";
+import { yearLabel } from "@/lib/students/study";
 
 export type ParentWho = "FATHER" | "MOTHER" | "GUARDIAN";
 
@@ -142,7 +143,7 @@ export function ParentSearch({
   };
 
   const studentDetails = (s: StudentParents) =>
-    [s.department, s.year ? t("Year {n}", { n: s.year }) : null, s.section].filter(Boolean).join(" · ");
+    [s.department, s.year ? yearLabel(s.year, t) : null, s.section].filter(Boolean).join(" · ");
 
   const parentButtons: { who: ParentWho; label: string }[] = [
     { who: "FATHER", label: t("Father") },

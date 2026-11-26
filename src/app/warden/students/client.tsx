@@ -35,6 +35,7 @@ import { useStoreReady } from "@/components/providers/store-hydrator";
 import { callGate } from "@/lib/gate-call";
 import { useDebounced, usePagedList } from "@/hooks/use-paged-list";
 import type { getExecutiveStudents } from "@/server/actions/executive";
+import { yearLabel } from "@/lib/students/study";
 
 type StudentsPage = Awaited<ReturnType<typeof getExecutiveStudents>>;
 const PAGE_SIZE = 20;
@@ -224,7 +225,7 @@ export function WardenStudentsClient({ user }: Props) {
             {s.hostelBlock || "General Department"}
           </p>
           <p className="text-xs text-zinc-500">
-            {s.year ? `Year ${s.year}` : "Year N/A"}
+            {s.year ? yearLabel(s.year) : "Year N/A"}
             {s.section ? ` • Section ${s.section}` : ""}
           </p>
         </div>

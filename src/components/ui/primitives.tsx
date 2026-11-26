@@ -334,6 +334,37 @@ export function Modal({ open, onClose, title, children, className, scrollTopKey,
     if (!open) return;
     return lockPageScroll();
   }, [open]);
+  // Keyboard open where the browser only overlays it: the popup takes the space above the keyboard
+  const [visible, setVisible] = React.useState<{ top: number; height: number } | null>(null);
+  React.useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!open || !vv) return;
+    const sync = () => setVisible(vv.height < window.innerHeight - 80 ? { top: vv.offsetTop, height: vv.height } : null);
+    sync();
+    vv.addEventListener("resize", sync);
+    vv.addEventListener("scroll", sync);
+    return () => {
+      vv.removeEventListener("resize", sync);
+      vv.removeEventListener("scroll", sync);
+    };
+  }, [open]);
+  // A tapped box under the keyboard: scrolled up into view once the keyboard is out
+  const focusTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  React.useEffect(() => () => clearTimeout(focusTimer.current), []);
+  const onFocusIn = (e: React.FocusEvent) => {
+    const el = e.target as HTMLElement;
+    if (!el.matches("input:not([type=file]):not([type=checkbox]):not([type=radio]), textarea, select")) return;
+    clearTimeout(focusTimer.current);
+    focusTimer.current = setTimeout(() => {
+      const body = bodyRef.current;
+      if (!body || !body.contains(el)) return;
+      const r = el.getBoundingClientRect();
+      const b = body.getBoundingClientRect();
+      const vv = window.visualViewport;
+      const bottom = Math.min(b.bottom, vv ? vv.offsetTop + vv.height : window.innerHeight);
+      if (r.bottom > bottom - 12 || r.top < b.top) el.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 350);
+  };
   // Back to the top quickly (about a quarter second, smooth): the browser's own smooth scroll is slow on long forms
   React.useEffect(() => {
     const el = bodyRef.current;
@@ -358,7 +389,11 @@ export function Modal({ open, onClose, title, children, className, scrollTopKey,
   // Drawn over the whole page (not inside the page's scroll area), so only the
   // popup scrolls while it is open and the page is free again once it closes.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6"
+      style={visible ? { top: visible.top, height: visible.height, bottom: "auto" } : undefined}
+      onFocus={onFocusIn}
+    >
       {/* Backdrop */}
       <div
         className={lightBlur ? "absolute inset-0 bg-black/30 backdrop-blur-[3px]" : "absolute inset-0 bg-black/40"}
@@ -367,8 +402,8 @@ export function Modal({ open, onClose, title, children, className, scrollTopKey,
       {/* Content */}
       <div
         className={cn(
-          // dvh: the visible screen height on phones (100vh hides the bottom behind the browser bar)
-          "relative z-10 w-full max-w-lg rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-[0_24px_60px_-20px_rgba(16,24,40,0.35)] flex flex-col max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)]",
+          // As tall as the visible screen at most (above the keyboard when it is open)
+          "relative z-10 w-full max-w-lg rounded-3xl border border-zinc-800/80 bg-zinc-900 shadow-[0_24px_60px_-20px_rgba(16,24,40,0.35)] flex flex-col max-h-full",
           "animate-in fade-in-0 zoom-in-95 duration-200",
           // Solid (no blur inside: smooth scrolling on every phone)
           frosted && "bg-[#f7f4f1]",

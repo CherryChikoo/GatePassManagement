@@ -131,6 +131,7 @@ export const createUserSchema = z.object({
   // Roll numbers are stored uppercase so gate lookups use the unique index
   studentRoll: z.string().trim().toUpperCase().max(30).optional().or(z.literal("")),
   department: z.string().trim().max(100).optional().or(z.literal("")),
+  course: z.string().trim().toUpperCase().max(20).optional().or(z.literal("")),
   year: z.coerce.number().int().min(1, "Year must be 1–6").max(6, "Year must be 1–6").optional(),
   semester: z.coerce.number().int().min(1, "Semester must be 1–12").max(12, "Semester must be 1–12").optional(),
   section: z.string().trim().max(20).optional().or(z.literal("")),
@@ -166,6 +167,7 @@ export const staffStudentUpdateSchema = z.object({
 
 /** Additional fields only an ADMIN may change. */
 export const adminStudentUpdateSchema = staffStudentUpdateSchema.extend({
+  course: z.string().trim().toUpperCase().max(20).optional().or(z.literal("")),
   email: z.string().trim().email("Invalid email").optional(),
   studentRoll: z.string().trim().toUpperCase().min(1).max(30).optional(),
   department: optionalText(100),

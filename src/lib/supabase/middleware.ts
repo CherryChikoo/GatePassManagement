@@ -31,7 +31,9 @@ type VerifiedUser = { id: string; email: string };
 
 // Short-lived cache of VERIFIED sessions, keyed by the exact auth cookie value.
 // A forged cookie never verifies, so it can never enter this cache.
-const sessionCache = new Map<string, { user: VerifiedUser; expiresAt: number }>();
+const sessionCache = new Map<string, { user: VerifiedUser; expiresAt: number; grace?: boolean }>();
+/** A login Supabase refused to renew: let in on its old token for this long before asking again */
+const GRACE_CACHE_MS = 5 * 60_000;
 const MAX_CACHE_SIZE = 2000;
 const CACHE_TTL_MS = 30_000;
 
@@ -96,7 +98,7 @@ async function verifyLocally(token: string): Promise<VerifiedUser | null> {
 }
 
 /** How long after expiry a genuinely signed token still identifies the user while renewal is unreachable */
-const RENEWAL_GRACE_S = 7 * 24 * 60 * 60;
+const RENEWAL_GRACE_S = 400 * 24 * 60 * 60; // as long as the login cookie lives: Security signs out only by Log out
 
 /**
  * Verifies the token's signature and issuer but accepts it up to RENEWAL_GRACE_S
@@ -128,6 +130,45 @@ function isTransientAuthError(error: unknown): boolean {
   if (e.name === "AuthRetryableFetchError") return true;
   if (typeof e.status === "number" && (e.status === 0 || e.status >= 500)) return true;
   return /fetch|network|timeout|timed out|abort|ECONN|ENOTFOUND|socket/i.test(e.message ?? "");
+}
+
+/**
+ * One renewal per login at a time. A screen sends several requests at once
+ * (list, counts, live…); when the login is due for renewal each of them used
+ * to renew it with the same refresh token. Supabase replaces the token on the
+ * first renewal, so a device that then kept an older copy (a request cut off
+ * before its answer arrived) was later refused with "Refresh Token Not Found"
+ * and its screens stopped loading. Now the requests share the first renewal
+ * and all hand back the same new login. Kept a few seconds for stragglers.
+ */
+type Renewal = { claims: Record<string, unknown> | null; error: unknown; cookies: { name: string; value: string; options: any }[] };
+const renewals = new Map<string, Promise<Renewal>>();
+const RENEWAL_SHARE_MS = 15_000;
+
+function renewSession(request: NextRequest, key: string): Promise<Renewal> {
+  const running = renewals.get(key);
+  if (running) return running;
+  const cookies: Renewal["cookies"] = [];
+  const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    global: { fetch: timedFetch },
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(toSet) {
+        cookies.push(...toSet);
+      },
+    },
+  });
+  // getClaims() verifies the JWT signature and refreshes the session when needed.
+  const p: Promise<Renewal> = supabase.auth
+    .getClaims()
+    .then(({ data, error }) => ({ claims: (data?.claims as Record<string, unknown> | undefined) ?? null, error, cookies }))
+    .catch((err: unknown) => ({ claims: null, error: err, cookies }));
+  renewals.set(key, p);
+  if (renewals.size > 500) renewals.delete(renewals.keys().next().value!);
+  p.finally(() => setTimeout(() => renewals.get(key) === p && renewals.delete(key), RENEWAL_SHARE_MS));
+  return p;
 }
 
 function isPublicPath(pathname: string): boolean {
@@ -169,12 +210,15 @@ export async function updateSession(request: NextRequest) {
   let user: VerifiedUser | null = null;
   // Let in on the renewal grace (Security only — see AUTH_GRACE_HEADER)
   let grace = false;
+  // Supabase could not be reached to renew (e.g. a tab reopened before the network is up): every role stays in
+  let graceNet = false;
   const cookiesToSet: { name: string; value: string; options: any }[] = [];
 
   if (authCookieKey) {
     const cached = sessionCache.get(authCookieKey);
     if (cached && cached.expiresAt > Date.now()) {
       user = cached.user;
+      grace = !!cached.grace;
     }
 
     if (!user) {
@@ -183,38 +227,33 @@ export async function updateSession(request: NextRequest) {
     }
 
     if (!user) {
-      const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          global: { fetch: timedFetch },
-          cookies: {
-            getAll() {
-              return request.cookies.getAll();
-            },
-            setAll(toSet) {
-              toSet.forEach(({ name, value }) => request.cookies.set(name, value));
-              cookiesToSet.push(...toSet);
-            },
-          },
-        }
-      );
-
-      // getClaims() verifies the JWT signature (JWKS, or the Auth server for
-      // legacy symmetric keys) and refreshes the session when needed.
-      const { data, error } = await supabase.auth.getClaims().catch((err: unknown) => ({ data: null, error: err }));
-      const claims = data?.claims;
-      if (!claims?.sub && isTransientAuthError(error)) {
-        // Could not reach Supabase to renew: stay signed in on the (genuinely
-        // signed) current token; the next request tries the renewal again.
-        // Any cookie change from the failed attempt is dropped (never a sign-out).
+      // Shared with any other request renewing this same login right now
+      const renewal = await renewSession(request, authCookieKey);
+      const { error } = renewal;
+      const claims = renewal.claims as { sub?: string; email?: unknown; exp?: unknown } | null;
+      if (claims?.sub) {
+        for (const c of renewal.cookies) request.cookies.set(c.name, c.value);
+        cookiesToSet.push(...renewal.cookies);
+      } else {
+        // Not renewed — Supabase unreachable, or it no longer knows this login
+        // ("Refresh Token Not Found"). Stay signed in on the genuinely signed
+        // current token: getAuthUser lets only Security in this way, and their
+        // API routes make them a fresh login (src/lib/auth/revive.ts). No cookie
+        // is cleared here, so a tablet signs out only by Log out.
         const token = readAccessToken(request);
         const fallback = token ? await verifyExpiredButGenuine(token) : null;
         if (fallback) {
           user = fallback;
-          grace = true;
-          cookiesToSet.length = 0;
-          console.warn("[auth] session renewal unreachable — kept the user signed in");
+          if (isTransientAuthError(error)) {
+            // Unreachable: everyone stays signed in; the next request tries the renewal again
+            graceNet = true;
+            console.warn("[auth] session renewal unreachable — kept the user signed in");
+          } else {
+            // Refused (login gone): Security only, not asked again for a few minutes
+            grace = true;
+            sessionCache.set(authCookieKey, { user, grace: true, expiresAt: Date.now() + GRACE_CACHE_MS });
+            console.warn("[auth] session not renewed — kept on its current token (Security only)");
+          }
         }
       }
       if (claims?.sub) {
@@ -240,7 +279,7 @@ export async function updateSession(request: NextRequest) {
     }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.search = "";
+    url.search = authCookieKey ? "?ended=1" : "";
     const redirect = NextResponse.redirect(url);
     // A session that could not be renewed is removed here, so the login page
     // does not try to renew it again (one less wait on a fresh open)
@@ -254,7 +293,9 @@ export async function updateSession(request: NextRequest) {
   requestHeaders.delete(USER_EMAIL_HEADER);
   requestHeaders.delete(AUTH_GRACE_HEADER);
   requestHeaders.set(AUTH_CHECKED_HEADER, "1");
+  // "1": login refused — only Security is let in (getAuthUser); "net": renewal unreachable — everyone
   if (user && grace) requestHeaders.set(AUTH_GRACE_HEADER, "1");
+  else if (user && graceNet) requestHeaders.set(AUTH_GRACE_HEADER, "net");
   if (user) {
     requestHeaders.set(USER_ID_HEADER, user.id);
     if (user.email) requestHeaders.set(USER_EMAIL_HEADER, user.email);

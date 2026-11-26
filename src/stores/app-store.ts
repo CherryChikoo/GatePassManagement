@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { goToSignIn } from "@/lib/signed-out";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -147,9 +148,8 @@ export function hardNavigate(path: string) {
 
 function handleSessionExpired() {
   stopBackgroundSync();
-  if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-    hardNavigate("/login");
-  }
+  // A clear message with a 5-second countdown, then signed out and the sign-in page
+  goToSignIn();
 }
 
 // ─── Cross-tab session sync ─────────────────────────────────────────────────
@@ -342,7 +342,11 @@ export const useAppStore = create<AppStore>()(
           }
           // Changed on screen while this was loading: this answer is older than
           // that change (the follow-up refresh brings the up-to-date data)
-          if (localChangeNo !== startedAt) return;
+          if (localChangeNo !== startedAt) {
+            // Asked again once this one is done (the newer answer is needed, e.g. a pass just approved)
+            setTimeout(() => void get().refresh(true, full), 0);
+            return;
+          }
           if (!light) lastFullAt = Date.now();
           set({
             // Light answer: everything except the directories — keep those from the last full load

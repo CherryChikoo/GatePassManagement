@@ -30,6 +30,7 @@ import { deanTitle } from "@/lib/auth/titles";
 import { getDepartmentVariants, listedDepartmentCode } from "@/lib/constants";
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
+import { studyProblem } from "@/server/actions/promotion";
 import { fillMovementPeople } from "@/lib/people";
 import { PARENT_FIELDS, PARENT_SELECT, cleanParentDetails, parentDetailsProblem } from "@/lib/students/parents";
 
@@ -44,7 +45,7 @@ function clearAdminCaches() {
   invalidateProfileCache();
 }
 
-const CACHE_CLEARING_ROLES: string[] = ["ADMIN", "SECURITY", "FACULTY_ADMIN", "WARDEN", "DEAN", "DIRECTOR", "SECURITY_SUPERVISOR", "ESTATE_MANAGER"];
+const CACHE_CLEARING_ROLES: string[] = ["ADMIN", "SECURITY", "FACULTY_ADMIN", "WARDEN", "DEAN", "DIRECTOR", "SECURITY_SUPERVISOR", "ESTATE_MANAGER", "CIVIL_ENGINEER", "CIVIL_SUPERVISOR"];
 
 export async function invalidateAdminCaches() {
   // Exported from a "use server" module, so it is callable from the browser:
@@ -78,6 +79,7 @@ export async function createUser(formData: FormData) {
     phone: (formData.get("phone") as string) || "",
     studentRoll: (formData.get("studentRoll") as string) || "",
     department: (formData.get("department") as string) || "",
+    course: (formData.get("course") as string) || "",
     year: formData.get("year") ? Number(formData.get("year")) : undefined,
     semester: formData.get("semester") ? Number(formData.get("semester")) : undefined,
     section: (formData.get("section") as string) || "",
@@ -109,6 +111,9 @@ export async function createUser(formData: FormData) {
     const code = listedDepartmentCode(data.department);
     if (!code) return { error: "Choose the student's department from the list." };
     data.department = code;
+    // Course, year and semester must fit together (2nd Year → Sem 3 or 4)
+    const study = await studyProblem(data.course || null, data.year ?? null, data.semester ?? null);
+    if (study) return { error: study };
     // A new student needs a parent (name + mobile) and the home address
     const parentProblem = parentDetailsProblem(data, true);
     if (parentProblem) return { error: parentProblem };
@@ -171,7 +176,7 @@ export async function createUser(formData: FormData) {
         email: data.email,
         phone: data.phone || null,
         // Faculty-type accounts keep their designation on the faculty record; the rest here
-        ...(["WARDEN", "SECURITY", "SECURITY_SUPERVISOR", "ESTATE_MANAGER", "ADMIN"].includes(data.role)
+        ...(["WARDEN", "SECURITY", "SECURITY_SUPERVISOR", "ESTATE_MANAGER", "CIVIL_ENGINEER", "CIVIL_SUPERVISOR", "ADMIN"].includes(data.role)
           ? { designation: data.designation?.trim() || null }
           : {}),
       },
@@ -187,6 +192,7 @@ export async function createUser(formData: FormData) {
             profileId: profile.id,
             studentRoll: data.studentRoll || `STU-${Date.now()}`,
             department: data.department || null,
+            course: data.course || null,
             year: data.year || null,
             semester: data.semester || null,
             section: data.section || null,
@@ -595,6 +601,7 @@ export async function getUsers(
             id: true,
             studentRoll: true,
             department: true,
+            course: true,
             year: true,
             semester: true,
             section: true,
@@ -656,7 +663,7 @@ export async function getUsers(
   return result;
 }
 
-const ADMIN_ONLY_STUDENT_FIELDS = ["email", "studentRoll", "department", "studentType", "hostelType", "facultyId", "wardenId"] as const;
+const ADMIN_ONLY_STUDENT_FIELDS = ["email", "studentRoll", "department", "course", "studentType", "hostelType", "facultyId", "wardenId"] as const;
 
 /**
  * Update student details.
@@ -687,6 +694,14 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const input = parsed.data as Record<string, any>;
 
+  // Course, year and semester must fit together (2nd Year → Sem 3 or 4)
+  const study = await studyProblem(
+    input.course !== undefined ? input.course || null : student.course,
+    input.year !== undefined ? input.year : student.year,
+    input.semester !== undefined ? input.semester : student.semester
+  );
+  if (study) return { error: study };
+
   // Parent details sent with this edit (older edit windows send none: kept as they are)
   const parentsSent = PARENT_FIELDS.some((k) => input[k] !== undefined);
   if (parentsSent) {
@@ -699,6 +714,7 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
       email: student.profile.email,
       studentRoll: student.studentRoll,
       department: student.department,
+      course: student.course,
       studentType: student.studentType,
       hostelType: student.hostelType,
       facultyId: student.facultyId,
@@ -783,6 +799,7 @@ export async function updateStudentDetails(studentId: string, data: Record<strin
         data: {
           ...(input.studentRoll ? { studentRoll: input.studentRoll } : {}),
           ...(input.department !== undefined ? { department: input.department || null } : {}),
+          ...(input.course !== undefined ? { course: input.course || null } : {}),
           ...(input.year !== undefined ? { year: input.year ?? null } : {}),
           ...(input.semester !== undefined ? { semester: input.semester ?? null } : {}),
           ...(input.section !== undefined ? { section: input.section || null } : {}),
@@ -969,6 +986,7 @@ export async function getFacultyStudents() {
   const deptVariants = user.role === "FACULTY_ADMIN" ? getDepartmentVariants(faculty.department) : [];
   const students = await prisma.student.findMany({
     where: {
+      graduatedAt: null,
       OR: [
         { facultyId: faculty.id },
         ...(deptVariants.length > 0 ? [{ department: { in: deptVariants } }] : []),
@@ -1495,7 +1513,7 @@ export async function getWardenStudents() {
   if (!warden) return { students: [] };
 
   const students = await prisma.student.findMany({
-    where: { wardenId: warden.id },
+    where: { wardenId: warden.id, graduatedAt: null },
     include: {
       profile: true,
       permissions: {

@@ -11,7 +11,7 @@
  * A screen that is open refreshes quietly when its data changes; the old
  * copy stays on screen until the new one arrives.
  */
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, useRef } from "react";
 import { liveSince, onGatePing } from "@/lib/realtime/live";
 
 type Entry = { data: unknown; at: number; topics: string[] };
@@ -166,6 +166,34 @@ export function useGateData<T>(key: string | null, fetcher: () => Promise<T>, to
     setError(null);
     void run(false);
   }, [run, changedNo]);
+
+  // A refresh failed with an old copy on screen: tried again (5 s, 15 s, 45 s), not left old
+  const failures = useRef(0);
+  useEffect(() => {
+    if (!error) {
+      failures.current = 0;
+      return;
+    }
+    if (failures.current >= 3) return;
+    const id = setTimeout(() => {
+      failures.current++;
+      void run(true);
+    }, 5_000 * 3 ** failures.current);
+    return () => clearTimeout(id);
+  }, [error, run]);
+
+  // Screen shown again / back online: fetched if it may be old
+  useEffect(() => {
+    const again = () => {
+      if (document.visibilityState === "visible") void run(false);
+    };
+    document.addEventListener("visibilitychange", again);
+    window.addEventListener("online", again);
+    return () => {
+      document.removeEventListener("visibilitychange", again);
+      window.removeEventListener("online", again);
+    };
+  }, [run]);
 
   return {
     data: entry?.data as T | undefined,

@@ -45,7 +45,7 @@ import { slugForKey } from "@/lib/registers/custom";
 import { useGateData } from "@/lib/gate-cache";
 import { REGISTER_COUNTS_QUERY } from "@/lib/gate-queries";
 import { EntryRegisterView } from "./entry-register-view";
-import { hasInsideChoice } from "@/lib/registers/inside-choice";
+import { hasInsideChoice, startsWithOut } from "@/lib/registers/inside-choice";
 import { prefetchEntryList } from "./entry-list-cache";
 import { useLiveTopics } from "@/lib/realtime/live";
 import dynamic from "next/dynamic";
@@ -206,14 +206,15 @@ export function RegistersHub({
   // Security: one "Hostel" tile; tapping it asks Boys or Ladies
   const [hostelPick, setHostelPick] = useState(false);
   // An In / Out book with someone not marked Out yet: "Still inside" or "All records"
-  const [insideChoice, setInsideChoice] = useState<{ href: string; name: string; open: number } | null>(null);
+  const [insideChoice, setInsideChoice] = useState<{ href: string; name: string; open: number; out: boolean } | null>(null);
   /** Opening a register: asks first when someone is still inside (Security); otherwise opens it */
   const openRegister = (e: React.MouseEvent, key: string, href: string, name: string) => {
     rememberOpenedRegister(key);
     const open = counts[`open:${key}`] ?? 0;
     if (!isSecurity || open <= 0) return;
     e.preventDefault();
-    setInsideChoice({ href, name, open });
+    const def = REGISTER_BY_KEY[key as RegisterKey];
+    setInsideChoice({ href, name, open, out: !!def && isEntryRegister(def) && startsWithOut(def) });
   };
 
   // Back from a register: the list opens where that register is (not at the top),
@@ -431,7 +432,7 @@ export function RegistersHub({
                     <span className="mt-auto flex flex-wrap gap-1.5">
                       {(counts[`open:${r.key}`] ?? 0) > 0 && (
                         <span className="w-fit rounded-full bg-amber-500 px-2.5 py-0.5 text-sm font-bold tabular-nums text-white">
-                          {t("{n} inside", { n: counts[`open:${r.key}`] })}
+                          {t(isEntryRegister(r) && startsWithOut(r) ? "{n} out" : "{n} inside", { n: counts[`open:${r.key}`] })}
                         </span>
                       )}
                       {n > 0 && (
@@ -531,7 +532,7 @@ export function RegistersHub({
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white">
                 <LogIn className="h-6 w-6" aria-hidden="true" />
               </span>
-              <span className="min-w-0 flex-1 truncate text-xl font-bold text-amber-800">{t("Still inside")}</span>
+              <span className="min-w-0 flex-1 truncate text-xl font-bold text-amber-800">{t(insideChoice.out ? "Not back yet" : "Still inside")}</span>
               <span className="rounded-full bg-amber-600 px-3 py-1 text-lg font-bold tabular-nums text-white">{insideChoice.open}</span>
             </button>
             <button
@@ -670,7 +671,7 @@ export function RegisterPage({
         {canInside && isSecurity && (
           <div role="tablist" className="grid grid-cols-2 gap-2 rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-950 p-1.5">
             {([
-              { inside: true, label: t("Still inside") },
+              { inside: true, label: t(isEntryRegister(def) && startsWithOut(def) ? "Not back yet" : "Still inside") },
               { inside: false, label: t("All records") },
             ] as const).map((tab) => {
               const on = insideView === tab.inside;

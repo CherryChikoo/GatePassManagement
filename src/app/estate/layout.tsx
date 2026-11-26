@@ -10,7 +10,7 @@ export default async function EstateLayout({ children }: { children: React.React
   const cookieStore = await cookies();
   const isCollapsed = cookieStore.get("gatepass_sidebar_collapsed")?.value === "true";
 
-  const user = await requireRole("ESTATE_MANAGER");
+  const user = await requireRole("ESTATE_MANAGER", "CIVIL_ENGINEER", "CIVIL_SUPERVISOR");
   // Under "Gate Pass": their designation / role (e.g. "Head of Department · CSE")
   const roleTitle = await getRoleLine(user.profileId, user.role);
 

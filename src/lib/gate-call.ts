@@ -14,11 +14,12 @@
 import type { GateFunctions } from "@/app/api/gate/route";
 import type { ListFunctions } from "@/app/api/lists/route";
 import { encodeGateArgs } from "@/lib/gate-wire";
+import { goToSignIn } from "@/lib/signed-out";
 
 type Fn = keyof GateFunctions;
 type Result<K extends Fn> = Awaited<ReturnType<GateFunctions[K]>>;
 
-async function post(url: string, fn: string, args: readonly unknown[], timeoutMs: number): Promise<unknown> {
+async function post(url: string, fn: string, args: readonly unknown[], timeoutMs: number, again = true): Promise<unknown> {
   let res: Response;
   try {
     res = await fetch(url, {
@@ -36,8 +37,17 @@ async function post(url: string, fn: string, args: readonly unknown[], timeoutMs
     throw new Error("No internet connection. Check the network and try again.");
   }
   const data = await res.json().catch(() => null);
-  if (res.status === 401) throw new Error((data && data.error) || "Please sign in again.");
-  if (!res.ok && (!data || typeof data !== "object" || !("error" in data))) throw new Error("Something went wrong. Please try again.");
+  if (res.status === 401) {
+    // Often a login renewed by another request a moment ago: once more, then the sign-in page
+    if (again) {
+      await new Promise((r) => setTimeout(r, 1500));
+      return post(url, fn, args, timeoutMs, false);
+    }
+    goToSignIn();
+    throw new Error("Please sign in again.");
+  }
+  // Server failure (500 and up): thrown, so a safe call is sent once more (same one-time token)
+  if (res.status >= 500 || (!res.ok && (!data || typeof data !== "object" || !("error" in data)))) throw new Error("Something went wrong. Please try again.");
   return data;
 }
 
@@ -74,4 +84,12 @@ export async function callList<K extends ListFn>(
   timeoutMs = 20_000
 ): Promise<Awaited<ReturnType<ListFunctions[K]>>> {
   return (await post("/api/lists", fn, args, timeoutMs)) as Awaited<ReturnType<ListFunctions[K]>>;
+}
+
+let lastWarm = 0;
+/** A form opened: wake the server so its Save is quick. Never waits and never shows an error. */
+export function warmGate() {
+  if (Date.now() - lastWarm < 60_000) return;
+  lastWarm = Date.now();
+  callGate("warmUp", [], 10_000).catch(() => {});
 }

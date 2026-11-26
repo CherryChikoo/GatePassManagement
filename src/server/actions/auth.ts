@@ -10,7 +10,7 @@ export async function logoutAction() {
     const supabase = await createServerSupabaseClient();
     const { data } = await supabase.auth.getClaims();
     userId = (data?.claims?.sub as string) || null;
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
   } catch {}
   try {
     const cookieStore = await cookies();

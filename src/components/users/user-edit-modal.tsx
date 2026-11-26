@@ -11,6 +11,7 @@ import { updateStudentDetails, updateUserDetails, resetUserPassword } from "@/se
 import { Part, PasswordField, DeanOfField } from "./form-part";
 import { ParentFields } from "./parent-fields";
 import { PARENT_FIELDS } from "@/lib/students/parents";
+import { StudyFields } from "@/components/users/study-fields";
 
 const ROLE_NAME: Record<string, string> = {
   STUDENT: "Student",
@@ -22,6 +23,8 @@ const ROLE_NAME: Record<string, string> = {
   SECURITY: "Security",
   SECURITY_SUPERVISOR: "Security Supervisor",
   ESTATE_MANAGER: "Estate Manager",
+  CIVIL_ENGINEER: "Civil Engineer",
+  CIVIL_SUPERVISOR: "Civil Supervisor",
   ADMIN: "Admin",
 };
 
@@ -138,6 +141,7 @@ function EditForm({
           phone: get("phone"),
           studentRoll: get("studentRoll"),
           department,
+          course: get("course"),
           year: get("year") ? Number(get("year")) : null,
           semester: get("semester") ? Number(get("semester")) : null,
           section: get("section"),
@@ -226,8 +230,7 @@ function EditForm({
           <Part no={next()} title="College" hint="Class details">
             <Input label="Roll number" name="studentRoll" defaultValue={user.student?.studentRoll || ""} required className="font-mono" />
             {departmentSelect}
-            <Input label="Year" name="year" type="number" min={1} max={5} defaultValue={user.student?.year ?? ""} />
-            <Input label="Semester" name="semester" type="number" min={1} max={12} defaultValue={user.student?.semester ?? ""} />
+            <StudyFields course={user.student?.course} year={user.student?.year} semester={user.student?.semester} />
             <Input label="Section" name="section" defaultValue={user.student?.section ?? ""} />
           </Part>
 
@@ -324,7 +327,7 @@ function EditForm({
         </Part>
       )}
 
-      {(user.role === "SECURITY_SUPERVISOR" || user.role === "ESTATE_MANAGER") && (
+      {(user.role === "SECURITY_SUPERVISOR" || user.role === "ESTATE_MANAGER" || user.role === "CIVIL_ENGINEER" || user.role === "CIVIL_SUPERVISOR") && (
         <Part no={next()} title="Job" hint="Shown under “Gate Pass”">
           <Input label="Designation" name="designation" maxLength={100} defaultValue={user.designation || ""} placeholder="e.g. Chief Security Officer" wrapperClassName="sm:col-span-2" />
         </Part>

@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { dt, PersonCell, RowActions, IconAction } from "@/components/ui/data-table";
 import { PagerBar } from "@/components/ui/pager-bar";
+import { studyLabel, yearLabel } from "@/lib/students/study";
 
 interface Props {
   role: OversightRole;
@@ -240,7 +241,7 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
                       </span>
                       <span className="block text-xs text-zinc-500 truncate">
                         {student.studentRoll} · {getDepartmentCode(student.department || "GEN")}
-                        {student.year ? ` · Year ${student.year}` : ""}
+                        {student.year ? ` · ${yearLabel(student.year)}` : ""}
                         {" · "}
                         {student.studentType === "HOSTELLER" ? "Hosteler" : "Day Scholar"}
                       </span>
@@ -292,7 +293,7 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
                           <span className={dt.chip}>{getDepartmentCode(student.department || "GEN")}</span>
                           <p className="text-xs text-zinc-500">
                             {student.department || "General"}
-                            {student.year ? ` · Year ${student.year}` : ""}
+                            {student.year ? ` · ${yearLabel(student.year)}` : ""}
                             {student.section ? ` (${student.section})` : ""}
                           </p>
                         </div>
@@ -404,7 +405,7 @@ export function ExecutiveStudentsClient({ role, roleTitle }: Props) {
                 {selectedStudent.profile?.phone || "Not registered"}
               </DetailItem>
               <DetailItem label="Academic Year & Cohort">
-                {selectedStudent.year ? `Year ${selectedStudent.year}` : "Unspecified Year"}
+                {selectedStudent.year ? studyLabel(selectedStudent.year, selectedStudent.semester) : "Unspecified Year"}
                 {selectedStudent.section ? ` · Section ${selectedStudent.section}` : ""}
               </DetailItem>
               <DetailItem label="Hostel Accommodation">

@@ -12,7 +12,7 @@ import { callGate } from "@/lib/gate-call";
 import { useLiveTopics } from "@/lib/realtime/live";
 import { cn } from "@/lib/utils";
 
-type Counts = { success?: true; counts?: Record<string, number>; error?: string };
+type Counts = { success?: true; counts?: Record<string, number>; books?: string[]; error?: string };
 
 // Any save in one of the books (by Security) or a verification refreshes the counts
 const LIVE = [...ESTATE_BOOKS.map((k) => `reg:${k}`), "estate"];
@@ -23,7 +23,9 @@ export function EstateHome() {
   // Keeps the live connection open on this screen (the counts refresh by themselves)
   useLiveTopics(LIVE, () => {});
   const counts = data?.counts ?? {};
-  const total = ESTATE_BOOKS.reduce((n, k) => n + (counts[k] ?? 0), 0);
+  // The books this login checks (Siros stock for Civil; the rest for the Estate Manager)
+  const books = data?.books ?? [];
+  const total = books.reduce((n, k) => n + (counts[k] ?? 0), 0);
 
   // Alert when new entries arrive while this screen is open
   const last = useRef<number | null>(null);
@@ -63,7 +65,7 @@ export function EstateHome() {
       {error && !data && <p role="alert" className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-600">{t("Could not load. Please try again.")}</p>}
 
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {ESTATE_BOOKS.map((key) => {
+        {books.map((key) => {
           const def = REGISTER_BY_KEY[key as RegisterKey];
           if (!def) return null;
           const Icon = REGISTER_ICON[key as RegisterKey];

@@ -14,6 +14,7 @@ import { LanguageToggle, useT } from "@/components/providers/language-provider";
 import { Tooltip } from "@/components/ui/tooltip";
 import { PAGE_FOOTER_SLOT_ID } from "@/components/ui/pager-bar";
 import { PasswordChangedNotice } from "@/components/users/password-changed-notice";
+import { IdleSignOut } from "@/components/providers/idle-sign-out";
 import {
   UserCheck,
   LayoutDashboard,
@@ -53,6 +54,8 @@ const ROLE_FALLBACK: Record<string, string> = {
   SECURITY: "Security",
   SECURITY_SUPERVISOR: "Security Supervisor",
   ESTATE_MANAGER: "Estate Manager",
+  CIVIL_ENGINEER: "Civil Engineer",
+  CIVIL_SUPERVISOR: "Civil Supervisor",
   STUDENT: "Student",
 };
 
@@ -196,7 +199,7 @@ export function DashboardLayout({
   else if (role === "DIRECTOR") navItems = directorNavItems;
   else if (role === "DEAN") navItems = deanNavItems;
   else if (role === "SECURITY_SUPERVISOR") navItems = supervisorNavItems;
-  else if (role === "ESTATE_MANAGER") navItems = estateNavItems;
+  else if (role === "ESTATE_MANAGER" || role === "CIVIL_ENGINEER" || role === "CIVIL_SUPERVISOR") navItems = estateNavItems;
 
   const handleNavigation = () => {
     setSidebarOpen(false);
@@ -452,6 +455,7 @@ export function DashboardLayout({
         >
           <div ref={contentRef}>
             <PasswordChangedNotice />
+            <IdleSignOut role={role} />
             {children}
           </div>
         </div>
@@ -551,6 +555,7 @@ export const adminNavItems: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: <LayoutDashboard className="h-5 w-5" /> },
   { label: "User Management", href: "/admin/users", icon: <UsersRound className="h-5 w-5" /> },
   { label: "Gate Management", href: "/admin/gates", icon: <DoorOpen className="h-5 w-5" /> },
+  { label: "Promotion", href: "/admin/promotion", icon: <GraduationCap className="h-5 w-5" /> },
   { label: "Activity Logs", href: "/admin/activity", icon: <ActivityIcon className="h-5 w-5" /> },
   { label: "Registers", href: "/admin/registers", icon: <BookOpen className="h-5 w-5" /> },
   { label: "My Visitors", href: "/my-visitors", icon: <UserCheck className="h-5 w-5" /> },

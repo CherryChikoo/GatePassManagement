@@ -9,7 +9,7 @@
  */
 import { prisma } from "@/lib/db/prisma";
 import type { AuthUser } from "@/lib/auth/helpers";
-import { ESTATE_BOOKS, REGISTER_KEYS, type RegisterKey } from "./definitions";
+import { REGISTER_KEYS, checkerBooks, isChecker, type RegisterKey } from "./definitions";
 
 const ATTENDANCE: RegisterKey = "SECURITY_ATTENDANCE";
 /** Duty plan for the coming days: Head Security only (like attendance) */
@@ -44,10 +44,12 @@ async function isHeadSecurityStaff(profileId: string): Promise<boolean> {
 
 export async function getRegisterAccess(user: AuthUser): Promise<RegisterAccess> {
   const isHeadSecurity = user.role === "SECURITY" ? await isHeadSecurityStaff(user.profileId) : false;
-  const estate = user.role === "ESTATE_MANAGER";
+  // Estate Manager / Civil Engineer / Civil Supervisor: only the books they check
+  const estate = isChecker(user.role);
+  const books = checkerBooks(user.role);
   const viewer = user.role === "SECURITY" || user.role === "ADMIN" || user.role === "SECURITY_SUPERVISOR" || estate;
   const hidden: RegisterKey[] = estate
-    ? REGISTER_KEYS.filter((k) => !ESTATE_BOOKS.includes(k))
+    ? REGISTER_KEYS.filter((k) => !books.includes(k))
     : user.role === "SECURITY"
     ? [...(isHeadSecurity ? [] : [ATTENDANCE, DUTY_PLAN]), ...RETIRED, FLEET]
     : [FLEET];
@@ -55,8 +57,8 @@ export async function getRegisterAccess(user: AuthUser): Promise<RegisterAccess>
   return {
     isHeadSecurity,
     hidden,
-    // Estate Manager: only the 7 books (no portal-made registers)
-    canView: (key) => viewer && !hidden.includes(key as RegisterKey) && (!estate || ESTATE_BOOKS.includes(key)),
+    // Checkers: only their books (no portal-made registers)
+    canView: (key) => viewer && !hidden.includes(key as RegisterKey) && (!estate || books.includes(key)),
     canCreate: (key) =>
       estate
         ? false

@@ -273,7 +273,29 @@ export type RegisterKey = (typeof REGISTER_KEYS)[number];
  * saved Estate Manager book record (e.g. the bill photos after "No bill").
  * A Civil Engineer login, when it is made, goes here too.
  */
-export const ADD_LATER_ROLES: readonly string[] = ["ESTATE_MANAGER"];
+export const ADD_LATER_ROLES: readonly string[] = ["ESTATE_MANAGER", "CIVIL_ENGINEER", "CIVIL_SUPERVISOR"];
+
+/** Logins that check books and mark entries verified (the /estate area) */
+export const CHECKER_ROLES = ["ESTATE_MANAGER", "CIVIL_ENGINEER", "CIVIL_SUPERVISOR"] as const;
+export const isChecker = (role: string) => (CHECKER_ROLES as readonly string[]).includes(role);
+
+/**
+ * Civil logins are on hold (their requirements come first). Until this is
+ * true the Estate Manager keeps every book, Siros stock included, and the
+ * Civil roles cannot be chosen when making an account.
+ */
+export const CIVIL_LIVE = false;
+
+/** Siros stock bills: checked by the Civil Engineer (or the Civil Supervisor when the engineer is not there) */
+export const CIVIL_BOOKS: readonly string[] = ["SIROS_STOCK"];
+
+/** The books a login checks: Civil → Siros stock; Estate Manager → the rest; Admin → all */
+export function checkerBooks(role: string): readonly string[] {
+  if (role === "CIVIL_ENGINEER" || role === "CIVIL_SUPERVISOR") return CIVIL_BOOKS;
+  if (role === "ESTATE_MANAGER") return CIVIL_LIVE ? ESTATE_BOOKS.filter((k) => !CIVIL_BOOKS.includes(k)) : ESTATE_BOOKS;
+  if (role === "ADMIN") return ESTATE_BOOKS;
+  return [];
+}
 
 export const ESTATE_BOOKS: readonly string[] = [
   "SIROS_STOCK",

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { actionErrorMessage } from "@/lib/deployment";
 import { formatDateTime, formatTime } from "@/lib/utils";
 import { callGate } from "@/lib/gate-call";
+import { studyLabel } from "@/lib/students/study";
 
 type Verified = {
   pass: { id: string; purpose: string; expectedTime: string | null; approvedAt: string | null; approvedBy: string; validUntil: string };
@@ -175,7 +176,7 @@ export function WardenScanClient({ autoStart = false }: { autoStart?: boolean })
                 ["Student", verified.student.name],
                 ["Roll Number", verified.student.roll],
                 ["Branch", verified.student.department],
-                ["Year & Semester", [verified.student.year && `Year ${verified.student.year}`, verified.student.semester && `Sem ${verified.student.semester}`].filter(Boolean).join(" • ")],
+                ["Year & Semester", studyLabel(verified.student.year, verified.student.semester)],
                 ["Room", [verified.student.room, verified.student.block && `Block ${verified.student.block}`].filter(Boolean).join(" • ")],
                 ["Phone", verified.student.phone],
                 ["Purpose", verified.pass.purpose],

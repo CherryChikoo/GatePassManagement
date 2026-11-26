@@ -5,7 +5,7 @@ import { getRegisterBySlug } from "@/lib/registers/catalog";
 import { RegisterPage } from "@/components/registers/register-pages";
 
 export default async function RegisterDetailPage({ params }: { params: Promise<{ slug: string }> }) {
-  const user = await requireRole("ESTATE_MANAGER");
+  const user = await requireRole("ESTATE_MANAGER", "CIVIL_ENGINEER", "CIVIL_SUPERVISOR");
   const { slug } = await params;
   // Built-in or portal-created register
   const def = await getRegisterBySlug(slug);

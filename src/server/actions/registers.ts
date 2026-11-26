@@ -19,6 +19,8 @@ import {
   type RegisterKey,
   ESTATE_BOOKS,
   ADD_LATER_ROLES,
+  checkerBooks,
+  isChecker,
   detailEditFields,
 } from "@/lib/registers/definitions";
 import {
@@ -36,6 +38,7 @@ import {
 import { istDateString, istDateToInstant, istDayRangeFromParam, parseDateParam, parsePageParam } from "@/lib/time/ist";
 import { delayMinutes, formatDelay, returnDueAt } from "@/lib/passes/return-scan";
 import { closeSupersededTrips } from "@/lib/passes/close-trips";
+import { semLabel, yearLabel } from "@/lib/students/study";
 
 /**
  * Delayed return for a pass's row: minutes late of the recorded return, or of
@@ -149,6 +152,8 @@ const OTHER_ROLE_DESIGNATION: Record<string, string> = {
   ADMIN: "Admin",
   SECURITY_SUPERVISOR: "Security Supervisor",
   ESTATE_MANAGER: "Estate Manager",
+  CIVIL_ENGINEER: "Civil Engineer",
+  CIVIL_SUPERVISOR: "Civil Supervisor",
 };
 
 /**
@@ -243,7 +248,7 @@ async function fillKeyHolder(data: RegisterData) {
     data.personName = s.profile.name;
     data.holderId = s.studentRoll;
     data.phone = s.profile.phone?.trim() || null;
-    data.holderDetails = join([s.department, s.year ? `Year ${s.year}` : null, s.section ? `Section ${s.section}` : null]);
+    data.holderDetails = join([s.department, s.year ? yearLabel(s.year) : null, s.section ? `Section ${s.section}` : null]);
     return;
   }
   const [f, w] = await Promise.all([
@@ -269,6 +274,15 @@ async function fillKeyHolder(data: RegisterData) {
   }
 }
 
+/**
+ * Already saved with this form's one-time token (the answer was lost — slow
+ * network — and the same save came again): it is the same save, so it counts
+ * as done instead of failing a second check (e.g. "already inside").
+ */
+async function savedByToken(clientToken: string) {
+  return prisma.registerEntry.findUnique({ where: { clientToken }, select: { id: true, register: true } }).catch(() => null);
+}
+
 /** Security records a new register entry. Saved records can never be edited or deleted. */
 export async function createRegisterEntry(registerKey: string, payload: RawPayload, clientToken: string) {
   const user = await requireRole("SECURITY", "ADMIN");
@@ -276,6 +290,8 @@ export async function createRegisterEntry(registerKey: string, payload: RawPaylo
   if (!def) return { error: "Unknown register" };
   if (!(await getRegisterAccess(user)).canCreate(def.key)) return { error: "You are not allowed to add to this register" };
   if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
+  const already = await savedByToken(clientToken);
+  if (already) return { success: true, duplicate: true, id: already.id };
 
   // "Meeting (faculty / staff)": kept outside the record's own fields (see VisitPass)
   const { visitHost, ...fields } = (payload ?? {}) as RawPayload & { visitHost?: unknown };
@@ -337,7 +353,11 @@ export async function createRegisterEntry(registerKey: string, payload: RawPaylo
     if (meeting) void notifyHost(meeting.id);
     return { success: true, id: entry.id };
   } catch (err: any) {
-    if (err?.code === "P2002") return { success: true, duplicate: true }; // double submit: already saved
+    if (err?.code === "P2002") {
+      // Double submit: already saved (the id lets the screen open it)
+      const saved = await savedByToken(clientToken);
+      return { success: true, duplicate: true, id: saved?.id };
+    }
     console.error("[createRegisterEntry] failed:", err?.message);
     return { error: "Could not save the record. Please try again." };
   }
@@ -351,6 +371,7 @@ export async function completeRegisterEntry(entryId: string, payload: Completion
   const user = await requireRole("SECURITY", "ADMIN");
   if (typeof entryId !== "string" || !entryId) return { error: "Record not found" };
   if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
+  if (await savedByToken(clientToken)) return { success: true as const, duplicate: true };
   // Both answers kept in memory for a minute; looked up together when not
   const [access, canOverride] = await Promise.all([getRegisterAccess(user), canOverrideVisitExit(user)]);
   let metHost: string | null = null;
@@ -1269,10 +1290,13 @@ export async function adminUpdateRegisterEntry(entryId: string, payload: RawPayl
  * original, so what was first written, who changed it and why all stay.
  */
 export async function addRegisterDetails(entryId: string, changes: Record<string, unknown>, reason: string, clientToken: string) {
-  const user = await requireRole("ADMIN", "SECURITY_SUPERVISOR", "ESTATE_MANAGER");
+  const user = await requireRole("ADMIN", "SECURITY_SUPERVISOR", "ESTATE_MANAGER", "CIVIL_ENGINEER", "CIVIL_SUPERVISOR");
   if (typeof entryId !== "string" || !entryId) return { error: "Record not found" };
   if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
-  const why = typeof reason === "string" ? reason.trim() : "";
+  if (await savedByToken(clientToken)) return { success: true as const, duplicate: true };
+  // Checkers fill the details Security does not (bill number, given to…) as needed: no reason asked
+  const typed = typeof reason === "string" ? reason.trim() : "";
+  const why = typed || (isChecker(user.role) ? "Details filled while checking" : "");
   if (why.length < 3) return { error: "Write the reason for the change" };
   if (why.length > 300) return { error: "Reason: at most 300 characters" };
   if (!changes || typeof changes !== "object" || Array.isArray(changes)) return { error: "Nothing changed" };
@@ -1339,6 +1363,7 @@ export async function securityEditRegisterEntry(entryId: string, payload: RawPay
   const user = await requireRole("SECURITY");
   if (typeof entryId !== "string" || !entryId) return { error: "Record not found" };
   if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
+  if (await savedByToken(clientToken)) return { success: true as const, duplicate: true };
 
   try {
     const res = await prisma.$transaction(async (tx) => {
@@ -1387,10 +1412,11 @@ export async function securityEditRegisterEntry(entryId: string, payload: RawPay
  * Security (on registers they record in) and Main Admin.
  */
 export async function updateRegisterField(entryId: string, fieldKey: string, value: unknown, clientToken: string) {
-  const user = await requireRole("SECURITY", "ADMIN", "ESTATE_MANAGER");
+  const user = await requireRole("SECURITY", "ADMIN", "ESTATE_MANAGER", "CIVIL_ENGINEER", "CIVIL_SUPERVISOR");
   if (typeof entryId !== "string" || !entryId) return { error: "Record not found" };
   if (typeof fieldKey !== "string" || !fieldKey) return { error: "Unknown field" };
   if (typeof clientToken !== "string" || !TOKEN_RE.test(clientToken)) return { error: "Invalid form. Reload the page." };
+  if (await savedByToken(clientToken)) return { success: true as const, duplicate: true };
 
   try {
     const access = await getRegisterAccess(user);
@@ -1408,7 +1434,7 @@ export async function updateRegisterField(entryId: string, fieldKey: string, val
       if (!field) return { error: "This field cannot be changed" };
       // Estate Manager (and later a Civil Engineer): only a photo added later on their books (e.g. the bill photos)
       if (user.role !== "SECURITY" && user.role !== "ADMIN") {
-        const allowed = ADD_LATER_ROLES.includes(user.role) && ESTATE_BOOKS.includes(def.key) && field.type === "photo" && !!field.addLaterWhen;
+        const allowed = ADD_LATER_ROLES.includes(user.role) && checkerBooks(user.role).includes(def.key) && field.type === "photo" && !!field.addLaterWhen;
         if (!allowed) return { error: "You are not allowed to update this register" };
       }
 
@@ -1516,8 +1542,8 @@ export async function getMovementDetails(movementId: string) {
         id: m.student.studentRoll,
         department: m.student.department,
         detail: [
-          m.student.year && `Year ${m.student.year}`,
-          m.student.semester && `Sem ${m.student.semester}`,
+          m.student.year && yearLabel(m.student.year),
+          m.student.semester && semLabel(m.student.semester),
           m.student.section && `Section ${m.student.section}`,
         ].filter(Boolean).join(" • "),
         type:
@@ -1660,6 +1686,8 @@ export type CarOnBoard = {
   openNext: "IN" | "OUT" | null;
   /** Boxes copied into a new record when it moves again (e.g. car name + number, or auto driver + purpose) */
   fill: Record<string, string>;
+  /** Tapping the card: the latest record's filled boxes (label, value) */
+  details: { label: string; value: string }[];
 };
 
 /** Which boxes name a vehicle on the board: title, the smaller line, and what a new record copies */
@@ -1702,6 +1730,12 @@ export async function getCarBoard(registerKey: string = "CAR_BOOK"): Promise<{ s
     const out = next ? next.direction === "IN" : d.direction === "IN";
     const fill: Record<string, string> = {};
     for (const k of board.fill) if (text(k)) fill[k] = text(k);
+    const details: { label: string; value: string }[] = [];
+    for (const f of def.fields) {
+      const v = d[f.key];
+      if (f.type === "photo" || v === null || v === undefined || v === "" || typeof v === "object") continue;
+      details.push({ label: f.label, value: typeof v === "boolean" ? (v ? "Yes" : "No") : String(v) });
+    }
     seen.set(key, {
       key,
       name,
@@ -1711,6 +1745,7 @@ export async function getCarBoard(registerKey: string = "CAR_BOOK"): Promise<{ s
       openId: next ? r.id : null,
       openNext: next?.direction ?? null,
       fill,
+      details,
     });
   }
   // Cars that are out first, then by name
@@ -1724,13 +1759,14 @@ const VERIFY_DAYS = 60;
 
 /** "Verified" on a saved entry (Estate Manager): a permanent record linked to it, with who and when. Once only. */
 export async function verifyRegisterEntry(entryId: string) {
-  const user = await requireRole("ESTATE_MANAGER", "ADMIN");
+  const user = await requireRole("ESTATE_MANAGER", "CIVIL_ENGINEER", "CIVIL_SUPERVISOR", "ADMIN");
   if (typeof entryId !== "string" || !/^[0-9a-f-]{36}$/i.test(entryId)) return { error: "Record not found" };
   const entry = await prisma.registerEntry.findFirst({
     where: { id: entryId, kind: "ORIGINAL" },
     select: { id: true, register: true, entryDate: true },
   });
-  if (!entry || !ESTATE_BOOKS.includes(entry.register)) return { error: "Record not found" };
+  // Siros stock: Civil Engineer / Supervisor; the other books: Estate Manager
+  if (!entry || !checkerBooks(user.role).includes(entry.register)) return { error: "Record not found" };
   try {
     await prisma.registerEntry.create({
       data: {
@@ -1739,7 +1775,7 @@ export async function verifyRegisterEntry(entryId: string) {
         parentId: entry.id,
         entryDate: entry.entryDate,
         data: { verified: true },
-        reason: "Verified by Estate Manager",
+        reason: `Verified by ${OTHER_ROLE_DESIGNATION[user.role] ?? "Admin"}`,
         // One verification per entry: a second tap is refused by the database
         clientToken: `verify-${entry.id}`,
         recordedById: user.profileId,
@@ -1757,13 +1793,14 @@ export async function verifyRegisterEntry(entryId: string) {
 }
 
 /** Estate Manager home: entries not verified yet in each of the 7 books (last 60 days). */
-export async function getEstateCounts(): Promise<{ success: true; counts: Record<string, number> } | { error: string }> {
-  await requireRole("ESTATE_MANAGER", "ADMIN");
+export async function getEstateCounts(): Promise<{ success: true; counts: Record<string, number>; books: string[] } | { error: string }> {
+  const user = await requireRole("ESTATE_MANAGER", "CIVIL_ENGINEER", "CIVIL_SUPERVISOR", "ADMIN");
+  const books = [...checkerBooks(user.role)];
   const since = new Date(Date.now() - VERIFY_DAYS * 86_400_000);
   const grouped = await prisma.registerEntry.groupBy({
     by: ["register"],
     where: {
-      register: { in: [...ESTATE_BOOKS] },
+      register: { in: books },
       kind: "ORIGINAL",
       createdAt: { gte: since },
       supplements: { none: { kind: "VERIFICATION" } },
@@ -1772,7 +1809,7 @@ export async function getEstateCounts(): Promise<{ success: true; counts: Record
   });
   const counts: Record<string, number> = {};
   for (const g of grouped) counts[g.register] = g._count._all;
-  return { success: true, counts };
+  return { success: true, counts, books };
 }
 
 export async function getVehicleOptions(registerKey: string): Promise<VehicleOptions | { error: string }> {

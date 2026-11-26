@@ -1759,4 +1759,12 @@ export const te: Record<string, string> = {
   "No autos are in now.": "ఇప్పుడు లోపల ఆటోలు లేవు.",
   "Fill in the boxes marked in green": "ఆకుపచ్చ రంగులో ఉన్న బాక్సులు నింపండి",
   "{d} so far": "{d} అయింది",
+  "{n} out": "{n} బయట",
+  "Nothing is out now.": "ఇప్పుడు బయట ఏమీ లేవు.",
+  "Out for {d}": "{d} నుండి బయట",
+  "Came in": "లోపలికి వచ్చింది",
+  "Sem {n}": "సెమిస్టర్ {n}",
+  "Your login has ended. Please sign in again.": "మీ లాగిన్ ముగిసింది. దయచేసి మళ్ళీ లాగిన్ అవ్వండి.",
+  "Signed out after a long time without use. Please sign in again.": "ఎక్కువ సేపు వాడకపోవడంతో లాగ్ అవుట్ అయ్యింది. దయచేసి మళ్ళీ లాగిన్ అవ్వండి.",
+  "Wait — a photo is still uploading": "ఆగండి — ఫోటో ఇంకా అప్‌లోడ్ అవుతోంది",
 };

@@ -56,6 +56,10 @@ export function LoginForm() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
     setReady(true);
+    // Sent here because the login ended (not a first visit): say so
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("ended") === "1") setError(t("Your login has ended. Please sign in again."));
+    else if (sp.get("idle") === "1") setError(t("Signed out after a long time without use. Please sign in again."));
     // Wake the server and its database connection while the person types, so
     // signing in does not wait for a sleeping server (free plan)
     fetch("/api/health", { cache: "no-store" }).catch(() => {});

@@ -45,6 +45,8 @@ const chans = new Map<string, Chan>();
 let client: SupabaseClient | null = null;
 let hiddenTimer: ReturnType<typeof setTimeout> | null = null;
 let signedOut = false;
+/** When the screen was hidden (0 while visible) */
+let hiddenAt = 0;
 type Session = { token: string; expiresAt: number; userId: string };
 let session: Session | null = null;
 let sessionRequest: Promise<Session | null> | null = null;
@@ -55,10 +57,11 @@ function getSession(): Promise<Session | null> {
   sessionRequest ??= fetch("/api/realtime/token", { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(10_000) })
     .then(async (res): Promise<Session | null> => {
       if (!res.ok) {
-        if (res.status === 401) signedOut = true;
+        // 401 is often a login renewed a moment ago: retried like any other failure (with the slow backoff)
         return null;
       }
       const body = await res.json();
+      if (Number(body.expiresAt) && Number(body.expiresAt) < Date.now() + 30_000) return null;
       session = {
         token: String(body.token),
         expiresAt: Number(body.expiresAt) || Date.now() + 30 * 60_000,
@@ -137,9 +140,15 @@ async function connect(name: string) {
       accessToken: getToken as () => Promise<string>,
     });
     // Load the token through the callback (not a fixed value), so it is renewed later
-    await client.realtime.setAuth();
+    try {
+      await client.realtime.setAuth();
+    } catch {
+      scheduleRetry(name);
+      return;
+    }
     if (c.channel || !c.listeners.size || chans.get(name) !== c) return;
     let joined = false;
+    const joinStartedAt = Date.now();
     const ch = client.channel(name, { config: { private: true } });
     c.channel = ch;
     ch.on("broadcast", { event: LIVE_EVENT }, (msg) => {
@@ -150,7 +159,7 @@ async function connect(name: string) {
       if (c.channel !== ch) return;
       if (status === "SUBSCRIBED") {
         // Joined again after a drop or after failed tries: changes may have been missed meanwhile
-        if (joined || c.failures > 0) emit(c, ["*"]);
+        if (joined || c.failures > 0 || Date.now() - joinStartedAt > 2_000) emit(c, ["*"]);
         joined = true;
         c.failures = 0;
         setLive(c, true);
@@ -177,6 +186,9 @@ function disconnect(c: Chan) {
 
 function onVisibility() {
   if (document.visibilityState === "visible") {
+    const away = hiddenAt ? Date.now() - hiddenAt : 0;
+    hiddenAt = 0;
+    if (away > 10_000) for (const c of chans.values()) if (c.channel && c.live) emit(c, ["*"]);
     if (hiddenTimer) {
       clearTimeout(hiddenTimer);
       hiddenTimer = null;
@@ -189,7 +201,7 @@ function onVisibility() {
         emit(c, ["*"]);
       }
     }
-  } else if (!hiddenTimer && [...chans.values()].some((c) => c.channel)) {
+  } else if ((hiddenAt ||= Date.now()) && !hiddenTimer && [...chans.values()].some((c) => c.channel)) {
     hiddenTimer = setTimeout(() => {
       hiddenTimer = null;
       for (const c of chans.values()) {

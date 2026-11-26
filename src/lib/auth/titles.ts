@@ -36,6 +36,8 @@ const ROLE_LINE: Record<string, string> = {
   SECURITY: "Security",
   SECURITY_SUPERVISOR: "Security Supervisor",
   ESTATE_MANAGER: "Estate Manager",
+  CIVIL_ENGINEER: "Civil Engineer",
+  CIVIL_SUPERVISOR: "Civil Supervisor",
   STUDENT: "Student",
 };
 

@@ -42,6 +42,8 @@ export function CarBoard({ registerKey = "CAR_BOOK", canAct }: { registerKey?: "
   // "Out 2 h 10 min" moves on by itself each minute (no requests)
   const now = useMinuteClock(true);
   const [adding, setAdding] = useState(false);
+  // Tapped card: its details
+  const [shown, setShown] = useState<CarOnBoard | null>(null);
   // Autos going out: the reason, every time
   const [reason, setReason] = useState("");
   const [reasonMissing, setReasonMissing] = useState(false);
@@ -63,7 +65,15 @@ export function CarBoard({ registerKey = "CAR_BOOK", canAct }: { registerKey?: "
     // The vehicle's open record waiting for this side: complete it; otherwise a new record
     const res: any = await (car.openId && car.openNext === dir
       ? callGate("completeRegisterEntry", [car.openId, { markMovement: true, ...(why ? { reason: why } : {}) }, token])
-      : callGate("createRegisterEntry", [registerKey, { fields: { ...car.fill, ...(why ? { purpose: why, outReason: why } : {}) }, direction: dir }, token])
+      : callGate("createRegisterEntry", [
+          registerKey,
+          {
+            // Autos: a new In record needs a purpose — the tap itself says it (the reason is asked only going out)
+            fields: { ...car.fill, ...(why ? { purpose: why, outReason: why } : auto && dir === "IN" ? { purpose: "Came in" } : {}) },
+            direction: dir,
+          },
+          token,
+        ])
     ).catch((e) => ({ error: actionErrorMessage(e, "Could not save. Please try again.") }));
     setBusy(null);
     if (res?.error) {
@@ -93,8 +103,9 @@ export function CarBoard({ registerKey = "CAR_BOOK", canAct }: { registerKey?: "
       return (
         <li
           key={c.key}
+          onClick={() => setShown(c)}
           className={cn(
-            "space-y-3 rounded-2xl bg-zinc-900 p-4 shadow-card"
+            "cursor-pointer space-y-3 rounded-2xl bg-zinc-900 p-4 shadow-card"
           )}
         >
           <div className="min-w-0">
@@ -122,7 +133,8 @@ export function CarBoard({ registerKey = "CAR_BOOK", canAct }: { registerKey?: "
             <button
               type="button"
               disabled={busy === c.key}
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 setReason("");
                 setReasonMissing(false);
                 setAsk({ car: c, dir });
@@ -142,6 +154,27 @@ export function CarBoard({ registerKey = "CAR_BOOK", canAct }: { registerKey?: "
 
   return (
     <section className="space-y-3">
+      {shown && (
+        <Modal open onClose={() => setShown(null)} title={shown.name || shown.number} className="max-w-xl">
+          <div className="space-y-4">
+            <p className={cn("flex items-center gap-2 text-lg font-bold", shown.state === "out" ? "text-sky-700" : "text-emerald-700")}>
+              <span className={cn("h-3 w-3 shrink-0 rounded-full", shown.state === "out" ? "bg-sky-500" : "bg-emerald-500")} aria-hidden="true" />
+              {shown.state === "out"
+                ? shown.since ? t("Out since {time}", { time: formatTime(shown.since) }) : t("Out")
+                : shown.since ? t("Inside since {time}", { time: formatTime(shown.since) }) : t("Inside")}
+              {shown.since && <span className="text-amber-800 tabular-nums">· {longFor(shown.since)}</span>}
+            </p>
+            <dl className="divide-y divide-zinc-800 overflow-hidden rounded-2xl border border-zinc-800">
+              {shown.details.map((x) => (
+                <div key={x.label} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 px-4 py-3">
+                  <dt className="text-base font-semibold text-zinc-400">{t(x.label)}</dt>
+                  <dd className="break-words text-lg font-bold text-zinc-100">{t(x.value)}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </Modal>
+      )}
       <div className="flex items-center justify-between gap-3 px-1">
         <h2 className="flex items-center gap-2 text-lg font-bold text-zinc-100">
           <Icon className="h-5 w-5 text-purple-700" aria-hidden="true" /> {t(auto ? "Autos" : "Cars")}

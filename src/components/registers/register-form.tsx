@@ -7,7 +7,8 @@ import { useEffect, useRef, useState } from "react";
 import { HostPicker } from "@/components/visits/host-picker";
 import { VisitCodeFields, visitInputReady, type VisitExitInput } from "@/components/visits/visit-code";
 import { AlertCircle, Briefcase, FileText, CalendarDays, Camera, CheckCircle2, FileX, ChevronDown, Clock, GraduationCap, History, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, PlusCircle, RotateCcw, Save, Search, Trash2, Undo2, X } from "lucide-react";
-import { callGate } from "@/lib/gate-call";
+import { callGate, warmGate } from "@/lib/gate-call";
+import { Time12Input } from "@/components/ui/time-field";
 import { DepartmentSelect } from "@/components/ui/department-select";
 import { ContractorInput, CooliePicker, SirosPersonDialog, contractorItems, useSirosPeople } from "./siros-people";
 import { ComboInput, useVehicleOptions, type ComboItem } from "./combo-input";
@@ -22,6 +23,7 @@ import { useGateData } from "@/lib/gate-cache";
 import { displayValue } from "./localize";
 import { useSecurityLook } from "@/lib/ui/security-look";
 import { ZoomablePhoto } from "@/components/ui/zoomable-photo";
+import { yearLabel } from "@/lib/students/study";
 
 export type StaffOption = { id: string; name: string; employeeId: string | null };
 type Values = Record<string, any>;
@@ -529,7 +531,7 @@ function KeyStudentInput({
                   <span className="text-base font-semibold text-zinc-100">{marked(s.name, false)}</span>
                   <span className="text-sm text-zinc-500">
                     <span className="font-bold tracking-wide text-zinc-300">{marked(s.roll, true)}</span>
-                    {[s.department, s.year ? t("Year {n}", { n: s.year }) : null, s.section ? `${t("Section")} ${s.section}` : null]
+                    {[s.department, s.year ? yearLabel(s.year, t) : null, s.section ? `${t("Section")} ${s.section}` : null]
                       .filter(Boolean)
                       .map((x) => ` · ${x}`)
                       .join("")}
@@ -880,6 +882,9 @@ export function StoredPhoto({ path, className, alt = "" }: { path: string; class
 }
 
 /** Camera photo for a register entry: compressed in the browser, uploaded at once, the stored path is the value. */
+/** Photos still uploading in the open form (Save waits for them) */
+let uploadsRunning = 0;
+
 export function PhotoInput({
   id,
   value,
@@ -909,6 +914,7 @@ export function PhotoInput({
     e.target.value = "";
     if (!file) return;
     setBusy(true);
+    uploadsRunning++;
     setError(null);
     try {
       const b64 = await compressPhoto(file);
@@ -926,6 +932,7 @@ export function PhotoInput({
       setPreview(null);
       onChange("");
     }
+    uploadsRunning = Math.max(0, uploadsRunning - 1);
     setBusy(false);
   }
 
@@ -1036,6 +1043,7 @@ export function MultiPhotoInput({
     if (!files.length) return;
     setError(null);
     setBusy((n) => n + files.length);
+    uploadsRunning += files.length;
     for (const file of files) {
       try {
         const b64 = await compressPhoto(file);
@@ -1051,6 +1059,7 @@ export function MultiPhotoInput({
       } catch (err: any) {
         setError(t(err?.message || "Photo upload failed:"));
       }
+      uploadsRunning = Math.max(0, uploadsRunning - 1);
       setBusy((n) => n - 1);
     }
   }
@@ -1544,6 +1553,8 @@ export function RegisterForm({
   onSubmit: (payload: { fields: Values; groups: Record<string, Values[]>; direction?: Direction; oneWay?: boolean; visitHost?: string }) => void;
 }) {
   const t = useT();
+  // Wake the server while the form is filled, so Save answers quickly
+  useEffect(() => warmGate(), []);
   const m = def.movement;
   // What was typed here before and not saved (the form only opens on a tap, so this runs in the browser)
   const [draft] = useState(() => readDraft(def.key));
@@ -1901,6 +1912,11 @@ export function RegisterForm({
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
+        // A photo still uploading: saved with it once it is done (not without it)
+        if (uploadsRunning > 0) {
+          setLocalError(t("Wait — a photo is still uploading"));
+          return;
+        }
         const errs: Record<string, string> = {};
         if (m && !direction) errs.__direction = t("Choose In or Out");
         const shown = visibleFields(def, direction, values);
@@ -2238,6 +2254,8 @@ export function MovementForm({
   onSubmit: (payload: { markMovement: boolean; reading?: string; reason?: string; groupMarks: Record<string, number[]>; exitCounts?: Record<string, number> } & VisitExitInput) => void;
 }) {
   const t = useT();
+  // Wake the server while the form is filled, so Save answers quickly
+  useEffect(() => warmGate(), []);
   const pending = pendingActions(def, current);
   const [mark, setMark] = useState<boolean>(!!pending.next);
   const [reading, setReading] = useState("");
@@ -2538,7 +2556,7 @@ export function AdminEditForm({
     f.type === "date" ? (
       <DateField id={id} value={value} onChange={(e) => onChange(e.target.value)} required={required} className={inputCls} />
     ) : f.type === "time" ? (
-      <input id={id} type="time" step={60} value={value} onChange={(e) => onChange(e.target.value)} className={inputCls} />
+      <Time12Input id={id} value={value} onChange={onChange} />
     ) : (
       <FieldInput f={f} id={id} value={value} onChange={onChange} staff={staff} required={required} registerKey={def.key} />
     );

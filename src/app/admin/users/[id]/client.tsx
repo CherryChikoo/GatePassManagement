@@ -65,6 +65,7 @@ import {
   LogIn,
   LogOut,
 } from "lucide-react";
+import { studyLabel } from "@/lib/students/study";
 
 interface Props {
   currentUser: { name: string; email: string; role: string };
@@ -566,7 +567,7 @@ export function UserDetailClient({
                         <div>
                           <span className={labelCls}>Academic Year</span>
                           <p className={valueCls}>
-                            {student?.year ? `Year ${student.year}` : "N/A"}
+                            {student?.year ? studyLabel(student.year, student.semester) : "N/A"}
                           </p>
                         </div>
                         <div>

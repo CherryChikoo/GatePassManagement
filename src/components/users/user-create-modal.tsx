@@ -11,6 +11,7 @@ import { DEPARTMENTS, departmentLabel } from "@/lib/constants";
 import { createUser } from "@/server/actions/admin";
 import { Part, PasswordField, DeanOfField } from "./form-part";
 import { ParentFields } from "./parent-fields";
+import { StudyFields } from "@/components/users/study-fields";
 
 /** Roles an Admin can create, with a line on what each one does here */
 const ROLES: { value: string; label: string; hint: string }[] = [
@@ -24,6 +25,7 @@ const ROLES: { value: string; label: string; hint: string }[] = [
   { value: "HEAD_SECURITY", label: "Head Security", hint: "Security, who also takes the staff attendance." },
   { value: "SECURITY_SUPERVISOR", label: "Security Supervisor", hint: "Sees the gate registers and logs; changes nothing." },
   { value: "ESTATE_MANAGER", label: "Estate Manager", hint: "Checks the stock, labour and work-vehicle books and marks entries verified." },
+  // Civil Engineer / Civil Supervisor: added here when CIVIL_LIVE is turned on (src/lib/registers/definitions.ts)
   { value: "ADMIN", label: "Admin", hint: "Full access: users, records and settings." },
 ];
 
@@ -169,8 +171,7 @@ function CreateForm({
           <Part no={next()} title="College" hint="Class details">
             <Input label="Roll number *" name="studentRoll" required className="font-mono" />
             {departmentSelect(false)}
-            <Input label="Year" name="year" type="number" min={1} max={6} />
-            <Input label="Semester" name="semester" type="number" min={1} max={12} />
+            <StudyFields />
             <Input label="Section" name="section" />
           </Part>
 
@@ -288,13 +289,13 @@ function CreateForm({
         </Part>
       )}
 
-      {(role === "SECURITY_SUPERVISOR" || role === "ESTATE_MANAGER" || role === "ADMIN") && (
+      {(role === "SECURITY_SUPERVISOR" || role === "ESTATE_MANAGER" || role === "CIVIL_ENGINEER" || role === "CIVIL_SUPERVISOR" || role === "ADMIN") && (
         <Part no={next()} title="Job" hint="Shown under “Gate Pass”">
           <Input
             label="Designation"
             name="designation"
             maxLength={100}
-            placeholder={role === "ADMIN" ? "e.g. System Administrator" : role === "ESTATE_MANAGER" ? "e.g. Estate Manager" : "e.g. Chief Security Officer"}
+            placeholder={role === "ADMIN" ? "e.g. System Administrator" : role === "ESTATE_MANAGER" ? "e.g. Estate Manager" : role === "CIVIL_ENGINEER" ? "e.g. Civil Engineer" : role === "CIVIL_SUPERVISOR" ? "e.g. Civil Supervisor" : "e.g. Chief Security Officer"}
             wrapperClassName="sm:col-span-2"
           />
         </Part>

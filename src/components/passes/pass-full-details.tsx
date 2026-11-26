@@ -7,6 +7,7 @@ import { useT } from "@/components/providers/language-provider";
 import { formatDateTime } from "@/lib/utils";
 import { facultyRequestTypeLabel } from "@/lib/registers/definitions";
 import { getPassFullDetails } from "@/server/actions/pass-details";
+import { studyLabel } from "@/lib/students/study";
 
 type Details = Exclude<Awaited<ReturnType<typeof getPassFullDetails>>, { error: string }>;
 
@@ -126,7 +127,7 @@ export function PassFullDetails({ permissionId, preview }: { permissionId: strin
               person.kind === "STUDENT"
                 ? [
                     [t("Department"), person.department],
-                    [t("Year / Semester"), [person.year && `${t("Year")} ${person.year}`, person.semester && `${t("Sem")} ${person.semester}`, person.section && `${t("Sec")} ${person.section}`].filter(Boolean).join(" · ")],
+                    [t("Year / Semester"), [studyLabel(person.year, person.semester, t) || null, person.section && `${t("Sec")} ${person.section}`].filter(Boolean).join(" · ")],
                     [t("Type"), t(PERSON_TYPE[person.studentType] ?? person.studentType)],
                     [t("Hostel"), person.hostelType ? [t(HOSTEL[person.hostelType] ?? person.hostelType), person.hostelBlock, person.roomNumber && `${t("Room")} ${person.roomNumber}`].filter(Boolean).join(" · ") : null],
                     [t("Phone"), person.phone],

@@ -8,7 +8,7 @@ import { PrismaClient } from "@prisma/client";
  */
 function withSocketTimeout(url: string | undefined): string | undefined {
   if (!url || /[?&]socket_timeout=/.test(url)) return url;
-  return `${url}${url.includes("?") ? "&" : "?"}socket_timeout=20`;
+  return `${url}${url.includes("?") ? "&" : "?"}socket_timeout=8`;
 }
 
 const globalForPrisma = globalThis as unknown as {
@@ -47,8 +47,8 @@ if (!withIdleFlag[IDLE_FLAG]) {
   prisma.$use(async (params, next) => {
     // Only between requests (nothing running), never inside a transaction
     if (!params.runInTransaction && inFlight === 0 && !resetting && Date.now() - lastActivity > IDLE_RESET_MS) {
-      resetting = prisma
-        .$disconnect()
+      // Never waits on a stuck disconnect for more than 3 s
+      resetting = Promise.race([prisma.$disconnect(), new Promise<void>((r) => setTimeout(r, 3_000))])
         .catch(() => {})
         .finally(() => {
           resetting = null;
@@ -81,7 +81,12 @@ if (!withFlag[RETRY_FLAG]) {
     try {
       return await next(params);
     } catch (err: any) {
-      if (params.runInTransaction || !READ_ACTIONS.has(params.action) || !TRANSIENT_DB_ERRORS.has(err?.code)) throw err;
+      const passing =
+        TRANSIENT_DB_ERRORS.has(err?.code) ||
+        /Engine is not yet connected|Response from the Engine was empty|Can't reach database|Timed out fetching a new connection|Server has closed the connection|Connection reset|connection closed|socket/i.test(
+          String(err?.message ?? "")
+        );
+      if (params.runInTransaction || !READ_ACTIONS.has(params.action) || !passing) throw err;
       await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
       return next(params);
     }

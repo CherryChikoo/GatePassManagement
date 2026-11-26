@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { decodeGateArgs } from "@/lib/gate-wire";
 import { getAuthUser } from "@/lib/auth/helpers";
+import { reviveIfNeeded } from "@/lib/auth/revive";
+import { prisma } from "@/lib/db/prisma";
 import { verifyQrScan, registerExit, registerEntry, prepareGatePhoto, getSecurityLogData } from "@/server/actions/security";
 import {
   createRegisterEntry,
@@ -69,7 +71,18 @@ import {
  */
 export const dynamic = "force-dynamic";
 
+/**
+ * Sent when a form opens: starts a sleeping server copy and its database link
+ * while the guard is still typing, so the Save that follows answers quickly
+ * (not after a cold start). One tiny query; at most once a minute per tablet.
+ */
+async function warmUp() {
+  await prisma.$queryRaw`SELECT 1`;
+  return { ok: true };
+}
+
 const GATE_FUNCTIONS = {
+  warmUp,
   verifyQrScan,
   registerExit,
   registerEntry,
@@ -148,11 +161,15 @@ const GATE_FUNCTIONS = {
 
 export type GateFunctions = typeof GATE_FUNCTIONS;
 
+
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
 export async function POST(req: Request) {
   // Quick answer for a signed-out phone (each function checks its own role too)
-  if (!(await getAuthUser())) return NextResponse.json({ error: "Please sign in again." }, { status: 401, headers: NO_STORE });
+  const authUser = await getAuthUser();
+  if (!authUser) return NextResponse.json({ error: "Please sign in again." }, { status: 401, headers: NO_STORE });
+  // Security tablet on its old login: a fresh one comes back with this answer
+  await reviveIfNeeded(authUser);
 
   const body = (await req.json().catch(() => null)) as { fn?: unknown; args?: unknown } | null;
   const name = typeof body?.fn === "string" ? body.fn : "";
@@ -162,7 +179,10 @@ export async function POST(req: Request) {
   const args = Array.isArray(body?.args) ? decodeGateArgs(body.args) : [];
 
   try {
+    const started = Date.now();
     const result = await fn(...args);
+    const ms = Date.now() - started;
+    if (ms > 3000) console.warn(`[gate] slow ${name}: ${ms} ms`);
     return NextResponse.json(result ?? null, { headers: NO_STORE });
   } catch (err: any) {
     // requireRole sends a signed-out / wrong-role user away with a redirect

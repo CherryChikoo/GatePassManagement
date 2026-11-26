@@ -25,6 +25,7 @@ import { AssignedApproverCard, type AssignedApprover } from "@/components/studen
 import QRCode from "qrcode";
 import { callGate } from "@/lib/gate-call";
 import { delayMinutes, formatDelay, returnDueAt } from "@/lib/passes/return-scan";
+import { studyLabel } from "@/lib/students/study";
 
 /** Phone: 10–15 digits, optional +, spaces or dashes (same rule as the server). */
 const PHONE_RE = /^\+?[0-9][0-9\s-]{8,16}[0-9]$/;
@@ -1095,7 +1096,7 @@ function HostelOutingFields({
     { k: "Branch", v: student?.department },
     {
       k: "Year & Semester",
-      v: [student?.year ? `Year ${student.year}` : null, student?.semester ? `Sem ${student.semester}` : null]
+      v: [studyLabel(student?.year, student?.semester) || null]
         .filter(Boolean)
         .join(" • "),
     },

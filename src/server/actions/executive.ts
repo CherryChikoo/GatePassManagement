@@ -21,7 +21,12 @@ const NO_STUDENTS: Prisma.StudentWhereInput = { id: "__none__" };
  * - HOD: assigned students + their department
  * - Warden: their hostellers
  */
+/** Graduates are left out of the student lists (their records stay) */
 async function studentScope(user: AuthUser): Promise<Prisma.StudentWhereInput> {
+  return { AND: [{ graduatedAt: null }, await baseStudentScope(user)] };
+}
+
+async function baseStudentScope(user: AuthUser): Promise<Prisma.StudentWhereInput> {
   if (user.role === "FACULTY" || user.role === "FACULTY_ADMIN") {
     const faculty = await prisma.faculty.findUnique({
       where: { profileId: user.profileId },

@@ -93,6 +93,11 @@ export function usePassWatch(
       again = false;
       try {
         const res = await fetch(`/api/pass-status?id=${encodeURIComponent(permissionId)}`, { cache: "no-store" });
+        // Signed out on the server: the screen's reload opens the sign-in page
+        if (res.status === 401) {
+          await onChangeRef.current();
+          return;
+        }
         if (!res.ok) return;
         const { sig } = (await res.json()) as { sig?: string };
         if (!sig || stopped) return;

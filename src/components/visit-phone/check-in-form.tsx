@@ -60,6 +60,7 @@ import {
 } from "@/components/visit-phone/visit-store";
 import { PhoneAlert, PhoneLoading, StateCard, bigButtonCls } from "@/components/visit-phone/parts";
 import { VisitSent } from "@/components/visit-phone/visit-sent";
+import { yearLabel } from "@/lib/students/study";
 
 const ADMISSION = REGISTER_BY_KEY.ADMISSION as EntryRegister;
 /** Admission Book fields typed on the phone (date and times are set when Security lets them in) */
@@ -732,7 +733,7 @@ function ParentPart({
   const { found } = parent;
   const typing = parent.who === "TYPED" && (!!found || parent.notFound);
   const deptCode = found?.department ? listedDepartmentCode(found.department) || found.department : null;
-  const classLine = found ? [deptCode, found.year ? t("Year {n}", { n: found.year }) : null, found.roll].filter(Boolean).join(" · ") : "";
+  const classLine = found ? [deptCode, found.year ? yearLabel(found.year, t) : null, found.roll].filter(Boolean).join(" · ") : "";
   // Father / Mother when saved; Guardian always (whoever came types their own details)
   const saved = found ? PARENT_BUTTONS.filter((b) => b.who === "GUARDIAN" || found.has[b.has]) : [];
 
@@ -804,7 +805,7 @@ function ParentPart({
                 <ul className="space-y-2">
                   {parent.matches.map((m) => {
                     const dept = m.department ? listedDepartmentCode(m.department) || m.department : null;
-                    const line = [dept, m.year ? t("Year {n}", { n: m.year }) : null, m.roll].filter(Boolean).join(" · ");
+                    const line = [dept, m.year ? yearLabel(m.year, t) : null, m.roll].filter(Boolean).join(" · ");
                     return (
                       <li key={m.roll}>
                         <button

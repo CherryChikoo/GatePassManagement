@@ -58,6 +58,8 @@ export async function GET(req: Request) {
       SECURITY_SUPERVISOR: () => preloadSupervisor(),
       // Estate Manager: its screens load their own data (books to verify)
       ESTATE_MANAGER: async () => ({}),
+      CIVIL_ENGINEER: async () => ({}),
+      CIVIL_SUPERVISOR: async () => ({}),
     };
     const loader = loaders[user.role];
     if (!loader) {

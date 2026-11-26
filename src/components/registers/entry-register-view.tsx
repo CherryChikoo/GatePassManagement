@@ -30,6 +30,7 @@ import type { Translate } from "@/lib/i18n";
 import { RegisterToolbar, useRegisterFilters } from "./toolbar";
 import { fetchInsideEntries, invalidateInsideEntries, peekInsideEntries } from "./inside-entries";
 import { insideForLabel, useMinuteClock } from "@/components/visits/hub-tiles";
+import { startsWithOut } from "@/lib/registers/inside-choice";
 import { ListEmpty, ListLoading, PersonCard, PersonCardAction } from "@/components/visits/person-card";
 
 type Supplement = {
@@ -116,6 +117,13 @@ export function EntryRegisterView({
   }, [insideTotal, onInsideTotal]);
   // "Inside 2 h 10 min" moves on once a minute (no requests)
   const now = useMinuteClock(insideOnly);
+  // Books that start with Out (Returnable): "Out for 2 d 3 h" instead of "Inside …"
+  const startsOutBook = startsWithOut(def);
+  const openFor = (since: string | Date) => {
+    if (!startsOutBook) return insideForLabel(t, since, now);
+    const mins = Math.max(0, Math.floor((now - new Date(since).getTime()) / 60_000));
+    return t("Out for {d}", { d: durationText(t, mins) });
+  };
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [staff, setStaff] = useState<StaffOption[]>([]);
@@ -136,13 +144,38 @@ export function EntryRegisterView({
 
   // Only the newest load may update the list or clear the loading state
   const loadNo = useRef(0);
+  // Every load gets a number; the screen keeps the answer of the latest one asked
+  const askedNo = useRef(0);
+  const appliedNo = useRef(0);
   /**
    * fresh: the register just changed here — skip the cached copy.
    * silent: changed elsewhere (live update) — keep the list on screen, no
    * loading state, and swap in the new list when it arrives.
    */
+  /** Why a list did not load, in words the guard can act on (and the server's code, to report) */
+  const loadError = useCallback(
+    (err: unknown) => {
+      const known = actionErrorMessage(err, "");
+      if (known) return t(known);
+      const e = err as { message?: string; status?: number } | null;
+      const m = e?.message ?? "";
+      if (/^Taking too long/.test(m)) return t("Taking too long. Check the connection and try again.");
+      if (/^No internet/.test(m)) return t("No internet connection. Check the network and try again.");
+      if (e?.status === 401 || /Unauthorized|Not signed in|sign in again/i.test(m)) return t("Please sign in again.");
+      return t("Could not load the register.") + (e?.status ? ` (${e.status})` : "");
+    },
+    [t]
+  );
+
   const load = useCallback(async (fresh = false, silent = false) => {
-    const no = ++loadNo.current;
+    // A quiet reload (live ping) does not cancel the guard's own load (date, filter, page):
+    // only a newer own load does. Among answers, one asked earlier never replaces a later one.
+    const no = silent ? loadNo.current : ++loadNo.current;
+    const askedAt = ++askedNo.current;
+    const current = () => no === loadNo.current && askedAt >= appliedNo.current;
+    const applied = () => {
+      appliedNo.current = askedAt;
+    };
     // A slow or dropped connection (weak mobile data when the gate is crowded): tried
     // again by itself twice before anything is shown as an error
     const tries = async <T,>(get: () => Promise<T>): Promise<T> => {
@@ -171,16 +204,17 @@ export function EntryRegisterView({
       try {
         // One page (20) of the records still inside; the server picks them
         const res = await tries(() => withTimeout(fetchInsideEntries(def, !fresh && !silent, filters.page)));
-        if (no !== loadNo.current) return;
+        if (!current()) return;
+        applied();
         setData({ entries: res.entries, total: res.total, pageSize: res.pageSize, canOverrideVisit: res.canOverrideVisit });
         // The page's last records just went out: its last page was sent instead
         if (res.page !== filters.page) filters.setPage(res.page);
         if (silent) setError(null);
         return res.entries as Entry[];
       } catch (err) {
-        if (no === loadNo.current && !silent) setError(actionErrorMessage(err, t("Could not load the register.")));
+        if (no === loadNo.current && !silent) setError(loadError(err));
       } finally {
-        if (no === loadNo.current) setLoading(false);
+        if (no === loadNo.current && !silent) setLoading(false);
       }
       return;
     }
@@ -195,18 +229,24 @@ export function EntryRegisterView({
     }
     try {
       const res = await tries(() => withTimeout(fetchEntryList(params, !fresh && !silent)));
-      if (no !== loadNo.current) return;
+      if (!current()) return;
+      applied();
       setData(res);
       if (silent) setError(null);
       return res.entries as Entry[];
     } catch (err) {
-      if (no === loadNo.current && !silent) setError(actionErrorMessage(err, t("Could not load the register.")));
+      if (no === loadNo.current && !silent) setError(loadError(err));
     } finally {
-      if (no === loadNo.current) setLoading(false);
+      if (no === loadNo.current && !silent) setLoading(false);
     }
     // `def` matters only for the Inside now list (its key is already a dependency)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [def.key, filters.dateParam, filters.q, filters.page, filters.shift, t, insideOnly]);
+  }, [def.key, filters.dateParam, filters.q, filters.page, filters.shift, t, insideOnly, loadError]);
+
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
 
   // Live: another guard (or the admin) changed a register
   useLiveTopics(["reg:"], (changed) => {
@@ -216,7 +256,7 @@ export function EntryRegisterView({
     if (!all && !regs.includes(def.key)) return;
     // Every tablet hears the same ping: each waits a random moment (under 1.5 s) so they do not all ask the server at once
     const wait = Math.random() * 1500;
-    setTimeout(() => load(false, true).then((entries) => {
+    setTimeout(() => loadRef.current(false, true).then((entries) => {
       // An open record shows its newest state (e.g. Out just recorded at another gate)
       if (entries) setSelected((cur) => (cur ? entries.find((e) => e.id === cur.id) ?? cur : cur));
     }), wait);
@@ -298,6 +338,8 @@ export function EntryRegisterView({
     } catch (err) {
       setFormError(actionErrorMessage(err, t("Could not save. Please try again.")));
       setErrorNo((n) => n + 1);
+      // It may have been saved before the connection dropped: show the newest list
+      void load(true, true);
     }
     setBusy(false);
   }
@@ -305,6 +347,7 @@ export function EntryRegisterView({
   // One tap on a row: record the missing side now (e.g. "Duty end"). A side
   // that needs a reading (Car Book km) opens the small form instead.
   const [quickId, setQuickId] = useState<string | null>(null);
+  const quickTokens = useRef(new Map<string, string>());
   async function quickRecord(e: Entry) {
     const next = pendingActions(def, e.current).next;
     if (!next || quickId) return;
@@ -320,7 +363,10 @@ export function EntryRegisterView({
     setQuickId(e.id);
     setError(null);
     try {
-      const res: any = await callGate("completeRegisterEntry", [e.id, { markMovement: true }, newClientToken()]);
+      const tok = quickTokens.current.get(e.id) ?? newClientToken();
+      quickTokens.current.set(e.id, tok);
+      const res: any = await callGate("completeRegisterEntry", [e.id, { markMovement: true }, tok]);
+      if (!res?.error) quickTokens.current.delete(e.id);
       if (res?.error) {
         setError(res.error);
       } else {
@@ -330,6 +376,7 @@ export function EntryRegisterView({
       }
     } catch (err) {
       setError(actionErrorMessage(err, t("Could not save. Please try again.")));
+      void load(true, true);
     }
     setQuickId(null);
   }
@@ -502,7 +549,7 @@ export function EntryRegisterView({
         details={details}
         chips={chips}
         time={timeIn ? `${t("In")} ${timeIn}` : null}
-        since={insideForLabel(t, e.createdAt, now)}
+        since={openFor(e.createdAt)}
         onOpen={() => setSelected(e)}
         action={action}
       />
@@ -595,7 +642,7 @@ export function EntryRegisterView({
             ))}
           </ul>
         ) : data ? (
-          <ListEmpty icon={MapPin} title={t("Nobody is inside now.")} hint={t("People still inside appear here by themselves.")} />
+          <ListEmpty icon={MapPin} title={t(startsOutBook ? "Nothing is out now." : "Nobody is inside now.")} hint="" />
         ) : error ? null : (
           <ListLoading />
         )
@@ -684,7 +731,7 @@ export function EntryRegisterView({
                       )}
                       {e.visit && <MeetingChip visit={e.visit} />}
                       {insideOnly && (
-                        <span className="mt-1 block text-xs font-semibold text-amber-600 tabular-nums">{insideForLabel(t, e.createdAt, now)}</span>
+                        <span className="mt-1 block text-xs font-semibold text-amber-600 tabular-nums">{openFor(e.createdAt)}</span>
                       )}
                       {ESTATE_BOOKS.includes(def.key) && (
                         <span className="block">
@@ -743,7 +790,7 @@ export function EntryRegisterView({
                           {open && openChip}
                           {ESTATE_BOOKS.includes(def.key) && <VerifyChip entry={e} />}
                           {e.visit && <MeetingChip visit={e.visit} />}
-                          {insideOnly && <span className="text-xs font-semibold text-amber-600">{insideForLabel(t, e.createdAt, now)}</span>}
+                          {insideOnly && <span className="text-xs font-semibold text-amber-600">{openFor(e.createdAt)}</span>}
                         </span>
                       </td>
                       {hasStarted && (
@@ -785,7 +832,7 @@ export function EntryRegisterView({
               <FileText className="h-5 w-5" />
             </span>
             <p className="text-sm text-zinc-500">
-              {insideOnly ? t("Nobody is inside now.") : filters.dateParam === "all" ? t("No records yet.") : t("No records for this date.")}
+              {insideOnly ? t(startsOutBook ? "Nothing is out now." : "Nobody is inside now.") : filters.dateParam === "all" ? t("No records yet.") : t("No records for this date.")}
             </p>
           </div>
         )}
@@ -1027,7 +1074,6 @@ function DetailsEditor({
     const changes: Record<string, string> = {};
     for (const f of fields) if ((draft[f.key] ?? "").trim() !== text(values[f.key]).trim()) changes[f.key] = (draft[f.key] ?? "").trim();
     if (Object.keys(changes).length === 0) return setError(t("Nothing changed"));
-    if (reason.trim().length < 3) return setError(t("Write the reason for the change"));
     setBusy(true);
     setError(null);
     const err = await onSave(changes, reason.trim());
@@ -1145,7 +1191,13 @@ function DetailsEditor({
 }
 
 /** Who changed a record, when it was not a guard */
-const ROLE_TAG: Record<string, string> = { ADMIN: "Admin", SECURITY_SUPERVISOR: "Security Supervisor", ESTATE_MANAGER: "Estate Manager" };
+const ROLE_TAG: Record<string, string> = {
+  ADMIN: "Admin",
+  SECURITY_SUPERVISOR: "Security Supervisor",
+  ESTATE_MANAGER: "Estate Manager",
+  CIVIL_ENGINEER: "Civil Engineer",
+  CIVIL_SUPERVISOR: "Civil Supervisor",
+};
 
 /** One photo, or several side by side (e.g. the stock photos) */
 function RegisterPhotos({ value, small = false }: { value: unknown; small?: boolean }) {

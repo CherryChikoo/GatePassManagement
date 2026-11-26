@@ -52,7 +52,7 @@ export function StoreHydrator({ user }: { user: StoreUser }) {
       return;
     }
     if (changed.includes("*") || changed.some((c) => c.startsWith("pass:"))) void useAppStore.getState().refresh(true);
-  }, user.role !== "SECURITY" && user.role !== "SECURITY_SUPERVISOR" && user.role !== "ESTATE_MANAGER");
+  }, user.role !== "SECURITY" && user.role !== "SECURITY_SUPERVISOR" && user.role !== "ESTATE_MANAGER" && user.role !== "CIVIL_ENGINEER" && user.role !== "CIVIL_SUPERVISOR");
   // If that live connection quietly died (laptop asleep, Wi-Fi change), new
   // requests must still show without reloading the page
   useSafetyReload(reloadRequests, {

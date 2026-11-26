@@ -40,6 +40,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
+  // Tablets / phones: the keyboard shrinks the page, so a form never hides behind it
+  interactiveWidget: "resizes-content",
   themeColor: "#f4f4f6",
 };
 

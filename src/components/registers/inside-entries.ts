@@ -33,7 +33,7 @@ const MAX_UNTRUSTED_AGE_MS = 15_000;
 const MAX_KEYS = 20;
 
 const cache = new Map<string, Hit>();
-const inFlight = new Map<string, Promise<InsideEntries>>();
+const inFlight = new Map<string, { req: Promise<InsideEntries>; at: number }>();
 /** When each register (or "*": any) was last reported changed */
 const changedAt = new Map<string, number>();
 
@@ -60,8 +60,10 @@ export function fetchInsideEntries(def: EntryRegister, useCache: boolean, page =
   const key = keyOf(def.key, page);
   const hit = cache.get(key);
   if (useCache && hit && isFresh(def.key, hit)) return Promise.resolve(hit.data);
+  // Shared with a request already running, unless the register changed after it started
   const running = inFlight.get(key);
-  if (running) return running;
+  const changed = Math.max(changedAt.get(def.key) ?? 0, changedAt.get("*") ?? 0);
+  if (running && running.at > changed) return running.req;
 
   const startedAt = Date.now();
   const req = callGate("listInsideRegisterEntries", [{ register: def.key, page }], 15_000)
@@ -79,8 +81,10 @@ export function fetchInsideEntries(def: EntryRegister, useCache: boolean, page =
       if (res.page !== page) keep(keyOf(def.key, res.page), data, startedAt);
       return data;
     })
-    .finally(() => inFlight.delete(key));
-  inFlight.set(key, req);
+    .finally(() => {
+      if (inFlight.get(key)?.req === req) inFlight.delete(key);
+    });
+  inFlight.set(key, { req, at: startedAt });
   return req;
 }
 
@@ -93,6 +97,7 @@ export function peekInsideEntries(register: string, page = 1): InsideEntries | n
 /** Forget a register's kept pages (it was just changed on this phone). */
 export function invalidateInsideEntries(register: string) {
   for (const key of [...cache.keys()]) if (key.startsWith(`${register}|`)) cache.delete(key);
+  changedAt.set(register, Date.now());
 }
 
 // Every register change on the gate channel, whichever screen is open
