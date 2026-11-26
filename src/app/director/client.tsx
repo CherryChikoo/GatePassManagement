@@ -138,9 +138,6 @@ export function DirectorDashboardClient({ user, title }: Props & { title?: strin
             <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
               {greeting}, <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{firstName}</span>
             </h1>
-            <p className="mt-1.5 text-sm text-zinc-500">
-              <span className="font-medium text-zinc-300">{title ?? "Director Dashboard"}</span> · Campus Executive · All Departments
-            </p>
             <p className="mt-1 text-sm text-zinc-500">
               Full campus oversight across faculty, staff, students, wardens & security infrastructure
             </p>

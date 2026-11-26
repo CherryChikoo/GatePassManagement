@@ -269,9 +269,6 @@ export function RegisterManager({ base }: { base: string }) {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">{t("Create & manage registers")}</h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            {t("Design a register with the inputs you need. It appears straight away for Security, the Supervisor and Admin.")}
-          </p>
         </div>
         <Button
           onClick={() => {

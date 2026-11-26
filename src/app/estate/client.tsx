@@ -43,9 +43,6 @@ export function EstateHome() {
     <div data-look="clear" className="mx-auto w-full max-w-[1100px] space-y-5">
       <div>
         <h1 className="text-xl font-bold tracking-tight text-zinc-100 sm:text-2xl">{t("Books to verify")}</h1>
-        <p className="mt-1 text-base font-semibold text-zinc-400">
-          {data?.counts ? (total ? t("{count} entries not verified yet", { count: total }) : t("All entries verified")) : t("Loading…")}
-        </p>
       </div>
 
       {fresh > 0 && (

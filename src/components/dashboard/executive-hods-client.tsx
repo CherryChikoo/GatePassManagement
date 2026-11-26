@@ -127,9 +127,6 @@ export function ExecutiveHodsClient({ role }: ExecutiveHodsClientProps) {
           <h1 className="mt-3 text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
             Heads of Department (HOD) Directory
           </h1>
-          <p className="mt-1 text-sm text-zinc-500 max-w-2xl">
-            Departmental leadership across all academic divisions reporting to campus management.
-          </p>
         </div>
         <span className="inline-flex w-fit shrink-0 items-center rounded-full bg-orange-500/10 px-3.5 py-1.5 text-xs font-medium text-orange-400">
           {metrics.total} Department Heads

@@ -189,10 +189,6 @@ export function MyVisitorsClient() {
     <div className="mx-auto max-w-6xl space-y-6 pb-10">
       <div>
         <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">My Visitors</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          People Security registered as coming to meet you. When your meeting is over, tell them their{" "}
-          <span className="font-medium text-zinc-300">meeting code</span> — they need it to leave the campus.
-        </p>
       </div>
 
       {error && (

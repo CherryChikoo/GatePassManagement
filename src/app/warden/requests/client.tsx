@@ -207,9 +207,6 @@ export function WardenRequestsClient({ user }: Props) {
           <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
             Student Requests
           </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Today&apos;s hostel permission requests. Past requests are in the Activity tab.
-          </p>
         </div>
 
         {/* Toolbar: filter + selection */}

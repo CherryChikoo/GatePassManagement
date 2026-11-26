@@ -69,9 +69,6 @@ export function FacultyDashboardClient({ user }: Props) {
           <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
             {greeting}, <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{firstName}</span>
           </h1>
-          <p className="mt-1.5 text-sm text-zinc-500">
-            {[faculty.department, faculty.designation].filter(Boolean).join(" • ") || "Faculty"}
-          </p>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">

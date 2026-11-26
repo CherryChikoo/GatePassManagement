@@ -102,7 +102,6 @@ export function GatesClient({ user, gates }: Props) {
               <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
                 Gate Management
               </h1>
-              <p className="mt-1 text-sm text-zinc-500">{gatesList.length} gate(s) configured</p>
             </div>
             <Button onClick={openCreate} className="w-full sm:w-auto">
               <Plus className="h-4 w-4" />

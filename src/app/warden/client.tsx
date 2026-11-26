@@ -71,10 +71,6 @@ export function WardenDashboardClient({ user }: Props) {
           <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
             {greeting}, <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{firstName}</span>
           </h1>
-          <p className="mt-1.5 text-sm text-zinc-500 flex items-center gap-1.5">
-            <Building2 className="h-3.5 w-3.5 shrink-0" />
-            {warden.hostelBlock ? `Block ${warden.hostelBlock}` : "Hostel Management"}
-          </p>
         </div>
 
         {/* One tap to the camera: wardens mostly open the portal to scan */}

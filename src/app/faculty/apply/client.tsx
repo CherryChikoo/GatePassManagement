@@ -857,9 +857,6 @@ export function FacultyApplyClient() {
           <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
             My Passes
           </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Apply for a pass and see today&apos;s passes. Past passes are in the Activity tab.
-          </p>
         </div>
 
         {/* Tabs */}

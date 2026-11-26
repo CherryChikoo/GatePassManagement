@@ -97,7 +97,6 @@ export function FacultyActivityClient({
           <div className="min-w-0">
             <BackButton href="/faculty" label="Back to Dashboard" className="-ml-3 mb-2" />
             <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">Activity Log</h1>
-            <p className="mt-1 text-sm text-zinc-500">Your students&apos; passes and your own passes for the selected date</p>
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 w-full lg:w-auto">
             {/* Search */}

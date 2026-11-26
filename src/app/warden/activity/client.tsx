@@ -69,7 +69,6 @@ export function WardenActivityClient({
           <div className="min-w-0">
             <BackButton href="/warden" label="Back to Dashboard" className="-ml-3 mb-2" />
             <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">Student Activity Log</h1>
-            <p className="mt-1 text-sm text-zinc-500">{displayTotal} records found for your students</p>
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
             {/* Search */}

@@ -169,10 +169,6 @@ export function HodActivityClient({ user, initialDate }: HodActivityClientProps)
                 </span>
               )}
             </h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              {displayTotal} records found
-              {department ? ` · Department of ${getDepartmentFullName(department)}` : ""}
-            </p>
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">

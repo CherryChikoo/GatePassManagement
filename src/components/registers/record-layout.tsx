@@ -11,6 +11,7 @@
 import { useState } from "react";
 import { ChevronDown, LogIn, LogOut } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
+import { useSecurityLook } from "@/lib/ui/security-look";
 import { cn } from "@/lib/utils";
 
 /** Name of the person / item, a short line under it, and a status chip on the right */
@@ -93,6 +94,8 @@ const isEmptyValue = (v: React.ReactNode) =>
  */
 export function FactList({ facts, title }: { facts: Fact[]; title?: string }) {
   const t = useT();
+  // Security sees only what was filled; the other logins also see what is empty
+  const securityView = useSecurityLook();
   const [showEmpty, setShowEmpty] = useState(false);
   if (!facts.length) return null;
   const filled = facts.filter((f) => !isEmptyValue(f.value));
@@ -117,7 +120,7 @@ export function FactList({ facts, title }: { facts: Fact[]; title?: string }) {
           ))}
         </dl>
       )}
-      {empty.length > 0 && (
+      {!securityView && empty.length > 0 && (
         <div className="space-y-2">
           <button
             type="button"

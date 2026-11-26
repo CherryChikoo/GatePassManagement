@@ -423,15 +423,6 @@ function QrCodeView({
         <h1 className="mt-3 text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
           {isHostelPass ? "Show to Your Hostel Warden" : isReturning ? "Scan When You Return" : "Scan at Campus Gate"}
         </h1>
-        <p className="mt-2 text-sm text-zinc-500 leading-relaxed max-w-md mx-auto">
-          {isHostelPass
-            ? "Your HOD approved this pass. Show this QR code to your hostel warden when you reach the hostel."
-            : isReturning
-            ? "You're out on this pass. When you come back, show this same QR code to the gate security officer to record your return."
-            : permission.type === "ENTRY"
-            ? "Present this QR code to the gate security officer to enter campus."
-            : "Present this QR code to the gate security officer to exit campus."}
-        </p>
         {returnDelay > 0 && (
           <p role="status" className="mx-auto mt-3 max-w-md rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-600">
             Delayed return — {formatDelay(returnDelay)} late. Your QR still works; show it at the gate.
@@ -842,15 +833,6 @@ function PermissionFormView({
             ? "Go to the hostel"
             : "Go out of campus"}
         </h1>
-        <p className="mt-1.5 text-sm text-zinc-500 leading-relaxed">
-          {requestType === "ENTRY"
-            ? "Show the QR at the gate."
-            : requestType === "HOSTEL"
-            ? "The warden scans it at the hostel."
-            : isHosteller
-            ? "Use the same QR to come back."
-            : "Show the QR at the gate."}
-        </p>
       </div>
 
       {/* Which way are you going? */}

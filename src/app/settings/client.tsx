@@ -210,11 +210,6 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
         {user.role === "STUDENT" && <GoBackButton href="/student" />}
         <div>
           <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">{t("Account Settings")}</h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            {nameAndPhoneOnly
-              ? t("Keep your name and phone number up to date.")
-              : t("Manage your personal profile information, department details, and authentication credentials.")}
-          </p>
         </div>
 
         {/* Who is signed in */}

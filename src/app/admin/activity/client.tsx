@@ -439,9 +439,6 @@ export function ActivityClient({ user }: Props) {
             <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
               Gate Movement Logs
             </h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              Gate entries and exits marked by security, plus visitors on campus.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">

@@ -924,6 +924,7 @@ export function OutsidersClient() {
         open={!!selectedOutsider}
         onClose={() => setSelectedOutsider(null)}
         title={t("Visitor Details")}
+        className="max-w-xl md:max-w-[min(92vw,1000px)] border-2 border-orange-500/80"
       >
         {selectedOutsider && (
           <div className="space-y-5">
@@ -945,17 +946,17 @@ export function OutsidersClient() {
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-lg font-semibold leading-snug text-zinc-100 break-words">{selectedOutsider.name}</p>
-                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  <span className={categoryChip}>{t(selectedOutsider.category)}</span>
-                  <StatusBadge status={selectedOutsider.status} pass={selectedOutsider} />
+                <p className="text-2xl font-bold leading-snug text-zinc-100 break-words">{selectedOutsider.name}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex shrink-0 items-center rounded-full border-[1.5px] border-zinc-600 bg-zinc-950 px-3 py-1 text-base font-bold text-zinc-200">{t(selectedOutsider.category)}</span>
+                  <StatusBadge status={selectedOutsider.status} pass={selectedOutsider} className="!px-3 !py-1 !text-base" />
                 </div>
                 {selectedOutsider.phone && (
                   <a
                     href={`tel:${selectedOutsider.phone}`}
-                    className="mt-2.5 inline-flex h-10 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950 px-4 text-sm font-medium text-zinc-100 hover:border-orange-500/40"
+                    className="mt-3 inline-flex h-12 items-center gap-2 rounded-full bg-orange-600 px-5 text-lg font-bold text-white hover:bg-orange-700"
                   >
-                    <Phone className="h-4 w-4 text-orange-500" />
+                    <Phone className="h-5 w-5" />
                     <span className="tabular-nums">{selectedOutsider.phone}</span>
                   </a>
                 )}

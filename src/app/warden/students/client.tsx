@@ -306,9 +306,6 @@ export function WardenStudentsClient({ user }: Props) {
                 {studentsTotal} Total
               </span>
             </h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              View and edit student information, hostel block details, and academic cohorts.
-            </p>
           </div>
 
           {/* Search bar */}

@@ -401,9 +401,6 @@ export function FacultyAdminRequestsClient() {
               </span>
             )}
           </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Today&apos;s pass requests for department faculty and students. Past requests are in the Activity tab.
-          </p>
         </div>
 
         {/* Batch actions (header) when items are selected */}

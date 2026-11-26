@@ -159,9 +159,6 @@ export function LoginForm() {
 
           <div className="mt-6 sm:mt-7 text-center">
             <h1 className="text-[22px] sm:text-[26px] font-semibold tracking-tight text-zinc-100">{t("Sign in to Gate Pass")}</h1>
-            <p className="mx-auto mt-2 max-w-[300px] text-sm sm:text-[15px] leading-relaxed text-zinc-500">
-              {t("Campus gate passes for students, faculty and staff.")}
-            </p>
           </div>
 
           {error && (

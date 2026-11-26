@@ -156,9 +156,6 @@ export function ExecutiveActivityClient({ role, user, initialDate }: ExecutiveAc
               <h1 className="mt-3 text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">
                 Campus Activity Log
               </h1>
-              <p className="mt-1 text-sm text-zinc-500 max-w-2xl">
-                Live gate entries, exits, and pass permissions across all campus departments.
-              </p>
             </div>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto">

@@ -238,7 +238,6 @@ function QrScreen({ register, onBack, showQr }: { register: CheckInRegister; onB
           {onBack && <HubBackButton onClick={onBack} />}
           <div className="min-w-[10rem] flex-1">
             <h1 className="text-2xl font-light tracking-tight text-zinc-100">{t("Show QR")}</h1>
-            <p className="text-sm text-zinc-500">{t(title)}</p>
           </div>
           {/* Someone is waiting: the list is below the big QR */}
           {arrivals.length > 0 && (

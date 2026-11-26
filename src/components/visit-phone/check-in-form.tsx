@@ -547,10 +547,6 @@ export function CheckInForm({ token }: { token: string }) {
     <div className="space-y-4">
       <div className="px-1">
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">{t("Fill in your details")}</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          {t(isVisitors ? "Visitors Book & Pass" : "Admission Book & Pass")}
-          {form.gate ? ` · ${form.gate}` : ""}
-        </p>
         <p className="mt-2 text-sm leading-relaxed text-zinc-400">
           {isVisitors
             ? t("Send this form. The security officer will check it at the gate.")

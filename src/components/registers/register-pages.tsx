@@ -256,9 +256,6 @@ export function RegistersHub({
           <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 flex flex-wrap items-center gap-2">
             {t(isSecurity ? "Registers" : "Security Registers")}
           </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            {isSecurity ? null : t("All gate registers. Security cannot change saved records; only Main Admin can edit or delete them.")}
-          </p>
         </div>
         {canBuild && (
           <Link
@@ -731,7 +728,6 @@ export function RegisterPage({
       <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-100">
         {def.title}
       </h1>
-      {!isSecurity && <p className="text-sm text-zinc-400 mt-1">{def.description}</p>}
     </div>
   );
   // Home outing passbook: two buttons (Information / Counts); its screens have their own "←" heading

@@ -315,9 +315,6 @@ export function FacultyStudentsClient({ user, detailBasePath = "/faculty/student
                 {studentsTotal} Total
               </span>
             </h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              View and edit student information, department details, and academic cohorts.
-            </p>
           </div>
 
           {/* Search bar */}

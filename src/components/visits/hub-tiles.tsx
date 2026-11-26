@@ -180,7 +180,6 @@ export function HubScreenHeader({
           {title}
           {busy && <Loader2 className="ml-2 inline-block h-4 w-4 animate-spin align-middle text-zinc-500" aria-hidden="true" />}
         </h1>
-        {subtitle && <p className="mt-0.5 truncate text-base font-medium leading-snug text-zinc-400">{subtitle}</p>}
       </div>
       {/* The count in its own spot on the right: never drops onto a line of its own */}
       {!!count && (

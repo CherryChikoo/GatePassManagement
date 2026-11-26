@@ -333,9 +333,6 @@ export function SecurityLogClient({ initialDate }: { initialDate?: string }) {
         <div className="min-w-0">
           <GoBackButton className="mb-3" />
           <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">{t("Entries & Exits")}</h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            {t("{entries} entries, {exits} exits, {visits} visitor visits", { entries: counts.entries, exits: counts.exits, visits: counts.visits })}
-          </p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full lg:w-auto">

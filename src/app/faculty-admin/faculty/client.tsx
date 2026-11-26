@@ -161,9 +161,6 @@ export function FacultyAdminFacultyClient({ user }: Props) {
               {nonHodFaculty.length} Total
             </span>
           </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Complete roster of academic faculty members and their departments.
-          </p>
         </div>
 
         {/* Search */}
