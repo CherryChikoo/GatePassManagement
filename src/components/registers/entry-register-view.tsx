@@ -79,6 +79,9 @@ function nextActionLabel(def: EntryRegister, current: Record<string, any>, t: Tr
   return null;
 }
 
+/** Table headings: a little larger and darker than the shared ones, so each column reads clearly */
+const TH = "text-xs! text-zinc-400! py-3.5!";
+
 export function EntryRegisterView({
   def,
   canCreate,
@@ -767,20 +770,24 @@ export function EntryRegisterView({
         )}
 
         {/* Larger screens: table */}
-        {data && data.entries.length > 0 && (
+        {data && data.entries.length > 0 && (() => {
+          // A Status column only when there is something to show in it
+          const statusNeeded = ESTATE_BOOKS.includes(def.key) || insideOnly || data.entries.some((e) => pendingActions(def, e.current).any || !!e.visit);
+          return (
           <div className={cn(dt.wrap, "hidden xl:block")}>
             <table className={dt.table}>
               <thead>
                 <tr>
-                  <th className={dt.th}>{t("Date")}</th>
-                  {hasStarted && <th className={dt.th}>{t("Timings")}</th>}
+                  <th className={cn(dt.th, TH)}>{t("Date")}</th>
+                  {hasStarted && <th className={cn(dt.th, TH)}>{t("Timings")}</th>}
                   {columns.map((c) => (
-                    <th key={c.key} className={dt.th}>{c.label}</th>
+                    <th key={c.key} className={cn(dt.th, TH)}>{t(c.label)}</th>
                   ))}
                   {statusCols.map((c) => (
-                    <th key={c.key} className={dt.th}>{c.label}</th>
+                    <th key={c.key} className={cn(dt.th, TH)}>{t(c.label)}</th>
                   ))}
-                  <th className={dt.th}>{t("Recorded by")}</th>
+                  <th className={cn(dt.th, TH)}>{t("Recorded by")}</th>
+                  {statusNeeded && <th className={cn(dt.th, TH)}>{t("Status")}</th>}
                   <th className={dt.thRight}>
                     <span className="sr-only">{t("Action")}</span>
                   </th>
@@ -791,14 +798,8 @@ export function EntryRegisterView({
                   const open = pendingActions(def, e.current).any;
                   return (
                     <tr key={e.id} onClick={() => setSelected(e)} className={dt.trClickable}>
-                      <td className={cn(dt.td, "whitespace-nowrap tabular-nums")}>
-                        <span className="flex flex-col items-start gap-1">
-                          {formatFieldValue({ key: "d", label: "", type: "date" }, e.entryDate)}
-                          {open && openChip}
-                          {ESTATE_BOOKS.includes(def.key) && <VerifyChip entry={e} />}
-                          {e.visit && <MeetingChip visit={e.visit} />}
-                          {insideOnly && <span className="text-xs font-semibold text-amber-600">{openFor(e.createdAt)}</span>}
-                        </span>
+                      <td className={cn(dt.td, "whitespace-nowrap text-[15px] tabular-nums text-zinc-200")}>
+                        {formatFieldValue({ key: "d", label: "", type: "date" }, e.entryDate)}
                       </td>
                       {hasStarted && (
                         <td className={dt.td}>
@@ -809,7 +810,7 @@ export function EntryRegisterView({
                         </td>
                       )}
                       {columns.map((c, i) => (
-                        <td key={c.key} className={cn(dt.td, "whitespace-nowrap max-w-[220px] truncate", i === 0 ? "font-medium text-zinc-100" : "text-zinc-400")}>
+                        <td key={c.key} className={cn(dt.td, "max-w-[260px] truncate whitespace-nowrap text-[15px]", i === 0 ? "font-semibold text-zinc-100" : "text-zinc-200")}>
                           {displayValue(c, cellOf(c, e.current), t)}
                         </td>
                       ))}
@@ -818,11 +819,32 @@ export function EntryRegisterView({
                           <StatusChip field={c} value={e.current[c.key]} />
                         </td>
                       ))}
-                      <td className={cn(dt.tdMuted, "whitespace-nowrap")}>{e.recordedByName}</td>
+                      <td className={cn(dt.td, "whitespace-nowrap text-sm text-zinc-300")}>{e.recordedByName}</td>
+                      {statusNeeded && (
+                        <td className={dt.td}>
+                          <span className="flex flex-wrap items-center gap-1.5">
+                            {open && openChip}
+                            {ESTATE_BOOKS.includes(def.key) && <VerifyChip entry={e} />}
+                            {e.visit && <MeetingChip visit={e.visit} />}
+                            {insideOnly && <span className="text-xs font-semibold text-amber-600">{openFor(e.createdAt)}</span>}
+                            {!open && !ESTATE_BOOKS.includes(def.key) && !e.visit && !insideOnly && <span className="text-zinc-600">—</span>}
+                          </span>
+                        </td>
+                      )}
                       <td className={dt.tdActions}>
                         <RowActions>
                           {quickButton(e, "sm")}
-                          <IconAction label={t("View details")} icon={<Eye />} onClick={() => setSelected(e)} />
+                          {/* A clear "View" button (not a bare eye) */}
+                          <button
+                            type="button"
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              setSelected(e);
+                            }}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-orange-500/30 bg-orange-500/5 px-3.5 text-sm font-semibold text-orange-600 transition-colors hover:bg-orange-500/10"
+                          >
+                            <Eye className="h-4 w-4" aria-hidden="true" /> {t("View")}
+                          </button>
                         </RowActions>
                       </td>
                     </tr>
@@ -831,7 +853,8 @@ export function EntryRegisterView({
               </tbody>
             </table>
           </div>
-        )}
+          );
+        })()}
 
         {data && data.entries.length === 0 && (
           <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
@@ -1347,7 +1370,13 @@ function ValuesGrid({
   return (
     <div className="space-y-5">
       {/* Who, and the In / Out times: the summary, tinted */}
-      <div className="rounded-2xl border-[1.5px] border-orange-500/30 bg-orange-50 px-4 py-3.5 shadow-card">
+      <div
+        className={
+          securityView
+            ? "rounded-2xl border-[1.5px] border-orange-500/30 bg-orange-50 px-4 py-3.5 shadow-card"
+            : "glass-card rounded-2xl px-5 py-4"
+        }
+      >
         {(() => {
           const n = String(values.contractorName ?? "").trim().toLowerCase();
           const no = n ? sirosPeople?.people.find((p) => p.kind === "CONTRACTOR" && p.name.trim().toLowerCase() === n)?.no : undefined;
@@ -1408,11 +1437,26 @@ function ValuesGrid({
 
       {/* Details: only the filled ones; label left, value right */}
       <div className="space-y-3">
-        <p className="flex items-center gap-2 border-t-2 border-zinc-700 pt-4 text-lg font-bold text-zinc-100">
-          <FileText className="h-5 w-5 text-orange-500" aria-hidden="true" /> {t("Details")}
-        </p>
+        {securityView ? (
+          <p className="flex items-center gap-2 border-t-2 border-zinc-700 pt-4 text-lg font-bold text-zinc-100">
+            <FileText className="h-5 w-5 text-orange-500" aria-hidden="true" /> {t("Details")}
+          </p>
+        ) : (
+          <p className="flex items-center gap-2.5 pt-1 text-base font-semibold text-zinc-100">
+            <span className="icon-tile flex h-8 w-8 items-center justify-center rounded-xl">
+              <FileText className="h-4 w-4" aria-hidden="true" />
+            </span>
+            {t("Details")}
+          </p>
+        )}
       {filled.length > 0 && (
-        <dl className="divide-y divide-zinc-800 overflow-hidden rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900 shadow-card">
+        <dl
+          className={
+            securityView
+              ? "divide-y divide-zinc-800 overflow-hidden rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900 shadow-card"
+              : "divide-y divide-zinc-800/70 overflow-hidden rounded-2xl border border-zinc-800 bg-white shadow-[0_10px_24px_-20px_rgba(16,24,40,0.35)]"
+          }
+        >
           {filled.map((f, i) => (
             <div
               key={i}
@@ -1422,8 +1466,8 @@ function ValuesGrid({
                   : "grid grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)] items-baseline gap-3 px-4 py-3 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)]"
               }
             >
-              <dt className="text-base font-semibold text-zinc-300">{t(f.label)}</dt>
-              <dd className="min-w-0 break-words text-lg font-bold text-zinc-100">{f.value}</dd>
+              <dt className={securityView ? "text-base font-semibold text-zinc-300" : "text-sm font-medium text-zinc-500"}>{t(f.label)}</dt>
+              <dd className={cn("min-w-0 break-words text-zinc-100", securityView ? "text-lg font-bold" : "text-[15px] font-semibold")}>{f.value}</dd>
             </div>
           ))}
         </dl>

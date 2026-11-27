@@ -1821,4 +1821,6 @@ export const te: Record<string, string> = {
   // Security bottom tabs
   "Daily labours": "రోజువారీ కూలీలు",
   Siros: "సిరోస్",
+  "to verify": "వెరిఫై చేయాలి",
+  View: "చూడండి",
 };
