@@ -191,13 +191,19 @@ export function StatusBadge({
 // Stat Card (for dashboards)
 // ──────────────────────────────────────────────────────────────
 
+/** What a count means — sets its colour (red: needs action, amber: waiting, green: done…) */
+export type StatTone = "alert" | "waiting" | "done" | "rejected" | "exit" | "entry" | "people" | "info" | "neutral";
+
 interface StatCardProps {
   title: string;
   value: string | number;
   icon: React.ReactNode;
   trend?: string;
   trendUp?: boolean;
+  /** Kept for older callers: shown as a hover hint only (no grey line under the number) */
   description?: string;
+  /** Colour by meaning; when left out it is worked out from the title */
+  tone?: StatTone;
   className?: string;
 }
 
@@ -222,6 +228,34 @@ export function StatGroup({
   );
 }
 
+/** The colour a count gets from its title, when the caller does not say */
+function toneFromTitle(title: string): StatTone {
+  const x = title.toLowerCase();
+  if (/overdue|disabled/.test(x)) return "alert";
+  if (/reject|denied/.test(x)) return "rejected";
+  if (/pending|unused|waiting/.test(x)) return "waiting";
+  if (/approv|accepted|completed|handled|attendance/.test(x)) return "done";
+  if (/exit|out/.test(x)) return "exit";
+  if (/entr|inside|on campus|in/.test(x)) return "entry";
+  if (/student|faculty|visitor|hod|head|warden|staff|security|resident|hostel|enrolled|leader|account|scholar|studying|graduat/.test(x))
+    return x.includes("graduat") ? "info" : "people";
+  if (/request|register|course|movement|total|division|pass/.test(x)) return "info";
+  return "neutral";
+}
+
+/** Tone → icon tile, number, and the tinted look when it needs attention */
+const STAT_TONES: Record<StatTone, { tile: string; glow: string; number: string; attention?: string }> = {
+  alert: { tile: "bg-red-500/10 text-red-500", glow: "bg-red-400/30", number: "text-red-600", attention: "!border-red-500/40" },
+  waiting: { tile: "bg-amber-500/10 text-amber-600", glow: "bg-amber-400/30", number: "text-amber-600", attention: "!border-amber-500/40" },
+  done: { tile: "bg-emerald-500/10 text-emerald-600", glow: "bg-emerald-400/25", number: "text-zinc-100" },
+  rejected: { tile: "bg-rose-500/10 text-rose-500", glow: "bg-rose-400/25", number: "text-zinc-100" },
+  exit: { tile: "bg-orange-500/10 text-orange-500", glow: "bg-orange-400/25", number: "text-zinc-100" },
+  entry: { tile: "bg-teal-500/10 text-teal-600", glow: "bg-teal-400/25", number: "text-zinc-100" },
+  people: { tile: "bg-sky-500/10 text-sky-600", glow: "bg-sky-400/25", number: "text-zinc-100" },
+  info: { tile: "bg-violet-500/10 text-violet-600", glow: "bg-violet-400/25", number: "text-zinc-100" },
+  neutral: { tile: "bg-zinc-950 text-zinc-400", glow: "bg-zinc-400/15", number: "text-zinc-100" },
+};
+
 export function StatCard({
   title,
   value,
@@ -229,34 +263,54 @@ export function StatCard({
   trend,
   trendUp,
   description,
+  tone,
   className,
 }: StatCardProps) {
+  const kind = tone ?? toneFromTitle(title);
+  const look = STAT_TONES[kind];
+  const count = typeof value === "number" ? value : /^d[d,]*$/.test(String(value).trim()) ? Number(String(value).replace(/,/g, "")) : null;
+  // Zero: calm and faded. Needs action (e.g. Overdue above 0): the whole card is tinted.
+  const zero = count === 0;
+  const attention = !!look.attention && count !== null && count > 0;
   return (
     <div
+      title={description}
       className={cn(
-        "relative min-w-0 rounded-3xl border border-zinc-800/80 bg-zinc-900 p-4 sm:p-5 md:p-6 shadow-card flex flex-col justify-between gap-4 sm:gap-6",
+        "glass-card relative isolate min-w-0 overflow-hidden rounded-3xl p-4 sm:p-5 flex flex-col gap-4 sm:gap-5 transition-[border-color] duration-200",
+        attention && look.attention,
         className
       )}
     >
-      <div className="flex items-start justify-between gap-3 min-w-0">
-        <p className="text-sm sm:text-[15px] text-zinc-300 leading-snug truncate">{title}</p>
-        <div className="-mt-1 -mr-1 flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full border border-orange-500/15 bg-orange-500/10 text-orange-400 [&>svg]:h-4 [&>svg]:w-4 sm:[&>svg]:h-[18px] sm:[&>svg]:w-[18px]">
-          {icon}
-        </div>
-      </div>
+      {/* The card's own colour glowing softly through the frosted glass (stronger when it needs attention) */}
+      <span
+        className={cn("pointer-events-none absolute -right-10 -top-12 -z-10 h-36 w-36 rounded-full blur-2xl", look.glow, zero && "opacity-40", attention && "scale-125")}
+        aria-hidden="true"
+      />
+      <span
+        className={cn(
+          "flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-2xl transition-opacity [&>svg]:h-[18px] [&>svg]:w-[18px] sm:[&>svg]:h-5 sm:[&>svg]:w-5",
+          look.tile,
+          zero && "opacity-60"
+        )}
+        aria-hidden="true"
+      >
+        {icon}
+      </span>
       <div className="min-w-0">
-        <p className="text-3xl sm:text-4xl md:text-[44px] leading-none font-light tracking-tight text-zinc-100 truncate">
+        <p
+          className={cn(
+            "text-3xl sm:text-4xl md:text-[42px] leading-none font-light tracking-tight tabular-nums truncate",
+            zero ? "text-zinc-500" : attention ? look.number : "text-zinc-100"
+          )}
+        >
           {value}
         </p>
+        <p className="mt-2 text-sm sm:text-[15px] font-medium text-zinc-400 leading-snug truncate">{title}</p>
         {trend && (
-          <p className={cn("mt-2 text-xs font-medium truncate", trendUp ? "text-emerald-400" : "text-red-400")}>
+          <p className={cn("mt-1.5 text-xs font-semibold truncate", trendUp ? "text-emerald-600" : "text-red-500")}>
             {trendUp ? "+" : "−"} {trend}
           </p>
         )}
-        {/* The line is kept even when empty, so every card in a row has the same height */}
-        <p className="mt-2 text-xs text-zinc-500 truncate" aria-hidden={!description || undefined}>
-          {description || " "}
-        </p>
       </div>
     </div>
   );
