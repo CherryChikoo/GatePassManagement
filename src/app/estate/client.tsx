@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bell, CheckCircle2, ChevronRight, X } from "lucide-react";
+import { Bell, CheckCircle2, ChevronRight, Clock, X } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { REGISTER_ICON } from "@/components/registers/register-pages";
 import { slugForKey } from "@/lib/registers/custom";
@@ -104,9 +104,12 @@ export function EstateHome() {
                   <span className="block break-words text-base font-semibold leading-snug text-zinc-100">{t(def.title)}</span>
                   {data?.counts &&
                     (n ? (
-                      <span className="mt-3 flex items-baseline gap-2">
+                      <span className="mt-3 flex items-center gap-3">
                         <span className="text-4xl font-light leading-none tracking-tight tabular-nums text-orange-600">{n}</span>
-                        <span className="text-sm font-medium text-zinc-500">{t("to verify")}</span>
+                        {/* Clear, solid "to verify" tag */}
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-b from-[#ff7a5e] to-[#e0442a] px-3 py-1 text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_8px_16px_-10px_rgba(224,68,42,0.7)]">
+                          <Clock className="h-4 w-4" aria-hidden="true" /> {t("to verify")}
+                        </span>
                       </span>
                     ) : (
                       <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-700">
