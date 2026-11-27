@@ -24,6 +24,7 @@ import {
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
+import { GreetingHero, HeroTag } from "@/components/dashboard/greeting-hero";
 
 interface Props {
   user?: { name: string; email: string; role: string; profileId: string };
@@ -95,48 +96,24 @@ export function FacultyAdminDashboardClient({ user }: Props) {
     <>
       <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
         {/* Greeting + primary action */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-sm text-zinc-500">{todayLabel}</p>
-            <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
-              {firstName ? (
-                <>
-                  {greeting}, <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{firstName}</span>
-                </>
-              ) : (
-                <>
-                  HOD <span className="font-medium">Dashboard</span>
-                </>
-              )}
-            </h1>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-orange-500/10 px-2.5 py-0.5 text-[11px] font-medium text-orange-400">
-                Head of Department
-              </span>
-              {faculty.department && (
-                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-0.5 text-[11px] font-medium text-zinc-300">
-                  {getDepartmentCode(faculty.department)}
-                </span>
-              )}
-              <span className="text-sm text-zinc-500 min-w-0">
-                {faculty.department ? (
-                  <>
-                    <span className="text-zinc-300">{getDepartmentFullName(faculty.department)}</span>
-                    {" • Oversight of Faculty & Students"}
-                  </>
-                ) : (
-                  "All Departments • Oversight of Faculty & Students"
-                )}
-              </span>
-            </div>
-          </div>
-          <Link href="/faculty-admin/requests" className="shrink-0">
-            <Button className="w-full sm:w-auto">
-              <ClipboardCheck className="h-4 w-4" />
-              Review Requests
-            </Button>
-          </Link>
-        </div>
+        <GreetingHero
+          name={firstName}
+          chips={[
+            { value: stats.exitsToday, label: "exits" },
+            { value: stats.entriesToday, label: "entries" },
+          ]}
+          action={
+            <Link href="/faculty-admin/requests" className="shrink-0">
+              <Button>
+                <ClipboardCheck className="h-4 w-4" />
+                Review Requests
+              </Button>
+            </Link>
+          }
+        >
+          <HeroTag tone="coral">Head of Department</HeroTag>
+          {faculty.department && <HeroTag>{getDepartmentCode(faculty.department)}</HeroTag>}
+        </GreetingHero>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
           {/* Left: stats + requests */}

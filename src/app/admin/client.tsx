@@ -32,6 +32,7 @@ import {
   Home,
   Building2,
 } from "lucide-react";
+import { GreetingHero, HeroTag } from "@/components/dashboard/greeting-hero";
 
 interface Props {
   user: { name: string; email: string; role: string; profileId: string };
@@ -58,12 +59,14 @@ export function AdminDashboardClient({ user }: Props) {
     <>
       <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
         {/* Greeting */}
-        <div className="min-w-0">
-          <p className="text-sm text-zinc-500">{todayLabel}</p>
-          <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
-            {greeting}, <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{firstName}</span>
-          </h1>
-        </div>
+        <GreetingHero
+          name={firstName}
+          chips={[
+            { value: n(stats.studentsOut) + n(stats.facultyOut), label: "out" },
+            { value: n(stats.overdue), label: "overdue", attention: true },
+            { value: n(stats.pending), label: "pending", attention: true },
+          ]}
+        />
 
         {/* Right now: who is out, waiting or late */}
         <section className="space-y-3">

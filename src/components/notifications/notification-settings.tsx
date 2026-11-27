@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useT } from "@/components/providers/language-provider";
 import { usePush } from "@/lib/push/client";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 
 type Kind = "request" | "pass" | "scan" | "visitor" | "system";
 
@@ -27,31 +28,6 @@ const KINDS_FOR: Record<string, Kind[]> = {
   WARDEN: ["request", "system"],
   SECURITY: ["visitor", "system"],
 };
-
-/** A premium on / off switch */
-function Switch({ on, onChange, disabled, label }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean; label: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => onChange(!on)}
-      className={cn(
-        "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200 disabled:opacity-50",
-        on ? "bg-gradient-to-r from-[#ff634a] to-[#c2381f]" : "bg-zinc-800"
-      )}
-    >
-      <span
-        className={cn(
-          "absolute left-0.5 h-6 w-6 rounded-full bg-white shadow-[0_2px_6px_rgba(16,24,40,0.25)] transition-transform duration-200 ease-[cubic-bezier(0.22,0.61,0.36,1)]",
-          on && "translate-x-5"
-        )}
-      />
-    </button>
-  );
-}
 
 /**
  * Settings → Notifications: phone / desktop notifications on this device, a

@@ -26,6 +26,7 @@ import {
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
+import { GreetingHero, HeroTag } from "@/components/dashboard/greeting-hero";
 
 interface Props {
   user?: { name: string; email: string; role: string; profileId: string };
@@ -125,28 +126,22 @@ export function DeanDashboardClient({ user, title }: Props & { title?: string })
     <>
       <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
         {/* Greeting */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-sm text-zinc-500">{todayLabel}</p>
-            <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
-              {greeting}, <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{firstName}</span>
-            </h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              Faculty oversight, department coordination, and faculty pass authorizations
-            </p>
-          </div>
-          <Link href="/dean/requests" className="shrink-0">
-            <Button className="w-full sm:w-auto">
-              <ClipboardCheck className="h-4 w-4" />
-              Faculty Passes
-              {stats.pendingFacultyPasses > 0 && (
-                <span className="ml-0.5 rounded-full bg-white/20 px-2 py-0.5 text-xs font-semibold">
-                  {stats.pendingFacultyPasses}
-                </span>
-              )}
-            </Button>
-          </Link>
-        </div>
+        <GreetingHero
+          name={firstName}
+          chips={[
+            { value: stats.pendingFacultyPasses, label: "pending", attention: true },
+            { value: stats.exitsToday, label: "exits" },
+            { value: stats.entriesToday, label: "entries" },
+          ]}
+          action={
+            <Link href="/dean/requests" className="shrink-0">
+              <Button>
+                <ClipboardCheck className="h-4 w-4" />
+                Faculty Passes
+              </Button>
+            </Link>
+          }
+        />
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
           {/* Left: stats + recent passes */}

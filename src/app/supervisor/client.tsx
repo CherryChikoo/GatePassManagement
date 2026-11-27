@@ -20,6 +20,7 @@ import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
 import { useAppStore } from "@/stores/app-store";
 import { RequestCard } from "./request-card";
+import { GreetingHero, HeroTag } from "@/components/dashboard/greeting-hero";
 
 export function SupervisorDashboardClient({ user }: { user: { name: string } }) {
   const isReady = useStoreReady();
@@ -45,18 +46,16 @@ export function SupervisorDashboardClient({ user }: { user: { name: string } }) 
   return (
     <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
       {/* Greeting */}
-      <div className="min-w-0">
-        <p className="text-sm text-zinc-500">{todayLabel}</p>
-        <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
-          {greeting}, <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{firstName}</span>
-        </h1>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-zinc-500">
-          <span className="font-medium text-zinc-300">Security Supervisor</span>
-        </div>
-        <p className="mt-1 text-sm text-zinc-500">
-          Campus-wide overview of student and faculty passes. Approvals are handled by HODs, wardens and the Dean.
-        </p>
-      </div>
+      <GreetingHero
+        name={firstName}
+        chips={[
+          { value: s.requestsToday, label: "requests" },
+          { value: s.pendingStudent + s.pendingFaculty, label: "pending", attention: true },
+          { value: s.exitsToday, label: "exits" },
+        ]}
+      >
+        <HeroTag tone="coral">Security Supervisor</HeroTag>
+      </GreetingHero>
 
       <div className="space-y-6">
         <StatGroup title="Pass requests today" gridClassName="lg:grid-cols-5">

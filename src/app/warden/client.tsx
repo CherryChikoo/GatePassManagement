@@ -24,6 +24,7 @@ import { gateMarkText } from "@/lib/pass-dates";
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
+import { GreetingHero, HeroTag } from "@/components/dashboard/greeting-hero";
 
 interface Props {
   user: { name: string; email: string; role: string; profileId: string };
@@ -66,12 +67,13 @@ export function WardenDashboardClient({ user }: Props) {
     <>
       <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
         {/* Greeting */}
-        <div className="min-w-0">
-          <p className="text-sm text-zinc-500">{todayLabel}</p>
-          <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
-            {greeting}, <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{firstName}</span>
-          </h1>
-        </div>
+        <GreetingHero
+          name={firstName}
+          chips={[
+            { value: stats.exitsToday, label: "exits" },
+            { value: stats.entriesToday, label: "entries" },
+          ]}
+        />
 
         {/* One tap to the camera: wardens mostly open the portal to scan */}
         <Link

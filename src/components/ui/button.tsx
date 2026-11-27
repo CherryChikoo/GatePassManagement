@@ -33,12 +33,14 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variants: Record<string, string> = {
       // Brand coral pill (deep coral keeps white text readable)
+      // Coral glass: gradient body, a light top edge (inner highlight), a soft coral glow
       default:
-        "bg-orange-600 text-white hover:bg-orange-700 focus-visible:ring-orange-500 shadow-[0_6px_16px_-8px_rgba(207,62,37,0.55)]",
+        "bg-gradient-to-b from-[#ff7a5e] to-[#e0442a] text-white ring-1 ring-inset ring-white/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_22px_-12px_rgba(207,62,37,0.75)] hover:brightness-[1.06] focus-visible:ring-orange-500",
       destructive:
         "bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500",
+      // Glass outline: frosted white with a coral edge and coral text
       outline:
-        "border border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-950 hover:border-zinc-700 focus-visible:ring-zinc-600",
+        "border border-orange-500/25 bg-white/70 text-orange-600 shadow-[inset_0_1px_0_#ffffff,0_6px_16px_-12px_rgba(207,62,37,0.45)] hover:border-orange-500/45 hover:bg-orange-500/[0.06] focus-visible:ring-orange-500",
       secondary:
         "bg-zinc-950 text-zinc-200 hover:bg-zinc-800 focus-visible:ring-zinc-600",
       ghost:

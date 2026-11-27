@@ -329,7 +329,8 @@ export function DashboardLayout({
             })}
           </nav>
 
-          {/* Collapse toggle (desktop) + sign out */}
+          {/* Collapse toggle (desktop) + sign out: set apart from the pages by a hairline */}
+          <div className="mx-3 mb-1 mt-2 h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent" aria-hidden="true" />
           <div className="px-3 pb-4 pt-2 space-y-1">
             <Tooltip label={desktopCollapsed ? t("Expand sidebar") : t("Collapse sidebar")} side="right" disabled={!desktopCollapsed} className="hidden lg:block">
             <button

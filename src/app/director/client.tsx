@@ -28,6 +28,7 @@ import {
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
+import { GreetingHero, HeroTag } from "@/components/dashboard/greeting-hero";
 
 interface Props {
   user?: { name: string; email: string; role: string; profileId: string };
@@ -132,23 +133,22 @@ export function DirectorDashboardClient({ user, title }: Props & { title?: strin
     <>
       <div className="mx-auto max-w-7xl space-y-6 lg:space-y-8">
         {/* Greeting */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-sm text-zinc-500">{todayLabel}</p>
-            <h1 className="mt-1 text-3xl sm:text-4xl font-light tracking-tight text-zinc-100 truncate">
-              {greeting}, <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{firstName}</span>
-            </h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              Full campus oversight across faculty, staff, students, wardens & security infrastructure
-            </p>
-          </div>
-          <Link href="/director/activity" className="shrink-0">
-            <Button className="w-full sm:w-auto">
-              <History className="h-4 w-4" />
-              View Activity
-            </Button>
-          </Link>
-        </div>
+        <GreetingHero
+          name={firstName}
+          chips={[
+            { value: stats.pendingFacultyPasses, label: "pending", attention: true },
+            { value: stats.exitsToday, label: "exits" },
+            { value: stats.entriesToday, label: "entries" },
+          ]}
+          action={
+            <Link href="/director/activity" className="shrink-0">
+              <Button>
+                <History className="h-4 w-4" />
+                View Activity
+              </Button>
+            </Link>
+          }
+        />
 
         {/* Stats */}
         <div className="space-y-6">
