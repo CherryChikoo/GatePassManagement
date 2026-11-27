@@ -935,7 +935,7 @@ function PermissionFormView({
             <input type="hidden" name="type" value={requestType} />
             {/* Purpose */}
             <div className="space-y-2">
-              <label htmlFor="purpose" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+              <label htmlFor="purpose" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
                 <FileText className="h-4 w-4 text-orange-500" />
                 {requestType === "ENTRY" ? "Purpose of Campus Entry" : requestType === "HOSTEL" ? "Purpose of Going to Hostel" : "Purpose of Exit"} <span className="text-orange-400">*</span>
               </label>
@@ -953,7 +953,7 @@ function PermissionFormView({
             {/* Destination / Coming From (a hostel pass always goes to the hostel) */}
             {requestType !== "HOSTEL" && (
             <div className="space-y-2">
-              <label htmlFor="destination" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+              <label htmlFor="destination" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-orange-500" />
                 {requestType === "ENTRY" ? "Origin / Coming From Location" : "Destination / Location"} <span className="text-orange-400">*</span>
               </label>
@@ -989,7 +989,7 @@ function PermissionFormView({
             /* Timings Grid */
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
               <div className="space-y-2">
-                <label htmlFor="exitDate" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                <label htmlFor="exitDate" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-orange-500" />
                   {requestType === "ENTRY" ? "Entry Date" : "Exit Date"} <span className="text-orange-400">*</span>
                 </label>
@@ -997,7 +997,7 @@ function PermissionFormView({
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="expectedExit" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                <label htmlFor="expectedExit" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
                   <Clock className="h-4 w-4 text-orange-500" />
                   {requestType === "ENTRY" ? "Expected Entry Time" : "Expected Exit Time"} <span className="text-orange-400">*</span>
                 </label>
@@ -1009,7 +1009,7 @@ function PermissionFormView({
 
             {/* Contact Number */}
             <div className="space-y-2">
-              <label htmlFor="contactNumber" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+              <label htmlFor="contactNumber" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
                 <Phone className="h-4 w-4 text-orange-500" />
                 Emergency Contact Number
               </label>

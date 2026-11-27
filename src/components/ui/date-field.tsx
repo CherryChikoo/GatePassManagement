@@ -88,7 +88,7 @@ export function DateField({
         aria-expanded={open}
         onClick={() => !readOnly && setOpen((o) => !o)}
         className={cn(
-          "inline-flex h-12 sm:h-10 min-w-0 items-center justify-between gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-left text-base sm:text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-700 focus-visible:border-orange-500/50 focus-visible:ring-4 focus-visible:ring-orange-500/10 disabled:opacity-40",
+          "field-box inline-flex h-12 sm:h-10 min-w-0 items-center justify-between gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-left text-base sm:text-sm text-zinc-100 outline-none transition-colors hover:border-zinc-700 focus-visible:border-orange-500/50 focus-visible:ring-4 focus-visible:ring-orange-500/10 disabled:opacity-40",
           className,
           // Always date + icon on one line, even if the page passes "block" (from old date inputs)
           /\bw-full\b/.test(className ?? "") ? "flex" : "inline-flex",

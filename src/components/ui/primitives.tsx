@@ -100,7 +100,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
         <textarea
           id={textareaId}
           className={cn(
-            "flex min-h-[80px] w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-3.5 py-2.5 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 transition-all duration-200",
+            "field-box flex min-h-[80px] w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-3.5 py-2.5 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500",
             "focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500/50",
             "hover:border-zinc-700",
             "disabled:cursor-not-allowed disabled:opacity-50",

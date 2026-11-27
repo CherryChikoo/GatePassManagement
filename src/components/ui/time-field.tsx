@@ -22,7 +22,7 @@ function fromParts(h: string, m: string, ap: string): string {
 }
 
 const BOX =
-  "h-11 min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 text-sm font-semibold text-zinc-100 tabular-nums [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500";
+  "field-box h-11 min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 text-sm font-semibold text-zinc-100 tabular-nums [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500";
 
 /**
  * Time in 12-hour form (hour, minute, AM / PM) — the phone's own time picker

@@ -302,7 +302,7 @@ export function ThemedSelect({
         onClick={() => (open ? close() : openList())}
         onKeyDown={onKey}
         className={cn(
-          "flex h-11 w-full items-center justify-between gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-3.5 text-left text-base sm:text-sm text-zinc-100 transition-colors hover:border-zinc-700 focus:outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500/50 disabled:cursor-not-allowed disabled:opacity-50",
+          "field-box flex h-11 w-full items-center justify-between gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-3.5 text-left text-base sm:text-sm text-zinc-100 transition-colors hover:border-zinc-700 focus:outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500/50 disabled:cursor-not-allowed disabled:opacity-50",
           className,
           open && "border-orange-500/50 ring-4 ring-orange-500/10"
         )}
