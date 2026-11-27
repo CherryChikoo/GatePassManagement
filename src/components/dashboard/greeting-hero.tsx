@@ -47,7 +47,7 @@ export function GreetingHero({
           {greeting}
           {name ? (
             <>
-              , <span className="font-semibold text-orange-600">{name}</span>
+              , <span className="text-metal-red font-semibold">{name}</span>
             </>
           ) : null}
         </h1>

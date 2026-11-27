@@ -335,6 +335,15 @@ html.security-text .glass:not(.loading-pill) {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 18px -10px rgba(232, 73, 46, 0.55);
 }
 
+/* Metallic orange-red text (the greeting name): the brand red with a bright band through the middle */
+.text-metal-red {
+  background-image: linear-gradient(180deg, #ff7a66 0%, #e23d27 38%, #ff8a72 55%, #c4301b 78%, #a82816 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #c4301b;
+}
+
 /* Metallic form labels: a dark steel gradient with a light band through the middle */
 .form-metal .field-label {
   background-image: linear-gradient(180deg, #5b5d66 0%, #26272d 42%, #6e707a 58%, #1f2025 100%);
