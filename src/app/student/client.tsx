@@ -61,7 +61,11 @@ import {
   Hourglass,
   Sparkles,
   X,
-  Home, PencilLine } from "lucide-react";
+  Home, PencilLine,
+  ClipboardList,
+  CalendarDays,
+  MessageSquare,
+} from "lucide-react";
 import { useAppStore, logoutAndClear } from "@/stores/app-store";
 import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
@@ -266,16 +270,9 @@ function RejectedView({ permission, onDone }: { permission: any; onDone: () => v
               {permission.rejectionReason || "No reason was provided."}
             </p>
           </div>
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-4 rounded-2xl bg-zinc-950 min-w-0">
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">Purpose</dt>
-              <dd className="text-sm font-medium text-zinc-200 break-words">{permission.purpose}</dd>
-            </div>
-            <div className="p-4 rounded-2xl bg-zinc-950 min-w-0">
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">{permission.type === "ENTRY" ? "Coming From" : "Destination"}</dt>
-              <dd className="text-sm font-medium text-zinc-200 break-words">{permission.destination || "—"}</dd>
-            </div>
-          </dl>
+          <div className="form-metal">
+            <SummaryRow icon={FileText} label="Purpose">{permission.purpose}</SummaryRow>
+          </div>
           <Button type="button" onClick={onDone} className="w-full h-12">
             Submit a new request
           </Button>
@@ -480,14 +477,6 @@ function QrCodeView({
                 {permission.purpose}
               </dd>
             </div>
-            {permission.destination && (
-              <div className="flex items-center justify-between gap-3 px-4 py-3 min-w-0">
-                <dt className="text-xs text-zinc-500 shrink-0">Destination</dt>
-                <dd className="text-sm font-medium text-zinc-100 truncate min-w-0 text-right">
-                  {permission.destination}
-                </dd>
-              </div>
-            )}
             <div className="flex items-center justify-between gap-3 px-4 py-3 min-w-0">
               <dt className="text-xs text-zinc-500 shrink-0">Valid Until</dt>
               <dd className="text-sm font-medium text-amber-400 truncate min-w-0 text-right">
@@ -619,64 +608,59 @@ function PendingApprovalView({
         </div>
       )}
 
-      {/* Details Card */}
+      {/* Request summary: the same look as the request form (white boxes, red icon tiles, metallic labels) */}
       <Card>
-        <CardContent className="p-5 sm:p-6 space-y-4">
-          <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-            Request summary
-          </h2>
+        <CardContent className="form-metal space-y-3 p-4 sm:p-6">
+          <div className="mb-1 flex items-center gap-3">
+            <span className="icon-tile flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+              <ClipboardList className="h-4 w-4" />
+            </span>
+            <h2 className="text-base font-semibold text-zinc-100">Request summary</h2>
+          </div>
 
-          <dl className="grid grid-cols-2 gap-3">
-            <div className="col-span-2 sm:col-span-1 p-4 rounded-2xl bg-zinc-950 min-w-0">
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">Purpose</dt>
-              <dd className="text-sm font-medium text-zinc-200 break-words">
-                {permission.purpose}
-              </dd>
-            </div>
-            <div className="col-span-2 sm:col-span-1 p-4 rounded-2xl bg-zinc-950 min-w-0">
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">{permission.type === "ENTRY" ? "Coming From" : "Destination"}</dt>
-              <dd className="text-sm font-medium text-zinc-200 break-words">
-                {permission.destination || "Not specified"}
-              </dd>
-            </div>
-            <div className="p-4 rounded-2xl bg-zinc-950 min-w-0">
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">Date</dt>
-              <dd className="text-sm font-medium text-zinc-200">
-                {permission.exitDate ? formatDateTime(permission.exitDate).split(",")[0] : "Today"}
-              </dd>
-            </div>
-            <div className="p-4 rounded-2xl bg-zinc-950 min-w-0">
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">{permission.type === "ENTRY" ? "Expected Entry Time" : "Expected Exit Time"}</dt>
-              <dd className="text-sm font-medium text-zinc-200">
-                {permission.expectedExit ? formatDateTime(permission.expectedExit).split(", ")[1] : "--:--"}
-              </dd>
-            </div>
-          </dl>
-
+          <SummaryRow icon={FileText} label="Purpose">{permission.purpose}</SummaryRow>
+          <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
+            <SummaryRow icon={CalendarDays} label="Date">
+              {permission.exitDate ? formatDateTime(permission.exitDate).split(",")[0] : "Today"}
+            </SummaryRow>
+            <SummaryRow icon={Clock} label={permission.type === "ENTRY" ? "Coming in at" : "Leaving at"}>
+              {permission.expectedExit ? formatDateTime(permission.expectedExit).split(", ")[1]?.toUpperCase() : "--:--"}
+            </SummaryRow>
+          </div>
           {permission.remarks && (
-            <div className="p-4 rounded-2xl bg-zinc-950">
-              <p className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1">Remarks</p>
-              <p className="text-sm text-zinc-300 break-words">{permission.remarks}</p>
-            </div>
+            <SummaryRow icon={MessageSquare} label="Remarks">{permission.remarks}</SummaryRow>
           )}
 
-          {/* Cancel button */}
-          <div className="pt-1">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={cancelling}
-              onClick={() => setShowCancelDialog(true)}
-              className="w-full h-11 text-zinc-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10"
-            >
-              <XCircle className="h-4 w-4" />
-              {cancelling ? "Cancelling..." : "Cancel This Request"}
-            </Button>
-          </div>
+          {/* Cancel */}
+          <Button
+            type="button"
+            variant="outline"
+            disabled={cancelling}
+            onClick={() => setShowCancelDialog(true)}
+            className="mt-2 h-12 w-full rounded-2xl border-red-500/25! bg-red-500/5! text-red-500! hover:bg-red-500/10!"
+          >
+            <XCircle className="h-4 w-4" />
+            {cancelling ? "Cancelling…" : "Cancel request"}
+          </Button>
         </CardContent>
       </Card>
       </div>
     </>
+  );
+}
+
+/** One detail of the request summary: red icon tile, metallic label, the value in bold */
+function SummaryRow({ icon: Icon, label, children }: { icon: React.ComponentType<{ className?: string }>; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-zinc-800 bg-white px-4 py-3 shadow-[inset_0_1px_0_#ffffff,0_8px_20px_-18px_rgba(16,24,40,0.35)]">
+      <span className="icon-chip shrink-0">
+        <Icon />
+      </span>
+      <div className="min-w-0">
+        <p className="field-label text-xs!">{label}</p>
+        <p className="break-words text-base font-semibold leading-snug text-zinc-100">{children}</p>
+      </div>
+    </div>
   );
 }
 
