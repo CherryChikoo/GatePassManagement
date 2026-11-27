@@ -335,9 +335,9 @@ html.security-text .glass:not(.loading-pill) {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 18px -10px rgba(232, 73, 46, 0.55);
 }
 
-/* Metallic orange-red text (the greeting name): the brand red with a bright band through the middle */
+/* Orange-red text (the greeting name): the same gradient as the icon tiles, left to right */
 .text-metal-red {
-  background-image: linear-gradient(180deg, #ff7a66 0%, #e23d27 38%, #ff8a72 55%, #c4301b 78%, #a82816 100%);
+  background-image: linear-gradient(100deg, #ff7a66 0%, #f4503c 45%, #d6331f 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
