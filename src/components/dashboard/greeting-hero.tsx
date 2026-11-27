@@ -87,3 +87,21 @@ export function HeroTag({ children, tone = "plain" }: { children: React.ReactNod
     </span>
   );
 }
+
+/** Role badge under the greeting, in the date pill's style: icon tile · title | detail */
+export function HeroBadge({ icon: Icon, title, detail }: { icon: LucideIcon; title: string; detail?: string | null }) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-2.5 rounded-full border border-zinc-800/80 bg-white/85 py-1 pl-1 pr-4 shadow-[inset_0_1px_0_#ffffff,0_6px_16px_-12px_rgba(16,24,40,0.3)]">
+      <span className="icon-tile flex h-7 w-7 shrink-0 items-center justify-center rounded-full">
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
+      <span className="truncate text-sm font-semibold text-zinc-100">{title}</span>
+      {detail && (
+        <>
+          <span className="h-4 w-px shrink-0 bg-zinc-800" aria-hidden="true" />
+          <span className="truncate text-sm font-medium text-zinc-500">{detail}</span>
+        </>
+      )}
+    </span>
+  );
+}

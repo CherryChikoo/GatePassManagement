@@ -20,11 +20,12 @@ import {
   LogIn,
   LogOut,
   Clock,
+  Building2,
 } from "lucide-react";
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
-import { GreetingHero, HeroTag } from "@/components/dashboard/greeting-hero";
+import { GreetingHero, HeroBadge } from "@/components/dashboard/greeting-hero";
 
 interface Props {
   user?: { name: string; email: string; role: string; profileId: string };
@@ -103,8 +104,7 @@ export function FacultyAdminDashboardClient({ user }: Props) {
             { href: "/faculty-admin/requests", label: "Review Requests", icon: ClipboardCheck, primary: true },
           ]}
         >
-          <HeroTag tone="coral">Head of Department</HeroTag>
-          {faculty.department && <HeroTag>{getDepartmentCode(faculty.department)}</HeroTag>}
+          <HeroBadge icon={Building2} title="Head of Department" detail={faculty.department ? getDepartmentCode(faculty.department) : null} />
         </GreetingHero>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">

@@ -13,6 +13,7 @@ import {
   LogIn,
   Users,
   XCircle,
+  ShieldCheck,
 } from "lucide-react";
 import { StatGroup, StatCard, EmptyState } from "@/components/ui/primitives";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +21,7 @@ import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
 import { useAppStore } from "@/stores/app-store";
 import { RequestCard } from "./request-card";
-import { GreetingHero, HeroTag } from "@/components/dashboard/greeting-hero";
+import { GreetingHero, HeroBadge } from "@/components/dashboard/greeting-hero";
 
 export function SupervisorDashboardClient({ user }: { user: { name: string } }) {
   const isReady = useStoreReady();
@@ -53,7 +54,7 @@ export function SupervisorDashboardClient({ user }: { user: { name: string } }) 
           { href: "/supervisor/requests", label: "Requests", icon: ClipboardCheck, primary: true },
         ]}
       >
-        <HeroTag tone="coral">Security Supervisor</HeroTag>
+        <HeroBadge icon={ShieldCheck} title="Security Supervisor" />
       </GreetingHero>
 
       <div className="space-y-6">
