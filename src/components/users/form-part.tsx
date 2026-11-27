@@ -13,20 +13,19 @@ import { Eye, EyeOff } from "lucide-react";
  * joined to the next step by a thin line, with the step's title and fields to
  * its right — no box inside the form's own card.
  */
-export function Part({ no, title, hint, children, oneColumn = false }: { no: number; title: string; hint: string; children: React.ReactNode; oneColumn?: boolean }) {
+export function Part({ no, title, children, oneColumn = false }: { no: number; title: string; hint?: string; children: React.ReactNode; oneColumn?: boolean }) {
   return (
-    <section className="group/step relative pb-7 pl-12 last:pb-0 sm:pl-14">
-      {/* The line down to the next step (not after the last one) */}
+    <section className="group/step relative pb-7 last:pb-0">
+      {/* The line down to the next step: wider screens only, never after the last */}
       <span
-        className="absolute bottom-0 left-4 top-10 w-px bg-gradient-to-b from-orange-500/45 via-orange-500/20 to-orange-500/5 group-last/step:hidden"
+        className="absolute bottom-0 left-4 top-11 hidden w-px bg-gradient-to-b from-orange-500/40 via-orange-500/15 to-transparent group-last/step:hidden sm:block"
         aria-hidden="true"
       />
-      <span className="icon-tile absolute left-0 top-0 flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold">{no}</span>
-      <div className="mb-4 flex min-h-8 flex-col justify-center">
+      <div className="mb-4 flex items-center gap-3">
+        <span className="icon-tile flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold">{no}</span>
         <h3 className="text-base font-semibold leading-tight text-zinc-100">{title}</h3>
-        {hint && <p className="text-xs text-zinc-500">{hint}</p>}
       </div>
-      <div className={oneColumn ? "space-y-5" : "grid grid-cols-1 gap-4 sm:grid-cols-2"}>{children}</div>
+      <div className={oneColumn ? "space-y-5 sm:pl-11" : "grid grid-cols-1 gap-4 sm:grid-cols-2 sm:pl-11"}>{children}</div>
     </section>
   );
 }
