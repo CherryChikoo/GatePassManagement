@@ -30,21 +30,24 @@ export function GreetingHero({
   return (
     <section className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
       <div className="min-w-0">
-        {/* Date pill and the role badge, side by side on one line */}
-        <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center gap-2 rounded-full border border-zinc-800/80 bg-white/80 py-1 pl-1 pr-3.5 text-sm font-medium text-zinc-500 shadow-[inset_0_1px_0_#ffffff,0_6px_16px_-12px_rgba(16,24,40,0.3)]">
-          <span className="icon-tile flex h-7 w-7 items-center justify-center rounded-full">
-            <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        {/* One quiet line: the day, then the role (coral icons, no pill boxes) */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm font-medium text-zinc-500">
+          <span className="inline-flex items-center gap-2">
+            <Icon className="h-4 w-4 text-orange-500" aria-hidden="true" />
+            {day}
           </span>
-          {day}
-        </span>
-        {children}
+          {children && (
+            <>
+              <span className="h-1 w-1 shrink-0 rounded-full bg-zinc-600" aria-hidden="true" />
+              {children}
+            </>
+          )}
         </div>
-        <h1 className="mt-3 truncate text-3xl font-light leading-tight tracking-tight text-zinc-100 sm:text-[44px]">
+        <h1 className="mt-2.5 truncate text-3xl font-light leading-tight tracking-tight text-zinc-100 sm:text-[40px]">
           {greeting}
           {name ? (
             <>
-              , <span className="font-medium bg-gradient-to-r from-[#f2492f] to-[#b82c18] bg-clip-text text-transparent">{name}</span>
+              , <span className="font-semibold text-orange-600">{name}</span>
             </>
           ) : null}
         </h1>
@@ -90,20 +93,15 @@ export function HeroTag({ children, tone = "plain" }: { children: React.ReactNod
   );
 }
 
-/** Role badge under the greeting, in the date pill's style: icon tile · title | detail */
+/** The role on the greeting's info line: coral icon, title, detail ("Head of Department, CSE") */
 export function HeroBadge({ icon: Icon, title, detail }: { icon: LucideIcon; title: string; detail?: string | null }) {
   return (
-    <span className="inline-flex max-w-full items-center gap-2.5 rounded-full border border-zinc-800/80 bg-white/85 py-1 pl-1 pr-4 shadow-[inset_0_1px_0_#ffffff,0_6px_16px_-12px_rgba(16,24,40,0.3)]">
-      <span className="icon-tile flex h-7 w-7 shrink-0 items-center justify-center rounded-full">
-        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+    <span className="inline-flex min-w-0 max-w-full items-center gap-2">
+      <Icon className="h-4 w-4 shrink-0 text-orange-500" aria-hidden="true" />
+      <span className="truncate text-sm">
+        <span className="font-semibold text-zinc-300">{title}</span>
+        {detail && <span className="font-medium text-zinc-500">, {detail}</span>}
       </span>
-      <span className="truncate text-sm font-semibold text-zinc-100">{title}</span>
-      {detail && (
-        <>
-          <span className="h-4 w-px shrink-0 bg-zinc-800" aria-hidden="true" />
-          <span className="truncate text-sm font-medium text-zinc-500">{detail}</span>
-        </>
-      )}
     </span>
   );
 }
