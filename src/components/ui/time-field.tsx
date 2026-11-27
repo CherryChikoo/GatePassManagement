@@ -34,12 +34,15 @@ export function Time12Input({
   onChange,
   required,
   className = "",
+  min,
 }: {
   id?: string;
   value: string;
   onChange: (v: string) => void;
   required?: boolean;
   className?: string;
+  /** Earliest time allowed ("HH:mm", 24-hour): earlier hours / minutes / AM can't be picked */
+  min?: string;
 }) {
   // Parts kept while only some are chosen (the value is "" until all three are)
   const [parts, setParts] = useState(() => toParts(value));
@@ -52,7 +55,11 @@ export function Time12Input({
     const next = { ...parts, ...p };
     // Picking an hour first: the rest gets a sensible start
     if (p.h && !next.m) next.m = "00";
-    if (p.h && !next.ap) next.ap = "AM";
+    if (p.h && !next.ap) next.ap = min && min >= "12:00" ? "PM" : "AM";
+    if (min && next.h && next.m && next.ap && fromParts(next.h, next.m, next.ap) < min) {
+      const ok = MINUTES.find((m) => fromParts(next.h, m, next.ap) >= min);
+      if (ok) next.m = ok;
+    }
     setParts(next);
     const v = fromParts(next.h, next.m, next.ap);
     setSeen(v);
@@ -61,12 +68,20 @@ export function Time12Input({
   // A saved minute not on the 5-minute list (e.g. 10:57) stays choosable
   const minutes = parts.m && !MINUTES.includes(parts.m) ? [...MINUTES, parts.m].sort() : MINUTES;
   const cls = `${BOX} ${className}`;
+  // Past times (before min) are greyed out and can't be picked
+  const before = (v: string) => !!min && !!v && v < min;
+  const hourPast = (h: string) => {
+    const ap = parts.ap || "AM";
+    return before(fromParts(h, "55", ap));
+  };
+  const minutePast = (m: string) => !!parts.h && !!parts.ap && before(fromParts(parts.h, m, parts.ap));
+  const amPast = !!min && min >= "12:00";
   return (
     <div className="flex items-center gap-2">
       <select id={id} aria-label="Hour" required={required} value={parts.h} onChange={(e) => set({ h: e.target.value })} className={cls}>
         {!required || !parts.h ? <option value="">--</option> : null}
         {HOURS.map((h) => (
-          <option key={h} value={h}>
+          <option key={h} value={h} disabled={hourPast(h)}>
             {h}
           </option>
         ))}
@@ -77,14 +92,14 @@ export function Time12Input({
       <select aria-label="Minute" required={required} value={parts.m} onChange={(e) => set({ m: e.target.value })} className={cls}>
         {!required || !parts.m ? <option value="">--</option> : null}
         {minutes.map((m) => (
-          <option key={m} value={m}>
+          <option key={m} value={m} disabled={minutePast(m)}>
             {m}
           </option>
         ))}
       </select>
       <select aria-label="AM or PM" required={required} value={parts.ap} onChange={(e) => set({ ap: e.target.value as "AM" | "PM" })} className={cls}>
         {!required || !parts.ap ? <option value="">--</option> : null}
-        <option value="AM">AM</option>
+        <option value="AM" disabled={amPast}>AM</option>
         <option value="PM">PM</option>
       </select>
     </div>
@@ -102,6 +117,7 @@ export function TimeField({
   required,
   defaultToNow = false,
   className = "",
+  notPast = false,
 }: {
   name: string;
   id?: string;
@@ -109,8 +125,23 @@ export function TimeField({
   /** Pre-fill with the next quarter hour (IST). Set after mount to avoid hydration mismatch. */
   defaultToNow?: boolean;
   className?: string;
+  /** For today: times already gone can't be picked */
+  notPast?: boolean;
 }) {
   const [value, setValue] = useState("");
+  const [min, setMin] = useState<string | undefined>(undefined);
+  // The earliest time: now, down to the 5 minutes (IST), kept fresh each minute
+  useEffect(() => {
+    if (!notPast) return;
+    const tick = () => {
+      const ist = new Date(Date.now() + 330 * 60_000);
+      const mins = Math.floor((ist.getUTCHours() * 60 + ist.getUTCMinutes()) / 5) * 5;
+      setMin(`${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`);
+    };
+    tick();
+    const id = setInterval(tick, 60_000);
+    return () => clearInterval(id);
+  }, [notPast]);
 
   useEffect(() => {
     if (defaultToNow) setValue(nextIstTime(15));
@@ -118,7 +149,7 @@ export function TimeField({
 
   return (
     <>
-      <Time12Input id={id ?? name} value={value} onChange={setValue} required={required} className={className} />
+      <Time12Input id={id ?? name} value={value} onChange={setValue} required={required} className={className} min={min} />
       <input type="hidden" name={name} value={value} />
     </>
   );

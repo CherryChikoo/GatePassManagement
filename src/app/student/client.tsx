@@ -61,12 +61,12 @@ import {
   Hourglass,
   Sparkles,
   X,
-  Home,
-} from "lucide-react";
+  Home, PencilLine } from "lucide-react";
 import { useAppStore, logoutAndClear } from "@/stores/app-store";
 import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
+import { FormGroup, FormRow, RowInput, RowTextarea } from "@/components/student/grouped-form";
 
 interface Props {
   user: { name: string; email: string; role: string; profileId: string };
@@ -928,53 +928,40 @@ function PermissionFormView({
         </div>
       )}
 
-      {/* Form Card */}
-      <Card>
-        <CardContent className="p-5 sm:p-6 md:p-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <input type="hidden" name="type" value={requestType} />
-            {/* Purpose */}
-            <div className="space-y-2">
-              <label htmlFor="purpose" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                {requestType === "ENTRY" ? "Purpose of Campus Entry" : requestType === "HOSTEL" ? "Purpose of Going to Hostel" : "Purpose of Exit"} <span className="text-orange-400">*</span>
-              </label>
+      {/* Request form: a grouped list (like phone Settings) */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <input type="hidden" name="type" value={requestType} />
 
-              <Input
-                id="purpose"
-                name="purpose"
-                icon={<FileText className="h-4 w-4 text-orange-500" />}
-                required
-                error={fieldErrors.purpose}
-                className="text-base sm:text-sm"
-              />
-            </div>
+        <FormGroup title={requestType === "HOSTEL" ? "Hostel pass" : "Trip"}>
+          <FormRow icon={FileText} label={requestType === "ENTRY" ? "Why are you coming in" : "Purpose"} htmlFor="purpose" required error={fieldErrors.purpose}>
+            <RowInput id="purpose" name="purpose" required />
+          </FormRow>
+          {requestType !== "HOSTEL" && (
+            <FormRow icon={MapPin} label={requestType === "ENTRY" ? "Coming from" : "Destination"} htmlFor="destination" required error={fieldErrors.destination}>
+              <RowInput id="destination" name="destination" required />
+            </FormRow>
+          )}
+          {(() => {
+            const approver = requestType === "HOSTEL" ? hostelPassApprover ?? undefined : assignedApprover;
+            if (!approver || !approver.available) return null;
+            const comingIn = requestType === "ENTRY" && !isHosteller;
+            return (
+              <FormRow icon={ShieldCheck} label={comingIn ? "Informed" : "Approver"}>
+                <div className="min-w-0 py-0.5">
+                  <p className="truncate text-base font-semibold text-zinc-100 sm:text-[15px]">{approver.name}</p>
+                  <p className="mt-0.5 text-[13px] font-medium leading-snug text-orange-600">{approver.label}</p>
+                  {comingIn && (
+                    <span className="mt-1.5 inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700">No approval needed</span>
+                  )}
+                </div>
+              </FormRow>
+            );
+          })()}
+        </FormGroup>
 
-            {/* Destination / Coming From (a hostel pass always goes to the hostel) */}
-            {requestType !== "HOSTEL" && (
-            <div className="space-y-2">
-              <label htmlFor="destination" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                {requestType === "ENTRY" ? "Origin / Coming From Location" : "Destination / Location"} <span className="text-orange-400">*</span>
-              </label>
-              <Input
-                id="destination"
-                name="destination"
-                icon={<MapPin className="h-4 w-4 text-orange-500" />}
-                required
-                error={fieldErrors.destination}
-                className="text-base sm:text-sm"
-              />
-            </div>
-            )}
-
-            {/* Approver (assigned automatically — students cannot choose) */}
-            <AssignedApproverCard
-              approver={requestType === "HOSTEL" ? hostelPassApprover ?? undefined : assignedApprover}
-              isHosteller={isHosteller && requestType !== "HOSTEL"}
-              accent={requestType === "ENTRY" ? "emerald" : "orange"}
-              comingIn={requestType === "ENTRY" && !isHosteller}
-            />
-
-            {isOuting ? (
+        {isOuting ? (
+          <FormGroup title="Outing">
+            <div className="p-4 sm:p-5">
               <HostelOutingFields
                 student={student}
                 studentName={studentName}
@@ -983,81 +970,72 @@ function PermissionFormView({
                 setOutingFrom={setOutingFrom}
                 fieldErrors={fieldErrors}
               />
-            ) : (
-            /* Timings Grid */
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
-              <div className="space-y-2">
-                <label htmlFor="exitDate" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                  {requestType === "ENTRY" ? "Entry Date" : "Exit Date"} <span className="text-orange-400">*</span>
-                </label>
-                <DateField id="exitDate" name="exitDate" value={todayStr} readOnly className="h-12 w-full rounded-2xl bg-zinc-950 text-zinc-400" />
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="expectedExit" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                  {requestType === "ENTRY" ? "Expected Entry Time" : "Expected Exit Time"} <span className="text-orange-400">*</span>
-                </label>
-                <TimeField name="expectedExit" required defaultToNow className={TIME_FIELD_CLS} />
-                {fieldErrors.expectedExit && <p className="text-xs text-red-400">{fieldErrors.expectedExit}</p>}
-              </div>
             </div>
-            )}
-
-            {/* Contact Number */}
-            <div className="space-y-2">
-              <label htmlFor="contactNumber" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                Emergency Contact Number
-              </label>
-              <Input
-                id="contactNumber"
-                name="contactNumber"
-                icon={<Phone className="h-4 w-4 text-orange-500" />}
-                type="tel"
-                inputMode="tel"
-                maxLength={15}
-                onInput={(e) => {
-                  e.currentTarget.value = phoneOnly(e.currentTarget.value);
-                }}
-                error={fieldErrors.contactNumber}
-                className="text-base sm:text-sm"
-              />
-            </div>
-
-            {/* Remarks */}
-            <div className="space-y-2">
-              <label htmlFor="remarks" className="text-sm font-medium text-zinc-300">
-                Additional Remarks <span className="font-normal text-zinc-500">(Optional)</span>
-              </label>
-              <Textarea
-                id="remarks"
-                name="remarks"
-                rows={2}
-                className="px-4 py-3"
-              />
-            </div>
-
-            {/* Submit Button */}
-            <Button
-              type="submit"
-              disabled={loading || !(requestType === "HOSTEL" ? hostelPassApprover?.available : assignedApprover?.available)}
-              className="w-full h-12 text-sm"
-            >
-              {loading ? (
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-                  <span>Submitting {requestType === "ENTRY" ? "Entry" : requestType === "HOSTEL" ? "Hostel" : "Exit"} Request...</span>
+          </FormGroup>
+        ) : (
+          <FormGroup title="When">
+            <FormRow icon={Clock} label={requestType === "ENTRY" ? "Coming in" : "Leaving"} required error={fieldErrors.expectedExit}>
+              <div className="flex flex-wrap items-center gap-2 py-0.5">
+                {/* Passes are for today */}
+                <input type="hidden" name="exitDate" value={todayStr} />
+                <span className="inline-flex h-11 shrink-0 items-center rounded-xl bg-orange-500/10 px-3.5 text-sm font-semibold text-orange-600">
+                  Today · {new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(new Date(`${todayStr}T12:00:00+05:30`))}
+                </span>
+                <div className="min-w-[210px] flex-1">
+                  <TimeField name="expectedExit" required defaultToNow notPast />
                 </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Send className="h-4 w-4" />
-                  {/* Coming in: no approval — the QR comes straight away */}
-                  <span>{requestType === "ENTRY" && !isHosteller ? "Get my QR" : `Submit ${requestType} Request`}</span>
-                </div>
-              )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+              </div>
+            </FormRow>
+          </FormGroup>
+        )}
+
+        <FormGroup title="Contact">
+          <FormRow icon={Phone} label="Emergency contact" htmlFor="contactNumber" error={fieldErrors.contactNumber}>
+            <RowInput
+              id="contactNumber"
+              name="contactNumber"
+              type="tel"
+              inputMode="tel"
+              maxLength={15}
+              onInput={(e) => {
+                e.currentTarget.value = phoneOnly(e.currentTarget.value);
+              }}
+            />
+          </FormRow>
+          <FormRow icon={PencilLine} label="Remarks (optional)" htmlFor="remarks">
+            <RowTextarea id="remarks" name="remarks" rows={2} />
+          </FormRow>
+        </FormGroup>
+
+        {/* No approver yet: why the request cannot be sent */}
+        {!(requestType === "HOSTEL" ? hostelPassApprover?.available : assignedApprover?.available) && (
+          <AssignedApproverCard
+            approver={requestType === "HOSTEL" ? hostelPassApprover ?? undefined : assignedApprover}
+            isHosteller={isHosteller && requestType !== "HOSTEL"}
+          />
+        )}
+
+        {/* Submit Button */}
+        <Button
+          type="submit"
+          size="lg"
+          disabled={loading || !(requestType === "HOSTEL" ? hostelPassApprover?.available : assignedApprover?.available)}
+          className="w-full"
+        >
+          {loading ? (
+            <>
+              <span className="h-4 w-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+              Sending…
+            </>
+          ) : (
+            <>
+              <Send className="h-4 w-4" />
+              {/* Coming in: no approval — the QR comes straight away */}
+              {requestType === "ENTRY" && !isHosteller ? "Get my QR" : "Send request"}
+            </>
+          )}
+        </Button>
+      </form>
     </div>
   );
 }

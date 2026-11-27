@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { getDepartmentVariants } from "@/lib/constants";
+import { getDepartmentFullName, getDepartmentVariants } from "@/lib/constants";
 
 export type ResolvedApprover = {
   approverType: "FACULTY_ADMIN" | "WARDEN";
@@ -116,7 +116,7 @@ export async function resolveStudentApprover(student: {
       faculty: { department: { in: variants } },
     },
     orderBy: { createdAt: "asc" },
-    select: { id: true, name: true, faculty: { select: { department: true } } },
+    select: { id: true, name: true, faculty: { select: { department: true, designation: true } } },
   });
 
   if (!hod) {
@@ -132,7 +132,8 @@ export async function resolveStudentApprover(student: {
       approverType: "FACULTY_ADMIN",
       approverId: hod.id,
       name: hod.name,
-      label: `HOD (${student.department})`,
+      // Full designation and department (not "HOD (CSE)")
+      label: `${hod.faculty?.designation?.trim() || "Head of the Department"} · ${getDepartmentFullName(hod.faculty?.department ?? student.department)}`,
     },
   };
 }
