@@ -886,15 +886,14 @@ function PermissionFormView({
                 setRequestType(opt.type);
                 if (opt.type === "HOSTEL") setFieldErrors({});
               }}
-              className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-[18px] px-1.5 sm:px-4 py-2.5 sm:py-3 text-center transition-colors ${
-                selected ? "bg-zinc-900 shadow-card text-zinc-100" : "text-zinc-500 hover:text-zinc-200"
+              className={`flex min-w-0 items-center justify-center gap-2.5 rounded-[18px] border px-2 sm:px-4 py-2.5 text-center transition-[background-color,border-color,color] ${
+                selected ? "border-orange-500/25 bg-white text-zinc-100 shadow-[inset_0_1px_0_#ffffff,0_8px_20px_-14px_rgba(207,62,37,0.45)]" : "border-transparent text-zinc-500 hover:text-zinc-200"
               }`}
             >
-              <span className="flex items-center justify-center gap-1.5 text-[13px] sm:text-sm font-semibold leading-tight">
-                <Icon className={`h-4 w-4 shrink-0 ${selected ? opt.tone : ""}`} />
-                <span>{opt.title}</span>
+              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${selected ? "icon-tile" : "bg-zinc-900 text-zinc-500"}`}>
+                <Icon className="h-4 w-4" />
               </span>
-              <span className="text-[11px] sm:text-xs leading-snug text-zinc-500">{opt.hint}</span>
+              <span className="truncate text-[13px] sm:text-[15px] font-semibold leading-tight">{opt.title}</span>
             </button>
           );
         })}

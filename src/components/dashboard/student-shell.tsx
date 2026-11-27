@@ -71,9 +71,9 @@ export function StudentShell({
           <Link href="/settings" aria-label={t("Settings")} className="shrink-0 rounded-full focus-visible:ring-4 focus-visible:ring-orange-500/20">
             {avatarUrl ? (
                
-              <img src={avatarUrl} alt="" width={40} height={40} className="h-10 w-10 rounded-full border border-zinc-800 object-cover" />
+              <img src={avatarUrl} alt="" width={40} height={40} className="block h-9 w-9 rounded-full object-cover ring-2 ring-orange-400/80 ring-offset-2 ring-offset-white" />
             ) : (
-              <span className="flex h-10 w-10 items-center justify-center rounded-full border border-orange-500/20 bg-orange-500/10 text-sm font-semibold text-orange-400">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-orange-50 to-orange-100 text-sm font-semibold text-orange-600 ring-2 ring-orange-400/80 ring-offset-2 ring-offset-white">
                 {(userName || "?").charAt(0).toUpperCase()}
               </span>
             )}
@@ -84,13 +84,11 @@ export function StudentShell({
             disabled={signingOut}
             aria-busy={signingOut}
             aria-label={t("Sign out")}
-            className="flex shrink-0 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-3.5 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-60 disabled:cursor-wait"
+            className="flex shrink-0 items-center gap-2 rounded-full border border-zinc-800 bg-white/80 py-1 pl-1 pr-1 sm:pr-3.5 text-xs font-semibold text-zinc-300 transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-500 disabled:opacity-60 disabled:cursor-wait"
           >
-            {signingOut ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <LogOut className="h-4 w-4" aria-hidden="true" />
-            )}
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#f87171] to-[#dc2626] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_6px_14px_-8px_rgba(220,38,38,0.6)]">
+              {signingOut ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <LogOut className="h-4 w-4" aria-hidden="true" />}
+            </span>
             <span className="hidden sm:inline">{signingOut ? t("Signing out…") : t("Sign out")}</span>
           </button>
           </div>
