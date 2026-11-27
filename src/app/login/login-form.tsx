@@ -249,14 +249,16 @@ export function LoginForm() {
             <button
               type="submit"
               disabled={loading || !ready}
-              aria-busy={loading || !ready}
-              className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-medium text-white transition-[transform,filter] active:scale-[0.99] hover:brightness-110 disabled:opacity-70 disabled:cursor-wait shadow-[0_10px_24px_-10px_rgba(16,24,40,0.55),inset_0_1px_0_rgba(255,255,255,0.15)]"
+              aria-busy={loading}
+              // Until the page's code is ready the button looks normal (no "Loading…"); it just
+              // can't be pressed for that moment. Only a real sign-in shows the spinner.
+              className={`mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-medium text-white transition-[transform,filter] active:scale-[0.99] hover:brightness-110 shadow-[0_10px_24px_-10px_rgba(16,24,40,0.55),inset_0_1px_0_rgba(255,255,255,0.15)] ${loading ? "opacity-70 cursor-wait" : ""}`}
               style={{ background: "linear-gradient(180deg, #3a3b40 0%, #17181b 100%)" }}
             >
-              {loading || !ready ? (
+              {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  {loading ? t("Signing in…") : t("Loading…")}
+                  {t("Signing in…")}
                 </>
               ) : (
                 t("Sign in")
