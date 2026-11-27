@@ -250,7 +250,7 @@ function toneFromTitle(title: string): StatTone {
  */
 // Icon tile: a solid orange gradient with a white icon, a light top edge and a soft orange glow
 const CORAL = {
-  tile: "bg-gradient-to-br from-[#ffa592] via-[#ff8569] to-[#f2654a] text-white ring-1 ring-inset ring-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_8px_18px_-10px_rgba(242,101,74,0.5)]",
+  tile: "bg-gradient-to-br from-[#ff8f75] via-[#ff6b4f] to-[#e8492e] text-white ring-1 ring-inset ring-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_8px_18px_-10px_rgba(232,73,46,0.55)]",
   number: "text-orange-600",
 };
 const NEEDS_ACTION: readonly StatTone[] = ["alert", "waiting"];

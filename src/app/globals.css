@@ -208,11 +208,11 @@ html.security-text .glass:not(.loading-pill) {
    (warm gradient, light top edge, soft orange glow) with white text and a frosted tile */
 .glass-card:first-child {
   background:
-    linear-gradient(145deg, #ffa592 0%, #ff8569 50%, #f2654a 100%) padding-box,
+    linear-gradient(145deg, #ff8f75 0%, #ff6b4f 50%, #e8492e 100%) padding-box,
     linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.12) 60%, rgba(255, 255, 255, 0.3) 100%) border-box;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.4),
-    0 16px 30px -20px rgba(242, 101, 74, 0.55);
+    0 16px 32px -20px rgba(232, 73, 46, 0.62);
 }
 .glass-card:first-child .stat-number,
 .glass-card:first-child .stat-number * {
