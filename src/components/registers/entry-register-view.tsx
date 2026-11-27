@@ -19,7 +19,7 @@ import { fetchEntryList, invalidateEntryLists, markEntryListsStale, peekEntryLis
 import { visitExitMessage } from "@/components/visits/visit-code";
 import { useLiveTopics } from "@/lib/realtime/live";
 import { actionErrorMessage } from "@/lib/deployment";
-import { AdminEditForm, CloseRecordForm, MovementForm, PhotoInput, RegisterForm, restoreRegisterDraft, takeRegisterDraft, type StaffOption, MultiPhotoInput, photoList } from "./register-form";
+import { AdminEditForm, CloseRecordForm, MovementForm, PhotoInput, RegisterForm, restoreRegisterDraft, takeRegisterDraft, wasFormOpen, type StaffOption, MultiPhotoInput, photoList } from "./register-form";
 import { useSecurityLook } from "@/lib/ui/security-look";
 import { exitBatches, workersInside } from "@/lib/registers/validate";
 import { formatFieldValue, formatInstant, newClientToken, formatClock } from "./format";
@@ -265,6 +265,13 @@ export function EntryRegisterView({
   useEffect(() => {
     load();
   }, [load]);
+
+  // The phone closed this page while a new entry was open (low memory): open it again with what was typed
+  useEffect(() => {
+    if (canCreate && !insideOnly && wasFormOpen(def.key)) openMode("new");
+    // Once, when the page opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (needsStaff) callGate("getRegisterStaffOptions", [], 15_000).then((s: any) => setStaff(Array.isArray(s) ? s : [])).catch(() => setStaff([]));

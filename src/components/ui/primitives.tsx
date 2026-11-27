@@ -339,7 +339,14 @@ export function Modal({ open, onClose, title, children, className, scrollTopKey,
   React.useEffect(() => {
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
     if (!open || !vv) return;
-    const sync = () => setVisible(vv.height < window.innerHeight - 80 ? { top: vv.offsetTop, height: vv.height } : null);
+    // Only a keyboard counts: a text box has the focus and the page is not pinch-zoomed
+    // (zooming with two fingers also makes the visible area smaller — the popup must not follow it)
+    const typing = () => {
+      const a = document.activeElement;
+      return !!a && a.matches("input:not([type=file]):not([type=checkbox]):not([type=radio]):not([type=button]), textarea, [contenteditable=true]");
+    };
+    const sync = () =>
+      setVisible(vv.scale <= 1.01 && typing() && vv.height < window.innerHeight - 80 ? { top: vv.offsetTop, height: vv.height } : null);
     sync();
     vv.addEventListener("resize", sync);
     vv.addEventListener("scroll", sync);
@@ -361,6 +368,8 @@ export function Modal({ open, onClose, title, children, className, scrollTopKey,
       const r = el.getBoundingClientRect();
       const b = body.getBoundingClientRect();
       const vv = window.visualViewport;
+      // Zoomed in with two fingers: leave the page where the person put it
+      if (vv && vv.scale > 1.01) return;
       const bottom = Math.min(b.bottom, vv ? vv.offsetTop + vv.height : window.innerHeight);
       if (r.bottom > bottom - 12 || r.top < b.top) el.scrollIntoView({ block: "center", behavior: "smooth" });
     }, 350);

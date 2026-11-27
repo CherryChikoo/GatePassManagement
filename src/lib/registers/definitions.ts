@@ -103,6 +103,8 @@ export type FieldDef = {
   section?: string;
   /** Required while this Yes / No button is on (e.g. the stock photo after "No bill") */
   requiredWhen?: string;
+  /** In the book's required list, but only for a record going Out (Auto Book: the reason; In needs nothing) */
+  requiredOnlyOut?: boolean;
   /** A Yes / No button that, when on at save, also sets this Yes / No field (e.g. "Bill taken now" → Bill taken) */
   setsFlag?: string;
   /** One-tap answers shown as buttons under the box (e.g. "Self" for a referral) */
@@ -148,10 +150,13 @@ export type GroupDef = {
 export function isFieldRequired(
   def: Pick<EntryRegister, "required" | "requiredUnless"> & { fields?: FieldDef[] },
   key: string,
-  values: Record<string, unknown>
+  values: Record<string, unknown>,
+  /** The record's In / Out (fields marked requiredOnlyOut need it to be "OUT") */
+  direction?: string | null
 ): boolean {
   const on = (v: unknown) => v === true || v === "yes" || v === "true";
   const field = def.fields?.find((x) => x.key === key);
+  if (field?.requiredOnlyOut && direction !== "OUT") return false;
   if (field?.hideWhen && on(values[field.hideWhen])) return false;
   if (field?.requiredWhen && on(values[field.requiredWhen])) return true;
   if (!def.required.includes(key)) return false;
@@ -804,7 +809,7 @@ export const REGISTERS: RegisterDef[] = [
     listFields: ["driverName", "purpose", "outReason", "inTime", "outTime"],
     fields: [
       { key: "driverName", label: "Auto Driver Name", type: "text", combo: "driver" },
-      { key: "purpose", label: "Purpose", type: "text", combo: "purpose", listFallback: "autoNumber" },
+      { key: "purpose", label: "Purpose", type: "text", combo: "purpose", listFallback: "autoNumber", requiredOnlyOut: true },
       { key: "outReason", label: "Reason for going out", type: "text", formHidden: true },
       { key: "remarks", label: "Remarks", type: "textarea" },
       { key: "date", label: "Date", type: "date" },

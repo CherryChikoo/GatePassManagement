@@ -219,7 +219,7 @@ export async function validateNewRecord(
     if (skip.has(f.key)) continue;
     const res = await cleanValue(f, fields[f.key], resolveStaff);
     if ("error" in res) return { error: res.error };
-    if (res.value === null && isFieldRequired(def, f.key, fields)) return { error: `${f.label} is required` };
+    if (res.value === null && isFieldRequired(def, f.key, fields, direction)) return { error: `${f.label} is required` };
     data[f.key] = res.value;
     if (res.value !== null) details++;
   }

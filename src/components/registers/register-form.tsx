@@ -4,6 +4,7 @@ import { DateField } from "@/components/ui/date-field";
 import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useRef, useState } from "react";
+import { useCamera } from "@/components/ui/camera-capture";
 import { HostPicker } from "@/components/visits/host-picker";
 import { VisitCodeFields, visitInputReady, type VisitExitInput } from "@/components/visits/visit-code";
 import { AlertCircle, Briefcase, FileText, CalendarDays, Camera, CheckCircle2, FileX, ChevronDown, Clock, GraduationCap, History, Info, KeyRound, Loader2, LogIn, LogOut, Mic, Plus, PlusCircle, RotateCcw, Save, Search, Trash2, Undo2, X } from "lucide-react";
@@ -51,6 +52,17 @@ function readDraft(registerKey: string): Draft | null {
  * new form doesn't show these details again. Put it back with restoreRegisterDraft
  * if the save fails, and the reopened form shows everything that was typed.
  */
+const OPEN_PREFIX = "gatepass:register-form-open:";
+
+/** A new-entry form was open on this register when the page went away (closed by the phone, reload) */
+export function wasFormOpen(registerKey: string): boolean {
+  try {
+    return sessionStorage.getItem(OPEN_PREFIX + registerKey) === "1" && !!readDraft(registerKey);
+  } catch {
+    return false;
+  }
+}
+
 export function takeRegisterDraft(registerKey: string): string | null {
   try {
     const raw = sessionStorage.getItem(DRAFT_PREFIX + registerKey);
@@ -909,10 +921,22 @@ export function PhotoInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const has = !!(preview || value);
 
+  // The camera opens inside the page (Chrome never leaves the screen — see camera-capture.tsx)
+  const camera = useCamera();
+  async function openCamera() {
+    if (busy) return;
+    const r = await camera.open();
+    if (r === "fallback") inputRef.current?.click();
+    else if (r) await takeFile(r);
+  }
+
   async function pick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
+    if (file) await takeFile(file);
+  }
+
+  async function takeFile(file: File) {
     setBusy(true);
     uploadsRunning++;
     setError(null);
@@ -949,8 +973,11 @@ export function PhotoInput({
             )}
           </div>
         ) : (
-          <label
-            htmlFor={id}
+          <button
+            type="button"
+            id={id}
+            onClick={openCamera}
+            disabled={busy || dimmed}
             className={`flex h-full w-full flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl border-2 border-dashed border-orange-500/50 bg-orange-500/5 text-center transition-colors hover:bg-orange-500/10 ${
               busy || dimmed ? "pointer-events-none" : "cursor-pointer"
             }`}
@@ -960,19 +987,20 @@ export function PhotoInput({
               {dimmed ? t("No bill") : t(label)}
               {required && !dimmed && <span className="ml-0.5 text-orange-500">*</span>}
             </span>
-          </label>
+          </button>
         )}
         {busy && (
           <span className="absolute inset-0 flex items-center justify-center rounded-2xl bg-white/70">
             <Loader2 className="h-6 w-6 animate-spin text-orange-600" aria-label={t("Uploading…")} />
           </span>
         )}
-        <input ref={inputRef} id={id} type="file" accept="image/*" capture="environment" className="hidden" onChange={pick} />
+        {camera.element}
+        <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={pick} tabIndex={-1} aria-hidden="true" />
         {has && !busy && !dimmed && (
           <>
             <button
               type="button"
-              onClick={() => inputRef.current?.click()}
+              onClick={openCamera}
               className="absolute bottom-1.5 left-1.5 inline-flex h-7 items-center gap-1 rounded-full bg-orange-600 px-2.5 text-[11px] font-semibold text-white shadow-sm hover:bg-orange-700"
             >
               <Camera className="h-3 w-3" aria-hidden="true" /> {t("Retake")}
@@ -1037,9 +1065,24 @@ export function MultiPhotoInput({
     latest.current = value;
   }, [value]);
 
+  // The camera opens inside the page (Chrome never leaves the screen — see camera-capture.tsx)
+  const camera = useCamera();
+  const fileRef = useRef<HTMLInputElement>(null);
+  async function openCamera() {
+    if (latest.current.length + busy >= max) return;
+    const r = await camera.open();
+    if (r === "fallback") fileRef.current?.click();
+    else if (r) await addFiles([r]);
+  }
+
   async function pick(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []).slice(0, Math.max(0, max - latest.current.length));
+    const picked = Array.from(e.target.files ?? []);
     e.target.value = "";
+    await addFiles(picked);
+  }
+
+  async function addFiles(list: File[]) {
+    const files = list.slice(0, Math.max(0, max - latest.current.length));
     if (!files.length) return;
     setError(null);
     setBusy((n) => n + files.length);
@@ -1084,8 +1127,10 @@ export function MultiPhotoInput({
           </span>
         </p>
         {!full ? (
-          <label
-            htmlFor={id}
+          <button
+            type="button"
+            id={id}
+            onClick={openCamera}
             className={cn(
               "inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-full px-4 text-sm font-bold transition-[background-color,transform] active:scale-[0.97]",
               empty
@@ -1095,7 +1140,7 @@ export function MultiPhotoInput({
           >
             {empty ? <Camera className="h-[18px] w-[18px]" aria-hidden="true" /> : <Plus className="h-[18px] w-[18px]" aria-hidden="true" />}
             {t(empty ? "Take photo" : "Add photo")}
-          </label>
+          </button>
         ) : (
           <span className="inline-flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-500/15 px-4 text-sm font-bold text-emerald-700">
             <CheckCircle2 className="h-[18px] w-[18px]" aria-hidden="true" /> {t("Done")}
@@ -1135,7 +1180,8 @@ export function MultiPhotoInput({
           ))}
         </div>
       )}
-      <input id={id} type="file" accept="image/*" capture="environment" className="hidden" onChange={pick} />
+      {camera.element}
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={pick} tabIndex={-1} aria-hidden="true" />
       {error && <p role="alert" className="text-sm font-semibold text-red-600">{error}</p>}
     </div>
   );
@@ -1672,7 +1718,7 @@ export function RegisterForm({
     if (parts.length === 3) return String(rows[parts[0]]?.[Number(parts[1])]?.[parts[2]] ?? "").trim() ? null : msg;
     const anyOf = (def.requiredAny ?? []).find((g) => g.includes(key));
     if (anyOf) return anyOf.some((k) => filledIn(values[k])) ? null : msg;
-    return filledIn(values[key]) || !isFieldRequired(def, key, values) ? null : msg;
+    return filledIn(values[key]) || !isFieldRequired(def, key, values, direction) ? null : msg;
   };
   const clearFieldError = (key: string) =>
     setFieldErrors((e) => {
@@ -1690,6 +1736,18 @@ export function RegisterForm({
   const [moreOpen, setMoreOpen] = useState(() =>
     !!draft && splitFields(def, draft.direction ?? startDirection).more.some((f) => filledIn(draft.values[f.key]))
   );
+
+  // While open: marked, so a page the phone closed (low memory) reopens this form
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(OPEN_PREFIX + def.key, "1");
+    } catch {}
+    return () => {
+      try {
+        sessionStorage.removeItem(OPEN_PREFIX + def.key);
+      } catch {}
+    };
+  }, [def.key]);
 
   // Keep the typed details for this tab (removed once nothing is typed)
   useEffect(() => {
@@ -1745,7 +1803,7 @@ export function RegisterForm({
       key={f.key}
       f={f}
       id={`rf-${f.key}`}
-      required={isFieldRequired(def, f.key, values) || (!!f.showWhen && !!f.requiredWhenShown)}
+      required={isFieldRequired(def, f.key, values, direction) || (!!f.showWhen && !!f.requiredWhenShown)}
       highlight={!!def.highlightRequired}
       error={errorFor(f.key)}
     >
@@ -1762,7 +1820,7 @@ export function RegisterForm({
           clearFieldError(f.key);
         }}
         staff={staff}
-        required={isFieldRequired(def, f.key, values)}
+        required={isFieldRequired(def, f.key, values, direction)}
         values={values}
         setValue={(k, v) => setValues((s) => ({ ...s, [k]: v }))}
         onPickPerson={
@@ -1924,7 +1982,7 @@ export function RegisterForm({
           const v = values[f.key];
           if (f.type === "yesno" && !f.buttons) continue;
           if (f.type === "keyHolder" && !filledIn(values.holderType)) errs[f.key] = t("Choose Faculty / Staff or Student");
-          else if ((isFieldRequired(def, f.key, values) || (f.showWhen && f.requiredWhenShown)) && !filledIn(v)) errs[f.key] = t("Fill this in");
+          else if ((isFieldRequired(def, f.key, values, direction) || (f.showWhen && f.requiredWhenShown)) && !filledIn(v)) errs[f.key] = t("Fill this in");
           else if (f.type === "phone" && filledIn(v) && !/^\+?[0-9]{10,15}$/.test(String(v).replace(/[\s-]/g, ""))) {
             errs[f.key] = t("Enter a valid phone number (10–15 digits)");
           }
