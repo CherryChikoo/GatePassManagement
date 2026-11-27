@@ -41,8 +41,7 @@ export function AssignedApproverCard({
 
   return (
     <div className="space-y-2">
-      <p className="flex items-center gap-2 text-sm font-medium text-zinc-300">
-        <ShieldCheck className="h-4 w-4 text-orange-500" />
+      <p className="text-sm font-semibold text-zinc-200">
         {comingIn ? "No approval needed — your HOD will be informed" : "Approver"}
       </p>
       <div className="flex items-center gap-3 rounded-2xl border border-orange-500/20 bg-white px-3 py-3 shadow-[inset_0_1px_0_#ffffff,0_8px_20px_-16px_rgba(207,62,37,0.45)]">

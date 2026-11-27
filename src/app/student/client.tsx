@@ -208,7 +208,7 @@ function RecordMissingSignOut() {
 }
 
 /** Matches the TimeField (shared, not editable here) to the h-12 rounded-2xl white inputs. */
-const TIME_FIELD_CLS = "h-12! rounded-2xl! bg-zinc-900! text-base! sm:text-sm! hover:border-zinc-700 focus:border-orange-500/50!";
+const TIME_FIELD_CLS = "h-12! rounded-2xl! text-base! sm:text-sm!";
 
 const REJECTION_ACK_KEY = "gatepass:rejection-ack";
 const REJECTED_AUTO_RETURN_S = 12;
@@ -936,14 +936,13 @@ function PermissionFormView({
             {/* Purpose */}
             <div className="space-y-2">
               <label htmlFor="purpose" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                <FileText className="h-4 w-4 text-orange-500" />
                 {requestType === "ENTRY" ? "Purpose of Campus Entry" : requestType === "HOSTEL" ? "Purpose of Going to Hostel" : "Purpose of Exit"} <span className="text-orange-400">*</span>
               </label>
 
               <Input
                 id="purpose"
                 name="purpose"
-                placeholder={requestType === "ENTRY" ? "e.g. Returning from home, Doctor visit return, Project return..." : "e.g. Doctor's appointment, Home visit, Project work..."}
+                icon={<FileText className="h-4 w-4 text-orange-500" />}
                 required
                 error={fieldErrors.purpose}
                 className="text-base sm:text-sm"
@@ -954,13 +953,12 @@ function PermissionFormView({
             {requestType !== "HOSTEL" && (
             <div className="space-y-2">
               <label htmlFor="destination" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-orange-500" />
                 {requestType === "ENTRY" ? "Origin / Coming From Location" : "Destination / Location"} <span className="text-orange-400">*</span>
               </label>
               <Input
                 id="destination"
                 name="destination"
-                placeholder={requestType === "ENTRY" ? "e.g. Home, Hospital, City Center" : "e.g. Apollo Hospital, City Center, Home"}
+                icon={<MapPin className="h-4 w-4 text-orange-500" />}
                 required
                 error={fieldErrors.destination}
                 className="text-base sm:text-sm"
@@ -990,7 +988,6 @@ function PermissionFormView({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
               <div className="space-y-2">
                 <label htmlFor="exitDate" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-orange-500" />
                   {requestType === "ENTRY" ? "Entry Date" : "Exit Date"} <span className="text-orange-400">*</span>
                 </label>
                 <DateField id="exitDate" name="exitDate" value={todayStr} readOnly className="h-12 w-full rounded-2xl bg-zinc-950 text-zinc-400" />
@@ -998,7 +995,6 @@ function PermissionFormView({
 
               <div className="space-y-2">
                 <label htmlFor="expectedExit" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-orange-500" />
                   {requestType === "ENTRY" ? "Expected Entry Time" : "Expected Exit Time"} <span className="text-orange-400">*</span>
                 </label>
                 <TimeField name="expectedExit" required defaultToNow className={TIME_FIELD_CLS} />
@@ -1010,16 +1006,15 @@ function PermissionFormView({
             {/* Contact Number */}
             <div className="space-y-2">
               <label htmlFor="contactNumber" className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                <Phone className="h-4 w-4 text-orange-500" />
                 Emergency Contact Number
               </label>
               <Input
                 id="contactNumber"
                 name="contactNumber"
+                icon={<Phone className="h-4 w-4 text-orange-500" />}
                 type="tel"
                 inputMode="tel"
                 maxLength={15}
-                placeholder="+91-9876543210"
                 onInput={(e) => {
                   e.currentTarget.value = phoneOnly(e.currentTarget.value);
                 }}
@@ -1036,7 +1031,6 @@ function PermissionFormView({
               <Textarea
                 id="remarks"
                 name="remarks"
-                placeholder="Any special notes or details..."
                 rows={2}
                 className="px-4 py-3"
               />
@@ -1199,7 +1193,7 @@ function HostelOutingFields({
         </div>
         <div className="space-y-2">
           <label htmlFor="guardianRelation" className={label}>Relation with Student</label>
-          <Input id="guardianRelation" name="guardianRelation" maxLength={50} placeholder="e.g. Father" className={inputCls} />
+          <Input id="guardianRelation" name="guardianRelation" maxLength={50} className={inputCls} />
         </div>
         <div className="space-y-2">
           <label htmlFor="videoCallNumber" className={label}>
@@ -1211,7 +1205,6 @@ function HostelOutingFields({
             type="tel"
             inputMode="tel"
             maxLength={15}
-            placeholder="Phone number"
             onInput={(e) => {
               e.currentTarget.value = phoneOnly(e.currentTarget.value);
             }}
@@ -1227,7 +1220,6 @@ function HostelOutingFields({
           id="hostelInchargeDetails"
           name="hostelInchargeDetails"
           maxLength={200}
-          placeholder="Name and contact of the hostel in-charge"
           className={inputCls}
         />
       </div>
