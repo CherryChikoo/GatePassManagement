@@ -64,7 +64,7 @@ export function GreetingHero({
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
             {chips.length > 0 && (
               // One glass strip: big light numbers over small labels, hairline dividers
-              <div className="glass-card flex items-stretch divide-x divide-orange-500/20 overflow-hidden rounded-2xl">
+              <div className="glass-card flex items-stretch divide-x divide-orange-500/10 overflow-hidden rounded-2xl">
                 {chips.map((c) => {
                   const hot = !!c.attention && c.value > 0;
                   return (
