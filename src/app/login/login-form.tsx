@@ -195,7 +195,7 @@ export function LoginForm() {
           <form method="post" onSubmit={handleSubmit} className="mt-6 sm:mt-7 flex flex-col gap-3">
             <label htmlFor="login-email" className="sr-only">{t("Email")}</label>
             <div className="relative">
-              <span className="icon-chip icon-chip-graphite pointer-events-none absolute left-3 top-1/2 h-8! w-8! -translate-y-1/2" aria-hidden="true"><Mail /></span>
+              <span className="icon-chip pointer-events-none absolute left-3 top-1/2 h-8! w-8! -translate-y-1/2" aria-hidden="true"><Mail /></span>
               <input
                 id="login-email"
                 name="email"
@@ -210,7 +210,7 @@ export function LoginForm() {
 
             <label htmlFor="login-password" className="sr-only">{t("Password")}</label>
             <div className="relative">
-              <span className="icon-chip icon-chip-graphite pointer-events-none absolute left-3 top-1/2 h-8! w-8! -translate-y-1/2" aria-hidden="true"><Lock /></span>
+              <span className="icon-chip pointer-events-none absolute left-3 top-1/2 h-8! w-8! -translate-y-1/2" aria-hidden="true"><Lock /></span>
               <input
                 id="login-password"
                 name="password"
@@ -223,7 +223,7 @@ export function LoginForm() {
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-2.5 text-zinc-500 transition-colors hover:bg-white hover:text-zinc-200"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-2.5 text-orange-500 transition-colors hover:bg-orange-500/10 hover:text-orange-600"
                 aria-label={showPassword ? t("Hide password") : t("Show password")}
               >
                 {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
