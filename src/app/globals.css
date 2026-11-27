@@ -306,6 +306,14 @@ html.security-text .glass:not(.loading-pill) {
   display: none !important;
 }
 
+/* Dashboard pages start right beside the sidebar and fill the room (up to 100rem)
+   instead of a centred 80rem column, which left a wide gap next to the sidebar */
+[data-page-scroll] .mx-auto.max-w-7xl {
+  max-width: 100rem;
+  margin-left: 0;
+  margin-right: 0;
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
