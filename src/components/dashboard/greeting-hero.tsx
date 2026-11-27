@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Moon, Sun, Sunrise, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type HeroAction = { href: string; label: string; icon: LucideIcon; /** The main one (deeper coral) or the next ones (lighter coral) — all reddish orange */ primary?: boolean };
+export type HeroAction = { href: string; label: string; icon: LucideIcon; /** The main one (reddish-orange fill) or the next ones (white with reddish-orange text and edge) */ primary?: boolean };
 
 /**
  * The dashboard greeting (every staff login), straight on the page (no card):
@@ -60,7 +60,7 @@ export function GreetingHero({
                   "inline-flex h-12 items-center gap-2.5 rounded-full px-5 text-sm font-semibold transition-[filter,background-color,border-color,transform] active:scale-[0.98]",
                   a.primary
                     ? "bg-gradient-to-b from-[#ff7a5e] to-[#e0442a] text-white ring-1 ring-inset ring-white/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_12px_24px_-12px_rgba(207,62,37,0.75)] hover:brightness-[1.06]"
-                    : "bg-gradient-to-b from-[#ff8f75] to-[#ec5537] text-white ring-1 ring-inset ring-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_10px_22px_-12px_rgba(232,73,46,0.6)] hover:brightness-[1.06]"
+                    : "border border-[#ff6b4f]/40 bg-white/85 text-[#e0442a] shadow-[inset_0_1px_0_#ffffff,0_8px_18px_-14px_rgba(224,68,42,0.55)] hover:border-[#ff6b4f]/60 hover:bg-[#ff6b4f]/[0.06]"
                 )}
               >
                 <Ico className="h-4 w-4" aria-hidden="true" />
