@@ -974,6 +974,7 @@ function PermissionFormView({
               approver={requestType === "HOSTEL" ? hostelPassApprover ?? undefined : assignedApprover}
               isHosteller={isHosteller && requestType !== "HOSTEL"}
               accent={requestType === "ENTRY" ? "emerald" : "orange"}
+              comingIn={requestType === "ENTRY" && !isHosteller}
             />
 
             {isOuting ? (
@@ -1056,7 +1057,8 @@ function PermissionFormView({
               ) : (
                 <div className="flex items-center gap-2">
                   <Send className="h-4 w-4" />
-                  <span>Submit {requestType} Request</span>
+                  {/* Coming in: no approval — the QR comes straight away */}
+                  <span>{requestType === "ENTRY" && !isHosteller ? "Get my QR" : `Submit ${requestType} Request`}</span>
                 </div>
               )}
             </Button>

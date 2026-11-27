@@ -170,6 +170,10 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
   }
   const outingData = outing && !("error" in outing) ? outing.data : {};
 
+  // Coming in (day scholars, routed to the HOD): no approval — the QR is ready at once and the
+  // HOD is alerted. Anything routed to a warden keeps the warden's approval exactly as before.
+  const autoApprove = type === "ENTRY" && approverType !== "WARDEN";
+
   // Expire anything stale first so the student is not falsely blocked.
   await resolveStudentActivePass(student.id);
 
@@ -190,7 +194,7 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
       const out = await tx.permission.findFirst({ where: { studentId: student.id, ...OPEN_TRIP_WHERE }, select: { id: true } });
       if (out) throw new Error("OUT_ON_PASS");
 
-      return tx.permission.create({
+      const created = await tx.permission.create({
         data: {
           studentId: student.id,
           approverType,
@@ -204,10 +208,21 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
           contactNumber: input.contactNumber || null,
           remarks: input.remarks || null,
           ...outingData,
-          status: "PENDING",
+          status: autoApprove ? "APPROVED" : "PENDING",
+          ...(autoApprove ? { approvedAt: new Date() } : {}),
         },
         select: { id: true },
       });
+      if (autoApprove) {
+        await tx.permissionApproval.create({
+          data: { permissionId: created.id, approverType, approved: true, reason: "Coming in: no approval needed (scanned at the gate)" },
+        });
+        // The QR works until the end of the chosen day
+        const until = new Date(exitDate.getTime() + DAY_MS);
+        const { token } = await generateQrToken(created.id, student.id, until);
+        await tx.qrCredential.create({ data: { permissionId: created.id, token, expiresAt: until } });
+      }
+      return created;
     });
 
     revalidatePath("/student");
@@ -217,6 +232,8 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
     revalidatePath("/warden/requests");
 
     notifyApprovers(permission.id);
+    // Coming in: the student's QR is ready (their screen updates at once)
+    if (autoApprove) notifyPassHolder(permission.id);
     return { success: true, permissionId: permission.id };
   } catch (err: any) {
     if (err?.message === "PENDING_EXISTS") {

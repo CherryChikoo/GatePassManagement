@@ -170,6 +170,9 @@ export function notifyApprovers(...permissionIds: string[]) {
           approverId: true,
           faculty: { select: { department: true, profile: { select: { id: true, name: true } } } },
           student: { select: { department: true, studentRoll: true, profile: { select: { name: true } } } },
+          type: true,
+          expectedExit: true,
+          approval: { select: { reason: true } },
         },
       });
       const profileSel = { id: true, userId: true, role: true } as const;
@@ -230,6 +233,26 @@ export function notifyApprovers(...permissionIds: string[]) {
           }
         } else {
           settled.push(key);
+          // A student coming in (no approval needed): the HOD is told who is coming and when
+          if (r.type === "ENTRY" && r.status === "APPROVED" && r.approval?.reason?.startsWith("Coming in")) {
+            const name = r.student?.profile.name ?? "A student";
+            const who = r.student?.studentRoll ? `${name} (${r.student.studentRoll})` : name;
+            const at = r.expectedExit
+              ? new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" }).format(r.expectedExit)
+              : "";
+            for (const p of people.values()) {
+              notes.push({
+                profileId: p.profileId,
+                userId: p.userId,
+                kind: "request",
+                level: "IMPORTANT",
+                title: "Student coming in",
+                body: [who, r.purpose, at].filter(Boolean).join(" · "),
+                link: requestsLinkFor(p.role),
+                dedupeKey: `in:${r.id}`,
+              });
+            }
+          }
         }
       }
       await sendMessages([...pings].map((u) => ({ topic: personalTopic(u), topics: ["requests"] })));

@@ -1810,4 +1810,5 @@ export const te: Record<string, string> = {
   "Leave blank to keep it": "మార్చకూడదంటే ఖాళీగా వదలండి",
   "New Password": "కొత్త పాస్‌వర్డ్",
   "At least 8 characters": "కనీసం 8 అక్షరాలు",
+  "Student coming in": "విద్యార్థి లోపలికి వస్తున్నారు",
 };

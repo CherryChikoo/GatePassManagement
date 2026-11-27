@@ -12,10 +12,13 @@ export function AssignedApproverCard({
   approver,
   isHosteller,
   accent = "orange",
+  comingIn = false,
 }: {
   approver: AssignedApprover | null | undefined;
   isHosteller: boolean;
   accent?: "orange" | "emerald";
+  /** Coming in (day scholars): no approval — the HOD is only told */
+  comingIn?: boolean;
 }) {
   const accentText = accent === "emerald" ? "text-emerald-400" : "text-orange-400";
 
@@ -40,17 +43,19 @@ export function AssignedApproverCard({
     <div className="space-y-2">
       <p className="text-sm font-medium text-zinc-300 flex items-center gap-2">
         <ShieldCheck className={`h-4 w-4 ${accentText}`} />
-        Approver
+        {comingIn ? "No approval needed — your HOD will be informed" : "Approver"}
       </p>
       <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3.5 flex items-center justify-between gap-3">
         <span className="text-sm font-medium text-zinc-100 truncate">{approver.name}</span>
         <span className={`text-xs font-medium ${accentText} shrink-0`}>{approver.label}</span>
       </div>
-      <p className="text-xs text-zinc-500">
-        {isHosteller
-          ? "Hostel residents' requests go to their assigned hostel warden."
-          : "Your request goes to the HOD of your department for approval."}
-      </p>
+      {!comingIn && (
+        <p className="text-xs text-zinc-500">
+          {isHosteller
+            ? "Hostel residents' requests go to their assigned hostel warden."
+            : "Your request goes to the HOD of your department for approval."}
+        </p>
+      )}
     </div>
   );
 }
