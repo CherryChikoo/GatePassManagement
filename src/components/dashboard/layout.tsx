@@ -452,7 +452,7 @@ export function DashboardLayout({
 
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {role === "SECURITY" && <LanguageToggle />}
-            <NotificationBell />
+            <NotificationBell showTest={role !== "SECURITY"} />
             {role === "SECURITY" && (
               <Tooltip label={t("Settings")} side="bottom">
                 <Link

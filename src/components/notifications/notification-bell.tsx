@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Bell, CheckCheck, DoorOpen, FileText, Loader2, ShieldCheck, ShieldX, Smartphone, UserRound, X, type LucideIcon } from "lucide-react";
+import { Bell, CheckCheck, DoorOpen, FileText, Loader2, ShieldCheck, ShieldX, Smartphone, UserRound, X, type LucideIcon, Send } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { useOwnLive } from "@/lib/realtime/live";
 import { autoAskOnFirstTap, syncPush, usePush } from "@/lib/push/client";
@@ -38,7 +38,7 @@ function ago(iso: string, now: number) {
  * a short on-screen alert when a new Important / Urgent one arrives while the
  * portal is open. Updates on the person's live "notify" ping — never polled.
  */
-export function NotificationBell() {
+export function NotificationBell({ showTest = true }: { showTest?: boolean } = {}) {
   const t = useT();
   const router = useRouter();
   const [items, setItems] = useState<Note[]>([]);
@@ -49,6 +49,7 @@ export function NotificationBell() {
   const seen = useRef<Set<string> | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const push = usePush();
+  const [testState, setTestState] = useState<"idle" | "sending" | "sent">("idle");
   // Phone notifications already allowed on this device: kept saved for whoever is signed in now
   useEffect(() => {
     void syncPush();
@@ -238,6 +239,23 @@ export function NotificationBell() {
                 </ul>
               )}
             </div>
+            {/* Test (every login except Security): arrives in 5 s — in the bell, and on the device if the portal is closed */}
+            {showTest && (
+              <div className="border-t border-zinc-800/70 p-3">
+                <button
+                  type="button"
+                  disabled={testState === "sending"}
+                  onClick={() => {
+                    setTestState("sending");
+                    void push.test().finally(() => setTestState("sent"));
+                  }}
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-[#ff6a55] to-[#d23420] text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_20px_-12px_rgba(207,62,37,0.7)] transition-[filter,transform] hover:brightness-105 active:scale-[0.98] disabled:opacity-70"
+                >
+                  {testState === "sending" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {testState === "idle" ? t("Send a test notification") : testState === "sending" ? t("Arrives in 5 seconds…") : t("Test sent")}
+                </button>
+              </div>
+            )}
           </div>,
           document.body
         )}

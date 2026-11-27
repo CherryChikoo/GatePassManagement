@@ -1824,6 +1824,10 @@ export const te: Record<string, string> = {
   "to verify": "వెరిఫై చేయాలి",
   View: "చూడండి",
   "Turn on alerts": "అలర్ట్‌లు ఆన్ చేయండి",
+  "Send a test notification": "టెస్ట్ నోటిఫికేషన్ పంపండి",
+  "Arrives in 5 seconds…": "5 సెకన్లలో వస్తుంది…",
+  "Test notification": "టెస్ట్ నోటిఫికేషన్",
+  "Gate Pass alerts are working": "గేట్ పాస్ అలర్ట్‌లు పనిచేస్తున్నాయి",
   Tap: "నొక్కండి",
   "then Add to Home Screen, and open the portal from there.": "తర్వాత Add to Home Screen ఎంచుకుని, అక్కడి నుండి పోర్టల్ తెరవండి.",
 };

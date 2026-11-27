@@ -169,7 +169,12 @@ export function usePush() {
   }, []);
 
   const test = useCallback(async () => {
-    await fetch("/api/push/test", { method: "POST", credentials: "include" }).catch(() => {});
+    await fetch("/api/push/test", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ delay: 5 }),
+    }).catch(() => {});
   }, []);
 
   return { state, busy, enable, disable, test };
