@@ -840,8 +840,14 @@ function PermissionFormView({
       <div
         role="radiogroup"
         aria-label="Which way are you going?"
-        className="grid grid-cols-2 gap-1.5 rounded-full border border-orange-500/15 bg-white p-1.5 shadow-[inset_0_1px_2px_rgba(16,24,40,0.06),0_10px_24px_-20px_rgba(207,62,37,0.5)]"
+        className="relative isolate grid grid-cols-2 gap-1.5 rounded-full border border-orange-500/15 bg-white p-1.5 shadow-[inset_0_1px_2px_rgba(16,24,40,0.06),0_10px_24px_-20px_rgba(207,62,37,0.5)]"
       >
+        {/* The red-orange pill slides under the chosen side (transform only: smooth, no layout work) */}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-1.5 left-1.5 top-1.5 -z-10 w-[calc((100%-18px)/2)] rounded-full bg-gradient-to-b from-[#ff7a5e] to-[#e0442a] shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_20px_-10px_rgba(224,68,42,0.7)] transition-transform duration-[360ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:transition-none"
+          style={{ transform: requestType === "EXIT" ? "translate3d(0,0,0)" : "translate3d(calc(100% + 6px),0,0)" }}
+        />
         {(
           [
             {
@@ -886,16 +892,14 @@ function PermissionFormView({
                 setRequestType(opt.type);
                 if (opt.type === "HOSTEL") setFieldErrors({});
               }}
-              className={`flex min-w-0 items-center justify-center gap-2 rounded-full px-2 sm:px-4 py-2 text-center transition-[background-color,color,box-shadow] duration-200 ${
-                selected
-                  ? "bg-gradient-to-b from-[#ff7a5e] to-[#e0442a] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_20px_-10px_rgba(224,68,42,0.7)]"
-                  : "text-zinc-500 hover:bg-orange-500/5 hover:text-zinc-200"
+              className={`flex min-w-0 items-center justify-center gap-2 rounded-full px-2 sm:px-4 py-2 text-center transition-colors duration-300 ${
+                selected ? "text-white" : "text-zinc-500 hover:text-zinc-200"
               }`}
             >
-              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${selected ? "bg-white/20 text-white ring-1 ring-white/30" : "bg-orange-500/10 text-orange-500"}`}>
+              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors duration-300 ${selected ? "bg-white/20 text-white ring-1 ring-white/30" : "bg-orange-500/10 text-orange-500 ring-1 ring-transparent"}`}>
                 <Icon className="h-4 w-4" />
               </span>
-              <span className={`truncate text-[14px] sm:text-[15px] font-semibold leading-tight ${selected ? "text-white" : ""}`}>{opt.title}</span>
+              <span className="truncate text-[14px] sm:text-[15px] font-semibold leading-tight">{opt.title}</span>
             </button>
           );
         })}
