@@ -67,7 +67,6 @@ import { useAppStore, logoutAndClear } from "@/stores/app-store";
 import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
-import { Part } from "@/components/users/form-part";
 
 interface Props {
   user: { name: string; email: string; role: string; profileId: string };
@@ -934,11 +933,10 @@ function PermissionFormView({
         <CardContent className="p-5 sm:p-6 md:p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             <input type="hidden" name="type" value={requestType} />
-            {/* The same numbered sections as Settings and the person editor */}
-            <Part no={1} title="Trip" hint="Why and where" oneColumn>
             {/* Purpose */}
             <div className="space-y-2">
               <label htmlFor="purpose" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                <FileText className="h-4 w-4 text-orange-500" />
                 {requestType === "ENTRY" ? "Purpose of Campus Entry" : requestType === "HOSTEL" ? "Purpose of Going to Hostel" : "Purpose of Exit"} <span className="text-orange-400">*</span>
               </label>
 
@@ -956,6 +954,7 @@ function PermissionFormView({
             {requestType !== "HOSTEL" && (
             <div className="space-y-2">
               <label htmlFor="destination" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-orange-500" />
                 {requestType === "ENTRY" ? "Origin / Coming From Location" : "Destination / Location"} <span className="text-orange-400">*</span>
               </label>
               <Input
@@ -976,9 +975,6 @@ function PermissionFormView({
               accent={requestType === "ENTRY" ? "emerald" : "orange"}
               comingIn={requestType === "ENTRY" && !isHosteller}
             />
-            </Part>
-
-            <Part no={2} title="When" hint={requestType === "ENTRY" ? "Day and time you come in" : "Day and time you leave"} oneColumn>
 
             {isOuting ? (
               <HostelOutingFields
@@ -994,6 +990,7 @@ function PermissionFormView({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
               <div className="space-y-2">
                 <label htmlFor="exitDate" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-orange-500" />
                   {requestType === "ENTRY" ? "Entry Date" : "Exit Date"} <span className="text-orange-400">*</span>
                 </label>
                 <DateField id="exitDate" name="exitDate" value={todayStr} readOnly className="h-12 w-full rounded-2xl bg-zinc-950 text-zinc-400" />
@@ -1001,6 +998,7 @@ function PermissionFormView({
 
               <div className="space-y-2">
                 <label htmlFor="expectedExit" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-orange-500" />
                   {requestType === "ENTRY" ? "Expected Entry Time" : "Expected Exit Time"} <span className="text-orange-400">*</span>
                 </label>
                 <TimeField name="expectedExit" required defaultToNow className={TIME_FIELD_CLS} />
@@ -1009,12 +1007,10 @@ function PermissionFormView({
             </div>
             )}
 
-            </Part>
-
-            <Part no={3} title="Contact" hint="If we need to reach you" oneColumn>
             {/* Contact Number */}
             <div className="space-y-2">
               <label htmlFor="contactNumber" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                <Phone className="h-4 w-4 text-orange-500" />
                 Emergency Contact Number
               </label>
               <Input
@@ -1045,8 +1041,6 @@ function PermissionFormView({
                 className="px-4 py-3"
               />
             </div>
-
-            </Part>
 
             {/* Submit Button */}
             <Button
