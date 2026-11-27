@@ -180,34 +180,32 @@ html.security-text .glass:not(.loading-pill) {
 }
 
 /*
- * Glass count cards (dashboards): frosted white over a soft glow of the card's
- * own colour, a bright white edge and an inner top highlight. Same switches as
- * the glass bars: solid on slow devices (html.no-blur), for "reduce
- * transparency", and on Security screens.
+ * Count cards (dashboards): a glass finish with NO live blur — a fixed sheen
+ * (white to faint grey, a soft coral light in the top corner), a hairline
+ * edge, an inner top highlight and a soft lifted shadow. Nothing is redrawn
+ * while scrolling or while the sidebar opens / closes, and each card keeps
+ * its layout and painting to itself (contain).
  */
 .glass-card {
-  background: linear-gradient(150deg, rgba(255, 255, 255, 0.86) 0%, rgba(255, 255, 255, 0.62) 100%);
-  -webkit-backdrop-filter: blur(16px) saturate(170%);
-  backdrop-filter: blur(16px) saturate(170%);
-  border: 1px solid rgba(255, 255, 255, 0.75);
+  background:
+    radial-gradient(130% 95% at 100% 0%, rgba(255, 99, 74, 0.075) 0%, rgba(255, 99, 74, 0) 58%),
+    linear-gradient(180deg, #ffffff 0%, #fbfbfc 100%);
+  border: 1px solid rgba(228, 228, 231, 0.9);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 1px 0 #ffffff,
     0 1px 2px rgba(16, 24, 40, 0.04),
-    0 14px 34px -20px rgba(16, 24, 40, 0.28);
+    0 12px 28px -20px rgba(16, 24, 40, 0.22);
+  contain: layout paint;
 }
-html.no-blur .glass-card,
+/* Needs action (Overdue / Pending above 0): a warmer corner and a coral edge */
+.glass-card-hot {
+  background:
+    radial-gradient(130% 95% at 100% 0%, rgba(255, 99, 74, 0.16) 0%, rgba(255, 99, 74, 0) 62%),
+    linear-gradient(180deg, #ffffff 0%, #fff8f6 100%);
+  border-color: rgba(255, 99, 74, 0.42);
+}
 .security-text .glass-card {
-  background: linear-gradient(180deg, #ffffff 0%, #fafafb 100%);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  border-color: rgba(228, 228, 231, 0.95);
-}
-@media (prefers-reduced-transparency: reduce) {
-  .glass-card {
-    background: #ffffff;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
 }
 
 /* Soft card elevation */

@@ -245,10 +245,10 @@ function toneFromTitle(title: string): StatTone {
 
 /**
  * One brand look for every count (coral, like the rest of the portal): the
- * icon tile and the glow behind the glass. Counts that need action (Overdue,
- * Pending… above 0) get a coral edge, a stronger glow and a coral number.
+ * icon tile and the sheen of the glass card. Counts that need action (Overdue,
+ * Pending… above 0) get a coral edge, a warmer corner and a coral number.
  */
-const CORAL = { tile: "bg-orange-500/10 text-orange-500", glow: "bg-orange-400/25", number: "text-orange-600", attention: "!border-orange-500/45" };
+const CORAL = { tile: "bg-orange-500/10 text-orange-500", number: "text-orange-600" };
 const NEEDS_ACTION: readonly StatTone[] = ["alert", "waiting"];
 
 export function StatCard({
@@ -271,16 +271,11 @@ export function StatCard({
     <div
       title={description}
       className={cn(
-        "glass-card relative isolate min-w-0 overflow-hidden rounded-3xl p-4 sm:p-5 flex flex-col gap-4 sm:gap-5 transition-[border-color] duration-200",
-        attention && look.attention,
+        "glass-card relative min-w-0 overflow-hidden rounded-3xl p-4 sm:p-5 flex flex-col gap-4 sm:gap-5",
+        attention && "glass-card-hot",
         className
       )}
     >
-      {/* The card's own colour glowing softly through the frosted glass (stronger when it needs attention) */}
-      <span
-        className={cn("pointer-events-none absolute -right-10 -top-12 -z-10 h-36 w-36 rounded-full blur-2xl", look.glow, zero && "opacity-40", attention && "scale-125")}
-        aria-hidden="true"
-      />
       <span
         className={cn(
           "flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-2xl transition-opacity [&>svg]:h-[18px] [&>svg]:w-[18px] sm:[&>svg]:h-5 sm:[&>svg]:w-5",
