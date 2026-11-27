@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/auth/helpers";
 import { permissionRequestSchema, batchGrantSchema, hostelOutingSchema } from "@/lib/validation/schemas";
 import { revalidatePath } from "next/cache";
-import { notifyApprovers, notifyLive } from "@/lib/realtime/notify";
+import { notifyApprovers, notifyLive, notifyPassHolder } from "@/lib/realtime/notify";
 import { closeAllSupersededTrips } from "@/lib/passes/close-trips";
 import { resolveStudentActivePass } from "@/lib/permissions/auto-expire";
 import { resolveStudentApprover } from "@/lib/permissions/approver";
@@ -375,6 +375,8 @@ export async function batchCreatePermissions(studentIds: string[], data: Record<
   revalidatePath("/warden/students");
   // Open request lists (warden queue, HOD lists) and the gate's outing books show them at once
   notifyApprovers(...granted);
+  // The students get "Pass approved" on their own phones / bell
+  notifyPassHolder(...granted);
   notifyLive("gate");
   return { success: true };
 }
