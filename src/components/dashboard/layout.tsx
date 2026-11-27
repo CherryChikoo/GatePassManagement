@@ -97,12 +97,8 @@ function BrandMark({ compact = false, roleLine }: { compact?: boolean; roleLine:
           compact && "lg:w-0 lg:opacity-0 lg:ml-0"
         )}
       >
-        <span className="text-[15px] font-semibold text-zinc-100 tracking-tight leading-tight truncate">Gate Pass</span>
-        {/* Designation, then the department on its own line (e.g. "Head of the Department" / "Computer Science") */}
-        {roleLine && <span className="text-[11px] font-medium text-orange-400 leading-tight truncate">{roleLine.split(" · ")[0]}</span>}
-        {roleLine.includes(" · ") && (
-          <span className="text-[11px] font-medium text-zinc-500 leading-tight truncate">{roleLine.split(" · ").slice(1).join(" · ")}</span>
-        )}
+        {/* Just the name of the portal (the person's designation is in the top bar) */}
+        <span className="text-base font-semibold text-zinc-100 tracking-tight leading-tight truncate">GatePass</span>
       </div>
     </div>
   );
