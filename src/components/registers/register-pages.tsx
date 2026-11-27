@@ -376,7 +376,7 @@ export function RegistersHub({
                   <span className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl", tone.icon)}>
                     <BedDouble className="h-6 w-6" aria-hidden="true" />
                   </span>
-                  <span className="break-words text-base font-bold leading-snug text-zinc-100 sm:text-lg">{t("Hostel Student Outing Book & Pass")}</span>
+                  <span className="break-words text-base font-bold leading-snug text-zinc-100 sm:text-lg">{t("Hostel Student Outing Book")}</span>
                   {total > 0 && (
                     <span className="mt-auto w-fit rounded-full bg-sky-600 px-3 py-1 text-sm font-bold tabular-nums text-white shadow-sm">
                       {t("{n} today", { n: total })}

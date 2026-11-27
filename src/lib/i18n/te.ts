@@ -1811,4 +1811,11 @@ export const te: Record<string, string> = {
   "New Password": "కొత్త పాస్‌వర్డ్",
   "At least 8 characters": "కనీసం 8 అక్షరాలు",
   "Student coming in": "విద్యార్థి లోపలికి వస్తున్నారు",
+  // Pass book names (just the book)
+  "Faculty Book": "ఫ్యాకల్టీ బుక్",
+  "Students Book": "స్టూడెంట్స్ బుక్",
+  "Hostel Student Outing Book": "హాస్టల్ విద్యార్థుల ఔటింగ్ బుక్",
+  "Boys Hostel Student Outing Book": "బాయ్స్ హాస్టల్ విద్యార్థుల ఔటింగ్ బుక్",
+  "Ladies Hostel Student Outing Book": "లేడీస్ హాస్టల్ విద్యార్థుల ఔటింగ్ బుక్",
+  "Hostel Home Outing Counts": "హాస్టల్ హోమ్ ఔటింగ్ కౌంట్స్",
 };

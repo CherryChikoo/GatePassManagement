@@ -394,14 +394,14 @@ export const REGISTERS: RegisterDef[] = [
     kind: "derived",
     key: "FACULTY_BOOK",
     number: 1,
-    title: "Faculty Book & Pass",
+    title: "Faculty Book",
     description: "Approved faculty passes with the actual out-time and in-time marked by security.",
   },
   {
     kind: "derived",
     key: "STUDENT_BOOK",
     number: 20,
-    title: "Students Book & Pass",
+    title: "Students Book",
     description: "Approved day-scholar gate passes with the actual out-time and in-time scanned at the gate.",
   },
   {
@@ -725,14 +725,14 @@ export const REGISTERS: RegisterDef[] = [
     kind: "derived",
     key: "BOYS_HOSTEL_OUTING",
     number: 12,
-    title: "Boys Hostel Student Outing Book & Pass",
+    title: "Boys Hostel Student Outing Book",
     description: hostelOutingDescription,
   },
   {
     kind: "derived",
     key: "LADIES_HOSTEL_OUTING",
     number: 13,
-    title: "Ladies Hostel Student Outing Book & Pass",
+    title: "Ladies Hostel Student Outing Book",
     description: hostelOutingDescription,
   },
   {
@@ -782,7 +782,7 @@ export const REGISTERS: RegisterDef[] = [
     kind: "derived",
     key: "HOME_OUTING_SUMMARY",
     number: 16,
-    title: "Boys & Ladies Hostel Home Outing Passbook",
+    title: "Hostel Home Outing Counts",
     description: "Date-wise totals of hostel home outing passes, with faculty pass counts.",
   },
   {
