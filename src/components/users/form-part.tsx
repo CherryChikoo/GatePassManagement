@@ -9,7 +9,7 @@ import { Eye, EyeOff } from "lucide-react";
  */
 
 /** One numbered part of the form: number, title and hint on top, its fields below */
-export function Part({ no, title, hint, children }: { no: number; title: string; hint: string; children: React.ReactNode }) {
+export function Part({ no, title, hint, children, oneColumn = false }: { no: number; title: string; hint: string; children: React.ReactNode; oneColumn?: boolean }) {
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 sm:p-5">
       <div className="mb-4 flex items-center gap-3">
@@ -21,7 +21,7 @@ export function Part({ no, title, hint, children }: { no: number; title: string;
           <p className="text-xs text-zinc-500">{hint}</p>
         </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{children}</div>
+      <div className={oneColumn ? "space-y-5" : "grid grid-cols-1 sm:grid-cols-2 gap-4"}>{children}</div>
     </section>
   );
 }
