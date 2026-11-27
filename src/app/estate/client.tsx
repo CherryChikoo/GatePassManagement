@@ -105,7 +105,7 @@ export function EstateHome() {
                   {data?.counts &&
                     (n ? (
                       <span className="mt-3 flex items-center gap-3">
-                        <span className="text-4xl font-light leading-none tracking-tight tabular-nums text-orange-600">{n}</span>
+                        <span className="text-4xl font-bold leading-none tracking-tight tabular-nums text-zinc-100">{n}</span>
                         {/* Clear, solid "to verify" tag */}
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-b from-[#fbbf24] to-[#d97706] px-3 py-1 text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_8px_16px_-10px_rgba(217,119,6,0.75)]">
                           <Clock className="h-4 w-4" aria-hidden="true" /> {t("to verify")}
