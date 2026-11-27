@@ -1803,4 +1803,11 @@ export const te: Record<string, string> = {
   "Reminders & summaries": "రిమైండర్లు & సారాంశాలు",
   "Allow notifications for this site in the browser's settings": "బ్రౌజర్ సెట్టింగ్‌లలో ఈ సైట్‌కి నోటిఫికేషన్లను అనుమతించండి",
   "iPhone: tap Share → Add to Home Screen, then open Gate Pass from the Home Screen": "ఐఫోన్: షేర్ → హోమ్ స్క్రీన్‌కి జోడించండి, తర్వాత హోమ్ స్క్రీన్ నుండి గేట్ పాస్ తెరవండి",
+  "Personal": "వ్యక్తిగతం",
+  "Your name and contact": "మీ పేరు మరియు ఫోన్",
+  "Work": "ఉద్యోగం",
+  "Set by the administrator": "అడ్మిన్ సెట్ చేస్తారు",
+  "Leave blank to keep it": "మార్చకూడదంటే ఖాళీగా వదలండి",
+  "New Password": "కొత్త పాస్‌వర్డ్",
+  "At least 8 characters": "కనీసం 8 అక్షరాలు",
 };

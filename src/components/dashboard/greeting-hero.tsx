@@ -32,7 +32,7 @@ export function GreetingHero({
       <div className="min-w-0">
         {/* Date pill */}
         <span className="inline-flex items-center gap-2 rounded-full border border-zinc-800/80 bg-white/80 py-1 pl-1 pr-3.5 text-sm font-medium text-zinc-500 shadow-[inset_0_1px_0_#ffffff,0_6px_16px_-12px_rgba(16,24,40,0.3)]">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-500/10 text-orange-500">
+          <span className="icon-tile flex h-7 w-7 items-center justify-center rounded-full">
             <Icon className="h-3.5 w-3.5" aria-hidden="true" />
           </span>
           {day}

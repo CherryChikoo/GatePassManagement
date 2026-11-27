@@ -24,7 +24,7 @@ function Row({ icon: Icon, label, children, dim }: { icon: LucideIcon; label: st
   return (
     <div className={cn("flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center", dim && "opacity-50")}>
       <span className="flex min-w-0 flex-1 items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-500">
+        <span className="icon-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl">
           <Icon className="h-[18px] w-[18px]" />
         </span>
         <span className="truncate text-[15px] font-medium text-zinc-100">{label}</span>

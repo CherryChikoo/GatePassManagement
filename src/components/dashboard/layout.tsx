@@ -96,7 +96,7 @@ function BrandMark({ compact = false, roleLine }: { compact?: boolean; roleLine:
         )}
       >
         <span className="text-[15px] font-semibold text-zinc-100 tracking-tight leading-tight truncate">Gate Pass</span>
-        <span className="text-[11px] font-medium text-orange-400 leading-tight truncate">{roleLine}</span>
+        {roleLine && <span className="text-[11px] font-medium text-orange-400 leading-tight truncate">{roleLine}</span>}
       </div>
     </div>
   );
@@ -158,7 +158,8 @@ export function DashboardLayout({
 }: DashboardLayoutProps) {
   const t = useT();
   // Who they are (designation / role), not "… Dashboard"
-  const roleLine = t(roleTitle || ROLE_FALLBACK[role] || role);
+  // Their designation (never the login type); "" = none set: just the name shows
+  const roleLine = roleTitle !== undefined ? (roleTitle ? t(roleTitle) : "") : t(ROLE_FALLBACK[role] || role);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Laptop sidebar wide / icons: the tab-wide choice (see readCollapsed), the server's value until hydrated
   const desktopCollapsed = useSyncExternalStore(subscribeCollapsed, () => readCollapsed(defaultCollapsed), () => defaultCollapsed);
@@ -327,7 +328,7 @@ export function DashboardLayout({
                   <span
                     className={cn(
                       "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors [&>svg]:h-[18px] [&>svg]:w-[18px]",
-                      isActive ? "bg-orange-500/10 text-orange-400" : "text-zinc-500 group-hover:text-zinc-300"
+                      isActive ? "icon-tile" : "text-zinc-500 group-hover:text-zinc-300"
                     )}
                   >
                     {item.icon}
@@ -423,7 +424,7 @@ export function DashboardLayout({
           {/* Desktop: the page you are on, with its icon */}
           {hasSidebar && activeItem && (
             <div className="hidden min-w-0 items-center gap-3 pl-1 lg:flex">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-500 [&>svg]:h-[18px] [&>svg]:w-[18px]">
+              <span className="icon-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl [&>svg]:h-[18px] [&>svg]:w-[18px]">
                 {activeItem.icon}
               </span>
               <span className="truncate text-[15px] font-semibold tracking-tight text-zinc-100">{t(activeItem.label)}</span>
@@ -478,7 +479,7 @@ export function DashboardLayout({
               )}
               <span className="hidden min-w-0 flex-col justify-center leading-tight lg:flex">
                 <span className="max-w-[200px] truncate text-sm font-semibold text-zinc-100">{userName}</span>
-                <span className="max-w-[200px] truncate text-[11px] font-medium text-orange-500/90">{roleLine}</span>
+                {roleLine && <span className="max-w-[220px] truncate text-[11px] font-medium text-orange-500/90">{roleLine}</span>}
               </span>
             </Link>
             {/* Sign out lives in the sidebar on desktop; keep it here for pages without a sidebar and on phones */}

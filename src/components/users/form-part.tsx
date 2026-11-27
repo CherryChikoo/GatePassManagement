@@ -13,7 +13,7 @@ export function Part({ no, title, hint, children }: { no: number; title: string;
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 sm:p-5">
       <div className="mb-4 flex items-center gap-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-500 text-sm font-semibold text-white">
+        <span className="icon-tile flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold">
           {no}
         </span>
         <div className="min-w-0">

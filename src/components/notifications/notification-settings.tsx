@@ -70,7 +70,7 @@ export function NotificationSettings({ role }: { role: string }) {
     <Card>
       <CardHeader className="border-b border-zinc-800/80 pb-4">
         <CardTitle className="text-base font-medium flex items-center gap-2 text-zinc-100">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500/10 text-orange-400">
+          <span className="icon-tile flex h-8 w-8 items-center justify-center rounded-full">
             <BellRing className="h-4 w-4" />
           </span>
           {t("Notifications")}
@@ -79,7 +79,7 @@ export function NotificationSettings({ role }: { role: string }) {
       <CardContent className="space-y-6 p-5 sm:p-6">
         {/* This device */}
         <div className="flex items-center gap-4 rounded-2xl border border-zinc-800/80 bg-zinc-950/40 p-4">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-500">
+          <span className="icon-tile flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl">
             <Smartphone className="h-5 w-5" />
           </span>
           <span className="min-w-0 flex-1">
@@ -131,7 +131,7 @@ export function NotificationSettings({ role }: { role: string }) {
               const on = !(muted ?? []).includes(kind);
               return (
                 <li key={kind} className="flex items-center gap-3 px-4 py-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
+                  <span className="icon-tile flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
                     <Icon className="h-4 w-4" />
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-200">{t(KIND_INFO[kind].label)}</span>

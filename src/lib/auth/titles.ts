@@ -53,12 +53,15 @@ export const getRoleLine = cache(async (profileId: string, role: string): Promis
   const hit = roleLineCache.get(profileId);
   if (hit && hit.expiresAt > Date.now()) return hit.line;
 
-  let line = ROLE_LINE[role] ?? role;
+  // Their designation, not the login type: an Admin without one shows only their name
+  let line = role === "ADMIN" ? "" : ROLE_LINE[role] ?? role;
   if (role === "FACULTY" || role === "FACULTY_ADMIN" || role === "DEAN" || role === "DIRECTOR") {
     const f = await prisma.faculty.findUnique({ where: { profileId }, select: { designation: true, department: true } });
     const designation = f?.designation?.trim();
-    if (role === "FACULTY_ADMIN") line = f?.department ? `Head of Department · ${f.department}` : "Head of Department";
-    else if (designation) line = designation;
+    if (role === "FACULTY_ADMIN") {
+      const title = designation || "Head of the Department";
+      line = f?.department ? `${title} · ${f.department}` : title;
+    } else if (designation) line = designation;
   } else {
     // Admin, Warden, Security, Supervisor: the designation set by the admin
     const p = await prisma.profile.findUnique({

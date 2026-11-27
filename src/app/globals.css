@@ -314,6 +314,14 @@ html.security-text .glass:not(.loading-pill) {
   margin-right: 0;
 }
 
+/* Premium icon tile: coral gradient, white icon, light top edge, soft coral glow
+   (the same as the count cards' tiles) */
+.icon-tile {
+  background: linear-gradient(145deg, #ff8f75 0%, #ff6b4f 50%, #e8492e 100%) !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 18px -10px rgba(232, 73, 46, 0.55);
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }

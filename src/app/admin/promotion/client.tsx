@@ -320,7 +320,7 @@ export function PromotionClient() {
       {last?.canUndo && (
         <Card className="border-orange-500/25">
           <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-500">
+            <span className="icon-tile flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl">
               <History className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
@@ -362,7 +362,7 @@ export function PromotionClient() {
             <Card key={c.id} glow className="flex flex-col">
               <CardContent className="flex flex-1 flex-col gap-4 p-5">
                 <div className="flex items-start justify-between gap-3">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-500">
+                  <span className="icon-tile flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl">
                     <BookOpen className="h-5 w-5" />
                   </span>
                   <div className="flex gap-1">

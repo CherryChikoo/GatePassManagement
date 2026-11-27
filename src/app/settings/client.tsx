@@ -27,6 +27,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { NotificationSettings } from "@/components/notifications/notification-settings";
+import { Part } from "@/components/users/form-part";
 
 interface Props {
   user: {
@@ -270,7 +271,7 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
         <Card>
           <CardHeader className="border-b border-zinc-800/80 pb-4">
             <CardTitle className="text-base font-medium flex items-center gap-2 text-zinc-100">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500/10 text-orange-400">
+              <span className="icon-tile flex h-8 w-8 items-center justify-center rounded-full">
                 <User className="h-4 w-4" />
               </span>
               {t("Profile Details")}
@@ -294,51 +295,41 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
                 </div>
               )}
 
-              <div className="space-y-5">
-                {/* Full Name */}
-                <Input
-                  label={t("Full Name")}
-                  name="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={t("Enter full name")}
-                  required
-                  icon={<User className="h-4 w-4" />}
-                />
-
-                {/* Email Address (Read-only) — not shown to Security (name & phone only) */}
-                {!nameAndPhoneOnly && (
-                <div>
+              {/* The same numbered sections as the Admin's add / edit person windows */}
+              <div className="space-y-4">
+                <Part no={1} title={t("Personal")} hint={t("Your name and contact")}>
                   <Input
-                    label={t("Email Address")}
-                    name="email"
-                    type="email"
-                    value={selfManaged ? email : user.email}
-                    onChange={selfManaged ? (e) => setEmail(e.target.value) : undefined}
-                    disabled={!selfManaged}
-                    required={selfManaged}
-                    icon={<Mail className="h-4 w-4" />}
+                    label={t("Full Name")}
+                    name="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder={t("Enter full name")}
+                    required
+                    icon={<User className="h-4 w-4" />}
                   />
-                  <p className="text-[11px] text-zinc-500 mt-1 ml-1">
-                    {selfManaged
-                      ? "This is also your login email. Changing it needs your current password (below)."
-                      : t("Primary login email registered with campus authentication.")}
-                  </p>
-                </div>
-                )}
-
-                {/* Phone Number */}
-                <Input
-                  label={t("Phone Number")}
-                  name="phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder={t("e.g. +91 9876543210")}
-                  icon={<Phone className="h-4 w-4" />}
-                />
-
-                {user.role === "ADMIN" && (
-                  <div>
+                  <Input
+                    label={t("Phone Number")}
+                    name="phone"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder={t("e.g. +91 9876543210")}
+                    icon={<Phone className="h-4 w-4" />}
+                  />
+                  {/* Login email — not shown to Security (name & phone only) */}
+                  {!nameAndPhoneOnly && (
+                    <Input
+                      label={t("Email Address")}
+                      name="email"
+                      type="email"
+                      value={selfManaged ? email : user.email}
+                      onChange={selfManaged ? (e) => setEmail(e.target.value) : undefined}
+                      disabled={!selfManaged}
+                      required={selfManaged}
+                      icon={<Mail className="h-4 w-4" />}
+                      wrapperClassName={user.role === "ADMIN" ? undefined : "sm:col-span-2"}
+                    />
+                  )}
+                  {user.role === "ADMIN" && (
                     <Input
                       label="Designation"
                       name="designation"
@@ -348,38 +339,25 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
                       placeholder="e.g. System Administrator, Principal's Office"
                       icon={<Briefcase className="h-4 w-4" />}
                     />
-                    <p className="text-[11px] text-zinc-500 mt-1 ml-1">Shown under “Gate Pass” in the menu.</p>
-                  </div>
-                )}
+                  )}
+                </Part>
 
-                {/* Department & Designation (Visible for Faculty and HOD) */}
                 {isFacultyOrHod && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                    <div>
-                      <Input
-                        label="Department"
-                        name="department"
-                        value={department || "Not assigned"}
-                        disabled
-                        icon={<Building2 className="h-4 w-4" />}
-                      />
-                      <p className="text-[11px] text-zinc-500 mt-1 ml-1">
-                        Department is assigned by the administrator.
-                      </p>
-                    </div>
-                    {/* Set by the Main Admin only (Admin → Users) */}
-                    <div>
-                      <Input
-                        label={user.role === "DIRECTOR" ? "Title" : "Designation"}
-                        name="designation"
-                        value={designation || (user.role === "FACULTY" ? "Faculty Member" : "—")}
-                        disabled
-                        icon={<Briefcase className="h-4 w-4" />}
-                      />
-                      <p className="text-[11px] text-zinc-500 mt-1 ml-1">
-                        Assigned by the administrator.
-                      </p>
-                    </div>
+                  <Part no={2} title={t("Work")} hint={t("Set by the administrator")}>
+                    <Input
+                      label="Department"
+                      name="department"
+                      value={department || "Not assigned"}
+                      disabled
+                      icon={<Building2 className="h-4 w-4" />}
+                    />
+                    <Input
+                      label={user.role === "DIRECTOR" ? "Title" : "Designation"}
+                      name="designation"
+                      value={designation || (user.role === "FACULTY" ? "Faculty Member" : "—")}
+                      disabled
+                      icon={<Briefcase className="h-4 w-4" />}
+                    />
                     {selfManaged && (
                       <Input
                         label="Employee ID"
@@ -390,37 +368,26 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
                         icon={<Briefcase className="h-4 w-4" />}
                       />
                     )}
-                  </div>
+                  </Part>
                 )}
 
                 {user.role === "STUDENT" && (
-                  <p className="flex items-center gap-2 rounded-2xl border border-zinc-800/80 bg-zinc-950 px-4 py-3 text-xs text-zinc-500">
+                  <p className="flex items-center gap-2 rounded-2xl border border-zinc-800/80 bg-zinc-950 px-4 py-3 text-sm text-zinc-500">
                     <Lock className="h-4 w-4 shrink-0" />
                     {t("To change your password, ask your HOD or warden.")}
                   </p>
                 )}
 
                 {canChangePassword && (
-                <>
-                <div className="h-px w-full bg-zinc-800/80 my-2"></div>
-
-                {/* Change Password Section */}
-                <div>
-                  <h3 className="text-sm font-medium text-zinc-100 mb-3 flex items-center gap-2">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-950 text-zinc-400">
-                      <Lock className="h-4 w-4" />
-                    </span>
-                    {t("Change Password")}
-                  </h3>
-                  <div className="space-y-4">
+                  <Part no={isFacultyOrHod ? 3 : 2} title={t("Password")} hint={t("Leave blank to keep it")}>
                     <Input
-                      label={t("New Password (Optional)")}
+                      label={t("New Password")}
                       name="password"
                       type="password"
                       autoComplete="new-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder={t("Leave blank to keep current password")}
+                      placeholder={t("At least 8 characters")}
                       icon={<Lock className="h-4 w-4" />}
                     />
                     {(password || emailChanged) && (
@@ -436,12 +403,7 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
                         icon={<Lock className="h-4 w-4" />}
                       />
                     )}
-                  </div>
-                  <p className="text-xs text-zinc-500 mt-2">
-                    {t("A new password must be at least 8 characters. Your current password is required to change it.")}
-                  </p>
-                </div>
-                </>
+                  </Part>
                 )}
               </div>
 
