@@ -267,7 +267,7 @@ export function StatCard({
 }: StatCardProps) {
   const kind = tone ?? toneFromTitle(title);
   const look = CORAL;
-  const count = typeof value === "number" ? value : /^d[d,]*$/.test(String(value).trim()) ? Number(String(value).replace(/,/g, "")) : null;
+  const count = typeof value === "number" ? value : /^\d[\d,]*$/.test(String(value).trim()) ? Number(String(value).replace(/,/g, "")) : null;
   // Zero: calm and faded. Needs action (e.g. Overdue above 0): the whole card is tinted.
   const zero = count === 0;
   const attention = NEEDS_ACTION.includes(kind) && count !== null && count > 0;
@@ -282,7 +282,7 @@ export function StatCard({
     >
       <span
         className={cn(
-          "flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-2xl transition-opacity [&>svg]:h-[18px] [&>svg]:w-[18px] sm:[&>svg]:h-5 sm:[&>svg]:w-5",
+          "stat-tile flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-2xl transition-opacity [&>svg]:h-[18px] [&>svg]:w-[18px] sm:[&>svg]:h-5 sm:[&>svg]:w-5",
           look.tile,
           // Zero: a soft tile (the active counts stand out)
           zero && "opacity-45 saturate-[0.85]"
@@ -294,13 +294,13 @@ export function StatCard({
       <div className="min-w-0">
         <p
           className={cn(
-            "text-3xl sm:text-4xl md:text-[42px] leading-none font-light tracking-tight tabular-nums truncate",
+            "stat-number text-3xl sm:text-4xl md:text-[42px] leading-none font-light tracking-tight tabular-nums truncate",
             zero ? "text-zinc-500" : attention ? look.number : "text-zinc-100"
           )}
         >
           {value}
         </p>
-        <p className="mt-2 text-sm sm:text-[15px] font-medium text-zinc-400 leading-snug truncate">{title}</p>
+        <p className="stat-title mt-2 text-sm sm:text-[15px] font-medium text-zinc-400 leading-snug truncate">{title}</p>
         {trend && (
           <p className={cn("mt-1.5 text-xs font-semibold truncate", trendUp ? "text-emerald-600" : "text-red-500")}>
             {trendUp ? "+" : "−"} {trend}
