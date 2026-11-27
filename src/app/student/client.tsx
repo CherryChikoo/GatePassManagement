@@ -62,9 +62,6 @@ import {
   Sparkles,
   X,
   Home, PencilLine,
-  ClipboardList,
-  CalendarDays,
-  MessageSquare,
 } from "lucide-react";
 import { useAppStore, logoutAndClear } from "@/stores/app-store";
 import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
@@ -270,9 +267,9 @@ function RejectedView({ permission, onDone }: { permission: any; onDone: () => v
               {permission.rejectionReason || "No reason was provided."}
             </p>
           </div>
-          <div className="form-metal">
-            <SummaryRow icon={FileText} label="Purpose">{permission.purpose}</SummaryRow>
-          </div>
+          <dl className="divide-y divide-zinc-800/70">
+            <SummaryRow label="Purpose">{permission.purpose}</SummaryRow>
+          </dl>
           <Button type="button" onClick={onDone} className="w-full h-12">
             Submit a new request
           </Button>
@@ -608,40 +605,27 @@ function PendingApprovalView({
         </div>
       )}
 
-      {/* Request summary: the same look as the request form (white boxes, red icon tiles, metallic labels) */}
+      {/* Request summary: a plain list (label left, value right, thin lines between) */}
       <Card>
-        <CardContent className="form-metal space-y-3 p-4 sm:p-6">
-          <div className="mb-1 flex items-center gap-3">
-            <span className="icon-tile flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-              <ClipboardList className="h-4 w-4" />
-            </span>
-            <h2 className="text-base font-semibold text-zinc-100">Request summary</h2>
-          </div>
-
-          <SummaryRow icon={FileText} label="Purpose">{permission.purpose}</SummaryRow>
-          <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
-            <SummaryRow icon={CalendarDays} label="Date">
-              {permission.exitDate ? formatDateTime(permission.exitDate).split(",")[0] : "Today"}
-            </SummaryRow>
-            <SummaryRow icon={Clock} label={permission.type === "ENTRY" ? "Coming in at" : "Leaving at"}>
+        <CardContent className="p-5 sm:p-6">
+          <h2 className="text-base font-semibold text-zinc-100">Request summary</h2>
+          <dl className="mt-2 divide-y divide-zinc-800/70">
+            <SummaryRow label="Purpose">{permission.purpose}</SummaryRow>
+            <SummaryRow label="Date">{permission.exitDate ? formatDateTime(permission.exitDate).split(",")[0] : "Today"}</SummaryRow>
+            <SummaryRow label={permission.type === "ENTRY" ? "Coming in at" : "Leaving at"}>
               {permission.expectedExit ? formatDateTime(permission.expectedExit).split(", ")[1]?.toUpperCase() : "--:--"}
             </SummaryRow>
-          </div>
-          {permission.remarks && (
-            <SummaryRow icon={MessageSquare} label="Remarks">{permission.remarks}</SummaryRow>
-          )}
-
-          {/* Cancel */}
-          <Button
+            {permission.remarks && <SummaryRow label="Remarks">{permission.remarks}</SummaryRow>}
+          </dl>
+          <button
             type="button"
-            variant="outline"
             disabled={cancelling}
             onClick={() => setShowCancelDialog(true)}
-            className="mt-2 h-12 w-full rounded-2xl border-red-500/25! bg-red-500/5! text-red-500! hover:bg-red-500/10!"
+            className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-semibold text-red-500 transition-colors hover:bg-red-500/5 disabled:opacity-50"
           >
             <XCircle className="h-4 w-4" />
             {cancelling ? "Cancelling…" : "Cancel request"}
-          </Button>
+          </button>
         </CardContent>
       </Card>
       </div>
@@ -649,17 +633,12 @@ function PendingApprovalView({
   );
 }
 
-/** One detail of the request summary: red icon tile, metallic label, the value in bold */
-function SummaryRow({ icon: Icon, label, children }: { icon: React.ComponentType<{ className?: string }>; label: string; children: React.ReactNode }) {
+/** One line of a summary: the label on the left, the value on the right */
+function SummaryRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-zinc-800 bg-white px-4 py-3 shadow-[inset_0_1px_0_#ffffff,0_8px_20px_-18px_rgba(16,24,40,0.35)]">
-      <span className="icon-chip shrink-0">
-        <Icon />
-      </span>
-      <div className="min-w-0">
-        <p className="field-label text-xs!">{label}</p>
-        <p className="break-words text-base font-semibold leading-snug text-zinc-100">{children}</p>
-      </div>
+    <div className="flex min-w-0 items-baseline justify-between gap-4 py-3">
+      <dt className="shrink-0 text-sm text-zinc-500">{label}</dt>
+      <dd className="min-w-0 break-words text-right text-[15px] font-semibold text-zinc-100">{children}</dd>
     </div>
   );
 }
