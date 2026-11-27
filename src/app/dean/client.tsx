@@ -103,8 +103,8 @@ export function DeanDashboardClient({ user, title }: Props & { title?: string })
     })
     .slice(0, 10);
 
-  const firstName =
-    (user?.name || "").replace(/^(dr|prof|mr|mrs|ms)\.?\s+/i, "").split(" ")[0] || user?.name || title || "Dean";
+  // The greeting shows the full name (with any title, e.g. "Dr.")
+  const firstName = user?.name?.trim() || title || "Dean";
   const hour = Number(new Intl.DateTimeFormat("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date()));
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const todayLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date());

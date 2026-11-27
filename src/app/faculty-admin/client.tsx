@@ -86,7 +86,8 @@ export function FacultyAdminDashboardClient({ user }: Props) {
 
   // Greeting (display only)
   const displayName = user?.name || "";
-  const firstName = displayName.replace(/^(dr|prof|mr|mrs|ms)\.?\s+/i, "").split(" ")[0] || displayName;
+  // The greeting shows the full name (with any title, e.g. "Dr.")
+  const firstName = displayName.trim();
   const hour = Number(new Intl.DateTimeFormat("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date()));
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const todayLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(new Date());
