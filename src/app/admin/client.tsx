@@ -31,8 +31,9 @@ import {
   UserX,
   Home,
   Building2,
+  UsersRound,
 } from "lucide-react";
-import { GreetingHero, HeroTag } from "@/components/dashboard/greeting-hero";
+import { GreetingHero } from "@/components/dashboard/greeting-hero";
 
 interface Props {
   user: { name: string; email: string; role: string; profileId: string };
@@ -61,10 +62,9 @@ export function AdminDashboardClient({ user }: Props) {
         {/* Greeting */}
         <GreetingHero
           name={firstName}
-          chips={[
-            { value: n(stats.studentsOut) + n(stats.facultyOut), label: "out" },
-            { value: n(stats.overdue), label: "overdue", attention: true },
-            { value: n(stats.pending), label: "pending", attention: true },
+          actions={[
+            { href: "/admin/activity", label: "Activity Logs", icon: History, primary: true },
+            { href: "/admin/users", label: "User Management", icon: UsersRound },
           ]}
         />
 

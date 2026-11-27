@@ -98,18 +98,9 @@ export function FacultyAdminDashboardClient({ user }: Props) {
         {/* Greeting + primary action */}
         <GreetingHero
           name={firstName}
-          chips={[
-            { value: stats.exitsToday, label: "exits" },
-            { value: stats.entriesToday, label: "entries" },
+          actions={[
+            { href: "/faculty-admin/requests", label: "Review Requests", icon: ClipboardCheck, primary: true },
           ]}
-          action={
-            <Link href="/faculty-admin/requests" className="shrink-0">
-              <Button>
-                <ClipboardCheck className="h-4 w-4" />
-                Review Requests
-              </Button>
-            </Link>
-          }
         >
           <HeroTag tone="coral">Head of Department</HeroTag>
           {faculty.department && <HeroTag>{getDepartmentCode(faculty.department)}</HeroTag>}

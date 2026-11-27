@@ -26,7 +26,7 @@ import {
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
-import { GreetingHero, HeroTag } from "@/components/dashboard/greeting-hero";
+import { GreetingHero } from "@/components/dashboard/greeting-hero";
 
 interface Props {
   user?: { name: string; email: string; role: string; profileId: string };
@@ -128,19 +128,9 @@ export function DeanDashboardClient({ user, title }: Props & { title?: string })
         {/* Greeting */}
         <GreetingHero
           name={firstName}
-          chips={[
-            { value: stats.pendingFacultyPasses, label: "pending", attention: true },
-            { value: stats.exitsToday, label: "exits" },
-            { value: stats.entriesToday, label: "entries" },
+          actions={[
+            { href: "/dean/requests", label: "Faculty Passes", icon: ClipboardCheck, primary: true },
           ]}
-          action={
-            <Link href="/dean/requests" className="shrink-0">
-              <Button>
-                <ClipboardCheck className="h-4 w-4" />
-                Faculty Passes
-              </Button>
-            </Link>
-          }
         />
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">

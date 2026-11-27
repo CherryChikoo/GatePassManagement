@@ -1,25 +1,23 @@
 "use client";
 
-import { Moon, Sun, Sunrise } from "lucide-react";
+import Link from "next/link";
+import { Moon, Sun, Sunrise, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type HeroChip = { value: number; label: string; /** Coral when above 0 (Overdue, Pending…) */ attention?: boolean };
+export type HeroAction = { href: string; label: string; icon: LucideIcon; /** Solid coral (the main one) or coral glass */ primary?: boolean };
 
 /**
- * The dashboard greeting (every staff login): a glass banner with a soft coral
- * light — the day with a time-of-day icon, "Good evening, <name>", and the
- * day's key numbers as chips (plus the login's main action). Static light
- * (no live blur), so it costs nothing while scrolling.
+ * The dashboard greeting (every staff login), straight on the page (no card):
+ * a small date pill with a time-of-day icon, a big light "Good evening, <name>",
+ * and on the right the login's main places as buttons.
  */
 export function GreetingHero({
   name,
-  chips = [],
-  action,
+  actions = [],
   children,
 }: {
   name: string;
-  chips?: HeroChip[];
-  action?: React.ReactNode;
+  actions?: HeroAction[];
   /** Small tags under the greeting (e.g. role, department) */
   children?: React.ReactNode;
 }) {
@@ -30,59 +28,48 @@ export function GreetingHero({
   const day = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(now);
 
   return (
-    <section className="glass-card relative isolate overflow-hidden rounded-[28px] p-5 sm:p-7">
-      {/* Same orange glass edge and sheen as the count cards (globals.css .glass-card) */}
-      {/* Soft coral light from the corner (painted once: gradients, no blur) */}
-      <div
-        className="pointer-events-none absolute inset-0 -z-10"
-        aria-hidden="true"
-        style={{
-          background:
-            "radial-gradient(55% 130% at 100% 0%, rgba(255, 99, 74, 0.13) 0%, rgba(255, 99, 74, 0) 62%), radial-gradient(40% 90% at 0% 100%, rgba(255, 138, 115, 0.07) 0%, rgba(255, 138, 115, 0) 60%), linear-gradient(180deg, #ffffff 0%, #fdfcfc 100%)",
-        }}
-      />
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2.5 text-sm font-medium text-zinc-500">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500">
-              <Icon className="h-4 w-4" aria-hidden="true" />
-            </span>
-            {day}
-          </p>
-          <h1 className="mt-3 truncate text-3xl font-light leading-tight tracking-tight text-zinc-100 sm:text-[42px]">
-            {greeting}
-            {name ? (
-              <>
-                , <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{name}</span>
-              </>
-            ) : null}
-          </h1>
-          {children && <div className="mt-3 flex flex-wrap items-center gap-2">{children}</div>}
-        </div>
-
-        {(chips.length > 0 || action) && (
-          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-            {chips.length > 0 && (
-              // One glass strip: big light numbers over small labels, hairline dividers
-              <div className="glass-card flex items-stretch divide-x divide-orange-500/10 overflow-hidden rounded-2xl">
-                {chips.map((c) => {
-                  const hot = !!c.attention && c.value > 0;
-                  return (
-                    <div key={c.label} className={cn("min-w-[84px] px-4 py-2.5 sm:min-w-[96px] sm:px-5", hot && "bg-orange-500/[0.07]")}>
-                      <p className={cn("flex items-center gap-1.5 text-2xl font-light leading-none tabular-nums sm:text-[28px]", hot ? "text-orange-600" : c.value === 0 ? "text-zinc-400" : "text-zinc-100")}>
-                        {hot && <span className="h-1.5 w-1.5 rounded-full bg-orange-500" aria-hidden="true" />}
-                        {c.value}
-                      </p>
-                      <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wider text-orange-500/80">{c.label}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {action}
-          </div>
-        )}
+    <section className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <div className="min-w-0">
+        {/* Date pill */}
+        <span className="inline-flex items-center gap-2 rounded-full border border-zinc-800/80 bg-white/80 py-1 pl-1 pr-3.5 text-sm font-medium text-zinc-500 shadow-[inset_0_1px_0_#ffffff,0_6px_16px_-12px_rgba(16,24,40,0.3)]">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-500/10 text-orange-500">
+            <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+          </span>
+          {day}
+        </span>
+        <h1 className="mt-3 truncate text-3xl font-light leading-tight tracking-tight text-zinc-100 sm:text-[44px]">
+          {greeting}
+          {name ? (
+            <>
+              , <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{name}</span>
+            </>
+          ) : null}
+        </h1>
+        {children && <div className="mt-3 flex flex-wrap items-center gap-2">{children}</div>}
       </div>
+
+      {actions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2.5 lg:justify-end">
+          {actions.map((a) => {
+            const Ico = a.icon;
+            return (
+              <Link
+                key={a.href}
+                href={a.href}
+                className={cn(
+                  "inline-flex h-12 items-center gap-2.5 rounded-full px-5 text-sm font-semibold transition-[filter,background-color,border-color,transform] active:scale-[0.98]",
+                  a.primary
+                    ? "bg-gradient-to-b from-[#ff7a5e] to-[#e0442a] text-white ring-1 ring-inset ring-white/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_12px_24px_-12px_rgba(207,62,37,0.75)] hover:brightness-[1.06]"
+                    : "border border-orange-500/25 bg-white/80 text-orange-600 shadow-[inset_0_1px_0_#ffffff,0_8px_18px_-14px_rgba(207,62,37,0.5)] hover:border-orange-500/45 hover:bg-orange-500/[0.06]"
+                )}
+              >
+                <Ico className="h-4 w-4" aria-hidden="true" />
+                {a.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

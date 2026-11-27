@@ -28,7 +28,7 @@ import {
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
-import { GreetingHero, HeroTag } from "@/components/dashboard/greeting-hero";
+import { GreetingHero } from "@/components/dashboard/greeting-hero";
 
 interface Props {
   user?: { name: string; email: string; role: string; profileId: string };
@@ -135,19 +135,9 @@ export function DirectorDashboardClient({ user, title }: Props & { title?: strin
         {/* Greeting */}
         <GreetingHero
           name={firstName}
-          chips={[
-            { value: stats.pendingFacultyPasses, label: "pending", attention: true },
-            { value: stats.exitsToday, label: "exits" },
-            { value: stats.entriesToday, label: "entries" },
+          actions={[
+            { href: "/director/activity", label: "View Activity", icon: History, primary: true },
           ]}
-          action={
-            <Link href="/director/activity" className="shrink-0">
-              <Button>
-                <History className="h-4 w-4" />
-                View Activity
-              </Button>
-            </Link>
-          }
         />
 
         {/* Stats */}

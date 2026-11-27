@@ -24,7 +24,7 @@ import { gateMarkText } from "@/lib/pass-dates";
 import { useAppStore } from "@/stores/app-store";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
-import { GreetingHero, HeroTag } from "@/components/dashboard/greeting-hero";
+import { GreetingHero } from "@/components/dashboard/greeting-hero";
 
 interface Props {
   user: { name: string; email: string; role: string; profileId: string };
@@ -69,9 +69,8 @@ export function WardenDashboardClient({ user }: Props) {
         {/* Greeting */}
         <GreetingHero
           name={firstName}
-          chips={[
-            { value: stats.exitsToday, label: "exits" },
-            { value: stats.entriesToday, label: "entries" },
+          actions={[
+            { href: "/warden/requests", label: "Requests", icon: ClipboardCheck, primary: true },
           ]}
         />
 

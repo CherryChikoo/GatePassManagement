@@ -48,10 +48,8 @@ export function SupervisorDashboardClient({ user }: { user: { name: string } }) 
       {/* Greeting */}
       <GreetingHero
         name={firstName}
-        chips={[
-          { value: s.requestsToday, label: "requests" },
-          { value: s.pendingStudent + s.pendingFaculty, label: "pending", attention: true },
-          { value: s.exitsToday, label: "exits" },
+        actions={[
+          { href: "/supervisor/requests", label: "Requests", icon: ClipboardCheck, primary: true },
         ]}
       >
         <HeroTag tone="coral">Security Supervisor</HeroTag>
