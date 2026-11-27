@@ -94,28 +94,30 @@ export function EstateHome() {
                   n > 0 && "glass-card-hot"
                 )}
               >
-                <span className="flex items-center justify-between gap-3">
+                {/* Top: the icon on the left, the count in its own box at the card's right end */}
+                <span className="flex items-start justify-between gap-3">
                   <span className={cn("icon-tile flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl", !n && data?.counts && "opacity-45 saturate-[0.85]")}>
                     {Icon && <Icon className="h-5 w-5" aria-hidden="true" />}
                   </span>
-                  <ChevronRight className="h-5 w-5 shrink-0 text-orange-500 transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden="true" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block break-words text-base font-semibold leading-snug text-zinc-100">{t(def.title)}</span>
                   {data?.counts &&
                     (n ? (
-                      <span className="mt-3 flex items-center gap-3">
-                        <span className="text-4xl font-bold leading-none tracking-tight tabular-nums text-zinc-100">{n}</span>
+                      <span className="inline-flex shrink-0 items-center gap-2 rounded-2xl border-[1.5px] border-amber-500/50 bg-amber-50 py-1.5 pl-3 pr-1.5 shadow-[0_8px_18px_-14px_rgba(217,119,6,0.7)]">
+                        <span className="text-3xl font-bold leading-none tracking-tight tabular-nums text-zinc-100">{n}</span>
                         {/* Clear, solid "to verify" tag */}
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-b from-[#fbbf24] to-[#d97706] px-3 py-1 text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_8px_16px_-10px_rgba(217,119,6,0.75)]">
+                        <span className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-b from-[#fbbf24] to-[#d97706] px-2.5 py-1 text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]">
                           <Clock className="h-4 w-4" aria-hidden="true" /> {t("to verify")}
                         </span>
                       </span>
                     ) : (
-                      <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-700">
+                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl border-[1.5px] border-emerald-500/40 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
                         <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> {t("All verified")}
                       </span>
                     ))}
+                </span>
+                {/* The book's name, with the arrow at the end */}
+                <span className="mt-auto flex items-center gap-3">
+                  <span className="min-w-0 flex-1 break-words text-base font-semibold leading-snug text-zinc-100">{t(def.title)}</span>
+                  <ChevronRight className="h-5 w-5 shrink-0 text-orange-500 transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden="true" />
                 </span>
               </Link>
             </li>
