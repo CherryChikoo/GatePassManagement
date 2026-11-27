@@ -1,7 +1,7 @@
 "use client";
 
 import { lockPageScroll } from "@/lib/ui/scroll-lock";
-import React, { useState, useEffect, useRef, useSyncExternalStore } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { useKeepHeightOnFilter } from "@/lib/ui/keep-height";
 import { useBarSpace, useGlassSupport } from "@/lib/ui/bar-space";
 import Link from "next/link";
@@ -242,7 +242,24 @@ export function DashboardLayout({
       : pathname === href || (pathname.startsWith(href + "/") && href !== "/"));
 
   const initial = userName.charAt(0).toUpperCase();
-  const toggleCollapsed = () => saveCollapsed(!desktopCollapsed);
+  const flipFrom = useRef<number | null>(null);
+  const toggleCollapsed = () => {
+    flipFrom.current = mainRef.current?.getBoundingClientRect().left ?? null;
+    saveCollapsed(!desktopCollapsed);
+  };
+  // The page takes its new width at once (one layout), then glides from where it was
+  useLayoutEffect(() => {
+    const from = flipFrom.current;
+    flipFrom.current = null;
+    const el = mainRef.current;
+    if (from === null || !el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const dx = from - el.getBoundingClientRect().left;
+    if (Math.abs(dx) < 1) return;
+    el.animate([{ transform: `translateX(${dx}px)` }, { transform: "translateX(0)" }], {
+      duration: 300,
+      easing: "cubic-bezier(0.22, 0.61, 0.36, 1)",
+    });
+  }, [desktopCollapsed]);
 
   return (
     <div className="flex h-[100dvh] bg-zinc-950 overflow-hidden">
@@ -259,8 +276,10 @@ export function DashboardLayout({
         <aside
           className={cn(
             // Solid (not frosted): it slides over the page, where a blur would cost the most
-            "fixed inset-y-0 left-0 z-50 flex flex-col glass-solid transition-[translate,width] duration-300",
-            "lg:static lg:translate-x-0 lg:my-3 lg:ml-3 lg:rounded-[28px] lg:shadow-card",
+            "fixed inset-y-0 left-0 z-50 flex flex-col glass-solid transition-[translate,width] duration-300 ease-[cubic-bezier(0.22,0.61,0.36,1)]",
+            // Desktop: floats beside the page (not part of its layout), so opening / closing it
+            // animates the sidebar alone instead of re-laying out the whole page on every frame
+            "lg:inset-y-3 lg:left-3 lg:translate-x-0 lg:rounded-[28px] lg:shadow-card",
             sidebarOpen ? "translate-x-0" : "-translate-x-full",
             desktopCollapsed ? "lg:w-[84px]" : "lg:w-64",
             "w-72 rounded-r-[28px]"
@@ -363,7 +382,14 @@ export function DashboardLayout({
 
       {/* Main: the page scrolls under the floating glass bars (top bar, page
           controls, bottom bar); useBarSpace keeps the space they cover measured */}
-      <main ref={mainRef} className="flex-1 flex flex-col min-w-0 max-w-full overflow-hidden relative">
+      <main
+        ref={mainRef}
+        className={cn(
+          "flex-1 flex flex-col min-w-0 max-w-full overflow-hidden relative",
+          // Room for the floating desktop sidebar (12px gap + its width)
+          hasSidebar && (desktopCollapsed ? "lg:ml-[96px]" : "lg:ml-[268px]")
+        )}
+      >
         {/* Top bar: glass */}
         <header
           ref={headerRef}
@@ -456,7 +482,9 @@ export function DashboardLayout({
           <div ref={contentRef}>
             <PasswordChangedNotice />
             <IdleSignOut role={role} />
-            {children}
+            <div key={pathname} className="page-enter">
+              {children}
+            </div>
           </div>
         </div>
 
