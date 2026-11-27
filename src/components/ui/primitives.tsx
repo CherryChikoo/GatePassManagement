@@ -248,7 +248,11 @@ function toneFromTitle(title: string): StatTone {
  * icon tile and the sheen of the glass card. Counts that need action (Overdue,
  * Pending… above 0) get a coral edge, a warmer corner and a coral number.
  */
-const CORAL = { tile: "bg-orange-500/10 text-orange-500", number: "text-orange-600" };
+// Icon tile: a solid orange gradient with a white icon, a light top edge and a soft orange glow
+const CORAL = {
+  tile: "bg-gradient-to-br from-[#ffa14a] via-[#ff7a45] to-[#e0442a] text-white ring-1 ring-inset ring-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_8px_18px_-8px_rgba(242,107,18,0.6)]",
+  number: "text-orange-600",
+};
 const NEEDS_ACTION: readonly StatTone[] = ["alert", "waiting"];
 
 export function StatCard({
@@ -280,7 +284,8 @@ export function StatCard({
         className={cn(
           "flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-2xl transition-opacity [&>svg]:h-[18px] [&>svg]:w-[18px] sm:[&>svg]:h-5 sm:[&>svg]:w-5",
           look.tile,
-          zero && "opacity-60"
+          // Zero: a soft tile (the active counts stand out)
+          zero && "opacity-45 saturate-[0.85]"
         )}
         aria-hidden="true"
       >
