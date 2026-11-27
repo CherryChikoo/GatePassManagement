@@ -1767,4 +1767,6 @@ export const te: Record<string, string> = {
   "Your login has ended. Please sign in again.": "మీ లాగిన్ ముగిసింది. దయచేసి మళ్ళీ లాగిన్ అవ్వండి.",
   "Signed out after a long time without use. Please sign in again.": "ఎక్కువ సేపు వాడకపోవడంతో లాగ్ అవుట్ అయ్యింది. దయచేసి మళ్ళీ లాగిన్ అవ్వండి.",
   "Wait — a photo is still uploading": "ఆగండి — ఫోటో ఇంకా అప్‌లోడ్ అవుతోంది",
+  "Your session has ended": "మీ సెషన్ ముగిసింది",
+  "Signed out after inactivity": "ఎక్కువ సేపు వాడకపోవడంతో లాగ్ అవుట్ అయ్యింది",
 };

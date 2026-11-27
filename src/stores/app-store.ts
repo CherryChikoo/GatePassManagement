@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { goToSignIn } from "@/lib/signed-out";
+import { goToSignIn, resetActivity } from "@/lib/signed-out";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -407,6 +407,8 @@ export const useAppStore = create<AppStore>()(
  */
 export async function logoutAndClear(logout: () => Promise<unknown>) {
   useAppStore.getState().reset();
+  // Next sign-in starts a new inactivity clock
+  resetActivity();
   // Sign out through POST /api/auth/logout: a plain request that never waits
   // behind another server action and whose cookie clearing can't be undone by
   // a session refresh. The server action `logout` is only the fallback.

@@ -3,10 +3,11 @@ import { useT } from "@/components/providers/language-provider";
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, Clock3 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { broadcastSessionEvent, hardNavigate, prefetchPreload } from "@/stores/app-store";
 import { SigningInOverlay, type SigningInStep } from "@/components/ui/signing-in-overlay";
+import { resetActivity } from "@/lib/signed-out";
 
 /** Signed in but the dashboard has not opened after this long: open it as a full page */
 const SIGNED_IN_FALLBACK_MS = 5_000;
@@ -54,12 +55,23 @@ export function LoginForm() {
   // on Sign in then would only reload the page, so the button waits until ready.
   // The fields are left uncontrolled so anything typed meanwhile is kept.
   const [ready, setReady] = useState(false);
+  // Why they are here (session ended / inactivity): a soft notice that leaves by itself
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const id = setTimeout(() => setNotice(null), 6_000);
+    return () => clearTimeout(id);
+  }, [notice]);
   useEffect(() => {
     setReady(true);
     // Sent here because the login ended (not a first visit): say so
     const sp = new URLSearchParams(window.location.search);
-    if (sp.get("ended") === "1") setError(t("Your login has ended. Please sign in again."));
-    else if (sp.get("idle") === "1") setError(t("Signed out after a long time without use. Please sign in again."));
+    const why = sp.get("ended") === "1" ? "Your session has ended" : sp.get("idle") === "1" ? "Signed out after inactivity" : null;
+    if (why) {
+      setNotice(why);
+      // A plain address again, so a reload does not show it again
+      window.history.replaceState(null, "", "/login");
+    }
     // Wake the server and its database connection while the person types, so
     // signing in does not wait for a sleeping server (free plan)
     fetch("/api/health", { cache: "no-store" }).catch(() => {});
@@ -83,6 +95,8 @@ export function LoginForm() {
         return;
       }
       const target = result.redirectUrl;
+      // A fresh sign-in: the inactivity clock starts now (not from the last visit)
+      resetActivity();
       // Stays on screen until the dashboard replaces this page
       setStep("opening");
       // The dashboard data is asked for now, alongside the dashboard page
@@ -165,6 +179,12 @@ export function LoginForm() {
             <h1 className="text-[22px] sm:text-[26px] font-semibold tracking-tight text-zinc-100">{t("Sign in to Gate Pass")}</h1>
           </div>
 
+          {notice && !error && (
+            <div role="status" className="mt-6 flex items-center gap-2.5 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-3.5 py-2.5 text-sm font-medium text-orange-600 animate-fade-in">
+              <Clock3 className="h-4 w-4 flex-shrink-0" />
+              <span className="min-w-0 flex-1">{t(notice)}</span>
+            </div>
+          )}
           {error && (
             <div role="alert" className="mt-6 rounded-2xl border border-red-500/20 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-400 animate-fade-in flex items-center gap-2">
               <AlertCircle className="h-4 w-4 flex-shrink-0" />

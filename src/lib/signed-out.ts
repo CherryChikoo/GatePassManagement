@@ -7,7 +7,8 @@
  * (Security tablets never come here: they stay signed in until Log out.)
  */
 export type SignOutReason = "ended" | "idle";
-export const SIGN_OUT_SECONDS = 5;
+/** "Are you there?" waits this long for an answer, then signs out */
+export const SIGN_OUT_SECONDS = 30;
 /** Shown by <SignOutNotice /> (in the root layout) */
 export const SIGN_OUT_EVENT = "gatepass:sign-out";
 let open = false;
@@ -25,10 +26,27 @@ export function staySignedIn() {
   markActive(true);
 }
 
+/**
+ * ended: the login is no longer accepted (unauthorized) — signed out at once.
+ * idle: no use for a long time — "Are you there?", then signed out.
+ */
 export function goToSignIn(reason: SignOutReason = "ended") {
   if (typeof window === "undefined" || open || window.location.pathname === "/login") return;
   open = true;
+  if (reason === "ended") {
+    signOutNow(reason);
+    return;
+  }
   window.dispatchEvent(new CustomEvent<SignOutReason>(SIGN_OUT_EVENT, { detail: reason }));
+}
+
+/** Just signed in / signed out: the activity clock starts again (an old visit never counts as "away") */
+export function resetActivity() {
+  try {
+    localStorage.setItem(IDLE_KEY, String(Date.now()));
+  } catch {
+    // storage blocked: nothing kept
+  }
 }
 
 // ─── Sign-out after a long time without use (every role except Security) ───
@@ -61,12 +79,9 @@ export function markActive(force = false) {
 /** Starts watching; returns a stop function. Reopening after the limit signs out straight away (with the notice). */
 export function watchIdle(): () => void {
   const last = readLastActive();
-  // Back after a long time away (tab reopened, phone woken)
-  if (last && Date.now() - last > IDLE_LIMIT_MS) {
-    goToSignIn("idle");
-  } else {
-    markActive(true);
-  }
+  // Back after a long time away (tab reopened, phone woken): "Are you there?"
+  if (last && Date.now() - last > IDLE_LIMIT_MS) goToSignIn("idle");
+  else markActive(true);
   const onUse = () => markActive();
   const events = ["pointerdown", "keydown", "wheel", "touchstart", "scroll"] as const;
   for (const e of events) window.addEventListener(e, onUse, { passive: true, capture: true });
