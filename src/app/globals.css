@@ -308,6 +308,17 @@ html.security-text .glass:not(.loading-pill) {
 
 /* Dashboard pages start right beside the sidebar and fill the room (up to 100rem)
    instead of a centred 80rem column, which left a wide gap next to the sidebar */
+/* Every page starts right beside the sidebar (no gap on its left): wide list pages fill the
+   room, narrower form pages keep their width on the left */
+[data-page-scroll] .page-enter > .mx-auto,
+[data-page-scroll] .page-enter > * > .mx-auto {
+  margin-left: 0;
+  margin-right: auto;
+}
+[data-page-scroll] .page-enter .mx-auto.max-w-6xl {
+  max-width: 100rem;
+}
+
 [data-page-scroll] .mx-auto.max-w-7xl {
   max-width: 100rem;
   margin-left: 0;
