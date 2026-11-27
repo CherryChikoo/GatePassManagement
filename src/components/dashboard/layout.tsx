@@ -96,7 +96,11 @@ function BrandMark({ compact = false, roleLine }: { compact?: boolean; roleLine:
         )}
       >
         <span className="text-[15px] font-semibold text-zinc-100 tracking-tight leading-tight truncate">Gate Pass</span>
-        {roleLine && <span className="text-[11px] font-medium text-orange-400 leading-tight truncate">{roleLine}</span>}
+        {/* Designation, then the department on its own line (e.g. "Head of the Department" / "Computer Science") */}
+        {roleLine && <span className="text-[11px] font-medium text-orange-400 leading-tight truncate">{roleLine.split(" · ")[0]}</span>}
+        {roleLine.includes(" · ") && (
+          <span className="text-[11px] font-medium text-zinc-500 leading-tight truncate">{roleLine.split(" · ").slice(1).join(" · ")}</span>
+        )}
       </div>
     </div>
   );
@@ -493,7 +497,10 @@ export function DashboardLayout({
               )}
               <span className="hidden min-w-0 flex-col justify-center leading-tight lg:flex">
                 <span className="max-w-[200px] truncate text-sm font-semibold text-zinc-100">{userName}</span>
-                {roleLine && <span className="max-w-[220px] truncate text-[11px] font-medium text-orange-500/90">{roleLine}</span>}
+                {roleLine && <span className="max-w-[220px] truncate text-[11px] font-medium text-orange-500/90">{roleLine.split(" · ")[0]}</span>}
+                {roleLine.includes(" · ") && (
+                  <span className="max-w-[220px] truncate text-[11px] font-medium text-zinc-500">{roleLine.split(" · ").slice(1).join(" · ")}</span>
+                )}
               </span>
             </Link>
             {/* Sign out lives in the sidebar on desktop; keep it here for pages without a sidebar and on phones */}
