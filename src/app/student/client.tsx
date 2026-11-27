@@ -968,7 +968,7 @@ function PermissionFormView({
                   <span className="field-label block text-sm font-medium text-zinc-300">Date</span>
                   {/* Passes are for today */}
                   <input type="hidden" name="exitDate" value={todayStr} />
-                  <span className="field-box flex h-12 items-center rounded-2xl border px-4 text-sm font-semibold text-zinc-400">
+                  <span className="field-box flex h-12 items-center justify-center rounded-2xl border px-4 text-base font-semibold text-zinc-100">
                     Today · {new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date(`${todayStr}T12:00:00+05:30`))}
                   </span>
                 </div>
