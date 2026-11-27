@@ -103,7 +103,7 @@ export function SignOutNotice() {
                 staySignedIn();
               }}
               disabled={leaving}
-              className="inline-flex h-12 items-center justify-center rounded-2xl bg-gradient-to-b from-[#ff7a5e] to-[#e0442a] text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_22px_-12px_rgba(207,62,37,0.75)] ring-1 ring-inset ring-white/20 transition-[filter,transform] hover:brightness-[1.06] active:scale-[0.98] disabled:opacity-60"
+              className="inline-flex h-12 items-center justify-center rounded-2xl bg-gradient-to-b from-[#ffa14a] to-[#f26b12] text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_10px_22px_-12px_rgba(242,107,18,0.75)] ring-1 ring-inset ring-white/20 transition-[filter,transform] hover:brightness-[1.06] active:scale-[0.98] disabled:opacity-60"
             >
               I&apos;m here
             </button>
