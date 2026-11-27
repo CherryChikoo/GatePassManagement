@@ -374,9 +374,9 @@ export function DashboardLayout({
         ref={mainRef}
         className={cn(
           "flex-1 flex flex-col min-w-0 max-w-full overflow-hidden relative",
-          // Room for the floating desktop sidebar (12px gap + its width): follows the
-          // sidebar with the same timing and curve, so the two move as one
-          hasSidebar && "lg:transition-[margin-left] lg:duration-300 lg:ease-[cubic-bezier(0.22,0.61,0.36,1)]",
+          // Room for the floating desktop sidebar (12px gap + its width). Not animated: an
+          // animated edge resizes and repaints every card on every frame (the lag); the page
+          // takes its new place in one step while the sidebar alone glides
           hasSidebar && (desktopCollapsed ? "lg:ml-[96px]" : "lg:ml-[268px]")
         )}
       >
