@@ -341,6 +341,17 @@ html.security-text .glass:not(.loading-pill) {
   -webkit-text-fill-color: transparent;
   color: #26272d;
   font-weight: 600;
+  font-size: 0.95rem;
+}
+/* Bigger icon tiles in the student form's taller boxes */
+.form-metal .icon-chip {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.7rem;
+}
+.form-metal .icon-chip svg {
+  width: 1.1rem;
+  height: 1.1rem;
 }
 /* Red mini icon tile inside a box: deep red-orange gradient, white icon, glossy top edge */
 .icon-chip {

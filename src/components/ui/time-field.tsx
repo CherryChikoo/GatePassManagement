@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { PickMenu } from "@/components/ui/pick-menu";
 import { nextIstTime } from "@/lib/time/parse-time";
 
 const HOURS = Array.from({ length: 12 }, (_, i) => String(i + 1));
@@ -20,9 +21,6 @@ function fromParts(h: string, m: string, ap: string): string {
   const hh = (Number(h) % 12) + (ap === "PM" ? 12 : 0);
   return `${String(hh).padStart(2, "0")}:${m}`;
 }
-
-const BOX =
-  "field-box h-11 min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 text-sm font-semibold text-zinc-100 tabular-nums [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500";
 
 /**
  * Time in 12-hour form (hour, minute, AM / PM) — the phone's own time picker
@@ -67,7 +65,7 @@ export function Time12Input({
   };
   // A saved minute not on the 5-minute list (e.g. 10:57) stays choosable
   const minutes = parts.m && !MINUTES.includes(parts.m) ? [...MINUTES, parts.m].sort() : MINUTES;
-  const cls = `${BOX} ${className}`;
+  const wrap = useRef<HTMLDivElement | null>(null);
   // Past times (before min) are greyed out and can't be picked
   const before = (v: string) => !!min && !!v && v < min;
   const hourPast = (h: string) => {
@@ -76,32 +74,50 @@ export function Time12Input({
   };
   const minutePast = (m: string) => !!parts.h && !!parts.ap && before(fromParts(parts.h, m, parts.ap));
   const amPast = !!min && min >= "12:00";
+  const blank = required ? [] : [{ value: "", label: "--" }];
+  const full = fromParts(parts.h, parts.m, parts.ap);
   return (
-    <div className="flex items-center gap-2">
-      <select id={id} aria-label="Hour" required={required} value={parts.h} onChange={(e) => set({ h: e.target.value })} className={cls}>
-        {!required || !parts.h ? <option value="">--</option> : null}
-        {HOURS.map((h) => (
-          <option key={h} value={h} disabled={hourPast(h)}>
-            {h}
-          </option>
-        ))}
-      </select>
+    <div ref={wrap} className="relative flex items-center gap-2">
+      <PickMenu
+        id={id}
+        ariaLabel="Hour"
+        value={parts.h}
+        onChange={(h) => set({ h })}
+        options={[...blank, ...HOURS.map((h) => ({ value: h, label: h, disabled: hourPast(h) }))]}
+        columns={4}
+        className={className}
+      />
       <span className="text-lg font-bold text-zinc-500" aria-hidden="true">
         :
       </span>
-      <select aria-label="Minute" required={required} value={parts.m} onChange={(e) => set({ m: e.target.value })} className={cls}>
-        {!required || !parts.m ? <option value="">--</option> : null}
-        {minutes.map((m) => (
-          <option key={m} value={m} disabled={minutePast(m)}>
-            {m}
-          </option>
-        ))}
-      </select>
-      <select aria-label="AM or PM" required={required} value={parts.ap} onChange={(e) => set({ ap: e.target.value as "AM" | "PM" })} className={cls}>
-        {!required || !parts.ap ? <option value="">--</option> : null}
-        <option value="AM" disabled={amPast}>AM</option>
-        <option value="PM">PM</option>
-      </select>
+      <PickMenu
+        ariaLabel="Minute"
+        value={parts.m}
+        onChange={(m) => set({ m })}
+        options={[...blank, ...minutes.map((m) => ({ value: m, label: m, disabled: minutePast(m) }))]}
+        columns={4}
+        className={className}
+      />
+      <PickMenu
+        ariaLabel="AM or PM"
+        value={parts.ap}
+        onChange={(ap) => set({ ap: ap as "AM" | "PM" | "" })}
+        options={[...blank, { value: "AM", label: "AM", disabled: amPast }, { value: "PM", label: "PM" }]}
+        columns={2}
+        className={className}
+      />
+      {/* Keeps the form's "please fill this" check for a required time */}
+      {required && (
+        <input
+          aria-hidden="true"
+          tabIndex={-1}
+          required
+          value={full}
+          onChange={() => {}}
+          onFocus={() => wrap.current?.querySelector("button")?.focus()}
+          className="pointer-events-none absolute bottom-0 left-4 h-px w-px opacity-0"
+        />
+      )}
     </div>
   );
 }

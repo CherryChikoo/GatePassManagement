@@ -208,7 +208,7 @@ function RecordMissingSignOut() {
 }
 
 /** Matches the TimeField (shared, not editable here) to the h-12 rounded-2xl white inputs. */
-const TIME_FIELD_CLS = "h-12! rounded-2xl! text-base! sm:text-sm!";
+const TIME_FIELD_CLS = "h-14! rounded-2xl! text-base!";
 
 const REJECTION_ACK_KEY = "gatepass:rejection-ack";
 const REJECTED_AUTO_RETURN_S = 12;
@@ -946,7 +946,7 @@ function PermissionFormView({
                 name="purpose"
                 label={requestType === "ENTRY" ? "Why are you coming in *" : "Purpose *"}
                 required
-                className="pl-[3.25rem]"
+                className="h-14 pl-[3.6rem] text-base"
                 icon={<span className="icon-chip"><FileText /></span>}
                 error={fieldErrors.purpose}
               />
@@ -974,7 +974,7 @@ function PermissionFormView({
                   <span className="field-label block text-sm font-medium text-zinc-300">Date</span>
                   {/* Passes are for today */}
                   <input type="hidden" name="exitDate" value={todayStr} />
-                  <span className="field-box flex h-12 items-center justify-center rounded-2xl border px-4 text-base font-semibold text-zinc-100">
+                  <span className="field-box flex h-14 items-center justify-center rounded-2xl border px-4 text-base font-semibold text-zinc-100">
                     Today · {new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date(`${todayStr}T12:00:00+05:30`))}
                   </span>
                 </div>
@@ -994,7 +994,7 @@ function PermissionFormView({
                 type="tel"
                 inputMode="tel"
                 maxLength={15}
-                className="pl-[3.25rem]"
+                className="h-14 pl-[3.6rem] text-base"
                 icon={<span className="icon-chip"><Phone /></span>}
                 onInput={(e) => {
                   e.currentTarget.value = phoneOnly(e.currentTarget.value);
@@ -1005,7 +1005,7 @@ function PermissionFormView({
                 <label htmlFor="remarks" className="field-label block text-sm font-medium text-zinc-300">
                   Remarks <span className="font-normal text-zinc-500">(optional)</span>
                 </label>
-                <Textarea id="remarks" name="remarks" rows={2} className="px-4 py-3" />
+                <Textarea id="remarks" name="remarks" rows={3} className="px-4 py-3 text-base" />
               </div>
             </Part>
 
