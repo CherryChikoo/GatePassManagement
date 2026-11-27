@@ -51,7 +51,8 @@ const probe = (p: { id: string; userId: string }, dedupeKey: string): NoteInput 
 async function visitorOverstay(cfg: NotificationTimers, now: Date): Promise<NoteInput[]> {
   const limitMin = cfg.overstayHours * 60;
   const visitors = await prisma.outsider.findMany({
-    where: { status: "INSIDE", entryTime: { lt: new Date(now.getTime() - limitMin * MIN) } },
+    // Inside longer than the limit, but not records left open for days (forgotten Outs: no endless alerts)
+    where: { status: "INSIDE", entryTime: { lt: new Date(now.getTime() - limitMin * MIN), gt: new Date(now.getTime() - 24 * 60 * MIN) } },
     select: { id: true, name: true, entryTime: true, visitingStudent: true, visitPass: { select: { hostName: true } } },
     orderBy: { entryTime: "asc" },
     take: 100,
@@ -62,6 +63,8 @@ async function visitorOverstay(cfg: NotificationTimers, now: Date): Promise<Note
   for (const v of visitors) {
     const elapsed = Math.floor((now.getTime() - v.entryTime.getTime()) / MIN);
     const n = Math.floor((elapsed - limitMin) / cfg.reminderMinutes);
+    // At most 3 alerts per visitor (the first, then 2 reminders)
+    if (n > 2) continue;
     const meets = v.visitPass?.hostName || v.visitingStudent;
     const body = `${v.name} · inside ${hm(elapsed)}${meets ? ` · to meet ${meets}` : ""}`;
     for (const g of guards) {
