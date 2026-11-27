@@ -258,7 +258,9 @@ export function DashboardLayout({
       ? pathname === href
       : pathname === href || (pathname.startsWith(href + "/") && href !== "/"));
 
-  const initial = userName.charAt(0).toUpperCase();
+  // Initials without the title: "Dr. G Chamundeswari" → "GC"
+  const nameWords = userName.replace(/^(dr|prof|mr|mrs|ms|sri|smt)\.?\s+/i, "").split(/\s+/).filter(Boolean);
+  const initial = ((nameWords[0]?.[0] ?? "") + (nameWords.length > 1 ? nameWords[nameWords.length - 1][0] : "")).toUpperCase() || userName.charAt(0).toUpperCase();
   // The page glides with the sidebar: it takes its new size in ONE layout, then slides from
   // where it was to its new place on the graphics card (transform + a soft fade only —
   // nothing is re-laid out or repainted during the animation, so no lag)
@@ -477,7 +479,7 @@ export function DashboardLayout({
             <Link
               href="/settings"
               aria-label={t("Settings")}
-              className="group hidden min-w-0 shrink-0 items-center gap-3 rounded-full border border-zinc-800/80 bg-zinc-900/60 py-1.5 pl-1.5 pr-1.5 transition-[border-color,background-color] hover:border-orange-500/30 hover:bg-zinc-900 sm:flex lg:pr-4"
+              className="group hidden min-w-0 shrink-0 items-center gap-3 rounded-full border border-orange-500/15 bg-white py-1.5 pl-1.5 pr-1.5 shadow-[0_8px_20px_-16px_rgba(207,62,37,0.45)] transition-[border-color,box-shadow] hover:border-orange-500/35 hover:shadow-[0_10px_24px_-14px_rgba(207,62,37,0.5)] sm:flex lg:pr-5"
             >
               {/* One even coral ring, a white gap, then the photo / initial (block-level: no stray line height) */}
               {avatarUrl ? (
@@ -486,21 +488,21 @@ export function DashboardLayout({
                   alt=""
                   width={36}
                   height={36}
-                  className="block h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-orange-400/80 ring-offset-2 ring-offset-white"
+                  className="block h-10 w-10 shrink-0 rounded-full object-cover ring-2 ring-white shadow-[0_6px_14px_-8px_rgba(207,62,37,0.6)]"
                 />
               ) : (
                 <span
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-50 to-orange-100 text-sm font-semibold text-orange-600 ring-2 ring-orange-400/80 ring-offset-2 ring-offset-white"
+                  className="icon-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold tracking-wide"
                   aria-hidden="true"
                 >
                   {initial}
                 </span>
               )}
               <span className="hidden min-w-0 flex-col justify-center leading-tight lg:flex">
-                <span className="max-w-[200px] truncate text-sm font-semibold text-zinc-100">{userName}</span>
-                {roleLine && <span className="max-w-[220px] truncate text-[11px] font-medium text-orange-500/90">{roleLine.split(" · ")[0]}</span>}
+                <span className="max-w-[210px] truncate text-sm font-semibold text-zinc-100">{userName}</span>
+                {roleLine && <span className="mt-0.5 max-w-[220px] truncate text-[11px] font-semibold text-orange-600">{roleLine.split(" · ")[0]}</span>}
                 {roleLine.includes(" · ") && (
-                  <span className="max-w-[220px] truncate text-[11px] font-medium text-zinc-500">{roleLine.split(" · ").slice(1).join(" · ")}</span>
+                  <span className="max-w-[220px] truncate text-[11px] text-zinc-500">{roleLine.split(" · ").slice(1).join(" · ")}</span>
                 )}
               </span>
             </Link>
