@@ -79,10 +79,10 @@ export function CooliePicker({
   // On another entry not yet marked Out: can't be added until then
   const isInside = (p: SirosPerson) => !!people?.inside.coolies.includes(String(p.no));
   const isAdded = (p: SirosPerson) => added.some((r) => r.no === String(p.no));
-  // Nothing typed: no list (the guard types a name or number)
+  // Nothing typed: every coolie by number; typing narrows the list
   const shown = q
-    ? coolies.filter((p) => String(p.no).startsWith(q) || p.name.toLowerCase().includes(q)).slice(0, 8)
-    : [];
+    ? coolies.filter((p) => String(p.no).startsWith(q) || p.name.toLowerCase().includes(q)).slice(0, 30)
+    : [...coolies].sort((a, b) => Number(a.no) - Number(b.no));
   const exact = q !== "" && coolies.some((p) => p.name.trim().toLowerCase() === q || String(p.no) === q);
   const canAddNew = q !== "" && !/^\d+$/.test(q) && !exact;
   const [viewNo, setViewNo] = useState<number | null>(null);
@@ -93,6 +93,7 @@ export function CooliePicker({
     requestAnimationFrame(() => searchRef.current?.focus());
   };
   const remove = (r: Values) => onChange(added.filter((x) => x !== r));
+  const removeNo = (no: number | string) => onChange(added.filter((x) => x.no !== String(no)));
 
   return (
     <fieldset className="overflow-hidden rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900">
@@ -154,31 +155,36 @@ export function CooliePicker({
       </div>
 
       <Modal open={open} onClose={() => setOpen(false)} title={t("Add coolie")} className="max-w-lg">
-        <div className="space-y-3">
-          {/* Already on this entry: one line that scrolls sideways (the pop-up does not grow) */}
-          <div className="flex min-h-9 items-center gap-2">
-            <span className={cn("shrink-0 rounded-full px-2.5 py-0.5 text-sm font-bold tabular-nums", added.length ? "bg-emerald-600 text-white" : "bg-zinc-950 text-zinc-400")}>
-              {added.length}
-            </span>
-            <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto overscroll-contain pb-0.5">
-              {[...added].reverse().map((r) => (
-                <span key={r.no || r.name} className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-500/15 py-1 pl-3 pr-1 text-sm font-semibold text-emerald-800">
-                  {r.no ? `${r.no} · ` : ""}
-                  {r.name}
-                  <button
-                    type="button"
-                    aria-label={`${t("Remove")} — ${r.name}`}
-                    onClick={() => remove(r)}
-                    className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-700 text-white hover:bg-emerald-800"
-                  >
-                    <X className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                </span>
-              ))}
+        <div className="space-y-4">
+          {/* Added to this entry: a clear list, each with a big red Remove */}
+          <section className="overflow-hidden rounded-2xl border-2 border-emerald-600/40 bg-emerald-50">
+            <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+              <p className="flex items-center gap-2 text-lg font-bold text-emerald-800">
+                <Check className="h-5 w-5" aria-hidden="true" /> {t("Added")}
+              </p>
+              <span className="rounded-full bg-emerald-600 px-3 py-0.5 text-lg font-bold tabular-nums text-white">{added.length}</span>
             </div>
-          </div>
+            {added.length > 0 && (
+              <ul className="max-h-[24dvh] divide-y divide-emerald-600/15 overflow-y-auto overscroll-contain border-t border-emerald-600/20 bg-white">
+                {[...added].reverse().map((r) => (
+                  <li key={r.no || r.name} className="flex min-h-16 items-center gap-3 px-3 py-2">
+                    <NoBadge no={r.no || "—"} />
+                    <span className="min-w-0 flex-1 truncate text-lg font-semibold text-zinc-100">{r.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => remove(r)}
+                      className="inline-flex h-12 shrink-0 items-center gap-1.5 rounded-xl bg-red-600 px-4 text-base font-bold text-white transition-colors hover:bg-red-700 active:scale-[0.98]"
+                    >
+                      <X className="h-5 w-5" aria-hidden="true" /> {t("Remove")}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           <label className="block space-y-1.5">
-            <span className="text-base font-bold text-zinc-100">{t("Name or number")}</span>
+            <span className="text-lg font-bold text-zinc-100">{t("Name or number")}</span>
             <span className="relative block">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
               <input
@@ -201,83 +207,74 @@ export function CooliePicker({
             </span>
           </label>
 
-          {/* The results: always the same height, so the pop-up does not move while typing */}
-          <div className="h-[42dvh] min-h-56 overflow-y-auto overscroll-contain rounded-2xl border-[1.5px] border-zinc-700">
-            {q === "" ? (
-              <div className="flex h-full items-center justify-center text-zinc-600">
-                <Search className="h-10 w-10" aria-hidden="true" />
-              </div>
-            ) : (
-              <ul className="divide-y divide-zinc-800/70">
-                {people === null ? (
-                  <li className="flex items-center justify-center gap-2 px-4 py-5 text-base text-zinc-500">
-                    <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> {t("Loading…")}
-                  </li>
-                ) : shown.length === 0 ? (
-                  <li className="px-4 py-4 text-center text-base font-semibold text-zinc-400">{t("No coolie with this name or number.")}</li>
-                ) : (
-                  shown.map((p) => {
-                    const on = isAdded(p);
-                    const away = !on && isInside(p);
-                    return (
-                      <li key={p.id} className="flex items-center">
-                        <button
-                          type="button"
-                          disabled={on || away}
-                          onClick={() => add(p)}
-                          className={cn(
-                            "flex min-h-16 min-w-0 flex-1 items-center gap-3 px-4 py-2 text-left transition-colors",
-                            on ? "bg-emerald-500/10" : away ? "cursor-not-allowed opacity-60" : "hover:bg-orange-500/10 active:bg-orange-500/15"
-                          )}
-                        >
-                          <NoBadge no={p.no} />
-                          <span className="min-w-0 flex-1">
-                            <span className="block break-words text-lg font-semibold text-zinc-100">{p.name}</span>
-                            {p.gender && <span className="block text-sm text-zinc-500">{t(p.gender)}</span>}
-                            {away && (
-                              <span className="mt-1 inline-block rounded-full bg-amber-500/15 px-2.5 py-0.5 text-sm font-semibold text-amber-700">
-                                {t("Inside — mark Out first")}
-                              </span>
-                            )}
+          {/* Every coolie (or the matches): Add / Remove right on the row, Details beside it */}
+          <div className="h-[38dvh] min-h-56 overflow-y-auto overscroll-contain rounded-2xl border-[1.5px] border-zinc-700 bg-zinc-900">
+            <ul className="divide-y divide-zinc-800/70">
+              {people === null ? (
+                <li className="flex items-center justify-center gap-2 px-4 py-5 text-base text-zinc-500">
+                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> {t("Loading…")}
+                </li>
+              ) : shown.length === 0 && q !== "" ? (
+                <li className="px-4 py-4 text-center text-base font-semibold text-zinc-400">{t("No coolie with this name or number.")}</li>
+              ) : (
+                shown.map((p) => {
+                  const on = isAdded(p);
+                  const away = !on && isInside(p);
+                  return (
+                    <li key={p.id} className={cn("flex min-h-16 items-center gap-3 px-3 py-2", on && "bg-emerald-50")}>
+                      <NoBadge no={p.no} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block break-words text-lg font-semibold text-zinc-100">{p.name}</span>
+                        {away && (
+                          <span className="mt-1 inline-block rounded-full bg-amber-500/15 px-2.5 py-0.5 text-sm font-semibold text-amber-700">
+                            {t("Inside — mark Out first")}
                           </span>
-                          {on ? (
-                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-600 px-3 py-1 text-sm font-bold text-white">
-                              <Check className="h-4 w-4" aria-hidden="true" /> {t("Added")}
-                            </span>
-                          ) : away ? null : (
-                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-orange-600 px-3 py-1.5 text-sm font-bold text-white">
-                              <Plus className="h-4 w-4" aria-hidden="true" /> {t("Add")}
-                            </span>
-                          )}
-                        </button>
+                        )}
+                      </span>
+                      {on ? (
                         <button
                           type="button"
-                          onPointerDown={() => prefetchSirosPerson(p.no)}
-                          onClick={() => setViewNo(p.no)}
-                          aria-label={`${t("Details")} — ${p.name}`}
-                          className="flex h-16 w-12 shrink-0 items-center justify-center text-zinc-400 transition-colors hover:bg-zinc-950 hover:text-zinc-100"
+                          onClick={() => removeNo(p.no)}
+                          className="inline-flex h-12 shrink-0 items-center gap-1.5 rounded-xl bg-red-600 px-4 text-base font-bold text-white transition-colors hover:bg-red-700 active:scale-[0.98]"
                         >
-                          <Info className="h-5 w-5" />
+                          <X className="h-5 w-5" aria-hidden="true" /> {t("Remove")}
                         </button>
-                      </li>
-                    );
-                  })
-                )}
-                {/* Not registered yet: register this name now (photo, gender) */}
-                {canAddNew && people !== null && (
-                  <li className="p-2">
-                    <button
-                      type="button"
-                      onClick={() => setNewName(query.trim())}
-                      className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-orange-500 bg-orange-50 px-4 py-2 text-center text-base font-bold text-orange-700 hover:bg-orange-100"
-                    >
-                      <UserPlus className="h-5 w-5 shrink-0" aria-hidden="true" />
-                      <span className="min-w-0 break-words">{t("New coolie: {name}", { name: query.trim() })}</span>
-                    </button>
-                  </li>
-                )}
-              </ul>
-            )}
+                      ) : away ? null : (
+                        <button
+                          type="button"
+                          onClick={() => add(p)}
+                          className="inline-flex h-12 shrink-0 items-center gap-1.5 rounded-xl bg-orange-600 px-4 text-base font-bold text-white transition-colors hover:bg-orange-700 active:scale-[0.98]"
+                        >
+                          <Plus className="h-5 w-5" aria-hidden="true" /> {t("Add")}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onPointerDown={() => prefetchSirosPerson(p.no)}
+                        onClick={() => setViewNo(p.no)}
+                        aria-label={`${t("Details")} — ${p.name}`}
+                        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white transition-colors hover:bg-sky-700"
+                      >
+                        <Info className="h-6 w-6" />
+                      </button>
+                    </li>
+                  );
+                })
+              )}
+              {/* Not registered yet: register this name now (photo, gender) */}
+              {canAddNew && people !== null && (
+                <li className="p-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewName(query.trim())}
+                    className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-orange-600 px-4 py-2 text-center text-lg font-bold text-white hover:bg-orange-700"
+                  >
+                    <UserPlus className="h-5 w-5 shrink-0" aria-hidden="true" />
+                    <span className="min-w-0 break-words">{t("New coolie: {name}", { name: query.trim() })}</span>
+                  </button>
+                </li>
+              )}
+            </ul>
           </div>
 
           <button
@@ -648,9 +645,9 @@ export function SirosPersonDialog({ no, onClose }: { no: number | null; onClose:
           <button
             type="button"
             onClick={onClose}
-            className="flex h-12 w-full items-center justify-center rounded-2xl border-[1.5px] border-zinc-600 bg-zinc-900 text-base font-semibold text-zinc-100 hover:bg-zinc-950"
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#26272d] text-lg font-bold text-white transition-colors hover:bg-black active:scale-[0.98]"
           >
-            {t("Close")}
+            <X className="h-5 w-5" aria-hidden="true" /> {t("Close")}
           </button>
         </div>
       )}
