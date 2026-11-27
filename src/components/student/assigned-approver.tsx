@@ -50,7 +50,12 @@ export function AssignedApproverCard({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold text-zinc-100">{approver.name}</span>
-          <span className="mt-0.5 block text-xs font-medium leading-snug text-orange-600">{approver.label}</span>
+          {/* Designation on one line, department on the next */}
+          {approver.label.split(" · ").map((line, i) => (
+            <span key={i} className={i === 0 ? "mt-0.5 block text-xs font-semibold leading-snug text-orange-600" : "block text-xs font-medium leading-snug text-zinc-500"}>
+              {line}
+            </span>
+          ))}
         </span>
       </div>
 

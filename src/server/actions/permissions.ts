@@ -201,7 +201,7 @@ async function createStudentRequest(formData: FormData, type: "EXIT" | "ENTRY") 
           approverId,
           type,
           purpose: input.purpose,
-          destination: input.destination,
+          destination: input.destination || null,
           exitDate,
           expectedExit,
           expectedReturn,

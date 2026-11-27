@@ -934,7 +934,7 @@ function PermissionFormView({
           <form onSubmit={handleSubmit} className="form-metal space-y-4">
             <input type="hidden" name="type" value={requestType} />
 
-            <Part no={1} title={requestType === "HOSTEL" ? "Hostel pass" : "Reason"} hint="Why and where" oneColumn>
+            <Part no={1} title={requestType === "HOSTEL" ? "Hostel pass" : "Reason"} hint="Why you need the pass" oneColumn>
               <Input
                 id="purpose"
                 name="purpose"
@@ -944,17 +944,6 @@ function PermissionFormView({
                 icon={<span className="icon-chip"><FileText /></span>}
                 error={fieldErrors.purpose}
               />
-              {requestType !== "HOSTEL" && (
-                <Input
-                  id="destination"
-                  name="destination"
-                  label={requestType === "ENTRY" ? "Coming from *" : "Destination *"}
-                  required
-                  className="pl-[3.25rem]"
-                  icon={<span className="icon-chip"><MapPin /></span>}
-                  error={fieldErrors.destination}
-                />
-              )}
               <AssignedApproverCard
                 approver={requestType === "HOSTEL" ? hostelPassApprover ?? undefined : assignedApprover}
                 isHosteller={isHosteller && requestType !== "HOSTEL"}

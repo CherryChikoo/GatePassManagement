@@ -46,7 +46,7 @@ export const permissionRequestSchema = z.object({
     .trim()
     .min(5, "Purpose must be at least 5 characters")
     .max(500, "Purpose too long"),
-  destination: z.string().trim().min(2, "Destination is required").max(200),
+  destination: z.string().trim().max(200).optional().or(z.literal("")),
   exitDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "A valid date is required"),
   expectedExit: timeField("Expected time"),
   expectedReturn: timeField("Expected return time").optional().or(z.literal("")),
