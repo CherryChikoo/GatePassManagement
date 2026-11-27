@@ -15,6 +15,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { PAGE_FOOTER_SLOT_ID } from "@/components/ui/pager-bar";
 import { PasswordChangedNotice } from "@/components/users/password-changed-notice";
 import { IdleSignOut } from "@/components/providers/idle-sign-out";
+import { AutoHideAlerts } from "@/components/providers/auto-hide-alerts";
 import {
   UserCheck,
   LayoutDashboard,
@@ -484,6 +485,7 @@ export function DashboardLayout({
           <div ref={contentRef}>
             <PasswordChangedNotice />
             <IdleSignOut role={role} />
+            <AutoHideAlerts role={role} />
             <div key={pathname} className="page-enter">
               {children}
             </div>

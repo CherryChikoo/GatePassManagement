@@ -37,7 +37,7 @@ export function PasswordChangedNotice() {
   const who = [notice.by, notice.role && `(${notice.role})`].filter(Boolean).join(" ");
 
   return (
-    <div role="status" className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+    <div role="status" data-keep className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
       <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-400">
         <KeyRound className="h-4 w-4" />
       </span>

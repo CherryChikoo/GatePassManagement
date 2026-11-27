@@ -425,7 +425,7 @@ function QrCodeView({
           {isHostelPass ? "Show to Your Hostel Warden" : isReturning ? "Scan When You Return" : "Scan at Campus Gate"}
         </h1>
         {returnDelay > 0 && (
-          <p role="status" className="mx-auto mt-3 max-w-md rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-600">
+          <p role="status" data-keep className="mx-auto mt-3 max-w-md rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-600">
             Delayed return — {formatDelay(returnDelay)} late. Your QR still works; show it at the gate.
           </p>
         )}

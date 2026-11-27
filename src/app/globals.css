@@ -269,6 +269,43 @@ html.security-text .glass:not(.loading-pill) {
   }
 }
 
+/* Message banners that leave by themselves (AutoHideAlerts): a thin coral
+   line runs out along the bottom, then the banner fades and folds away */
+.alert-timed {
+  position: relative;
+  overflow: hidden;
+  transition: opacity 260ms var(--ease-smooth), transform 260ms var(--ease-smooth);
+}
+.alert-timed::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #ff634a, #c2381f);
+  opacity: 0.55;
+  transform-origin: left center;
+  transform: scaleX(1);
+  pointer-events: none;
+}
+.alert-run::after {
+  animation: alertRunOut var(--alert-ms, 5000ms) linear forwards;
+}
+.alert-paused::after {
+  animation-play-state: paused;
+}
+@keyframes alertRunOut {
+  to { transform: scaleX(0); }
+}
+.alert-leaving {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+.alert-gone {
+  display: none !important;
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
