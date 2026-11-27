@@ -30,7 +30,8 @@ export function GreetingHero({
   const day = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" }).format(now);
 
   return (
-    <section className="relative isolate overflow-hidden rounded-[28px] border border-zinc-800/80 bg-zinc-900 p-5 shadow-card sm:p-7">
+    <section className="glass-card relative isolate overflow-hidden rounded-[28px] p-5 sm:p-7">
+      {/* Same orange glass edge and sheen as the count cards (globals.css .glass-card) */}
       {/* Soft coral light from the corner (painted once: gradients, no blur) */}
       <div
         className="pointer-events-none absolute inset-0 -z-10"
@@ -63,7 +64,7 @@ export function GreetingHero({
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
             {chips.length > 0 && (
               // One glass strip: big light numbers over small labels, hairline dividers
-              <div className="flex items-stretch divide-x divide-zinc-800/70 overflow-hidden rounded-2xl border border-white/80 bg-white/60 shadow-[inset_0_1px_0_#ffffff,0_10px_26px_-18px_rgba(16,24,40,0.35)] ring-1 ring-zinc-800/60">
+              <div className="glass-card flex items-stretch divide-x divide-orange-500/20 overflow-hidden rounded-2xl">
                 {chips.map((c) => {
                   const hot = !!c.attention && c.value > 0;
                   return (
@@ -72,7 +73,7 @@ export function GreetingHero({
                         {hot && <span className="h-1.5 w-1.5 rounded-full bg-orange-500" aria-hidden="true" />}
                         {c.value}
                       </p>
-                      <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">{c.label}</p>
+                      <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wider text-orange-500/80">{c.label}</p>
                     </div>
                   );
                 })}
