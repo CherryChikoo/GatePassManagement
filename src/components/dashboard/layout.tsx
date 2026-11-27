@@ -524,6 +524,8 @@ export function DashboardLayout({
         <div
           ref={scrollRef}
           data-page-scroll
+          // Security has no sidebar: its pages stay centred under the bottom bar
+          data-centred={role === "SECURITY" ? "" : undefined}
           // Solid page colour behind the scrolling content: Chrome can then scroll it on the
           // graphics card (a see-through scroll area is re-drawn by the processor instead)
           className="scrollbar-none flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden overscroll-contain bg-zinc-950 px-3 sm:px-4 lg:px-6"
