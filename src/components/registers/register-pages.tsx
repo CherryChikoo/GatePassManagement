@@ -171,6 +171,8 @@ export function RegistersHub({
   registers,
   extraRegisters,
   canBuild = false,
+  only,
+  footer,
 }: {
   viewer: RegisterViewer;
   hidden?: string[];
@@ -182,6 +184,10 @@ export function RegistersHub({
   extraRegisters?: RegisterDef[];
   /** Main Admin / Security Supervisor: show "Create & manage registers" */
   canBuild?: boolean;
+  /** Security's other bottom tabs (Daily labours, Passes, Siros): just these books, under this title */
+  only?: { title: string; keys: string[] };
+  /** Extra tiles after the books (e.g. Gate Logs on the Passes tab) */
+  footer?: React.ReactNode;
 }) {
   const t = useT();
   const router = useRouter();
@@ -240,7 +246,7 @@ export function RegistersHub({
 
   // The pass books come first (hostel outings, faculty, students), then the rest in their usual order
   const visible = allRegisters
-    .filter((r) => !hidden.includes(r.key))
+    .filter((r) => !hidden.includes(r.key) && (!only || only.keys.includes(r.key)))
     .map((r, i) => ({ r, i }))
     .sort((a, b) => passBookRank(a.r.key) - passBookRank(b.r.key) || a.i - b.i)
     .map(({ r }) => r);
@@ -255,7 +261,7 @@ export function RegistersHub({
         <div className="min-w-0">
           {!isSecurity && <BackButton href={base} label={t("Back to Dashboard")} />}
           <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100 flex flex-wrap items-center gap-2">
-            {t(isSecurity ? "Registers" : "Security Registers")}
+            {t(only ? only.title : isSecurity ? "Registers" : "Security Registers")}
           </h1>
         </div>
         {canBuild && (
@@ -271,7 +277,7 @@ export function RegistersHub({
       </div>
 
       {/* Every guard: their own shifts, with Start / End duty */}
-      {isSecurity && (
+      {isSecurity && !only && (
         <Link
           href="/security/my-shift"
           // Fully preloaded (the page itself is tiny), so opening it shows no loading screen
@@ -296,6 +302,7 @@ export function RegistersHub({
       )}
 
       {/* Find a register quickly */}
+      {!only && (
       <div className="relative">
         <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
         <input
@@ -308,18 +315,24 @@ export function RegistersHub({
         />
       </div>
 
+      )}
+
       {list.length === 0 && (
         <p className="rounded-3xl border border-zinc-800/80 bg-zinc-900 px-4 py-10 text-center text-sm text-zinc-500 shadow-card">
           {t("No register matches your search.")}
         </p>
       )}
-      {[...REGISTER_GROUPS, { title: OTHER_GROUP, keys: [] as string[] }].map((group) => {
+      {(only
+        ? // One tab = one list of its books (coloured like their usual group, no group heading)
+          [{ title: REGISTER_GROUPS.find((g) => g.keys.includes(only.keys[0]))?.title ?? OTHER_GROUP, keys: only.keys }]
+        : [...REGISTER_GROUPS, { title: OTHER_GROUP, keys: [] as string[] }]
+      ).map((group) => {
         const known = new Set(REGISTER_GROUPS.flatMap((g) => g.keys));
         const rows = list.filter((r) => (group.title === OTHER_GROUP ? !known.has(r.key) : group.keys.includes(r.key)));
         if (rows.length === 0) return null;
         return (
       <section key={group.title} className="space-y-2.5">
-        {isSecurity ? (
+        {only ? null : isSecurity ? (
           <h2 className={cn("flex items-center gap-2 px-1 text-sm font-bold uppercase tracking-wide", (GROUP_TONE[group.title] ?? OTHER_TONE).text)}>
             <span className={cn("h-2.5 w-2.5 rounded-full", (GROUP_TONE[group.title] ?? OTHER_TONE).dot)} aria-hidden="true" />
             {t(group.title)}
@@ -516,6 +529,7 @@ export function RegistersHub({
       </section>
         );
       })}
+      {footer}
 
       <Modal open={!!insideChoice} onClose={() => setInsideChoice(null)} title={insideChoice?.name ?? ""} className="max-w-md">
         {insideChoice && (

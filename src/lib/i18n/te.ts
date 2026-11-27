@@ -1818,4 +1818,7 @@ export const te: Record<string, string> = {
   "Boys Hostel Student Outing Book": "బాయ్స్ హాస్టల్ విద్యార్థుల ఔటింగ్ బుక్",
   "Ladies Hostel Student Outing Book": "లేడీస్ హాస్టల్ విద్యార్థుల ఔటింగ్ బుక్",
   "Hostel Home Outing Counts": "హాస్టల్ హోమ్ ఔటింగ్ కౌంట్స్",
+  // Security bottom tabs
+  "Daily labours": "రోజువారీ కూలీలు",
+  Siros: "సిరోస్",
 };

@@ -44,6 +44,8 @@ import {
   Ticket,
   UsersRound,
   Bell as BellIcon,
+  HardHat,
+  Warehouse,
 } from "lucide-react";
 
 /** Used when a layout doesn't pass the person's own title */
@@ -695,9 +697,10 @@ export const securityNavItems: NavItem[] = [
   // Home is the registers list; on phones "Scan QR" is the raised centre button
   { label: "Registers", href: "/security", icon: <BookOpen className="h-5 w-5" /> },
   { label: "Scan QR", href: "/security/scan", icon: <ScanLine className="h-5 w-5" /> },
-  { label: "Visitors", href: "/security/visitors", icon: <ContactRound className="h-5 w-5" /> },
-  { label: "Faculty", href: "/security/faculty", icon: <Briefcase className="h-5 w-5" /> },
-  { label: "Gate Logs", href: "/security/log", icon: <ScrollText className="h-5 w-5" /> },
+  // Bar: Registers · Daily labours · (Scan) · Passes · Siros — each of the other three shows only its books
+  { label: "Daily labours", href: "/security/labours", icon: <HardHat className="h-5 w-5" /> },
+  { label: "Passes", href: "/security/passes", icon: <Ticket className="h-5 w-5" /> },
+  { label: "Siros", href: "/security/siros", icon: <Warehouse className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
 ];
 
