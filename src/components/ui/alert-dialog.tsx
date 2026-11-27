@@ -57,7 +57,7 @@ export function AlertDialog({
 
   // Icon tile and main button: a glossy gradient per kind (Security: plain solid colours)
   const tileMap = {
-    info: "from-[#ff8f75] to-[#e8492e] shadow-[0_12px_24px_-12px_rgba(232,73,46,0.7)]",
+    info: "from-[#ff7a66] to-[#d6331f] shadow-[0_12px_24px_-12px_rgba(232,73,46,0.7)]",
     success: "from-[#34d399] to-[#059669] shadow-[0_12px_24px_-12px_rgba(5,150,105,0.7)]",
     warning: "from-[#fbbf24] to-[#d97706] shadow-[0_12px_24px_-12px_rgba(217,119,6,0.7)]",
     error: "from-[#ff6b5e] to-[#d92d20] shadow-[0_12px_24px_-12px_rgba(217,45,32,0.7)]",

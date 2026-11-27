@@ -183,7 +183,7 @@ export function PickMenu({
                   className={cn(
                     "flex h-11 items-center justify-center rounded-xl text-[15px] font-semibold tabular-nums outline-none transition-colors duration-150",
                     sel
-                      ? "bg-gradient-to-b from-[#ff7a5e] to-[#e0442a] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_8px_16px_-10px_rgba(224,68,42,0.7)]"
+                      ? "bg-gradient-to-b from-[#ff6a55] to-[#d23420] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_8px_16px_-10px_rgba(224,68,42,0.7)]"
                       : o.disabled
                         ? "cursor-not-allowed text-zinc-500/40"
                         : "text-zinc-200 hover:bg-orange-500/10 hover:text-orange-600 focus-visible:bg-orange-500/10 focus-visible:text-orange-600 focus-visible:ring-2 focus-visible:ring-orange-500/40"

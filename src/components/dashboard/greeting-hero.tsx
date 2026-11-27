@@ -44,7 +44,7 @@ export function GreetingHero({
           {greeting}
           {name ? (
             <>
-              , <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">{name}</span>
+              , <span className="font-medium bg-gradient-to-r from-[#f2492f] to-[#b82c18] bg-clip-text text-transparent">{name}</span>
             </>
           ) : null}
         </h1>
@@ -61,8 +61,8 @@ export function GreetingHero({
                 className={cn(
                   "inline-flex h-12 items-center gap-2.5 rounded-full px-5 text-sm font-semibold transition-[filter,background-color,border-color,transform] active:scale-[0.98]",
                   a.primary
-                    ? "bg-gradient-to-b from-[#ff7a5e] to-[#e0442a] text-white ring-1 ring-inset ring-white/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_12px_24px_-12px_rgba(207,62,37,0.75)] hover:brightness-[1.06]"
-                    : "border border-[#ff6b4f]/40 bg-white/85 text-[#e0442a] shadow-[inset_0_1px_0_#ffffff,0_8px_18px_-14px_rgba(224,68,42,0.55)] hover:border-[#ff6b4f]/60 hover:bg-[#ff6b4f]/[0.06]"
+                    ? "bg-gradient-to-b from-[#ff6a55] to-[#d23420] text-white ring-1 ring-inset ring-white/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_12px_24px_-12px_rgba(207,62,37,0.75)] hover:brightness-[1.06]"
+                    : "border border-[#f4503c]/40 bg-white/85 text-[#d23420] shadow-[inset_0_1px_0_#ffffff,0_8px_18px_-14px_rgba(224,68,42,0.55)] hover:border-[#f4503c]/60 hover:bg-[#f4503c]/[0.06]"
                 )}
               >
                 <Ico className="h-4 w-4" aria-hidden="true" />

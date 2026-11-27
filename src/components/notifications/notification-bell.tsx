@@ -147,7 +147,7 @@ export function NotificationBell() {
       >
         <Bell className="h-[18px] w-[18px]" />
         {unread > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-gradient-to-r from-[#ff634a] to-[#c2381f] px-1 text-[10px] font-bold tabular-nums text-white ring-2 ring-white">
+          <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-gradient-to-r from-[#f2492f] to-[#b82c18] px-1 text-[10px] font-bold tabular-nums text-white ring-2 ring-white">
             {unread > 99 ? "99+" : unread}
           </span>
         )}
@@ -183,7 +183,7 @@ export function NotificationBell() {
                   type="button"
                   onClick={() => void push.enable()}
                   disabled={push.busy}
-                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-r from-[#ff634a] to-[#c2381f] px-4 text-xs font-semibold text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)] disabled:opacity-60"
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-r from-[#f2492f] to-[#b82c18] px-4 text-xs font-semibold text-white shadow-[0_8px_18px_-10px_rgba(207,62,37,0.7)] disabled:opacity-60"
                 >
                   {push.busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} {t("Turn on")}
                 </button>
@@ -215,7 +215,7 @@ export function NotificationBell() {
                           <span
                             className={cn(
                               "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl",
-                              n.level === "URGENT" ? "bg-gradient-to-br from-[#ff634a] to-[#c2381f] text-white" : "bg-orange-500/10 text-orange-500"
+                              n.level === "URGENT" ? "bg-gradient-to-br from-[#f2492f] to-[#b82c18] text-white" : "bg-orange-500/10 text-orange-500"
                             )}
                           >
                             <Icon className="h-[18px] w-[18px]" />
@@ -248,7 +248,7 @@ export function NotificationBell() {
                 <span
                   className={cn(
                     "flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl",
-                    toast.level === "URGENT" ? "bg-gradient-to-br from-[#ff634a] to-[#c2381f] text-white" : "bg-orange-500/10 text-orange-500"
+                    toast.level === "URGENT" ? "bg-gradient-to-br from-[#f2492f] to-[#b82c18] text-white" : "bg-orange-500/10 text-orange-500"
                   )}
                 >
                   {(() => {

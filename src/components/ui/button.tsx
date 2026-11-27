@@ -35,7 +35,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       // Brand coral pill (deep coral keeps white text readable)
       // Coral glass: gradient body, a light top edge (inner highlight), a soft coral glow
       default:
-        "bg-gradient-to-b from-[#ff7a5e] to-[#e0442a] text-white ring-1 ring-inset ring-white/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_22px_-12px_rgba(207,62,37,0.75)] hover:brightness-[1.06] focus-visible:ring-orange-500",
+        "bg-gradient-to-b from-[#ff6a55] to-[#d23420] text-white ring-1 ring-inset ring-white/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_22px_-12px_rgba(207,62,37,0.75)] hover:brightness-[1.06] focus-visible:ring-orange-500",
       destructive:
         "bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500",
       // Glass outline: frosted white with a coral edge and coral text

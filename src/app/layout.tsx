@@ -62,7 +62,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${poppins.variable} ${telugu.variable}`} data-scroll-behavior="smooth">
       <body className="font-sans min-h-[100dvh] bg-zinc-950 text-zinc-100 antialiased">
-        <NextTopLoader color="#ff634a" showSpinner={false} />
+        <NextTopLoader color="#f2492f" showSpinner={false} />
         <VersionWatcher />
         <SignOutNotice />
         {children}

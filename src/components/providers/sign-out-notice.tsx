@@ -51,7 +51,7 @@ export function SignOutNotice() {
       <div className="absolute inset-0 bg-black/35 backdrop-blur-[3px] animate-fade-in" />
       <div className="relative w-full max-w-[22rem] overflow-hidden rounded-[28px] border border-zinc-800/80 bg-zinc-900 shadow-[0_30px_70px_-24px_rgba(16,24,40,0.45)] animate-scale-in">
         {/* Soft coral glow behind the ring */}
-        <div className="pointer-events-none absolute -top-24 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-[#ff634a]/15 blur-3xl" aria-hidden="true" />
+        <div className="pointer-events-none absolute -top-24 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-[#f2492f]/15 blur-3xl" aria-hidden="true" />
 
         <div className="relative px-7 pb-7 pt-8 text-center">
           <div className="relative mx-auto h-[7.5rem] w-[7.5rem]" aria-live="polite">
@@ -59,7 +59,7 @@ export function SignOutNotice() {
               <defs>
                 <linearGradient id="are-you-there-ring" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stopColor="#ff8a73" />
-                  <stop offset="100%" stopColor="#c2381f" />
+                  <stop offset="100%" stopColor="#b82c18" />
                 </linearGradient>
               </defs>
               <circle cx="50" cy="50" r={R} fill="none" strokeWidth="4" className="stroke-zinc-800" />
@@ -83,7 +83,7 @@ export function SignOutNotice() {
           </div>
 
           <h2 id="are-you-there" className="mt-5 text-2xl font-light tracking-tight text-zinc-100">
-            Are you <span className="font-medium bg-gradient-to-r from-[#ff634a] to-[#c2381f] bg-clip-text text-transparent">there?</span>
+            Are you <span className="font-medium bg-gradient-to-r from-[#f2492f] to-[#b82c18] bg-clip-text text-transparent">there?</span>
           </h2>
 
           <div className="mt-7 grid grid-cols-2 gap-3">

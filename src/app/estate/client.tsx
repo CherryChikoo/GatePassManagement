@@ -48,7 +48,7 @@ export function EstateHome() {
         <h1 className="text-2xl font-light tracking-tight text-zinc-100 sm:text-3xl">{t("Books to verify")}</h1>
         {data?.counts &&
           (total > 0 ? (
-            <span className="inline-flex items-center rounded-full bg-gradient-to-b from-[#ff7a5e] to-[#e0442a] px-4 py-1.5 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_20px_-12px_rgba(224,68,42,0.7)]">
+            <span className="inline-flex items-center rounded-full bg-gradient-to-b from-[#ff6a55] to-[#d23420] px-4 py-1.5 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_20px_-12px_rgba(224,68,42,0.7)]">
               {t("{count} to verify", { count: total })}
             </span>
           ) : (

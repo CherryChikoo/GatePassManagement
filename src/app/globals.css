@@ -4,7 +4,7 @@
  * Gate Pass design system (light, Apple-inspired)
  *
  * Palette "Opaline": #F4F4F6 page, #E7E7E7 hairlines, #D2D2D4 stronger lines,
- * coral #FF634A brand. The app was built on Tailwind’s zinc / orange scales, so
+ * coral #f2492f brand. The app was built on Tailwind’s zinc / orange scales, so
  * those scales are redefined here: every screen switches to the light theme
  * from one place. Status text shades are darkened to stay readable on white.
  */
@@ -26,28 +26,28 @@
   --color-zinc-900: #ffffff;
   --color-zinc-950: #f4f4f6;
 
-  /* Brand coral. 500 = #FF634A for fills and highlights; 400/300 are deeper
+  /* Brand coral. 500 = #f2492f for fills and highlights; 400/300 are deeper
      so coral text is readable on white; 600 carries white button text. */
-  --color-orange-50: #fff3f0;
-  --color-orange-100: #ffe4de;
-  --color-orange-200: #ffc9bd;
-  --color-orange-300: #c2381f;
-  --color-orange-400: #d63f27;
-  --color-orange-500: #ff634a;
-  --color-orange-600: #cf3e25;
-  --color-orange-700: #b23320;
-  --color-orange-800: #8f2a1b;
+  --color-orange-50: #fff1ee;
+  --color-orange-100: #ffe0da;
+  --color-orange-200: #ffc2b6;
+  --color-orange-300: #b82c18;
+  --color-orange-400: #cc3420;
+  --color-orange-500: #f2492f;
+  --color-orange-600: #c4301b;
+  --color-orange-700: #a82816;
+  --color-orange-800: #872113;
   --color-orange-900: #6e2216;
 
   /* Former accent scales follow the brand */
-  --color-indigo-300: #c2381f;
-  --color-indigo-400: #d63f27;
-  --color-indigo-500: #ff634a;
-  --color-indigo-600: #cf3e25;
-  --color-violet-300: #c2381f;
-  --color-violet-400: #d63f27;
-  --color-violet-500: #ff634a;
-  --color-violet-600: #cf3e25;
+  --color-indigo-300: #b82c18;
+  --color-indigo-400: #cc3420;
+  --color-indigo-500: #f2492f;
+  --color-indigo-600: #c4301b;
+  --color-violet-300: #b82c18;
+  --color-violet-400: #cc3420;
+  --color-violet-500: #f2492f;
+  --color-violet-600: #c4301b;
 
   /* Status colours: text shades darkened for white backgrounds */
   --color-emerald-200: #065f46;
@@ -283,7 +283,7 @@ html.security-text .glass:not(.loading-pill) {
   right: 0;
   bottom: 0;
   height: 2px;
-  background: linear-gradient(90deg, #ff634a, #c2381f);
+  background: linear-gradient(90deg, #f2492f, #b82c18);
   opacity: 0.55;
   transform-origin: left center;
   transform: scaleX(1);
@@ -330,7 +330,7 @@ html.security-text .glass:not(.loading-pill) {
 /* Premium icon tile: coral gradient, white icon, light top edge, soft coral glow
    (the same as the count cards' tiles) */
 .icon-tile {
-  background: linear-gradient(145deg, #ff8f75 0%, #ff6b4f 50%, #e8492e 100%) !important;
+  background: linear-gradient(145deg, #ff7a66 0%, #f4503c 50%, #d6331f 100%) !important;
   color: #ffffff !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 18px -10px rgba(232, 73, 46, 0.55);
 }
@@ -649,7 +649,7 @@ html::-webkit-scrollbar {
 }
 [data-look="clear"] :is(input, textarea, select, button[role="combobox"]):focus,
 [data-look="clear"] button[role="combobox"][aria-expanded="true"] {
-  border-color: #ff634a;
+  border-color: #f2492f;
   background-color: #ffffff;
   box-shadow: 0 0 0 4px rgba(255, 99, 74, 0.16);
 }

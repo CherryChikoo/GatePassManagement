@@ -569,7 +569,7 @@ function PendingApprovalView({
       {/* Status (feature card) */}
       <div
         className="relative overflow-hidden rounded-3xl border border-orange-500/20 p-5 sm:p-6 shadow-card"
-        style={{ background: "linear-gradient(160deg, #fff3f0 0%, #ffe1d9 55%, #ffd2c7 100%)" }}
+        style={{ background: "linear-gradient(160deg, #fff1ee 0%, #ffe1d9 55%, #ffd2c7 100%)" }}
       >
         <div className="flex items-start justify-between gap-3">
           <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/80 border border-white text-orange-400">
@@ -808,7 +808,7 @@ function PermissionFormView({
         {/* The red-orange pill slides under the chosen side (transform only: smooth, no layout work) */}
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute bottom-1.5 left-1.5 top-1.5 -z-10 w-[calc((100%-18px)/2)] rounded-full bg-gradient-to-b from-[#ff7a5e] to-[#e0442a] shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_20px_-10px_rgba(224,68,42,0.7)] transition-transform duration-[360ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:transition-none"
+          className="pointer-events-none absolute bottom-1.5 left-1.5 top-1.5 -z-10 w-[calc((100%-18px)/2)] rounded-full bg-gradient-to-b from-[#ff6a55] to-[#d23420] shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_20px_-10px_rgba(224,68,42,0.7)] transition-transform duration-[360ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform motion-reduce:transition-none"
           style={{ transform: requestType === "EXIT" ? "translate3d(0,0,0)" : "translate3d(calc(100% + 6px),0,0)" }}
         />
         {(
