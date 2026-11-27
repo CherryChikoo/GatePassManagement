@@ -840,7 +840,7 @@ function PermissionFormView({
       <div
         role="radiogroup"
         aria-label="Which way are you going?"
-        className="grid grid-cols-2 gap-1 rounded-[22px] bg-zinc-950 p-1 border border-zinc-800"
+        className="grid grid-cols-2 gap-1.5 rounded-full border border-orange-500/15 bg-white p-1.5 shadow-[inset_0_1px_2px_rgba(16,24,40,0.06),0_10px_24px_-20px_rgba(207,62,37,0.5)]"
       >
         {(
           [
@@ -886,14 +886,16 @@ function PermissionFormView({
                 setRequestType(opt.type);
                 if (opt.type === "HOSTEL") setFieldErrors({});
               }}
-              className={`flex min-w-0 items-center justify-center gap-2.5 rounded-[18px] border px-2 sm:px-4 py-2.5 text-center transition-[background-color,border-color,color] ${
-                selected ? "border-orange-500/25 bg-white text-zinc-100 shadow-[inset_0_1px_0_#ffffff,0_8px_20px_-14px_rgba(207,62,37,0.45)]" : "border-transparent text-zinc-500 hover:text-zinc-200"
+              className={`flex min-w-0 items-center justify-center gap-2 rounded-full px-2 sm:px-4 py-2 text-center transition-[background-color,color,box-shadow] duration-200 ${
+                selected
+                  ? "bg-gradient-to-b from-[#ff7a5e] to-[#e0442a] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_20px_-10px_rgba(224,68,42,0.7)]"
+                  : "text-zinc-500 hover:bg-orange-500/5 hover:text-zinc-200"
               }`}
             >
-              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${selected ? "icon-tile" : "bg-zinc-900 text-zinc-500"}`}>
+              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${selected ? "bg-white/20 text-white ring-1 ring-white/30" : "bg-orange-500/10 text-orange-500"}`}>
                 <Icon className="h-4 w-4" />
               </span>
-              <span className="truncate text-[13px] sm:text-[15px] font-semibold leading-tight">{opt.title}</span>
+              <span className={`truncate text-[14px] sm:text-[15px] font-semibold leading-tight ${selected ? "text-white" : ""}`}>{opt.title}</span>
             </button>
           );
         })}
