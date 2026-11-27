@@ -1,7 +1,7 @@
 "use client";
 
 import { lockPageScroll } from "@/lib/ui/scroll-lock";
-import React, { useState, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import React, { useState, useEffect, useRef, useSyncExternalStore } from "react";
 import { useKeepHeightOnFilter } from "@/lib/ui/keep-height";
 import { useBarSpace, useGlassSupport } from "@/lib/ui/bar-space";
 import Link from "next/link";
@@ -43,6 +43,7 @@ import {
   Settings as SettingsIcon,
   Ticket,
   UsersRound,
+  Bell as BellIcon,
 } from "lucide-react";
 
 /** Used when a layout doesn't pass the person's own title */
@@ -244,24 +245,9 @@ export function DashboardLayout({
       : pathname === href || (pathname.startsWith(href + "/") && href !== "/"));
 
   const initial = userName.charAt(0).toUpperCase();
-  const flipFrom = useRef<number | null>(null);
-  const toggleCollapsed = () => {
-    flipFrom.current = mainRef.current?.getBoundingClientRect().left ?? null;
-    saveCollapsed(!desktopCollapsed);
-  };
-  // The page takes its new width at once (one layout), then glides from where it was
-  useLayoutEffect(() => {
-    const from = flipFrom.current;
-    flipFrom.current = null;
-    const el = mainRef.current;
-    if (from === null || !el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const dx = from - el.getBoundingClientRect().left;
-    if (Math.abs(dx) < 1) return;
-    el.animate([{ transform: `translateX(${dx}px)` }, { transform: "translateX(0)" }], {
-      duration: 300,
-      easing: "cubic-bezier(0.22, 0.61, 0.36, 1)",
-    });
-  }, [desktopCollapsed]);
+  const toggleCollapsed = () => saveCollapsed(!desktopCollapsed);
+  // The page the person is on (its name and icon in the top bar)
+  const activeItem = navItems.find((i) => isActivePath(i.href));
 
   return (
     <div className="flex h-[100dvh] bg-zinc-950 overflow-hidden">
@@ -313,8 +299,7 @@ export function DashboardLayout({
                     "group relative flex items-center rounded-2xl px-3 py-2.5 text-sm transition-colors duration-150 overflow-hidden",
                     isActive
                       ? "bg-zinc-900 text-zinc-100 font-medium shadow-card border border-zinc-800/80"
-                      : "text-zinc-400 hover:bg-zinc-900/70 hover:text-zinc-200 border border-transparent",
-                    desktopCollapsed && "lg:justify-center lg:px-0"
+                      : "text-zinc-400 hover:bg-zinc-900/70 hover:text-zinc-200 border border-transparent"
                   )}
                 >
                   <span
@@ -327,7 +312,7 @@ export function DashboardLayout({
                   </span>
                   <span
                     className={cn(
-                      "flex flex-1 items-center justify-between min-w-0 ml-3 transition-[opacity,width,margin] duration-300",
+                      "flex flex-1 items-center justify-between min-w-0 ml-3 whitespace-nowrap transition-[opacity,width,margin] duration-300 ease-[cubic-bezier(0.22,0.61,0.36,1)]",
                       desktopCollapsed && "lg:w-0 lg:flex-none lg:opacity-0 lg:ml-0"
                     )}
                   >
@@ -350,15 +335,16 @@ export function DashboardLayout({
             <button
               onClick={toggleCollapsed}
               className={cn(
-                "hidden lg:flex w-full items-center rounded-2xl px-3 py-2.5 text-sm text-zinc-400 hover:bg-zinc-900/70 hover:text-zinc-200 transition-colors",
-                desktopCollapsed && "justify-center px-0"
+                "hidden lg:flex w-full items-center overflow-hidden rounded-2xl px-3 py-2.5 text-sm text-zinc-400 hover:bg-zinc-900/70 hover:text-zinc-200 transition-colors"
               )}
               aria-label={desktopCollapsed ? t("Expand sidebar") : t("Collapse sidebar")}
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center">
                 {desktopCollapsed ? <PanelLeftOpen className="h-[18px] w-[18px]" /> : <PanelLeftClose className="h-[18px] w-[18px]" />}
               </span>
-              <span className={cn("ml-3 truncate", desktopCollapsed && "hidden")}>{t("Collapse")}</span>
+              <span className={cn("ml-3 truncate whitespace-nowrap transition-[opacity,width,margin] duration-300 ease-[cubic-bezier(0.22,0.61,0.36,1)]", desktopCollapsed && "w-0 opacity-0 ml-0")}>
+                {t("Collapse")}
+              </span>
             </button>
             </Tooltip>
             <Tooltip label={t("Sign out")} side="right" disabled={!desktopCollapsed} className="block">
@@ -368,14 +354,13 @@ export function DashboardLayout({
               disabled={signingOut}
               aria-busy={signingOut}
               className={cn(
-                "flex w-full items-center rounded-2xl px-3 py-2.5 text-sm text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-60 disabled:cursor-wait",
-                desktopCollapsed && "lg:justify-center lg:px-0"
+                "flex w-full items-center overflow-hidden rounded-2xl px-3 py-2.5 text-sm text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-60 disabled:cursor-wait",
               )}
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center">
                 {signingOut ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <LogOut className="h-[18px] w-[18px]" />}
               </span>
-              <span className={cn("ml-3 truncate", desktopCollapsed && "lg:hidden")}>{signingOut ? t("Signing out…") : t("Sign out")}</span>
+              <span className={cn("ml-3 truncate whitespace-nowrap transition-[opacity,width,margin] duration-300 ease-[cubic-bezier(0.22,0.61,0.36,1)]", desktopCollapsed && "lg:w-0 lg:opacity-0 lg:ml-0")}>{signingOut ? t("Signing out…") : t("Sign out")}</span>
             </button>
             </Tooltip>
           </div>
@@ -388,7 +373,9 @@ export function DashboardLayout({
         ref={mainRef}
         className={cn(
           "flex-1 flex flex-col min-w-0 max-w-full overflow-hidden relative",
-          // Room for the floating desktop sidebar (12px gap + its width)
+          // Room for the floating desktop sidebar (12px gap + its width): follows the
+          // sidebar with the same timing and curve, so the two move as one
+          hasSidebar && "lg:transition-[margin-left] lg:duration-300 lg:ease-[cubic-bezier(0.22,0.61,0.36,1)]",
           hasSidebar && (desktopCollapsed ? "lg:ml-[96px]" : "lg:ml-[268px]")
         )}
       >
@@ -409,6 +396,15 @@ export function DashboardLayout({
           <div className={cn("min-w-0", hasSidebar ? "lg:hidden" : "")}>
             <BrandMark roleLine={roleLine} />
           </div>
+          {/* Desktop: the page you are on, with its icon */}
+          {hasSidebar && activeItem && (
+            <div className="hidden min-w-0 items-center gap-3 pl-1 lg:flex">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-500 [&>svg]:h-[18px] [&>svg]:w-[18px]">
+                {activeItem.icon}
+              </span>
+              <span className="truncate text-[15px] font-semibold tracking-tight text-zinc-100">{t(activeItem.label)}</span>
+            </div>
+          )}
 
           <div className="flex-1" />
 
@@ -432,27 +428,27 @@ export function DashboardLayout({
                 </Link>
               </Tooltip>
             )}
-            <div className="hidden lg:flex flex-col items-end min-w-0 leading-tight">
-              <span className="text-sm font-medium text-zinc-100 truncate max-w-[220px]">{userName}</span>
-              <span className="text-[11px] text-zinc-500 truncate max-w-[220px]">{userEmail}</span>
-            </div>
-            {avatarUrl ? (
-               
-              <img
-                src={avatarUrl}
-                alt=""
-                width={40}
-                height={40}
-                className="hidden sm:block h-10 w-10 shrink-0 rounded-full border border-zinc-800 object-cover"
-              />
-            ) : (
-              <span
-                className="hidden sm:flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-500/10 text-orange-400 text-sm font-semibold border border-orange-500/20"
-                aria-hidden="true"
-              >
-                {initial}
+            {/* Profile pill: photo in a coral ring, name and role → Settings */}
+            <span className="hidden h-8 w-px bg-zinc-800 lg:block" aria-hidden="true" />
+            <Link
+              href="/settings"
+              aria-label={t("Settings")}
+              className="group hidden min-w-0 items-center gap-3 rounded-full border border-zinc-800/80 bg-zinc-900/60 py-1 pl-1 pr-1 transition-[border-color,background-color] hover:border-orange-500/30 hover:bg-zinc-900 sm:flex lg:pr-4"
+            >
+              <span className="rounded-full bg-gradient-to-br from-[#ff8a73] to-[#c2381f] p-[2px]">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" width={36} height={36} className="h-9 w-9 rounded-full border-2 border-white object-cover" />
+                ) : (
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-orange-50 text-sm font-semibold text-orange-600" aria-hidden="true">
+                    {initial}
+                  </span>
+                )}
               </span>
-            )}
+              <span className="hidden min-w-0 flex-col leading-tight lg:flex">
+                <span className="max-w-[180px] truncate text-sm font-semibold text-zinc-100">{userName}</span>
+                <span className="max-w-[180px] truncate text-[11px] font-medium text-orange-500/90">{roleLine}</span>
+              </span>
+            </Link>
             {/* Sign out lives in the sidebar on desktop; keep it here for pages without a sidebar and on phones */}
             <button
               type="button"
@@ -592,6 +588,7 @@ export const adminNavItems: NavItem[] = [
   { label: "Promotion", href: "/admin/promotion", icon: <GraduationCap className="h-5 w-5" /> },
   { label: "Activity Logs", href: "/admin/activity", icon: <ActivityIcon className="h-5 w-5" /> },
   { label: "Registers", href: "/admin/registers", icon: <BookOpen className="h-5 w-5" /> },
+  { label: "Notifications", href: "/admin/notifications", icon: <BellIcon className="h-5 w-5" /> },
   { label: "My Visitors", href: "/my-visitors", icon: <UserCheck className="h-5 w-5" /> },
   { label: "Settings", href: "/settings", icon: <SettingsIcon className="h-5 w-5" /> },
   // The following pages are not yet implemented in the initial build:

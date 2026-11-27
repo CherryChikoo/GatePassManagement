@@ -26,6 +26,7 @@ import {
   AlertCircle,
   ShieldCheck,
 } from "lucide-react";
+import { NotificationSettings } from "@/components/notifications/notification-settings";
 
 interface Props {
   user: {
@@ -263,6 +264,8 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
             {t(currentRoleInfo.title)}
           </span>
         </div>
+
+        <NotificationSettings role={user.role} />
 
         <Card>
           <CardHeader className="border-b border-zinc-800/80 pb-4">

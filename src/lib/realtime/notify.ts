@@ -79,6 +79,11 @@ async function pingUsers(userIds: string[], topics: string[]) {
   await sendMessages([...new Set(userIds)].map((u) => ({ topic: personalTopic(u), topics })));
 }
 
+/** Same ping, for callers outside a request (the timed-alerts tick) */
+export async function pingUsersNow(userIds: string[], topics: string[]) {
+  await pingUsers(userIds, topics);
+}
+
 /** Short date for messages: "28 Nov" */
 const shortDate = (d: Date | null | undefined) =>
   d ? new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(d) : "";

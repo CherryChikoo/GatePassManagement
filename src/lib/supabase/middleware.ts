@@ -178,6 +178,9 @@ function isPublicPath(pathname: string): boolean {
     pathname === "/api/auth/callback" ||
     pathname === "/api/health" ||
     pathname === "/api/version" ||
+    // Phone notifications worker and the app manifest (fetched by the browser itself)
+    pathname === "/sw.js" ||
+    pathname === "/manifest.webmanifest" ||
     pathname.startsWith("/api/cron/") ||
     // Visitor self check-in on the visitor's own phone (no login): the form
     // and its API (src/lib/visits/requests.ts)

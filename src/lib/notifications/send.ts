@@ -6,6 +6,7 @@
  * never fails the save that caused it.
  */
 import { prisma } from "@/lib/db/prisma";
+import { deliverPush } from "./push";
 
 export type NoteLevel = "URGENT" | "IMPORTANT" | "INFO";
 export type NoteInput = {
@@ -23,9 +24,26 @@ export type NoteInput = {
 type Ping = (userIds: string[], topics: string[]) => Promise<void>;
 
 /** Saves the notifications (skipping any already sent) and pings their people */
-export async function saveNotifications(notes: NoteInput[], ping: Ping) {
+export async function saveNotifications(input: NoteInput[], ping: Ping) {
+  let notes = input;
   if (!notes.length) return;
   try {
+    // Only what is new: an event seen again (same dedupe key) is never stored, pinged or pushed twice
+    const existing = await prisma.notification.findMany({
+      where: { dedupeKey: { in: [...new Set(notes.map((n) => n.dedupeKey))] }, profileId: { in: [...new Set(notes.map((n) => n.profileId))] } },
+      select: { profileId: true, dedupeKey: true },
+    });
+    const had = new Set(existing.map((e) => `${e.profileId}|${e.dedupeKey}`));
+    // What each person muted (Urgent always comes through)
+    const prefs = await prisma.notificationPreference
+      .findMany({ where: { profileId: { in: [...new Set(notes.map((n) => n.profileId))] } }, select: { profileId: true, muted: true } })
+      .catch(() => []);
+    const muted = new Map(prefs.map((p) => [p.profileId, new Set(p.muted)]));
+    const fresh = notes.filter(
+      (n) => !had.has(`${n.profileId}|${n.dedupeKey}`) && (n.level === "URGENT" || !muted.get(n.profileId)?.has(n.kind))
+    );
+    if (!fresh.length) return;
+    notes = fresh;
     await prisma.notification.createMany({
       data: notes.map((n) => ({
         profileId: n.profileId,
@@ -39,6 +57,8 @@ export async function saveNotifications(notes: NoteInput[], ping: Ping) {
       skipDuplicates: true,
     });
     await ping([...new Set(notes.map((n) => n.userId))], ["notify"]);
+    // Phones / desktops (Important and Urgent only)
+    await deliverPush(notes).catch((err: any) => console.warn("[notify] push failed:", err?.message));
   } catch (err: any) {
     console.warn("[notify] could not save notifications:", err?.message);
   }

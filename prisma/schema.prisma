@@ -47,6 +47,8 @@ model Profile {
   /// Self check-in requests made from this guard's Show QR screen
   issuedVisitRequests VisitRequest[] @relation("VisitRequestIssuedBy")
   notifications       Notification[]
+  pushSubscriptions   PushSubscription[]
+  notificationPrefs   NotificationPreference?
 
   @@index([role, active])
   @@map("profiles")
@@ -580,4 +582,46 @@ model VisitRequest {
 
   @@index([register, status, createdAt(sort: Desc)])
   @@map("visit_requests")
+}
+
+/// Timing of the timed alerts (one row, id "default"; edited by Admin)
+model NotificationConfig {
+  id               String   @id @default("default")
+  overstayHours    Int      @default(3) @map("overstay_hours")
+  reminderMinutes  Int      @default(60) @map("reminder_minutes")
+  curfewTime       String   @default("21:00") @map("curfew_time")
+  summaryTime      String   @default("08:00") @map("summary_time")
+  summariesOn      Boolean  @default(true) @map("summaries_on")
+  menteeAlertsOn   Boolean  @default(false) @map("mentee_alerts_on")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("notification_config")
+}
+
+/// A device (browser) that receives phone / desktop notifications for this person
+model PushSubscription {
+  id         String    @id @default(uuid())
+  profileId  String    @map("profile_id")
+  profile    Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  /// The browser's push address (one per device)
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?   @map("user_agent")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  lastUsedAt DateTime? @map("last_used_at")
+
+  @@index([profileId])
+  @@map("push_subscriptions")
+}
+
+/// What this person chose to hear about (Urgent ones always come)
+model NotificationPreference {
+  profileId String   @id @map("profile_id")
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  /// Kinds turned off: request | pass | scan | visitor | system
+  muted     String[] @default([])
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("notification_preferences")
 }
