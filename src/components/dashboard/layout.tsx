@@ -91,7 +91,7 @@ function BrandMark({ compact = false, roleLine }: { compact?: boolean; roleLine:
       </span>
       <div
         className={cn(
-          "flex flex-col overflow-hidden whitespace-nowrap min-w-0 ml-3 transition-[opacity,width,margin] duration-300",
+          "flex flex-col overflow-hidden whitespace-nowrap min-w-0 ml-3 transition-[opacity,width,margin] duration-[240ms] ease-[cubic-bezier(0.22,0.61,0.36,1)]",
           compact && "lg:w-0 lg:opacity-0 lg:ml-0"
         )}
       >
@@ -275,13 +275,12 @@ export function DashboardLayout({
     for (const a of el.getAnimations()) a.cancel();
     const dx = from - el.getBoundingClientRect().left;
     if (Math.abs(dx) < 1) return;
-    el.animate(
-      [
-        { transform: `translateX(${dx}px)`, opacity: 0.88 },
-        { transform: "translateX(0)", opacity: 1 },
-      ],
-      { duration: 300, easing: "cubic-bezier(0.22, 0.61, 0.36, 1)" }
-    );
+    // Slide only (no fade: fading the area that holds the frosted top bar makes the browser
+    // rebuild it every frame — the stutter). Same time and curve as the sidebar.
+    el.animate([{ transform: `translateX(${dx}px)` }, { transform: "translateX(0)" }], {
+      duration: 240,
+      easing: "cubic-bezier(0.22, 0.61, 0.36, 1)",
+    });
   }, [desktopCollapsed]);
   // The page the person is on (its name and icon in the top bar)
   const activeItem = navItems.find((i) => isActivePath(i.href));
@@ -301,7 +300,7 @@ export function DashboardLayout({
         <aside
           className={cn(
             // Solid (not frosted): it slides over the page, where a blur would cost the most
-            "fixed inset-y-0 left-0 z-50 flex flex-col glass-solid duration-300 ease-[cubic-bezier(0.22,0.61,0.36,1)]",
+            "fixed inset-y-0 left-0 z-50 flex flex-col glass-solid duration-[240ms] ease-[cubic-bezier(0.22,0.61,0.36,1)]",
             motionReady && "transition-[translate,width]",
             // Labels and icons inside stay still while the page opens too
             !motionReady && "[&_*]:transition-none!",
@@ -352,7 +351,7 @@ export function DashboardLayout({
                   </span>
                   <span
                     className={cn(
-                      "flex flex-1 items-center justify-between min-w-0 ml-3 whitespace-nowrap transition-[opacity,width,margin] duration-300 ease-[cubic-bezier(0.22,0.61,0.36,1)]",
+                      "flex flex-1 items-center justify-between min-w-0 ml-3 whitespace-nowrap transition-[opacity,width,margin] duration-[240ms] ease-[cubic-bezier(0.22,0.61,0.36,1)]",
                       desktopCollapsed && "lg:w-0 lg:flex-none lg:opacity-0 lg:ml-0"
                     )}
                   >
@@ -383,7 +382,7 @@ export function DashboardLayout({
               <span className="flex h-8 w-8 shrink-0 items-center justify-center">
                 {desktopCollapsed ? <PanelLeftOpen className="h-[18px] w-[18px]" /> : <PanelLeftClose className="h-[18px] w-[18px]" />}
               </span>
-              <span className={cn("ml-3 truncate whitespace-nowrap transition-[opacity,width,margin] duration-300 ease-[cubic-bezier(0.22,0.61,0.36,1)]", desktopCollapsed && "w-0 opacity-0 ml-0")}>
+              <span className={cn("ml-3 truncate whitespace-nowrap transition-[opacity,width,margin] duration-[240ms] ease-[cubic-bezier(0.22,0.61,0.36,1)]", desktopCollapsed && "w-0 opacity-0 ml-0")}>
                 {t("Collapse")}
               </span>
             </button>
@@ -402,7 +401,7 @@ export function DashboardLayout({
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#f87171] to-[#dc2626] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_6px_14px_-8px_rgba(220,38,38,0.6)]">
                 {signingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
               </span>
-              <span className={cn("ml-3 truncate whitespace-nowrap transition-[opacity,width,margin] duration-300 ease-[cubic-bezier(0.22,0.61,0.36,1)]", desktopCollapsed && "lg:w-0 lg:opacity-0 lg:ml-0")}>{signingOut ? t("Signing out…") : t("Sign out")}</span>
+              <span className={cn("ml-3 truncate whitespace-nowrap transition-[opacity,width,margin] duration-[240ms] ease-[cubic-bezier(0.22,0.61,0.36,1)]", desktopCollapsed && "lg:w-0 lg:opacity-0 lg:ml-0")}>{signingOut ? t("Signing out…") : t("Sign out")}</span>
             </button>
             </Tooltip>
           </div>
