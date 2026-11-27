@@ -433,20 +433,28 @@ export function DashboardLayout({
             <Link
               href="/settings"
               aria-label={t("Settings")}
-              className="group hidden min-w-0 items-center gap-3 rounded-full border border-zinc-800/80 bg-zinc-900/60 py-1 pl-1 pr-1 transition-[border-color,background-color] hover:border-orange-500/30 hover:bg-zinc-900 sm:flex lg:pr-4"
+              className="group hidden min-w-0 shrink-0 items-center gap-3 rounded-full border border-zinc-800/80 bg-zinc-900/60 py-1.5 pl-1.5 pr-1.5 transition-[border-color,background-color] hover:border-orange-500/30 hover:bg-zinc-900 sm:flex lg:pr-4"
             >
-              <span className="rounded-full bg-gradient-to-br from-[#ff8a73] to-[#c2381f] p-[2px]">
-                {avatarUrl ? (
-                  <img src={avatarUrl} alt="" width={36} height={36} className="h-9 w-9 rounded-full border-2 border-white object-cover" />
-                ) : (
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-orange-50 text-sm font-semibold text-orange-600" aria-hidden="true">
-                    {initial}
-                  </span>
-                )}
-              </span>
-              <span className="hidden min-w-0 flex-col leading-tight lg:flex">
-                <span className="max-w-[180px] truncate text-sm font-semibold text-zinc-100">{userName}</span>
-                <span className="max-w-[180px] truncate text-[11px] font-medium text-orange-500/90">{roleLine}</span>
+              {/* One even coral ring, a white gap, then the photo / initial (block-level: no stray line height) */}
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  width={36}
+                  height={36}
+                  className="block h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-orange-400/80 ring-offset-2 ring-offset-white"
+                />
+              ) : (
+                <span
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-50 to-orange-100 text-sm font-semibold text-orange-600 ring-2 ring-orange-400/80 ring-offset-2 ring-offset-white"
+                  aria-hidden="true"
+                >
+                  {initial}
+                </span>
+              )}
+              <span className="hidden min-w-0 flex-col justify-center leading-tight lg:flex">
+                <span className="max-w-[200px] truncate text-sm font-semibold text-zinc-100">{userName}</span>
+                <span className="max-w-[200px] truncate text-[11px] font-medium text-orange-500/90">{roleLine}</span>
               </span>
             </Link>
             {/* Sign out lives in the sidebar on desktop; keep it here for pages without a sidebar and on phones */}
