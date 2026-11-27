@@ -59,7 +59,7 @@ type ActivityPage = {
     outsidersOnCampus: number;
     outsidersTotal: number;
   };
-  counts?: { entries: number; exits: number; outsiders: number };
+  counts?: { entries: number; exits: number; outsiders: number; entriesWaiting?: number; exitsWaiting?: number };
   tab?: string;
   rows?: any[];
   total?: number;
@@ -277,6 +277,14 @@ export function ActivityClient({ user }: Props) {
   const countChipClass = (active: boolean) =>
     `rounded-full px-1.5 py-0.5 text-[11px] font-medium leading-none ${active ? "bg-orange-500/10 text-orange-400" : "bg-zinc-800/70 text-zinc-500"}`;
 
+  // Approved passes not scanned at the gate yet: amber, apart from the real gate scans
+  const waitingChipClass = "rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-amber-700";
+  const waitingTag = (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-700">
+      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" /> Not scanned yet
+    </span>
+  );
+
   const initials = (m: any) => m.student?.profile?.name?.slice(0, 2).toUpperCase() || "—";
 
   const personLink = (m: any) => (
@@ -313,11 +321,17 @@ export function ActivityClient({ user }: Props) {
             {m.student?.profile?.email || m.student?.profile?.phone}
           </p>
           <p className="mt-1.5 flex items-center gap-1 text-xs text-zinc-300 min-w-0">
-            <MapPin className="h-3 w-3 text-zinc-500 shrink-0" />
-            <span className="truncate">
-              {m.gate?.name || "Main Gate"}
-              {m.gate?.location ? <span className="text-zinc-500"> · {m.gate.location}</span> : null}
-            </span>
+            {m.isRequest ? (
+              waitingTag
+            ) : (
+              <>
+                <MapPin className="h-3 w-3 text-zinc-500 shrink-0" />
+                <span className="truncate">
+                  {m.gate?.name || "Main Gate"}
+                  {m.gate?.location ? <span className="text-zinc-500"> · {m.gate.location}</span> : null}
+                </span>
+              </>
+            )}
           </p>
           {m.permission ? (
             <p className="mt-0.5 text-xs text-zinc-500 truncate">
@@ -359,8 +373,12 @@ export function ActivityClient({ user }: Props) {
 
       {/* Gate */}
       <td className={dt.td}>
-        <p className="font-medium text-zinc-200 truncate">{m.gate?.name || "Main Gate"}</p>
-        {m.gate?.location && (
+        {m.isRequest ? (
+          waitingTag
+        ) : (
+          <p className="font-medium text-zinc-200 truncate">{m.gate?.name || "Main Gate"}</p>
+        )}
+        {!m.isRequest && m.gate?.location && (
           <p className="text-xs text-zinc-500 flex items-center gap-1 mt-0.5 truncate">
             <MapPin className="h-3 w-3 shrink-0" />
             <span className="truncate">{m.gate.location}</span>
@@ -525,6 +543,7 @@ export function ActivityClient({ user }: Props) {
                 <ArrowDownLeft className="h-4 w-4" />
                 Campus Entries
                 <span className={countChipClass(activeTab === "entries")}>{counts.entries}</span>
+                {(counts.entriesWaiting ?? 0) > 0 && <span className={waitingChipClass} title="Approved, not scanned yet">+{counts.entriesWaiting} waiting</span>}
               </button>
 
               {/* Tab 2: Exits */}
@@ -532,6 +551,7 @@ export function ActivityClient({ user }: Props) {
                 <ArrowUpRight className="h-4 w-4" />
                 Campus Exits
                 <span className={countChipClass(activeTab === "exits")}>{counts.exits}</span>
+                {(counts.exitsWaiting ?? 0) > 0 && <span className={waitingChipClass} title="Approved, not scanned yet">+{counts.exitsWaiting} waiting</span>}
               </button>
 
               {/* Tab 3: Visitors (Parents, Guests & Vendors) */}

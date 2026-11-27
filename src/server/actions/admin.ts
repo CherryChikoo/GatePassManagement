@@ -1327,13 +1327,20 @@ export async function getActivityData(
   const [entriesToday, exitsToday, entryRequestsToday, exitRequestsToday, outsidersTotal, outsidersOnCampus] = await Promise.all([
     prisma.movement.count({ where: { type: "ENTRY", createdAt: day } }),
     prisma.movement.count({ where: { type: "EXIT", createdAt: day } }),
-    prisma.permission.count({ where: { type: "ENTRY", createdAt: day } }),
-    prisma.permission.count({ where: { type: "EXIT", createdAt: day } }),
+    prisma.permission.count({ where: { type: "ENTRY", createdAt: day, status: "APPROVED", movements: { none: { type: "ENTRY" } } } }),
+    prisma.permission.count({ where: { type: "EXIT", createdAt: day, status: "APPROVED", movements: { none: { type: "EXIT" } } } }),
     prisma.outsider.count({ where: { entryTime: day } }),
     prisma.outsider.count({ where: { status: "INSIDE", entryTime: day } }),
   ]);
   const stats = { entriesToday, exitsToday, entryRequestsToday, exitRequestsToday, outsidersOnCampus, outsidersTotal };
-  const counts = { entries: entriesToday + entryRequestsToday, exits: exitsToday + exitRequestsToday, outsiders: outsidersTotal };
+  const counts = {
+    entries: entriesToday,
+    exits: exitsToday,
+    outsiders: outsidersTotal,
+    /** Approved passes not scanned at the gate yet (shown apart, in amber) */
+    entriesWaiting: entryRequestsToday,
+    exitsWaiting: exitRequestsToday,
+  };
 
   if (tab === "outsiders") {
     const where: Prisma.OutsiderWhereInput = {
@@ -1403,10 +1410,12 @@ export async function getActivityData(
         }
       : {}),
   };
-  // Pass *requests* are listed alongside gate scans but flagged and NOT counted as movements.
+  // Approved passes not scanned yet are listed after the gate scans, flagged (never counted as movements)
   const requestWhere: Prisma.PermissionWhereInput = {
     type,
     createdAt: day,
+    status: "APPROVED",
+    movements: { none: { type } },
     ...(q ? { OR: [...personSearch, { purpose: has }, ...(type === "EXIT" ? [{ destination: has }] : [])] } : {}),
   };
   const [movementTotal, requestTotal] = q
