@@ -4,6 +4,7 @@ import NextTopLoader from 'nextjs-toploader';
 import "./globals.css";
 import '@/lib/config/validate-env';
 import { VersionWatcher } from "@/components/providers/version-watcher";
+import { SignOutNotice } from "@/components/providers/sign-out-notice";
 
 // Font files are kept in the app (src/app/fonts), so the build never depends on
 // downloading them from Google — a failed download there once broke a deployment.
@@ -63,6 +64,7 @@ export default function RootLayout({
       <body className="font-sans min-h-[100dvh] bg-zinc-950 text-zinc-100 antialiased">
         <NextTopLoader color="#ff634a" showSpinner={false} />
         <VersionWatcher />
+        <SignOutNotice />
         {children}
       </body>
     </html>
