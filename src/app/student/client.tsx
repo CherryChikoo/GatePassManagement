@@ -558,10 +558,10 @@ function PendingApprovalView({
       <ConfirmDialog
         open={showCancelDialog}
         onClose={() => setShowCancelDialog(false)}
-        title="Cancel Permission Request"
-        description="Are you sure you want to cancel this permission request? This action cannot be undone."
-        confirmText="Yes, Cancel Request"
-        cancelText="Keep Request"
+        title="Cancel this request?"
+        description="It will be withdrawn. You can send a new one any time."
+        confirmText="Yes, cancel"
+        cancelText="Keep it"
         onConfirm={handleCancelConfirm}
         variant="danger"
       />

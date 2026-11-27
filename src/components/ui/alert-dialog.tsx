@@ -49,28 +49,29 @@ export function AlertDialog({
   };
 
   const iconMap = {
-    info: <Info className="h-6 w-6" />,
-    success: <CheckCircle2 className="h-6 w-6" />,
-    warning: <AlertCircle className="h-6 w-6" />,
-    error: <XCircle className="h-6 w-6" />,
+    info: <Info className="h-7 w-7" />,
+    success: <CheckCircle2 className="h-7 w-7" />,
+    warning: <AlertCircle className="h-7 w-7" />,
+    error: <XCircle className="h-7 w-7" />,
   };
 
-  const colorMap = {
-    info: "text-blue-400 bg-blue-500/10 border-blue-500/30",
-    success: "text-green-400 bg-green-500/10 border-green-500/30",
-    warning: "text-amber-400 bg-amber-500/10 border-amber-500/30",
-    error: "text-red-400 bg-red-500/10 border-red-500/30",
+  // Icon tile and main button: a glossy gradient per kind (Security: plain solid colours)
+  const tileMap = {
+    info: "from-[#ff8f75] to-[#e8492e] shadow-[0_12px_24px_-12px_rgba(232,73,46,0.7)]",
+    success: "from-[#34d399] to-[#059669] shadow-[0_12px_24px_-12px_rgba(5,150,105,0.7)]",
+    warning: "from-[#fbbf24] to-[#d97706] shadow-[0_12px_24px_-12px_rgba(217,119,6,0.7)]",
+    error: "from-[#ff6b5e] to-[#d92d20] shadow-[0_12px_24px_-12px_rgba(217,45,32,0.7)]",
   };
-
-  const buttonColorMap = {
-    info: "bg-blue-600 hover:bg-blue-500 focus:ring-blue-500",
-    success: "bg-green-600 hover:bg-green-500 focus:ring-green-500",
-    warning: "bg-amber-600 hover:bg-amber-500 focus:ring-amber-500",
-    error: "bg-red-600 hover:bg-red-500 focus:ring-red-500",
+  const solidButton = {
+    info: "bg-blue-600 hover:bg-blue-500",
+    success: "bg-green-600 hover:bg-green-500",
+    warning: "bg-amber-600 hover:bg-amber-500",
+    error: "bg-red-600 hover:bg-red-500",
   };
+  const gloss = "shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]";
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         className={solid ? "absolute inset-0 bg-black/40 animate-in fade-in duration-200" : "absolute inset-0 bg-black/30 backdrop-blur-[3px] animate-in fade-in duration-200"}
@@ -78,52 +79,52 @@ export function AlertDialog({
       />
 
       {/* Dialog */}
-      <div className="relative bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl max-w-md w-full mx-3 sm:mx-4 animate-in zoom-in-95 fade-in duration-200">
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={title}
+        className="relative w-full max-w-sm rounded-3xl border border-orange-500/10 bg-white shadow-[0_30px_70px_-24px_rgba(16,24,40,0.45)] animate-in zoom-in-95 fade-in duration-200"
+      >
         {/* Close button */}
         <button
+          type="button"
           onClick={handleCancel}
-          className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors p-1"
+          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-800/60 hover:text-zinc-200"
           aria-label="Close"
         >
-          <X className="h-5 w-5" />
+          <X className="h-4 w-4" />
         </button>
 
-        <div className="p-4 sm:p-6 space-y-4">
+        <div className="flex flex-col items-center px-6 pb-6 pt-8 text-center">
           {/* Icon */}
-          <div className={`flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-full border ${colorMap[type]}`}>
+          <div className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-b text-white ${tileMap[type]}`}>
             {iconMap[type]}
           </div>
 
           {/* Content */}
-          <div className="space-y-1.5">
-            <h3 className="text-base sm:text-lg font-semibold text-zinc-100">
-              {title}
-            </h3>
-            {description && (
-              <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
-                {description}
-              </p>
-            )}
-          </div>
+          <h3 className="mt-4 text-lg font-semibold text-zinc-100">{title}</h3>
+          {description && <p className="mt-1.5 text-sm leading-relaxed text-zinc-500">{description}</p>}
 
           {/* Actions */}
-          <div className="flex items-center gap-2.5 sm:gap-3 pt-2">
+          <div className="mt-6 flex w-full flex-col-reverse gap-2.5 min-[380px]:flex-row">
             {showCancel && (
               <button
+                type="button"
                 onClick={handleCancel}
                 className={
                   solid
-                    ? "flex-1 rounded-xl border-2 border-red-500 bg-red-50 font-bold text-red-600 hover:bg-red-100 px-3 py-2.5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-red-300 sm:px-4"
-                    : "flex-1 px-3 sm:px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 rounded-xl text-xs sm:text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-600"
+                    ? "h-12 flex-1 rounded-2xl border-2 border-red-500 bg-red-50 px-4 text-sm font-bold text-red-600 transition-colors hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-300"
+                    : "h-12 flex-1 rounded-2xl border border-zinc-800 bg-white px-4 text-sm font-semibold text-zinc-200 shadow-[0_6px_16px_-12px_rgba(16,24,40,0.35)] transition-colors hover:bg-zinc-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40"
                 }
               >
                 {cancelText}
               </button>
             )}
             <button
+              type="button"
               onClick={handleConfirm}
-              className={`flex-1 px-3 sm:px-4 py-2.5 text-white rounded-xl text-xs sm:text-sm font-medium transition-all focus:outline-none focus:ring-2 shadow-lg ${buttonColorMap[type]} ${
-                showCancel ? "" : "w-full"
+              className={`h-12 flex-1 rounded-2xl px-4 text-sm font-semibold text-white transition-[filter,transform] duration-150 hover:brightness-105 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 ${
+                solid ? solidButton[type] : `bg-gradient-to-b ${tileMap[type]} ${gloss}`
               }`}
             >
               {confirmText}
