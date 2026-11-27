@@ -22,14 +22,14 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 /** One setting: coral icon tile, a one-line name, its control on the right */
 function Row({ icon: Icon, label, children, dim }: { icon: LucideIcon; label: string; children: React.ReactNode; dim?: boolean }) {
   return (
-    <div className={cn("flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center", dim && "opacity-50")}>
+    <div className={cn("flex flex-col gap-3 px-5 py-4 @[28rem]:flex-row @[28rem]:items-center", dim && "opacity-50")}>
       <span className="flex min-w-0 flex-1 items-center gap-3">
         <span className="icon-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl">
           <Icon className="h-[18px] w-[18px]" />
         </span>
-        <span className="truncate text-[15px] font-medium text-zinc-100">{label}</span>
+        <span className="min-w-0 text-[15px] font-medium leading-snug text-zinc-100">{label}</span>
       </span>
-      <div className="flex shrink-0 items-center sm:justify-end">{children}</div>
+      <div className="flex shrink-0 items-center @[28rem]:justify-end">{children}</div>
     </div>
   );
 }
@@ -53,10 +53,16 @@ export function NotificationsClient({ initial }: { initial: NotificationTimers }
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 animate-fade-in">
+    <div className="mx-auto max-w-7xl space-y-6 animate-fade-in">
       <div className="space-y-3">
         <BackButton href="/admin" label="Back to Dashboard" className="-ml-2" />
-        <h1 className="text-3xl sm:text-4xl font-light tracking-tight text-zinc-100">{t("Notifications")}</h1>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h1 className="text-3xl sm:text-4xl font-light tracking-tight text-zinc-100">{t("Notifications")}</h1>
+          <Button size="lg" onClick={save} disabled={saving} className="hidden sm:inline-flex">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {t("Save")}
+          </Button>
+        </div>
       </div>
 
       {msg && (
@@ -72,12 +78,13 @@ export function NotificationsClient({ initial }: { initial: NotificationTimers }
         </div>
       )}
 
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2 2xl:grid-cols-3">
       <section className="space-y-3">
         <SectionLabel>{t("Visitors")}</SectionLabel>
         <Card>
-          <CardContent className="divide-y divide-zinc-800/70 p-0">
+          <CardContent className="@container divide-y divide-zinc-800/70 p-0">
             <Row icon={Hourglass} label={t("Visitor still inside after")}>
-              <div className="w-full sm:w-44">
+              <div className="w-full @[28rem]:w-44">
                 <ThemedSelect aria-label={t("Visitor still inside after")} value={String(v.overstayHours)} onChange={(e) => setV({ ...v, overstayHours: Number(e.target.value) })}>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
                     <option key={h} value={h}>{`${h} ${h === 1 ? "hour" : "hours"}`}</option>
@@ -86,7 +93,7 @@ export function NotificationsClient({ initial }: { initial: NotificationTimers }
               </div>
             </Row>
             <Row icon={RotateCcw} label={t("Remind Security every")}>
-              <div className="w-full sm:w-44">
+              <div className="w-full @[28rem]:w-44">
                 <ThemedSelect aria-label={t("Remind Security every")} value={String(v.reminderMinutes)} onChange={(e) => setV({ ...v, reminderMinutes: Number(e.target.value) })}>
                   <option value="30">30 min</option>
                   <option value="60">1 hour</option>
@@ -101,9 +108,9 @@ export function NotificationsClient({ initial }: { initial: NotificationTimers }
       <section className="space-y-3">
         <SectionLabel>{t("Hostel")}</SectionLabel>
         <Card>
-          <CardContent className="p-0">
+          <CardContent className="@container p-0">
             <Row icon={Moon} label={t("Curfew list to wardens at")}>
-              <div className="w-full sm:w-64">
+              <div className="w-full @[28rem]:w-64">
                 <Time12Input value={v.curfewTime} onChange={(x) => setV({ ...v, curfewTime: x || v.curfewTime })} required />
               </div>
             </Row>
@@ -114,12 +121,12 @@ export function NotificationsClient({ initial }: { initial: NotificationTimers }
       <section className="space-y-3">
         <SectionLabel>{t("Summaries")}</SectionLabel>
         <Card>
-          <CardContent className="divide-y divide-zinc-800/70 p-0">
+          <CardContent className="@container divide-y divide-zinc-800/70 p-0">
             <Row icon={CalendarClock} label={t("Morning summary")}>
               <Switch on={v.summariesOn} onChange={(x) => setV({ ...v, summariesOn: x })} label={t("Morning summary")} />
             </Row>
             <Row icon={BellRing} label={t("Send at")} dim={!v.summariesOn}>
-              <div className="w-full sm:w-64">
+              <div className="w-full @[28rem]:w-64">
                 <Time12Input value={v.summaryTime} onChange={(x) => setV({ ...v, summaryTime: x || v.summaryTime })} required />
               </div>
             </Row>
@@ -130,8 +137,11 @@ export function NotificationsClient({ initial }: { initial: NotificationTimers }
         </Card>
       </section>
 
-      <div className="flex justify-end">
-        <Button size="lg" onClick={save} disabled={saving} className="w-full sm:w-auto">
+      </div>
+
+      {/* Phones: Save at the end (wider screens have it beside the title) */}
+      <div className="sm:hidden">
+        <Button size="lg" onClick={save} disabled={saving} className="w-full">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
           {t("Save")}
         </Button>
