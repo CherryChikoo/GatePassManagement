@@ -621,7 +621,7 @@ function PendingApprovalView({
             type="button"
             disabled={cancelling}
             onClick={() => setShowCancelDialog(true)}
-            className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-semibold text-red-500 transition-colors hover:bg-red-500/5 disabled:opacity-50"
+            className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-[#ff6b5e] to-[#d92d20] text-[15px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_12px_24px_-12px_rgba(217,45,32,0.65)] transition-[filter,transform] duration-150 hover:brightness-105 active:scale-[0.98] disabled:opacity-50"
           >
             <XCircle className="h-4 w-4" />
             {cancelling ? "Cancelling…" : "Cancel request"}
