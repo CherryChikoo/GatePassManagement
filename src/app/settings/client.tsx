@@ -208,7 +208,7 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
     <>
       <TopLoadingBar active={loading} />
 
-      <div className="max-w-3xl mx-auto space-y-6 pb-16">
+      <div className="mx-auto max-w-6xl space-y-6 pb-16">
         {user.role === "STUDENT" && <GoBackButton href="/student" />}
         <div>
           <h1 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-100">{t("Account Settings")}</h1>
@@ -266,8 +266,7 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
           </span>
         </div>
 
-        <NotificationSettings role={user.role} />
-
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         <Card>
           <CardHeader className="border-b border-zinc-800/80 pb-4">
             <CardTitle className="text-base font-medium flex items-center gap-2 text-zinc-100">
@@ -420,6 +419,8 @@ export function SettingsClient({ user, avatarUrl = null }: Props) {
             </form>
           </CardContent>
         </Card>
+        <NotificationSettings role={user.role} />
+        </div>
       </div>
     </>
   );
