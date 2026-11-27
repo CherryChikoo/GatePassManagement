@@ -195,7 +195,7 @@ export function LoginForm() {
           <form method="post" onSubmit={handleSubmit} className="mt-6 sm:mt-7 flex flex-col gap-3">
             <label htmlFor="login-email" className="sr-only">{t("Email")}</label>
             <div className="relative">
-              <Mail className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-zinc-500" aria-hidden="true" />
+              <span className="icon-chip pointer-events-none absolute left-3 top-1/2 h-8! w-8! -translate-y-1/2" aria-hidden="true"><Mail /></span>
               <input
                 id="login-email"
                 name="email"
@@ -204,13 +204,13 @@ export function LoginForm() {
                 autoComplete="email"
                 placeholder={t("Email")}
                 required
-                className="h-12 w-full rounded-2xl border border-transparent bg-[#eef0f3] pl-11 pr-4 text-base sm:text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors focus:border-orange-500/50 focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+                className="h-14 w-full rounded-2xl border border-transparent bg-[#eef0f3] pl-[3.6rem] pr-4 text-base sm:text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors focus:border-orange-500/50 focus:bg-white focus:ring-4 focus:ring-orange-500/10"
               />
             </div>
 
             <label htmlFor="login-password" className="sr-only">{t("Password")}</label>
             <div className="relative">
-              <Lock className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-zinc-500" aria-hidden="true" />
+              <span className="icon-chip pointer-events-none absolute left-3 top-1/2 h-8! w-8! -translate-y-1/2" aria-hidden="true"><Lock /></span>
               <input
                 id="login-password"
                 name="password"
@@ -218,12 +218,12 @@ export function LoginForm() {
                 autoComplete="current-password"
                 placeholder={t("Password")}
                 required
-                className="h-12 w-full rounded-2xl border border-transparent bg-[#eef0f3] pl-11 pr-12 text-base sm:text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors focus:border-orange-500/50 focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+                className="h-14 w-full rounded-2xl border border-transparent bg-[#eef0f3] pl-[3.6rem] pr-12 text-base sm:text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors focus:border-orange-500/50 focus:bg-white focus:ring-4 focus:ring-orange-500/10"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full p-2.5 text-zinc-500 hover:bg-white hover:text-zinc-200"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-2.5 text-orange-500 transition-colors hover:bg-orange-500/10 hover:text-orange-600"
                 aria-label={showPassword ? t("Hide password") : t("Show password")}
               >
                 {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
