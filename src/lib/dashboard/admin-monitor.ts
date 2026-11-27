@@ -22,7 +22,8 @@ export async function getAdminMonitorCounts(todayStart: Date, todayEnd: Date) {
           AND: [{ OR: [{ expectedReturn: { lt: now } }, { expectedReturn: null, endDate: { lt: todayStart } }] }],
         },
       }),
-      prisma.outsider.count({ where: { exitTime: null, entryTime: { gte: todayStart, lt: todayEnd } } }),
+      // Inside now, whichever day they came (a visitor from last evening still counts)
+      prisma.outsider.count({ where: { status: "INSIDE" } }),
       prisma.permission.count({ where: { status: "PENDING" } }),
       prisma.permission.count({ where: { status: "APPROVED", OR: [{ endDate: { gte: todayStart } }, { endDate: null, exitDate: { gte: todayStart } }] } }),
       prisma.permission.count({ where: { createdAt: { gte: todayStart, lt: todayEnd } } }),

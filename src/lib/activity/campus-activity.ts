@@ -200,9 +200,14 @@ export async function loadActivityPage(
     ],
   };
 
-  // The tab's filter on top (scans are never "pending")
+  // The tab's filter on top (scans are never "pending"). Entries / Exits = passes really
+  // scanned at the gate that day (not every pass of that kind — a pending or rejected
+  // pass is not an exit), so the tab matches the dashboard's Entries / Exits cards.
+  const scannedThatDay = (type: "ENTRY" | "EXIT"): Prisma.PermissionWhereInput => ({
+    movements: { some: { type, createdAt: { gte: startDate, lte: endDate } } },
+  });
   const permFilter: Prisma.PermissionWhereInput =
-    filter === "PENDING" ? { status: "PENDING" } : filter === "ENTRIES" ? { type: "ENTRY" } : filter === "EXITS" ? { type: "EXIT" } : {};
+    filter === "PENDING" ? { status: "PENDING" } : filter === "ENTRIES" ? scannedThatDay("ENTRY") : filter === "EXITS" ? scannedThatDay("EXIT") : {};
   const movFilter: Prisma.MovementWhereInput = filter === "ENTRIES" ? { type: "ENTRY" } : filter === "EXITS" ? { type: "EXIT" } : {};
 
   // Counts per tab (with the search), in one grouped query per kind
@@ -214,8 +219,17 @@ export async function loadActivityPage(
       ? prisma.movement.groupBy({ by: ["type"], where: studentMovWhere, _count: { _all: true } })
       : Promise.resolve([] as Group[]),
   ]);
-  const sp = countsOf(spGroups as Group[]);
-  const fp = countsOf(fpGroups as Group[]);
+  // Passes scanned that day (Entries / Exits tabs)
+  const scannedCount = (where: Prisma.PermissionWhereInput, type: "ENTRY" | "EXIT") =>
+    prisma.permission.count({ where: { AND: [where, scannedThatDay(type)] } });
+  const [spEntries, spExits, fpEntries, fpExits] = await Promise.all([
+    who !== "FACULTY" ? scannedCount(studentPermWhere, "ENTRY") : 0,
+    who !== "FACULTY" ? scannedCount(studentPermWhere, "EXIT") : 0,
+    who !== "STUDENTS" ? scannedCount(facultyPermWhere, "ENTRY") : 0,
+    who !== "STUDENTS" ? scannedCount(facultyPermWhere, "EXIT") : 0,
+  ]);
+  const sp = { ...countsOf(spGroups as Group[]), entries: spEntries, exits: spExits };
+  const fp = { ...countsOf(fpGroups as Group[]), entries: fpEntries, exits: fpExits };
   const fm = countsOf(fmGroups as Group[]);
   const sm = countsOf(smGroups as Group[]);
   const permTotal = (c: ActivityCounts) =>

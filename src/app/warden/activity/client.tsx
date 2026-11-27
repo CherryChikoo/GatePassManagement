@@ -11,7 +11,7 @@ import { StatusBadge, Modal } from "@/components/ui/primitives";
 import { formatDateTime } from "@/lib/utils";
 import { DoorOpen, DoorClosed, ArrowLeft, MapPin, Calendar, Clock, ArrowRight, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { logoutAction } from "@/server/actions/auth";
 import { BackButton } from "@/components/ui/back-button";
 import { PagerBar } from "@/components/ui/pager-bar";
@@ -21,39 +21,43 @@ export function WardenActivityClient({
   permissions = [], 
   total = 0, 
   currentPage,
-  selectedDate
+  selectedDate,
+  tab = "ALL",
+  q = "",
 }: { 
   user: any; 
   permissions: any[]; 
   total: number;
   currentPage: number;
   selectedDate: string;
+  tab?: "ALL" | "ENTRIES" | "EXITS";
+  q?: string;
 }) {
   const router = useRouter();
   // Date / tab changes reload the list from the server: show progress meanwhile
   const { push: navigate, isPending: navigating } = usePendingNavigation();
   const [selectedPermission, setSelectedPermission] = useState<any>(null);
-  const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState<"ALL" | "ENTRIES" | "EXITS">("ALL");
-  
-  // Filter locally
-  const filteredPermissions = permissions.filter(p => {
-    // Tab filtering
-    if (activeTab === "ENTRIES" && p.type !== "ENTRY") return false;
-    if (activeTab === "EXITS" && p.type !== "EXIT") return false;
-    
-    // Search filtering
-    if (search) {
-      const q = search.toLowerCase();
-      if (!p.student?.profile?.name?.toLowerCase().includes(q) && 
-          !p.student?.studentRoll?.toLowerCase().includes(q)) {
-        return false;
-      }
-    }
-    return true;
-  });
-  
-  const displayTotal = search || activeTab !== "ALL" ? filteredPermissions.length : total;
+  // Tab and search are worked out on the server (all of the day's passes, not just this page)
+  const activeTab = tab;
+  const [search, setSearch] = useState(q);
+  const urlFor = (next: { tab?: string; q?: string; page?: number }) => {
+    const sp = new URLSearchParams({ date: selectedDate });
+    const t = next.tab ?? activeTab;
+    const s = next.q ?? search.trim();
+    if (t !== "ALL") sp.set("tab", t);
+    if (s) sp.set("q", s);
+    if (next.page && next.page > 1) sp.set("page", String(next.page));
+    return `/warden/activity?${sp}`;
+  };
+  // Typing: the list follows after a short pause
+  useEffect(() => {
+    if (search.trim() === q) return;
+    const id = setTimeout(() => navigate(urlFor({ q: search.trim() })), 400);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+  const filteredPermissions = permissions;
+  const displayTotal = total;
   
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,7 +120,7 @@ export function WardenActivityClient({
                   key={tab}
                   role="tab"
                   aria-selected={activeTab === tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => navigate(urlFor({ tab }))}
                   className={`text-xs font-medium px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap ${
                     activeTab === tab ? "bg-zinc-900 text-zinc-100 shadow-card" : "text-zinc-500 hover:text-zinc-200"
                   }`}
@@ -189,7 +193,7 @@ export function WardenActivityClient({
           page={currentPage}
           pageSize={25}
           total={displayTotal}
-          hrefForPage={(p) => `/warden/activity?date=${selectedDate}&page=${p}`}
+          hrefForPage={(p) => urlFor({ page: p })}
           itemLabel="records"
         />
       </div>

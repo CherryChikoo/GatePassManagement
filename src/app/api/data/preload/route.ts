@@ -402,7 +402,8 @@ async function preloadWarden(profileId: string, light = false) {
   ] = await Promise.all([
     prisma.student.count({ where: { wardenId: warden.id } }),
     prisma.permission.count({
-      where: { approverId: warden.id, status: "PENDING", approverType: "WARDEN", createdAt: { gte: today } },
+      // Every request still waiting (also from earlier days), as in the request queue
+        where: { approverId: warden.id, status: "PENDING", approverType: "WARDEN" },
     }),
     prisma.permission.count({
       where: {

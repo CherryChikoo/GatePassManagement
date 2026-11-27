@@ -1802,7 +1802,8 @@ export async function getEstateCounts(): Promise<{ success: true; counts: Record
     where: {
       register: { in: books },
       kind: "ORIGINAL",
-      createdAt: { gte: since },
+      // By the record's own date, like the books' lists
+      entryDate: { gte: since },
       supplements: { none: { kind: "VERIFICATION" } },
     },
     _count: { _all: true },

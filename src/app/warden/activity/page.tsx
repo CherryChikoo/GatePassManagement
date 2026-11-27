@@ -1,12 +1,13 @@
 import { requireRole } from "@/lib/auth/helpers";
 import { prisma } from "@/lib/db/prisma";
+import type { Prisma } from "@prisma/client";
 import { istDayRangeFromParam, parsePageParam } from "@/lib/time/ist";
 import { WardenActivityClient } from "./client";
 
 export default async function WardenActivityPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; date?: string }>;
+  searchParams: Promise<{ page?: string; date?: string; tab?: string; q?: string }>;
 }) {
   const resolvedParams = await searchParams;
   const page = parsePageParam(resolvedParams.page);
@@ -36,10 +37,28 @@ export default async function WardenActivityPage({
       { exitDate: { gte: startDate, lte: endDate } },
     ],
   };
+  // Tab and search are applied here (on every page, not only the 25 shown):
+  // Entries / Exits = passes scanned at the gate that day, as on the dashboard cards
+  const tab = resolvedParams.tab === "ENTRIES" || resolvedParams.tab === "EXITS" ? resolvedParams.tab : "ALL";
+  const q = (resolvedParams.q ?? "").trim().slice(0, 60);
+  const listWhere: Prisma.PermissionWhereInput = {
+    AND: [
+      dayWhere,
+      tab === "ALL" ? {} : { movements: { some: { type: tab === "ENTRIES" ? "ENTRY" : "EXIT", createdAt: { gte: startDate, lte: endDate } } } },
+      q
+        ? {
+            OR: [
+              { student: { profile: { name: { contains: q, mode: "insensitive" } } } },
+              { student: { studentRoll: { contains: q, mode: "insensitive" } } },
+            ],
+          }
+        : {},
+    ],
+  };
 
   const [permissions, total] = await Promise.all([
     prisma.permission.findMany({
-      where: dayWhere,
+      where: listWhere,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -52,7 +71,7 @@ export default async function WardenActivityPage({
         }
       },
     }),
-    prisma.permission.count({ where: dayWhere }),
+    prisma.permission.count({ where: listWhere }),
   ]);
 
   return (
@@ -62,6 +81,8 @@ export default async function WardenActivityPage({
       total={total}
       currentPage={page}
       selectedDate={dateStr}
+      tab={tab}
+      q={q}
     />
   );
 }
