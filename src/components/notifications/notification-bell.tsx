@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { Bell, CheckCheck, DoorOpen, FileText, Loader2, ShieldCheck, ShieldX, Smartphone, UserRound, X, type LucideIcon } from "lucide-react";
 import { useT } from "@/components/providers/language-provider";
 import { useOwnLive } from "@/lib/realtime/live";
-import { syncPush, usePush } from "@/lib/push/client";
+import { autoAskOnFirstTap, syncPush, usePush } from "@/lib/push/client";
+import { IphoneAlertsHint } from "./iphone-alerts-hint";
 import { cn } from "@/lib/utils";
 
 type Note = {
@@ -51,6 +52,8 @@ export function NotificationBell() {
   // Phone notifications already allowed on this device: kept saved for whoever is signed in now
   useEffect(() => {
     void syncPush();
+    // Alerts on by default: the first tap asks the browser once
+    autoAskOnFirstTap();
   }, []);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -273,6 +276,8 @@ export function NotificationBell() {
           </div>,
           document.body
         )}
+      {/* iPhone / iPad: how to get alerts (once) */}
+      <IphoneAlertsHint />
     </>
   );
 }

@@ -1823,4 +1823,7 @@ export const te: Record<string, string> = {
   Siros: "సిరోస్",
   "to verify": "వెరిఫై చేయాలి",
   View: "చూడండి",
+  "Turn on alerts": "అలర్ట్‌లు ఆన్ చేయండి",
+  Tap: "నొక్కండి",
+  "then Add to Home Screen, and open the portal from there.": "తర్వాత Add to Home Screen ఎంచుకుని, అక్కడి నుండి పోర్టల్ తెరవండి.",
 };

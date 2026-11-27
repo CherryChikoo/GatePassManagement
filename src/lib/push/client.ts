@@ -58,6 +58,49 @@ export async function syncPush() {
   if (sub) await save(sub).catch(() => {});
 }
 
+/** Turned off on purpose in Settings: never asked again automatically on this device */
+const OFF_KEY = "gatepass_push_off";
+function turnedOff(): boolean {
+  try {
+    return localStorage.getItem(OFF_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function setTurnedOff(off: boolean) {
+  try {
+    if (off) localStorage.setItem(OFF_KEY, "1");
+    else localStorage.removeItem(OFF_KEY);
+  } catch {}
+}
+
+let autoAskArmed = false;
+/**
+ * Alerts on by default: browsers show "Allow notifications?" only right after a tap, so the
+ * first tap anywhere in the portal (after sign-in) asks once. Allowed → this device is signed up.
+ * Not asked again after "Block", or when turned off in Settings.
+ */
+export function autoAskOnFirstTap() {
+  if (autoAskArmed || !pushSupported() || Notification.permission !== "default" || turnedOff()) return;
+  if (isIOS() && !isInstalled()) return;
+  autoAskArmed = true;
+  const ask = () => {
+    document.removeEventListener("click", ask, true);
+    // Inside the tap: the browser allows the question here
+    void Notification.requestPermission()
+      .then(async (permission) => {
+        if (permission !== "granted") return;
+        const reg = await registerWorker();
+        if (!reg) return;
+        const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(VAPID) }));
+        await save(sub);
+        window.dispatchEvent(new Event("gatepass:push-changed"));
+      })
+      .catch(() => {});
+  };
+  document.addEventListener("click", ask, true);
+}
+
 export type PushState = "unsupported" | "needs-install" | "off" | "on" | "blocked";
 
 /** The device's notification state, with turn on / off / test */
@@ -76,12 +119,16 @@ export function usePush() {
 
   useEffect(() => {
     void refresh();
+    const again = () => void refresh();
+    window.addEventListener("gatepass:push-changed", again);
+    return () => window.removeEventListener("gatepass:push-changed", again);
   }, [refresh]);
 
   const enable = useCallback(async () => {
     if (!pushSupported()) return;
     setBusy(true);
     try {
+      setTurnedOff(false);
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
         setState(permission === "denied" ? "blocked" : "off");
@@ -113,6 +160,8 @@ export function usePush() {
         }).catch(() => {});
         await sub.unsubscribe().catch(() => {});
       }
+      // Off on purpose: not asked again automatically
+      setTurnedOff(true);
       setState("off");
     } finally {
       setBusy(false);
