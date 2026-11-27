@@ -163,6 +163,13 @@ export function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Laptop sidebar wide / icons: the tab-wide choice (see readCollapsed), the server's value until hydrated
   const desktopCollapsed = useSyncExternalStore(subscribeCollapsed, () => readCollapsed(defaultCollapsed), () => defaultCollapsed);
+  // The sidebar animates only after the page has settled: on opening, the saved open / closed
+  // state is applied a moment after the first paint and must not show as an animation
+  const [motionReady, setMotionReady] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => setMotionReady(true)));
+    return () => cancelAnimationFrame(id);
+  }, []);
   const pathname = usePathname();
   // Changing a filter never makes the page jump up or down
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -251,6 +258,7 @@ export function DashboardLayout({
   // nothing is re-laid out or repainted during the animation, so no lag)
   const glideFrom = useRef<number | null>(null);
   const toggleCollapsed = () => {
+    // Where the page is on screen right now (mid-glide too), so the next glide continues from there
     glideFrom.current = mainRef.current?.getBoundingClientRect().left ?? null;
     saveCollapsed(!desktopCollapsed);
   };
@@ -259,6 +267,8 @@ export function DashboardLayout({
     glideFrom.current = null;
     const el = mainRef.current;
     if (from === null || !el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // A tap during a glide: stop it, then measure the page's real new place (no leftover slide)
+    for (const a of el.getAnimations()) a.cancel();
     const dx = from - el.getBoundingClientRect().left;
     if (Math.abs(dx) < 1) return;
     el.animate(
@@ -287,7 +297,10 @@ export function DashboardLayout({
         <aside
           className={cn(
             // Solid (not frosted): it slides over the page, where a blur would cost the most
-            "fixed inset-y-0 left-0 z-50 flex flex-col glass-solid transition-[translate,width] duration-300 ease-[cubic-bezier(0.22,0.61,0.36,1)]",
+            "fixed inset-y-0 left-0 z-50 flex flex-col glass-solid duration-300 ease-[cubic-bezier(0.22,0.61,0.36,1)]",
+            motionReady && "transition-[translate,width]",
+            // Labels and icons inside stay still while the page opens too
+            !motionReady && "[&_*]:transition-none!",
             // Desktop: floats beside the page (not part of its layout), so opening / closing it
             // animates the sidebar alone instead of re-laying out the whole page on every frame
             "lg:inset-y-3 lg:left-3 lg:translate-x-0 lg:rounded-[28px] lg:shadow-card",
