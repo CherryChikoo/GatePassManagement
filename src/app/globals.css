@@ -204,15 +204,15 @@ html.security-text .glass:not(.loading-pill) {
     linear-gradient(#ffffff, #ffffff) padding-box,
     linear-gradient(135deg, rgba(255, 122, 69, 0.6) 0%, rgba(255, 138, 92, 0.42) 50%, rgba(242, 107, 18, 0.55) 100%) border-box;
 }
-/* Some white, some orange: the first card of each section is a solid orange glass card
+/* Some white, some reddish orange: the first card of each section is a solid coral glass card
    (warm gradient, light top edge, soft orange glow) with white text and a frosted tile */
 .glass-card:first-child {
   background:
-    linear-gradient(145deg, #ffa14a 0%, #ff7a45 48%, #e0442a 100%) padding-box,
+    linear-gradient(145deg, #ff7f63 0%, #ff5a3c 48%, #cf3a22 100%) padding-box,
     linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.12) 60%, rgba(255, 255, 255, 0.3) 100%) border-box;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.4),
-    0 18px 34px -20px rgba(224, 68, 42, 0.7);
+    0 18px 34px -20px rgba(207, 58, 34, 0.7);
 }
 .glass-card:first-child .stat-number,
 .glass-card:first-child .stat-number * {
