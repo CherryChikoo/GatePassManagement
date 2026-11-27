@@ -245,8 +245,8 @@ function toneFromTitle(title: string): StatTone {
 
 /**
  * One brand look for every count (coral, like the rest of the portal): the
- * icon tile inside the section's glass panel. Counts that need action (Overdue,
- * Pending… above 0) get a warm coral wash and a coral number.
+ * icon tile and the sheen of the glass card. Counts that need action (Overdue,
+ * Pending… above 0) get a coral edge, a warmer corner and a coral number.
  */
 const CORAL = { tile: "bg-orange-500/10 text-orange-500", number: "text-orange-600" };
 const NEEDS_ACTION: readonly StatTone[] = ["alert", "waiting"];
@@ -271,9 +271,8 @@ export function StatCard({
     <div
       title={description}
       className={cn(
-        // Drawn as one count inside its section's glass panel (globals.css: .stat-card)
-        "stat-card relative min-w-0 p-4 sm:p-5 flex flex-col gap-3.5 sm:gap-4",
-        attention && "stat-card-hot",
+        "glass-card relative min-w-0 overflow-hidden rounded-3xl p-4 sm:p-5 flex flex-col gap-4 sm:gap-5",
+        attention && "glass-card-hot",
         className
       )}
     >
