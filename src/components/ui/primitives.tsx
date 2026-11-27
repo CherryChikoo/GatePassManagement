@@ -191,7 +191,7 @@ export function StatusBadge({
 // Stat Card (for dashboards)
 // ──────────────────────────────────────────────────────────────
 
-/** What a count means — sets its colour (red: needs action, amber: waiting, green: done…) */
+/** What a count means (all counts share the coral look; "alert" / "waiting" above 0 stand out) */
 export type StatTone = "alert" | "waiting" | "done" | "rejected" | "exit" | "entry" | "people" | "info" | "neutral";
 
 interface StatCardProps {
@@ -202,7 +202,7 @@ interface StatCardProps {
   trendUp?: boolean;
   /** Kept for older callers: shown as a hover hint only (no grey line under the number) */
   description?: string;
-  /** Colour by meaning; when left out it is worked out from the title */
+  /** Meaning; when left out it is worked out from the title */
   tone?: StatTone;
   className?: string;
 }
@@ -243,18 +243,13 @@ function toneFromTitle(title: string): StatTone {
   return "neutral";
 }
 
-/** Tone → icon tile, number, and the tinted look when it needs attention */
-const STAT_TONES: Record<StatTone, { tile: string; glow: string; number: string; attention?: string }> = {
-  alert: { tile: "bg-red-500/10 text-red-500", glow: "bg-red-400/30", number: "text-red-600", attention: "!border-red-500/40" },
-  waiting: { tile: "bg-amber-500/10 text-amber-600", glow: "bg-amber-400/30", number: "text-amber-600", attention: "!border-amber-500/40" },
-  done: { tile: "bg-emerald-500/10 text-emerald-600", glow: "bg-emerald-400/25", number: "text-zinc-100" },
-  rejected: { tile: "bg-rose-500/10 text-rose-500", glow: "bg-rose-400/25", number: "text-zinc-100" },
-  exit: { tile: "bg-orange-500/10 text-orange-500", glow: "bg-orange-400/25", number: "text-zinc-100" },
-  entry: { tile: "bg-teal-500/10 text-teal-600", glow: "bg-teal-400/25", number: "text-zinc-100" },
-  people: { tile: "bg-sky-500/10 text-sky-600", glow: "bg-sky-400/25", number: "text-zinc-100" },
-  info: { tile: "bg-violet-500/10 text-violet-600", glow: "bg-violet-400/25", number: "text-zinc-100" },
-  neutral: { tile: "bg-zinc-950 text-zinc-400", glow: "bg-zinc-400/15", number: "text-zinc-100" },
-};
+/**
+ * One brand look for every count (coral, like the rest of the portal): the
+ * icon tile and the glow behind the glass. Counts that need action (Overdue,
+ * Pending… above 0) get a coral edge, a stronger glow and a coral number.
+ */
+const CORAL = { tile: "bg-orange-500/10 text-orange-500", glow: "bg-orange-400/25", number: "text-orange-600", attention: "!border-orange-500/45" };
+const NEEDS_ACTION: readonly StatTone[] = ["alert", "waiting"];
 
 export function StatCard({
   title,
@@ -267,11 +262,11 @@ export function StatCard({
   className,
 }: StatCardProps) {
   const kind = tone ?? toneFromTitle(title);
-  const look = STAT_TONES[kind];
+  const look = CORAL;
   const count = typeof value === "number" ? value : /^d[d,]*$/.test(String(value).trim()) ? Number(String(value).replace(/,/g, "")) : null;
   // Zero: calm and faded. Needs action (e.g. Overdue above 0): the whole card is tinted.
   const zero = count === 0;
-  const attention = !!look.attention && count !== null && count > 0;
+  const attention = NEEDS_ACTION.includes(kind) && count !== null && count > 0;
   return (
     <div
       title={description}
