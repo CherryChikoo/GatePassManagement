@@ -1,7 +1,7 @@
 "use client";
 
 import { lockPageScroll } from "@/lib/ui/scroll-lock";
-import React, { useState, useEffect, useRef, useSyncExternalStore } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { useKeepHeightOnFilter } from "@/lib/ui/keep-height";
 import { useBarSpace, useGlassSupport } from "@/lib/ui/bar-space";
 import Link from "next/link";
@@ -245,7 +245,29 @@ export function DashboardLayout({
       : pathname === href || (pathname.startsWith(href + "/") && href !== "/"));
 
   const initial = userName.charAt(0).toUpperCase();
-  const toggleCollapsed = () => saveCollapsed(!desktopCollapsed);
+  // The page glides with the sidebar: it takes its new size in ONE layout, then slides from
+  // where it was to its new place on the graphics card (transform + a soft fade only —
+  // nothing is re-laid out or repainted during the animation, so no lag)
+  const glideFrom = useRef<number | null>(null);
+  const toggleCollapsed = () => {
+    glideFrom.current = mainRef.current?.getBoundingClientRect().left ?? null;
+    saveCollapsed(!desktopCollapsed);
+  };
+  useLayoutEffect(() => {
+    const from = glideFrom.current;
+    glideFrom.current = null;
+    const el = mainRef.current;
+    if (from === null || !el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const dx = from - el.getBoundingClientRect().left;
+    if (Math.abs(dx) < 1) return;
+    el.animate(
+      [
+        { transform: `translateX(${dx}px)`, opacity: 0.88 },
+        { transform: "translateX(0)", opacity: 1 },
+      ],
+      { duration: 300, easing: "cubic-bezier(0.22, 0.61, 0.36, 1)" }
+    );
+  }, [desktopCollapsed]);
   // The page the person is on (its name and icon in the top bar)
   const activeItem = navItems.find((i) => isActivePath(i.href));
 
