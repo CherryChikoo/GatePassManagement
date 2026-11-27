@@ -41,15 +41,17 @@ export function AssignedApproverCard({
 
   return (
     <div className="space-y-2">
-      <p className="text-sm font-semibold text-zinc-200">
+      <p className="field-label text-sm font-semibold text-zinc-200">
         {comingIn ? "No approval needed — your HOD will be informed" : "Approver"}
       </p>
       <div className="flex items-center gap-3 rounded-2xl border border-orange-500/20 bg-white px-3 py-3 shadow-[inset_0_1px_0_#ffffff,0_8px_20px_-16px_rgba(207,62,37,0.45)]">
-        <span className="icon-tile flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-          <ShieldCheck className="h-4 w-4" />
+        <span className="icon-chip h-9! w-9! shrink-0 rounded-xl!">
+          <ShieldCheck />
         </span>
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-100">{approver.name}</span>
-        <span className="shrink-0 rounded-full bg-orange-500/10 px-2.5 py-1 text-xs font-semibold text-orange-600">{approver.label}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-zinc-100">{approver.name}</span>
+          <span className="mt-0.5 block text-xs font-medium leading-snug text-orange-600">{approver.label}</span>
+        </span>
       </div>
 
     </div>

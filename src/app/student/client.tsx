@@ -66,7 +66,7 @@ import { useAppStore, logoutAndClear } from "@/stores/app-store";
 import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
 import { DashboardSkeleton } from "@/components/ui/dashboard-skeleton";
 import { useStoreReady } from "@/components/providers/store-hydrator";
-import { FormGroup, FormRow, RowInput, RowTextarea } from "@/components/student/grouped-form";
+import { Part } from "@/components/users/form-part";
 
 interface Props {
   user: { name: string; email: string; role: string; profileId: string };
@@ -928,114 +928,115 @@ function PermissionFormView({
         </div>
       )}
 
-      {/* Request form: a grouped list (like phone Settings) */}
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <input type="hidden" name="type" value={requestType} />
+      {/* Request form: the same numbered, boxed parts as the Edit details window */}
+      <Card>
+        <CardContent className="p-4 sm:p-6">
+          <form onSubmit={handleSubmit} className="form-metal space-y-4">
+            <input type="hidden" name="type" value={requestType} />
 
-        <FormGroup title={requestType === "HOSTEL" ? "Hostel pass" : "Trip"}>
-          <FormRow icon={FileText} label={requestType === "ENTRY" ? "Why are you coming in" : "Purpose"} htmlFor="purpose" required error={fieldErrors.purpose}>
-            <RowInput id="purpose" name="purpose" required />
-          </FormRow>
-          {requestType !== "HOSTEL" && (
-            <FormRow icon={MapPin} label={requestType === "ENTRY" ? "Coming from" : "Destination"} htmlFor="destination" required error={fieldErrors.destination}>
-              <RowInput id="destination" name="destination" required />
-            </FormRow>
-          )}
-          {(() => {
-            const approver = requestType === "HOSTEL" ? hostelPassApprover ?? undefined : assignedApprover;
-            if (!approver || !approver.available) return null;
-            const comingIn = requestType === "ENTRY" && !isHosteller;
-            return (
-              <FormRow icon={ShieldCheck} label={comingIn ? "Informed" : "Approver"}>
-                <div className="min-w-0 py-0.5">
-                  <p className="truncate text-base font-semibold text-zinc-100 sm:text-[15px]">{approver.name}</p>
-                  <p className="mt-0.5 text-[13px] font-medium leading-snug text-orange-600">{approver.label}</p>
-                  {comingIn && (
-                    <span className="mt-1.5 inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700">No approval needed</span>
-                  )}
-                </div>
-              </FormRow>
-            );
-          })()}
-        </FormGroup>
-
-        {isOuting ? (
-          <FormGroup title="Outing">
-            <div className="p-4 sm:p-5">
-              <HostelOutingFields
-                student={student}
-                studentName={studentName}
-                todayStr={todayStr}
-                outingFrom={outingFrom}
-                setOutingFrom={setOutingFrom}
-                fieldErrors={fieldErrors}
+            <Part no={1} title={requestType === "HOSTEL" ? "Hostel pass" : "Reason"} hint="Why and where" oneColumn>
+              <Input
+                id="purpose"
+                name="purpose"
+                label={requestType === "ENTRY" ? "Why are you coming in *" : "Purpose *"}
+                required
+                className="pl-[3.25rem]"
+                icon={<span className="icon-chip"><FileText /></span>}
+                error={fieldErrors.purpose}
               />
-            </div>
-          </FormGroup>
-        ) : (
-          <FormGroup title="When">
-            <FormRow icon={Clock} label={requestType === "ENTRY" ? "Coming in" : "Leaving"} required error={fieldErrors.expectedExit}>
-              <div className="flex flex-wrap items-center gap-2 py-0.5">
-                {/* Passes are for today */}
-                <input type="hidden" name="exitDate" value={todayStr} />
-                <span className="inline-flex h-11 shrink-0 items-center rounded-xl bg-orange-500/10 px-3.5 text-sm font-semibold text-orange-600">
-                  Today · {new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(new Date(`${todayStr}T12:00:00+05:30`))}
-                </span>
-                <div className="min-w-[210px] flex-1">
-                  <TimeField name="expectedExit" required defaultToNow notPast />
+              {requestType !== "HOSTEL" && (
+                <Input
+                  id="destination"
+                  name="destination"
+                  label={requestType === "ENTRY" ? "Coming from *" : "Destination *"}
+                  required
+                  className="pl-[3.25rem]"
+                  icon={<span className="icon-chip"><MapPin /></span>}
+                  error={fieldErrors.destination}
+                />
+              )}
+              <AssignedApproverCard
+                approver={requestType === "HOSTEL" ? hostelPassApprover ?? undefined : assignedApprover}
+                isHosteller={isHosteller && requestType !== "HOSTEL"}
+                comingIn={requestType === "ENTRY" && !isHosteller}
+              />
+            </Part>
+
+            {isOuting ? (
+              <Part no={2} title="Outing" hint="Dates and who to call" oneColumn>
+                <HostelOutingFields
+                  student={student}
+                  studentName={studentName}
+                  todayStr={todayStr}
+                  outingFrom={outingFrom}
+                  setOutingFrom={setOutingFrom}
+                  fieldErrors={fieldErrors}
+                />
+              </Part>
+            ) : (
+              <Part no={2} title="When" hint={requestType === "ENTRY" ? "Today, the time you come in" : "Today, the time you leave"}>
+                <div className="flex flex-col gap-1">
+                  <span className="field-label block text-sm font-medium text-zinc-300">Date</span>
+                  {/* Passes are for today */}
+                  <input type="hidden" name="exitDate" value={todayStr} />
+                  <span className="field-box flex h-12 items-center rounded-2xl border px-4 text-sm font-semibold text-zinc-400">
+                    Today · {new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date(`${todayStr}T12:00:00+05:30`))}
+                  </span>
                 </div>
+                <div className="flex flex-col gap-1">
+                  <span className="field-label block text-sm font-medium text-zinc-300">{requestType === "ENTRY" ? "Coming in at *" : "Leaving at *"}</span>
+                  <TimeField name="expectedExit" required defaultToNow notPast className={TIME_FIELD_CLS} />
+                  {fieldErrors.expectedExit && <p className="text-xs text-red-400">{fieldErrors.expectedExit}</p>}
+                </div>
+              </Part>
+            )}
+
+            <Part no={3} title="Contact" hint="If we need to reach you" oneColumn>
+              <Input
+                id="contactNumber"
+                name="contactNumber"
+                label="Emergency contact"
+                type="tel"
+                inputMode="tel"
+                maxLength={15}
+                className="pl-[3.25rem]"
+                icon={<span className="icon-chip"><Phone /></span>}
+                onInput={(e) => {
+                  e.currentTarget.value = phoneOnly(e.currentTarget.value);
+                }}
+                error={fieldErrors.contactNumber}
+              />
+              <div className="flex flex-col gap-1">
+                <label htmlFor="remarks" className="field-label block text-sm font-medium text-zinc-300">
+                  Remarks <span className="font-normal text-zinc-500">(optional)</span>
+                </label>
+                <Textarea id="remarks" name="remarks" rows={2} className="px-4 py-3" />
               </div>
-            </FormRow>
-          </FormGroup>
-        )}
+            </Part>
 
-        <FormGroup title="Contact">
-          <FormRow icon={Phone} label="Emergency contact" htmlFor="contactNumber" error={fieldErrors.contactNumber}>
-            <RowInput
-              id="contactNumber"
-              name="contactNumber"
-              type="tel"
-              inputMode="tel"
-              maxLength={15}
-              onInput={(e) => {
-                e.currentTarget.value = phoneOnly(e.currentTarget.value);
-              }}
-            />
-          </FormRow>
-          <FormRow icon={PencilLine} label="Remarks (optional)" htmlFor="remarks">
-            <RowTextarea id="remarks" name="remarks" rows={2} />
-          </FormRow>
-        </FormGroup>
-
-        {/* No approver yet: why the request cannot be sent */}
-        {!(requestType === "HOSTEL" ? hostelPassApprover?.available : assignedApprover?.available) && (
-          <AssignedApproverCard
-            approver={requestType === "HOSTEL" ? hostelPassApprover ?? undefined : assignedApprover}
-            isHosteller={isHosteller && requestType !== "HOSTEL"}
-          />
-        )}
-
-        {/* Submit Button */}
-        <Button
-          type="submit"
-          size="lg"
-          disabled={loading || !(requestType === "HOSTEL" ? hostelPassApprover?.available : assignedApprover?.available)}
-          className="w-full"
-        >
-          {loading ? (
-            <>
-              <span className="h-4 w-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-              Sending…
-            </>
-          ) : (
-            <>
-              <Send className="h-4 w-4" />
-              {/* Coming in: no approval — the QR comes straight away */}
-              {requestType === "ENTRY" && !isHosteller ? "Get my QR" : "Send request"}
-            </>
-          )}
-        </Button>
-      </form>
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              size="lg"
+              disabled={loading || !(requestType === "HOSTEL" ? hostelPassApprover?.available : assignedApprover?.available)}
+              className="w-full"
+            >
+              {loading ? (
+                <>
+                  <span className="h-4 w-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                  Sending…
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4" />
+                  {/* Coming in: no approval — the QR comes straight away */}
+                  {requestType === "ENTRY" && !isHosteller ? "Get my QR" : "Send request"}
+                </>
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -1060,7 +1061,7 @@ function HostelOutingFields({
   const maxDate = istDateString(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
   const [outingTo, setOutingTo] = useState(todayStr);
   const [informed, setInformed] = useState<"" | "yes" | "no">("");
-  const label = "text-sm font-medium text-zinc-300 flex items-center gap-2";
+  const label = "field-label text-sm font-medium text-zinc-300 flex items-center gap-2";
   const inputCls = "text-base sm:text-sm";
 
   const details = [

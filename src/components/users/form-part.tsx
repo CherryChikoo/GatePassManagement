@@ -8,24 +8,18 @@ import { Eye, EyeOff } from "lucide-react";
  * read the same.
  */
 
-/**
- * One numbered step of a form (stepper timeline): a coral number on the left,
- * joined to the next step by a thin line, with the step's title and fields to
- * its right — no box inside the form's own card.
- */
-export function Part({ no, title, children, oneColumn = false }: { no: number; title: string; hint?: string; children: React.ReactNode; oneColumn?: boolean }) {
+/** One numbered part of the form (as in the Edit details window): number, title and hint on top, its fields below */
+export function Part({ no, title, hint, children, oneColumn = false }: { no: number; title: string; hint?: string; children: React.ReactNode; oneColumn?: boolean }) {
   return (
-    <section className="group/step relative pb-7 last:pb-0">
-      {/* The line down to the next step: wider screens only, never after the last */}
-      <span
-        className="absolute bottom-0 left-4 top-11 hidden w-px bg-gradient-to-b from-orange-500/40 via-orange-500/15 to-transparent group-last/step:hidden sm:block"
-        aria-hidden="true"
-      />
+    <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 sm:p-5">
       <div className="mb-4 flex items-center gap-3">
         <span className="icon-tile flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold">{no}</span>
-        <h3 className="text-base font-semibold leading-tight text-zinc-100">{title}</h3>
+        <div className="min-w-0">
+          <h3 className="text-base font-semibold leading-tight text-zinc-100">{title}</h3>
+          {hint && <p className="text-xs text-zinc-500">{hint}</p>}
+        </div>
       </div>
-      <div className={oneColumn ? "space-y-5 sm:pl-11" : "grid grid-cols-1 gap-4 sm:grid-cols-2 sm:pl-11"}>{children}</div>
+      <div className={oneColumn ? "space-y-4" : "grid grid-cols-1 gap-4 sm:grid-cols-2"}>{children}</div>
     </section>
   );
 }
