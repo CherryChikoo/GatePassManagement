@@ -44,6 +44,15 @@ export async function GET(request: NextRequest) {
       logger.error("[CLEANUP] QR cleanup failed", err);
     }
 
+    // Notifications older than 30 days (the bell shows the newest only)
+    try {
+      const cutoff = new Date(Date.now() - 30 * 86_400_000);
+      const deleted = await prisma.notification.deleteMany({ where: { createdAt: { lt: cutoff } } });
+      logger.info(`[CLEANUP] Deleted ${deleted.count} old notifications`);
+    } catch (err: any) {
+      results.errors.push(`Notification cleanup: ${err.message}`);
+    }
+
     // 4. Old visitor photos (student gate photos are permanent)
     const photoResult = await deleteOldPhotos(RETENTION.EXIT_PHOTOS_DAYS);
     if (photoResult.error) results.errors.push(`Photo cleanup: ${photoResult.error}`);

@@ -53,7 +53,7 @@ import { invalidateSecurityCache } from "./security";
 import { sirosAlreadyInside, sirosInside } from "@/lib/registers/siros-inside";
 import { getEntryRegister } from "@/lib/registers/catalog";
 import { checkRateLimit } from "@/lib/auth/rate-limiter";
-import { notifyLive, notifyPassHolder } from "@/lib/realtime/notify";
+import { notifyLive, notifyPassHolder, notifyVisitorForHost } from "@/lib/realtime/notify";
 import { canOverrideVisitExit, checkVisitExit, closeVisitPass, newVisitCode, notifyHost, resolveHost } from "@/lib/visits/passes";
 import {
   REGISTER_PAGE_SIZE,
@@ -350,7 +350,11 @@ export async function createRegisterEntry(registerKey: string, payload: RawPaylo
       return created;
     });
     revalidateRegisters(def.key);
-    if (meeting) void notifyHost(meeting.id);
+    if (meeting) {
+      void notifyHost(meeting.id);
+      const vf = def.visitHost?.visitorField;
+      notifyVisitorForHost(meeting.id, vf && typeof result.data[vf] === "string" ? String(result.data[vf]) : "", entry.id);
+    }
     return { success: true, id: entry.id };
   } catch (err: any) {
     if (err?.code === "P2002") {

@@ -9,6 +9,7 @@ import { PasswordChangedNotice } from "@/components/users/password-changed-notic
 import { logoutAndClear } from "@/stores/app-store";
 import { SigningOutOverlay } from "@/components/ui/signing-out-overlay";
 import { useT } from "@/components/providers/language-provider";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { useGlassSupport } from "@/lib/ui/bar-space";
 
 /**
@@ -65,6 +66,7 @@ export function StudentShell({
           </Link>
 
           <div className="flex shrink-0 items-center gap-2">
+          <NotificationBell />
           {/* Photo / initial → profile settings (name, phone, photo) */}
           <Link href="/settings" aria-label={t("Settings")} className="shrink-0 rounded-full focus-visible:ring-4 focus-visible:ring-orange-500/20">
             {avatarUrl ? (

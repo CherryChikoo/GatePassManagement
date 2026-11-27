@@ -15,6 +15,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { PAGE_FOOTER_SLOT_ID } from "@/components/ui/pager-bar";
 import { PasswordChangedNotice } from "@/components/users/password-changed-notice";
 import { IdleSignOut } from "@/components/providers/idle-sign-out";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { AutoHideAlerts } from "@/components/providers/auto-hide-alerts";
 import {
   UserCheck,
@@ -413,6 +414,7 @@ export function DashboardLayout({
 
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {role === "SECURITY" && <LanguageToggle />}
+            <NotificationBell />
             {role === "SECURITY" && (
               <Tooltip label={t("Settings")} side="bottom">
                 <Link

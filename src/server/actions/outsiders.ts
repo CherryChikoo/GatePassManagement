@@ -12,6 +12,7 @@ import type { Prisma } from "@prisma/client";
 import { parsePageParam } from "@/lib/time/ist";
 import { canOverrideVisitExit, checkVisitExit, closeVisitPass, newVisitCode, notifyHost, resolveHost } from "@/lib/visits/passes";
 import { isVisitorCategory, missingVisitorDetail } from "@/lib/visits/visitor-categories";
+import { notifyVisitorForHost } from "@/lib/realtime/notify";
 
 /** What Security sees about a visitor's meeting (never the code itself) */
 const MEETING_SELECT = { select: { hostName: true, status: true, attempts: true, exitMethod: true } } as const;
@@ -128,7 +129,10 @@ export async function registerOutsider(data: Record<string, unknown>) {
     });
 
     await afterOutsiderChange();
-    if (host) void notifyHost(host.id);
+    if (host) {
+      void notifyHost(host.id);
+      notifyVisitorForHost(host.id, input.name ?? "", outsider.id);
+    }
     return { success: true, outsiderId: outsider.id };
   } catch (error: any) {
     console.error("Failed to register outsider:", error?.message);

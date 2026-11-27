@@ -46,9 +46,34 @@ model Profile {
   hostedVisitRequests VisitRequest[] @relation("VisitRequestHost")
   /// Self check-in requests made from this guard's Show QR screen
   issuedVisitRequests VisitRequest[] @relation("VisitRequestIssuedBy")
+  notifications       Notification[]
 
   @@index([role, active])
   @@map("profiles")
+}
+
+/// One notification for one person (bell, live alert, later phone push). Kept 30 days.
+model Notification {
+  id        String    @id @default(uuid())
+  profileId String    @map("profile_id")
+  profile   Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  /// request | pass | scan | visitor | system …
+  kind      String
+  /// URGENT | IMPORTANT | INFO
+  level     String    @default("IMPORTANT")
+  title     String
+  body      String?
+  /// Where tapping it goes
+  link      String?
+  /// Never the same notification twice (e.g. "pass:<id>:APPROVED")
+  dedupeKey String    @map("dedupe_key")
+  createdAt DateTime  @default(now()) @map("created_at")
+  readAt    DateTime? @map("read_at")
+
+  @@unique([profileId, dedupeKey])
+  @@index([profileId, createdAt(sort: Desc)])
+  @@index([dedupeKey])
+  @@map("notifications")
 }
 
 model Student {
