@@ -383,7 +383,8 @@ export function DashboardLayout({
         {/* Top bar: glass */}
         <header
           ref={headerRef}
-          className="absolute top-3 inset-x-3 sm:inset-x-4 lg:inset-x-6 z-30 flex items-center gap-3 rounded-[22px] glass shadow-card px-3 sm:px-4 py-2.5"
+          // Same width and centring as the page content (max-w-7xl), so the edges line up
+          className="absolute top-3 inset-x-3 sm:inset-x-4 lg:inset-x-6 mx-auto max-w-7xl z-30 flex items-center gap-3 rounded-[22px] glass shadow-card px-3 sm:px-4 py-2.5"
         >
           {hasSidebar ? (
             <button
