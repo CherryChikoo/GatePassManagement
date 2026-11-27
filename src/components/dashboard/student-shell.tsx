@@ -71,10 +71,14 @@ export function StudentShell({
           <Link href="/settings" aria-label={t("Settings")} className="shrink-0 rounded-full focus-visible:ring-4 focus-visible:ring-orange-500/20">
             {avatarUrl ? (
                
-              <img src={avatarUrl} alt="" width={40} height={40} className="block h-9 w-9 rounded-full object-cover ring-2 ring-orange-400/80 ring-offset-2 ring-offset-white" />
+              <img src={avatarUrl} alt="" width={40} height={40} className="block h-10 w-10 rounded-full object-cover ring-2 ring-white shadow-[0_6px_14px_-8px_rgba(207,62,37,0.6)]" />
             ) : (
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-orange-50 to-orange-100 text-sm font-semibold text-orange-600 ring-2 ring-orange-400/80 ring-offset-2 ring-offset-white">
-                {(userName || "?").charAt(0).toUpperCase()}
+              <span className="icon-tile flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold tracking-wide">
+                {/* Two letters, without a title: "Dr. G Chamundeswari" → "GC" */}
+                {(() => {
+                  const w = (userName || "?").replace(/^(dr|prof|mr|mrs|ms|sri|smt)\.?\s+/i, "").split(/\s+/).filter(Boolean);
+                  return ((w[0]?.[0] ?? "?") + (w.length > 1 ? w[w.length - 1][0] : "")).toUpperCase();
+                })()}
               </span>
             )}
           </Link>
