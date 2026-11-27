@@ -2,8 +2,8 @@
  * GatePass service worker — phone / desktop notifications only.
  * (No page caching: the portal always loads fresh from the server.)
  *
- * push: shows the notification, unless the portal is open on screen — then
- *       the in-portal alert shows it instead (never both).
+ * push: always shows the device notification — also while the portal is open
+ *       (the in-portal alert shows as well).
  * notificationclick: opens the portal on the right screen (reusing an open tab).
  */
 self.addEventListener("install", () => self.skipWaiting());
@@ -18,9 +18,6 @@ self.addEventListener("push", (event) => {
   }
   event.waitUntil(
     (async () => {
-      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-      // The portal is on screen: its own alert shows this (no double alert)
-      if (windows.some((w) => w.visibilityState === "visible" && w.focused !== false)) return;
       const urgent = data.level === "URGENT";
       await self.registration.showNotification(data.title || "Gate Pass", {
         body: data.body || "",

@@ -52,6 +52,7 @@ import { PagerBar } from "@/components/ui/pager-bar";
 import { dt, PersonCell, RowActions, IconAction } from "@/components/ui/data-table";
 import { getDepartmentCode, getDepartmentFullName } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { CIVIL_LIVE } from "@/lib/registers/definitions";
 
 interface Props {
   user: { name: string; email: string; role: string };
@@ -89,7 +90,7 @@ export function UserManagementClient({
   });
   const list = useGateData<any>(
     usersKey(role, page),
-    () => callGate("getUsers", [page, USERS_PAGE_SIZE, role === "ALL" ? undefined : role], 15_000),
+    () => callGate("getUsers", [page, USERS_PAGE_SIZE, role === "ALL" ? undefined : role], 30_000),
     []
   );
   useEffect(() => {
@@ -261,7 +262,7 @@ export function UserManagementClient({
     setAssigning(false);
   }
 
-  const ROLES = ["STUDENT", "FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "WARDEN", "SECURITY", "SECURITY_SUPERVISOR", "ESTATE_MANAGER", "CIVIL_ENGINEER", "CIVIL_SUPERVISOR", "ADMIN"];
+  const ROLES = ["STUDENT", "FACULTY", "FACULTY_ADMIN", "DIRECTOR", "DEAN", "WARDEN", "SECURITY", "SECURITY_SUPERVISOR", "ESTATE_MANAGER", ...(CIVIL_LIVE ? ["CIVIL_ENGINEER", "CIVIL_SUPERVISOR"] : []), "ADMIN"];
 
   const filteredUsers = usersData.users.filter((u: any) => {
     const q = searchQuery.toLowerCase().trim();
@@ -539,38 +540,23 @@ export function UserManagementClient({
           </div>
         )}
 
-        {/* Role tabs & search */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div
-            className="inline-flex max-w-full self-start rounded-full bg-zinc-950 p-1 border border-zinc-800 overflow-x-auto scrollbar-none"
-            role="tablist"
-            aria-label="Filter users by role"
-          >
-            {ROLES.map((tabRole) => {
-              const isPending = pendingRole === tabRole && list.loading;
-              return (
-                <button
-                  key={tabRole}
-                  type="button"
-                  role="tab"
-                  aria-selected={role === tabRole}
-                  onClick={() => handleRoleFilter(tabRole)}
-                  className={`inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-2 sm:py-1.5 rounded-full transition-colors whitespace-nowrap capitalize ${
-                    role === tabRole && !isPending
-                      ? "bg-zinc-900 text-zinc-100 shadow-card"
-                      : isPending
-                        ? "text-orange-400"
-                        : "text-zinc-500 hover:text-zinc-200"
-                  }`}
-                >
-                  {isPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                  {tabRole === "FACULTY" ? "Faculty" : tabRole === "FACULTY_ADMIN" ? "HOD" : tabRole === "SECURITY" ? "Security" : tabRole === "SECURITY_SUPERVISOR" ? "Security Supervisors" : tabRole === "ESTATE_MANAGER" ? "Estate Manager" : tabRole === "CIVIL_ENGINEER" ? "Civil Engineers" : tabRole === "CIVIL_SUPERVISOR" ? "Civil Supervisors" : tabRole === "DIRECTOR" ? "Director" : tabRole === "DEAN" ? "Dean" : `${tabRole.toLowerCase()}s`}
-                </button>
-              );
-            })}
+        {list.error && (
+          <div role="alert" className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1 font-medium">Could not load this list.</span>
+            <button
+              type="button"
+              onClick={() => void list.reload()}
+              className="inline-flex h-9 shrink-0 items-center rounded-full bg-gradient-to-b from-[#ff6a55] to-[#d23420] px-4 text-xs font-semibold text-white"
+            >
+              Try again
+            </button>
           </div>
+        )}
 
-          <div className="relative w-full lg:w-80 shrink-0">
+        {/* Role tabs & search */}
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="relative w-full lg:max-w-md">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
             <input
               value={searchQuery}
@@ -580,6 +566,32 @@ export function UserManagementClient({
               className="h-10 w-full rounded-full border border-zinc-800 bg-zinc-900 pl-10 pr-4 text-base sm:text-sm text-zinc-100 placeholder:text-zinc-500 outline-none transition-colors hover:border-zinc-700 focus:border-orange-500/50 focus:ring-4 focus:ring-orange-500/10"
             />
           </div>
+          {/* Every role visible at once: chips that wrap onto the next line (no hidden ones to scroll to) */}
+          <div className="flex min-w-0 flex-wrap gap-2" role="tablist" aria-label="Filter users by role">
+            {ROLES.map((tabRole) => {
+              const isPending = pendingRole === tabRole && list.loading;
+              return (
+                <button
+                  key={tabRole}
+                  type="button"
+                  role="tab"
+                  aria-selected={role === tabRole}
+                  onClick={() => handleRoleFilter(tabRole)}
+                  className={`inline-flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold whitespace-nowrap capitalize transition-[background-color,border-color,color,box-shadow] ${
+                    role === tabRole && !isPending
+                      ? "bg-gradient-to-b from-[#ff6a55] to-[#d23420] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_10px_20px_-12px_rgba(207,62,37,0.7)]"
+                      : isPending
+                        ? "border border-orange-500/40 bg-orange-500/5 text-orange-600"
+                        : "border border-zinc-800 bg-white text-zinc-300 hover:border-orange-500/40 hover:text-orange-600"
+                  }`}
+                >
+                  {isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {tabRole === "FACULTY" ? "Faculty" : tabRole === "FACULTY_ADMIN" ? "HOD" : tabRole === "SECURITY" ? "Security" : tabRole === "SECURITY_SUPERVISOR" ? "Security Supervisors" : tabRole === "ESTATE_MANAGER" ? "Estate Manager" : tabRole === "CIVIL_ENGINEER" ? "Civil Engineers" : tabRole === "CIVIL_SUPERVISOR" ? "Civil Supervisors" : tabRole === "DIRECTOR" ? "Director" : tabRole === "DEAN" ? "Dean" : `${tabRole.toLowerCase()}s`}
+                </button>
+              );
+            })}
+          </div>
+
         </div>
 
         {/* Users by role */}
