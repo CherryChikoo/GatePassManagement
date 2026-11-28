@@ -31,7 +31,7 @@ export function GreetingHero({
     <section className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
       <div className="min-w-0">
         {/* One quiet line: the day, then the role (coral icons, no pill boxes) */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm font-medium text-zinc-500">
+        <div className="font-display flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[15px] font-medium text-zinc-500">
           <span className="inline-flex items-center gap-2">
             <Icon className="h-4 w-4 text-orange-500" aria-hidden="true" />
             {day}
