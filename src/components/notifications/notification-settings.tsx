@@ -106,7 +106,7 @@ export function NotificationSettings({ role }: { role: string }) {
         )}
         {push.state === "blocked" && (
           <p className="rounded-2xl bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-700" data-keep>
-            {t("Allow notifications for this site in the browser's settings")}
+            {t("Blocked once, so the browser won't ask again. To allow: tap the icon at the left of the web address (or ⋮ → Settings → Site settings) → Notifications → Allow, then reload.")}
           </p>
         )}
         {push.state === "on" && (

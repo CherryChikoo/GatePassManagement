@@ -26,6 +26,12 @@ export function IphoneAlertsHint() {
     const id = setTimeout(() => setShow(true), 1500);
     return () => clearTimeout(id);
   }, []);
+  // Leaves by itself after a few seconds (shown again on a later visit until closed)
+  useEffect(() => {
+    if (!show) return;
+    const id = setTimeout(() => setShow(false), 8_000);
+    return () => clearTimeout(id);
+  }, [show]);
   const close = () => {
     setShow(false);
     try {
@@ -34,7 +40,7 @@ export function IphoneAlertsHint() {
   };
   if (!show) return null;
   return createPortal(
-    <div className="fixed inset-x-3 bottom-24 z-[90] mx-auto max-w-md animate-in fade-in-0 slide-in-from-bottom-4 duration-300" role="dialog" aria-label={t("Turn on alerts")}>
+    <div className="fixed inset-x-3 top-3 z-[90] mx-auto max-w-md animate-in fade-in-0 slide-in-from-top-4 duration-300" role="dialog" aria-label={t("Turn on alerts")} data-keep>
       <div className="flex items-start gap-3 rounded-3xl border border-orange-500/15 bg-white p-4 shadow-[0_24px_50px_-20px_rgba(16,24,40,0.45)]">
         <span className="icon-tile flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl">
           <BellRing className="h-5 w-5" aria-hidden="true" />

@@ -1826,6 +1826,7 @@ export const te: Record<string, string> = {
   "Turn on alerts": "అలర్ట్‌లు ఆన్ చేయండి",
   "Send a test notification": "టెస్ట్ నోటిఫికేషన్ పంపండి",
   "The previous entry was not saved": "ముందటి ఎంట్రీ సేవ్ కాలేదు",
+  "Blocked once, so the browser won't ask again. To allow: tap the icon at the left of the web address (or ⋮ → Settings → Site settings) → Notifications → Allow, then reload.": "ఒకసారి నిరోధించారు, కాబట్టి బ్రౌజర్ మళ్లీ అడగదు. అనుమతించడానికి: వెబ్ అడ్రస్ ఎడమ వైపు ఉన్న ఐకాన్ నొక్కండి (లేదా ⋮ → Settings → Site settings) → Notifications → Allow, తర్వాత రీలోడ్ చేయండి.",
   "Coolie {no} ({name}) is already inside on another entry. Mark that entry Out first.": "కూలీ {no} ({name}) ఇప్పటికే మరో ఎంట్రీలో లోపల ఉన్నారు. ముందు ఆ ఎంట్రీని Out చేయండి.",
   "{name} is already inside on another entry. Mark that entry Out first.": "{name} ఇప్పటికే మరో ఎంట్రీలో లోపల ఉన్నారు. ముందు ఆ ఎంట్రీని Out చేయండి.",
   "No gate is set up. Ask the admin to add a gate.": "గేట్ సెట్ చేయలేదు. అడ్మిన్‌ను గేట్ జోడించమని అడగండి.",
