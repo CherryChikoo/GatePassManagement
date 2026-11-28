@@ -19,6 +19,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
 import { LIVE_CHANNEL, LIVE_EVENT, personalTopic } from "./topics";
+import { timeoutSignal } from "@/lib/timeout-signal";
 
 type Listener = (topics: string[]) => void;
 
@@ -54,7 +55,7 @@ let sessionRequest: Promise<Session | null> | null = null;
 /** Access token + user id from the server (the browser never refreshes tokens itself). */
 function getSession(): Promise<Session | null> {
   if (session && session.expiresAt - Date.now() > 2 * 60_000) return Promise.resolve(session);
-  sessionRequest ??= fetch("/api/realtime/token", { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(10_000) })
+  sessionRequest ??= fetch("/api/realtime/token", { credentials: "include", cache: "no-store", signal: timeoutSignal(10_000) })
     .then(async (res): Promise<Session | null> => {
       if (!res.ok) {
         // 401 is often a login renewed a moment ago: retried like any other failure (with the slow backoff)

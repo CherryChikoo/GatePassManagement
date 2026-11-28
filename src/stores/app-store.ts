@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { goToSignIn, resetActivity } from "@/lib/signed-out";
+import { timeoutSignal } from "@/lib/timeout-signal";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ async function fetchPreload(light = false): Promise<StoreData> {
       credentials: "include",
       cache: "no-store",
       // Never waits forever (e.g. after the portal sat idle): the screen offers Retry
-      signal: AbortSignal.timeout(20_000),
+      signal: timeoutSignal(20_000),
     });
   } catch (err: any) {
     throw new Error(
@@ -414,7 +415,7 @@ export async function logoutAndClear(logout: () => Promise<unknown>) {
   // a session refresh. The server action `logout` is only the fallback.
   let ok = false;
   try {
-    const res = await fetch("/api/auth/logout", { method: "POST", credentials: "include", signal: AbortSignal.timeout(10_000) });
+    const res = await fetch("/api/auth/logout", { method: "POST", credentials: "include", signal: timeoutSignal(10_000) });
     ok = res.ok;
   } catch {}
   if (!ok) await logout(); // throws on failure → caller re-enables the button

@@ -14,6 +14,7 @@
 import { istDateString } from "@/lib/time/ist";
 import { liveSince, onGatePing } from "@/lib/realtime/live";
 import { goToSignIn } from "@/lib/signed-out";
+import { timeoutSignal } from "@/lib/timeout-signal";
 
 export type EntryListParams = { register: string; date: string; q: string; page: number; shift: string };
 export type EntryListData = { entries: any[]; total: number; pageSize: number; canOverrideVisit?: boolean };
@@ -69,7 +70,7 @@ export function fetchEntryList(p: EntryListParams, useCache = false): Promise<En
   const qs = new URLSearchParams({ register: p.register, date: p.date, q: p.q, page: String(p.page), shift: p.shift });
   const startedAt = Date.now();
   // Really cancelled after the time limit, so "Try again" sends a new request
-  const get = () => fetch(`/api/registers/entries?${qs}`, { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  const get = () => fetch(`/api/registers/entries?${qs}`, { credentials: "include", cache: "no-store", signal: timeoutSignal(REQUEST_TIMEOUT_MS) });
   // Signed out on the server: once more (a login renewed a moment ago), then the sign-in page
   const req = get()
     .then(async (res) => {

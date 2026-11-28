@@ -73,6 +73,10 @@ export function registerMessage(t: Translate, msg: string | null | undefined): s
     const pattern = text.replace(/\d+/, "{n}");
     return t(pattern) !== pattern ? t(pattern, { n: nums[0] }) : text;
   };
+  const coolieIn = /^Coolie (\S+) \((.*)\) is already inside on another entry\. Mark that entry Out first\.$/.exec(msg);
+  if (coolieIn) return t("Coolie {no} ({name}) is already inside on another entry. Mark that entry Out first.", { no: coolieIn[1], name: coolieIn[2] });
+  const personIn = /^(.+) is already inside on another entry\. Mark that entry Out first\.$/.exec(msg);
+  if (personIn) return t("{name} is already inside on another entry. Mark that entry Out first.", { name: personIn[1] });
   const required = /^(.+) is required$/.exec(msg);
   if (required) return t("{field} is required", { field: t(required[1]) });
   const split = /^(.+?): (.+)$/.exec(msg);

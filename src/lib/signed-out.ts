@@ -1,3 +1,4 @@
+import { timeoutSignal } from "@/lib/timeout-signal";
 /**
  * Signing a device out with a clear message and a 5-second countdown, then
  * the sign-in page — instead of screens that quietly stop loading.
@@ -15,7 +16,7 @@ let open = false;
 
 /** Clears this device's login cookies (this device only), then the sign-in page */
 export function signOutNow(reason: SignOutReason) {
-  fetch("/api/auth/logout", { method: "POST", credentials: "include", signal: AbortSignal.timeout(5_000) })
+  fetch("/api/auth/logout", { method: "POST", credentials: "include", signal: timeoutSignal(5_000) })
     .catch(() => {})
     .finally(() => window.location.replace(`/login?${reason}=1`));
 }
@@ -32,6 +33,22 @@ export function staySignedIn() {
  */
 export function goToSignIn(reason: SignOutReason = "ended") {
   if (typeof window === "undefined" || open || window.location.pathname === "/login") return;
+  // Security stays signed in: reload once and let the server renew the login; only a second
+  // refusal within a minute (really not allowed any more) goes to the sign-in page
+  if (reason === "ended" && document.documentElement.dataset.role === "SECURITY") {
+    let last = 0;
+    try {
+      last = Number(sessionStorage.getItem("gatepass:security-reload") || 0);
+    } catch {}
+    if (Date.now() - last > 60_000) {
+      try {
+        sessionStorage.setItem("gatepass:security-reload", String(Date.now()));
+      } catch {}
+      open = true;
+      window.location.reload();
+      return;
+    }
+  }
   open = true;
   if (reason === "ended") {
     signOutNow(reason);

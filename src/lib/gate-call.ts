@@ -15,6 +15,7 @@ import type { GateFunctions } from "@/app/api/gate/route";
 import type { ListFunctions } from "@/app/api/lists/route";
 import { encodeGateArgs } from "@/lib/gate-wire";
 import { goToSignIn } from "@/lib/signed-out";
+import { timeoutSignal } from "@/lib/timeout-signal";
 
 type Fn = keyof GateFunctions;
 type Result<K extends Fn> = Awaited<ReturnType<GateFunctions[K]>>;
@@ -28,7 +29,7 @@ async function post(url: string, fn: string, args: readonly unknown[], timeoutMs
       headers: { "Content-Type": "application/json" },
       // Optional arguments left out stay "left out" on the server (see gate-wire.ts)
       body: JSON.stringify({ fn, args: encodeGateArgs(args) }),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: timeoutSignal(timeoutMs),
     });
   } catch (err: any) {
     if (err?.name === "TimeoutError" || err?.name === "AbortError") {
@@ -36,7 +37,20 @@ async function post(url: string, fn: string, args: readonly unknown[], timeoutMs
     }
     throw new Error("No internet connection. Check the network and try again.");
   }
-  const data = await res.json().catch(() => null);
+  // Read the whole answer: a body cut off mid-way, or a Wi-Fi login page answering 200,
+  // must never count as "saved" (a real JSON null still reads as null)
+  let data: unknown;
+  try {
+    const text = await res.text();
+    data = text ? JSON.parse(text) : null;
+    if (!text && res.ok) throw new Error("empty");
+  } catch (err: any) {
+    if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+      throw Object.assign(new Error("Taking too long. Check the connection and try again."), { name: "TimeoutError" });
+    }
+    if (res.status === 401) data = null;
+    else throw new Error("Something went wrong. Please try again.");
+  }
   if (res.status === 401) {
     // Often a login renewed by another request a moment ago: once more, then the sign-in page
     if (again) {
@@ -56,7 +70,7 @@ async function post(url: string, fn: string, args: readonly unknown[], timeoutMs
  * form's one-time token (the server stores such a save once, however often it
  * arrives). Photo uploads too (a second copy is only an unused file).
  */
-const RETRY_SAFE = /^(get|list|search|count|lookup|fetch)[A-Z]|^(createRegisterEntry|completeRegisterEntry|updateRegisterField|uploadRegisterPhoto|uploadOutsiderPhoto)$/;
+const RETRY_SAFE = /^(get|list|search|count|lookup|fetch)[A-Z]|^(createRegisterEntry|completeRegisterEntry|updateRegisterField|uploadRegisterPhoto|uploadOutsiderPhoto|verifyQrScan)$/;
 
 /** A slow or dropped connection, or the server busy for a moment (not a real "no") */
 function isPassing(err: unknown): boolean {

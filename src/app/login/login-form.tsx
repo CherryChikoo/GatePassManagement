@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { broadcastSessionEvent, hardNavigate, prefetchPreload } from "@/stores/app-store";
 import { SigningInOverlay, type SigningInStep } from "@/components/ui/signing-in-overlay";
 import { resetActivity } from "@/lib/signed-out";
+import { timeoutSignal } from "@/lib/timeout-signal";
 
 /** Signed in but the dashboard has not opened after this long: open it as a full page */
 const SIGNED_IN_FALLBACK_MS = 5_000;
@@ -30,7 +31,7 @@ async function requestSignIn(email: string, password: string): Promise<SignInRes
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
         cache: "no-store",
-        signal: AbortSignal.timeout(25_000),
+        signal: timeoutSignal(25_000),
       });
     } catch (err: any) {
       // Timed out: trying again would only double the wait

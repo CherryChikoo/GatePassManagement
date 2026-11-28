@@ -150,6 +150,9 @@ export function useGateData<T>(key: string | null, fetcher: () => Promise<T>, to
   const run = useCallback(
     (force: boolean) => {
       if (!key || (!force && isFresh(key))) return Promise.resolve();
+      // Forced (after a save here): a request already running started before the save,
+      // so it is marked old and loads once more when it ends
+      if (force) changedAt.set(key, Date.now() - 1);
       setPending(true);
       return loadGateData(key, fetcher, topicsKey ? topicsKey.split("|") : [])
         .then((res: any) => setError(res && typeof res === "object" && res.error ? String(res.error) : null))

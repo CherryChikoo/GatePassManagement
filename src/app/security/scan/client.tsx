@@ -144,7 +144,7 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } },
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 640 }, height: { ideal: 480 } },
       });
       if (!isCameraIntendedRef.current) {
         stream.getTracks().forEach((t) => t.stop());
@@ -159,8 +159,9 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
     } catch (err) {
       console.error("Camera error:", err);
       stopCamera();
+      // The pass stays verified: allow the camera and tap Take photo again (no re-scan)
       setError("Camera access required for photo. Please allow camera access.");
-      setState("error");
+      setState("verified");
     }
   };
 
@@ -196,7 +197,11 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
 
   // Register movement (EXIT or ENTRY)
   async function handleRegister() {
-    if (!verifyResult || !selectedGate) return;
+    if (!verifyResult) return;
+    if (!selectedGate) {
+      setError("No gate is set up. Ask the admin to add a gate.");
+      return;
+    }
     const action = verifyResult.allowedAction as "EXIT" | "ENTRY";
     
     // Photo is required for students only; faculty passes are verified and marked
@@ -240,11 +245,7 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
       // Timed out: it may have been saved just before the cut-off, so stay on
       // the pass. Registering again is safe (the server refuses a duplicate),
       // and scanning again shows what is now allowed.
-      setError(
-        err?.name === "TimeoutError"
-          ? "Taking too long. It may already be saved — scan the pass again to check."
-          : err?.message || "Could not register the movement. Check the network connection and try again."
-      );
+      setError("Taking too long. It may already be saved — scan the pass again to check.");
       // Stay on the pass either way: registering again is safe (a duplicate is refused)
       setState("verified");
     }
@@ -274,8 +275,15 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
   useEffect(() => {
     scanNextRef.current = scanNext;
   });
+  const stateRef = useRef(state);
   useEffect(() => {
-    const open = () => scanNextRef.current();
+    stateRef.current = state;
+  });
+  useEffect(() => {
+    // Not while a registration is being saved (its answer would be lost)
+    const open = () => {
+      if (stateRef.current !== "registering") scanNextRef.current();
+    };
     window.addEventListener("gatepass:open-scanner", open);
     return () => window.removeEventListener("gatepass:open-scanner", open);
   }, []);
@@ -360,7 +368,7 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
             </div>
             <div className="space-y-5 p-5 text-center sm:p-6">
               <p className="break-words text-xl font-bold leading-snug text-red-700">{error && tError(error)}</p>
-              <Button onClick={resetScan} size="lg" className="h-14 w-full text-lg">
+              <Button onClick={scanNext} size="lg" className="h-14 w-full text-lg">
                 <RotateCcw className="h-5 w-5" />
                 {t("Try Again")}
               </Button>
@@ -664,7 +672,7 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
 <button
                 type="button"
                 onClick={resetScan}
-                className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-red-500 bg-red-50 text-lg font-bold text-red-600 transition-[background-color,transform] hover:bg-red-100 active:scale-[0.98]"
+                className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-red-500 bg-red-50 text-lg font-bold text-red-600 transition-[background-color,transform] hover:bg-red-100 active:scale-[0.98] disabled:opacity-40"
               >
                 <X className="h-5 w-5" /> {t("Cancel")}
               </button>
@@ -738,13 +746,7 @@ export function ScanClient({ user, gates, autoStart = false }: Props) {
             <CardContent className="p-8 text-center space-y-3">
               <Loader2 className="mx-auto h-10 w-10 animate-spin text-orange-400" />
               <p className="text-base font-medium text-zinc-200">{t("Registering…")}</p>
-<button
-                type="button"
-                onClick={resetScan}
-                className="mx-auto flex h-12 items-center justify-center gap-2 rounded-2xl border-2 border-red-500 bg-red-50 px-6 text-base font-bold text-red-600 hover:bg-red-100"
-              >
-                <X className="h-5 w-5" /> {t("Cancel")}
-              </button>
+              {/* No Cancel while saving: the movement may already be saved, and its answer would be lost */}
             </CardContent>
           </Card>
         )}

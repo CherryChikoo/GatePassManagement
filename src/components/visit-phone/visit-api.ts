@@ -6,6 +6,7 @@
  * it. Nothing is asked after sending.
  */
 import type { CheckInRegister } from "@/components/visit-phone/visit-store";
+import { timeoutSignal } from "@/lib/timeout-signal";
 
 /** A faculty / staff member the visitor can choose in "Who are you meeting?" */
 export type VisitHost = { id: string; name: string; title: string; department: string | null };
@@ -41,7 +42,7 @@ export const NETWORK = "network";
 async function call<T extends { ok: boolean }>(url: string, init?: RequestInit, timeoutMs = 15_000): Promise<T | VisitFailure> {
   let res: Response;
   try {
-    res = await fetch(url, { cache: "no-store", ...init, signal: AbortSignal.timeout(timeoutMs) });
+    res = await fetch(url, { cache: "no-store", ...init, signal: timeoutSignal(timeoutMs) });
   } catch {
     return { ok: false, error: NETWORK, status: 0 };
   }

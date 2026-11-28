@@ -77,10 +77,17 @@ export function QuickEntryModal({
     }
     setSaving((n) => n - 1);
     if (res?.error) {
-      setError(res.error);
-      restoreRegisterDraft(def.key, kept);
-      if (res.keepToken) setToken(tok); // a retry of the same entry is stored once
-      setFormKey((k) => k + 1); // the form shows what was typed again
+      // Someone is already typing the next entry: keep theirs (the failed one is reported above)
+      const typedSince = takeRegisterDraft(def.key);
+      if (typedSince) {
+        restoreRegisterDraft(def.key, typedSince);
+        setError(`${t("The previous entry was not saved")}: ${res.error}`);
+      } else {
+        setError(res.error);
+        restoreRegisterDraft(def.key, kept);
+        if (res.keepToken) setToken(tok); // a retry of the same entry is stored once
+        setFormKey((k) => k + 1); // the form shows what was typed again
+      }
     } else {
       setSavedCount((n) => n + 1);
       // Opening this register next shows the new record (not a cached list)

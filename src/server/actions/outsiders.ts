@@ -128,10 +128,16 @@ export async function registerOutsider(data: Record<string, unknown>) {
       return created;
     });
 
-    await afterOutsiderChange();
-    if (host) {
-      void notifyHost(host.id);
-      notifyVisitorForHost(host.id, input.name ?? "", outsider.id);
+    // Saved: a problem refreshing lists or telling the host must not report "failed"
+    // (the guard would register the same visitor again)
+    try {
+      await afterOutsiderChange();
+      if (host) {
+        void notifyHost(host.id);
+        notifyVisitorForHost(host.id, input.name ?? "", outsider.id);
+      }
+    } catch (err: any) {
+      console.error("[visitor] saved, but refresh / notify failed:", err?.message);
     }
     return { success: true, outsiderId: outsider.id };
   } catch (error: any) {

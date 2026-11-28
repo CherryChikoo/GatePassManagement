@@ -43,7 +43,8 @@ self.addEventListener("notificationclick", (event) => {
       for (const w of windows) {
         if (new URL(w.url).origin === self.location.origin && "focus" in w) {
           await w.focus();
-          if ("navigate" in w) await w.navigate(url).catch(() => {});
+          // The open portal moves there itself (no reload: a form or scan in progress is kept)
+          w.postMessage({ type: "gatepass:open", link });
           return;
         }
       }

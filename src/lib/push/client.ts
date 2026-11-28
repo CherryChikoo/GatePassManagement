@@ -84,10 +84,19 @@ export function autoAskOnFirstTap() {
   if (autoAskArmed || !pushSupported() || Notification.permission !== "default" || turnedOff()) return;
   if (isIOS() && !isInstalled()) return;
   autoAskArmed = true;
-  const ask = () => {
+  const ask = (e: Event) => {
+    // The scanner asks for the camera: not both questions at once (next tap instead)
+    const target = e.target as Element | null;
+    if (window.location.pathname.startsWith("/security/scan") || target?.closest?.('a[href^="/security/scan"]')) return;
     document.removeEventListener("click", ask, true);
     // Inside the tap: the browser allows the question here
-    void Notification.requestPermission()
+    let asking: Promise<NotificationPermission>;
+    try {
+      asking = Promise.resolve(Notification.requestPermission());
+    } catch {
+      return;
+    }
+    void asking
       .then(async (permission) => {
         if (permission !== "granted") return;
         const reg = await registerWorker();

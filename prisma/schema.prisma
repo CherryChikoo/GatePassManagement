@@ -437,6 +437,7 @@ model RegisterEntry {
   visitRequest         VisitRequest?
 
   @@index([register, kind, entryDate(sort: Desc)])
+  @@index([kind, entryDate])
   @@index([parentId])
   @@index([recordedById, createdAt(sort: Desc)])
   @@map("register_entries")

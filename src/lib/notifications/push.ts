@@ -47,7 +47,8 @@ export async function deliverPush(notes: PushNote[]) {
       level: n.level,
       kind: n.kind,
       // Same kind replaces the older one on the phone (no pile of 10 "New pass request")
-      tag: `${n.kind}:${n.dedupeKey}`,
+      // A visitor's later reminders replace the earlier one (no pile on the tablet)
+      tag: `${n.kind}:${n.dedupeKey.replace(/^(overstay:[^:]+):\d+$/, "$1")}`,
     });
     for (const s of byProfile.get(n.profileId) ?? []) {
       jobs.push(

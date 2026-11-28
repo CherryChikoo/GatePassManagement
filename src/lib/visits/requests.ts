@@ -394,7 +394,9 @@ async function cleanVisitorsForm(raw: unknown, hostId: string | null): Promise<C
 
   if (comingFor) {
     const detail = typeof input.detail === "string" ? input.detail : "";
-    const host = hostProfileId || (typeof input.hostProfileId === "string" ? input.hostProfileId : "");
+    // Only the checked host (the one the pass is made for): a host id hidden in the form data alone
+    // would pass this check but leave the visitor without a meeting code
+    const host = hostProfileId || "";
     const student = typeof input.visitingStudent === "string" && input.visitingStudent.trim() ? input.visitingStudent : detail;
     const lacking = missingComingForDetail(comingFor, { detail, hostProfileId: host, student });
     if (lacking) return { error: lacking };

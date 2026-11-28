@@ -72,7 +72,7 @@ async function visitorOverstay(cfg: NotificationTimers, now: Date): Promise<Note
         profileId: g.id,
         userId: g.userId,
         kind: "visitor",
-        level: "URGENT",
+        level: "IMPORTANT",
         title: "Visitor still inside",
         body,
         link: "/security/visitors",

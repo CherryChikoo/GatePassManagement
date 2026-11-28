@@ -7,6 +7,7 @@ function activeGates() {
   return prisma.gate.findMany({
     where: { active: true },
     select: { id: true, name: true, location: true },
+    orderBy: { name: "asc" },
   });
 }
 

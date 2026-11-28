@@ -56,6 +56,16 @@ export function NotificationBell({ showTest = true }: { showTest?: boolean } = {
     // Alerts on by default: the first tap asks the browser once
     autoAskOnFirstTap();
   }, []);
+  // A device notification tapped while the portal is open: go to its screen in place
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    const onMessage = (e: MessageEvent) => {
+      const d = e.data as { type?: string; link?: string } | null;
+      if (d?.type === "gatepass:open" && typeof d.link === "string" && d.link.startsWith("/")) router.push(d.link);
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [router]);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {

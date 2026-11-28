@@ -47,6 +47,7 @@ import {
   HardHat,
   Warehouse,
 } from "lucide-react";
+import { securityTabFor } from "@/lib/security-tab";
 
 /** Used when a layout doesn't pass the person's own title */
 const ROLE_FALLBACK: Record<string, string> = {
@@ -168,6 +169,10 @@ export function DashboardLayout({
   // The sidebar animates only after the page has settled: on opening, the saved open / closed
   // state is applied a moment after the first paint and must not show as an animation
   const [motionReady, setMotionReady] = useState(false);
+  // Who is signed in, for code outside React (Security is never signed out by a stray 401)
+  useEffect(() => {
+    document.documentElement.dataset.role = role;
+  }, [role]);
   useEffect(() => {
     const id = requestAnimationFrame(() => requestAnimationFrame(() => setMotionReady(true)));
     return () => cancelAnimationFrame(id);
@@ -248,7 +253,10 @@ export function DashboardLayout({
   // from the browser's (e.g. after a redirect), and a different highlight in the
   // first paint is a hydration error. The first paint has none; it follows at once.
   const inBrowser = useSyncExternalStore(subscribeNothing, () => true, () => false);
+  // Security: every page lights its bottom tab (a book opened from Passes keeps Passes lit)
+  const securityTab = role === "SECURITY" && inBrowser ? securityTabFor(pathname) : null;
   const isActivePath = (href: string) =>
+    role === "SECURITY" && href.startsWith("/security") && href !== "/security/scan" ? securityTab === href :
     inBrowser &&
     (ROOT_PATHS.includes(href)
       ? pathname === href

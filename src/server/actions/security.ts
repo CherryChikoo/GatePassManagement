@@ -411,7 +411,7 @@ export async function prepareGatePhoto(permissionId: string, imageData: string) 
     where: { id: permissionId },
     select: { status: true, studentId: true, facultyId: true },
   });
-  if (!pass || pass.status !== "APPROVED") return { error: "This pass can no longer be used" };
+  if (!pass || (pass.status !== "APPROVED" && pass.status !== "EXITED")) return { error: "This pass can no longer be used" };
   return storeGatePhoto(imageData, permissionId, pass.studentId || pass.facultyId || "unknown");
 }
 
@@ -529,15 +529,20 @@ export async function registerExit(
     return { error: err.message || "Failed to register exit" };
   }
 
-  clearSecurityCaches();
-  notifyLive("gate");
-  notifyPassHolder(permissionId);
-  revalidatePath("/security");
-  revalidatePath("/security/log");
-  revalidatePath("/student");
-  revalidatePath("/admin");
-  revalidatePath("/faculty");
-  revalidatePath("/warden");
+  // Saved: a problem refreshing pages or notifying must not tell the guard it failed
+  try {
+    clearSecurityCaches();
+    notifyLive("gate");
+    notifyPassHolder(permissionId);
+    revalidatePath("/security");
+    revalidatePath("/security/log");
+    revalidatePath("/student");
+    revalidatePath("/admin");
+    revalidatePath("/faculty");
+    revalidatePath("/warden");
+  } catch (err: any) {
+    console.error("[gate] saved, but refresh / notify failed:", err?.message);
+  }
   return { success: true };
 }
 
@@ -656,15 +661,20 @@ export async function registerEntry(
     return { error: err.message || "Failed to register entry" };
   }
 
-  clearSecurityCaches();
-  notifyLive("gate");
-  notifyPassHolder(permissionId);
-  revalidatePath("/security");
-  revalidatePath("/security/log");
-  revalidatePath("/student");
-  revalidatePath("/admin");
-  revalidatePath("/faculty");
-  revalidatePath("/warden");
+  // Saved: a problem refreshing pages or notifying must not tell the guard it failed
+  try {
+    clearSecurityCaches();
+    notifyLive("gate");
+    notifyPassHolder(permissionId);
+    revalidatePath("/security");
+    revalidatePath("/security/log");
+    revalidatePath("/student");
+    revalidatePath("/admin");
+    revalidatePath("/faculty");
+    revalidatePath("/warden");
+  } catch (err: any) {
+    console.error("[gate] saved, but refresh / notify failed:", err?.message);
+  }
   return { success: true };
 }
 

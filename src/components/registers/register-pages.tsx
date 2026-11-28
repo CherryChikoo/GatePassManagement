@@ -61,6 +61,7 @@ import { prefetchMyDuties } from "./my-shift";
 import { localizeRegister } from "./localize";
 import { FacultyBookView,
   StudentBookView, HomeOutingSummaryView, HostelOutingView, VisitorsBookView } from "./derived-views";
+import { rememberSecurityTab } from "@/lib/security-tab";
 
 export type RegisterViewer = "SECURITY" | "ADMIN" | "SECURITY_SUPERVISOR" | "ESTATE_MANAGER";
 
@@ -203,6 +204,10 @@ export function RegistersHub({
   // Guards: their shift details are ready before they tap the button (no request while the kept copy is fresh)
   useEffect(() => {
     if (isSecurity) prefetchMyDuties();
+  }, [isSecurity]);
+  // Security: this tab is where Go Back returns from a book
+  useEffect(() => {
+    if (isSecurity) rememberSecurityTab(window.location.pathname);
   }, [isSecurity]);
 
   const [query, setQuery] = useState("");

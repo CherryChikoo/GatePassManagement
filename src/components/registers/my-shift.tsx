@@ -86,7 +86,7 @@ export function MyShiftView() {
   return (
     <div className={cn("mx-auto w-full space-y-5", coming.length > 0 ? "max-w-[1100px]" : "max-w-[720px]")}>
       <div>
-        <GoBackButton className="mb-3" href="/security/registers" />
+        <GoBackButton className="mb-3" href="/security" />
         <h1 className="text-xl font-bold tracking-tight text-zinc-100 sm:text-2xl">{t("My shift details")}</h1>
       </div>
       <LoadingPill active={loading} />
