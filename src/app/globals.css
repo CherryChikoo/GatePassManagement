@@ -335,6 +335,11 @@ html.security-text .glass:not(.loading-pill) {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 18px -10px rgba(232, 73, 46, 0.55);
 }
 
+/* Display font (the dashboard greeting): Outfit, then Poppins */
+.font-display {
+  font-family: var(--font-outfit), var(--font-poppins), var(--font-telugu), ui-sans-serif, system-ui, sans-serif;
+}
+
 /* Orange-red text (the greeting name): the same gradient as the icon tiles, left to right */
 .text-metal-red {
   background-image: linear-gradient(100deg, #ff7a66 0%, #f4503c 45%, #d6331f 100%);

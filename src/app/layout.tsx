@@ -20,6 +20,14 @@ const poppins = localFont({
   variable: "--font-poppins",
 });
 
+// Outfit: the display font of the dashboard greeting (one small variable file, kept in the app too)
+const outfit = localFont({
+  src: "./fonts/outfit-latin.woff2",
+  weight: "300 700",
+  display: "swap",
+  variable: "--font-outfit",
+});
+
 // Telugu letters for the Security screens (Poppins has none). Not preloaded, and
 // limited to Telugu letters: the browser only fetches it when Telugu text is on
 // screen, so other pages pay nothing.
@@ -60,7 +68,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${poppins.variable} ${telugu.variable}`} data-scroll-behavior="smooth">
+    <html lang="en" className={`${poppins.variable} ${outfit.variable} ${telugu.variable}`} data-scroll-behavior="smooth">
       <body className="font-sans min-h-[100dvh] bg-zinc-950 text-zinc-100 antialiased">
         <NextTopLoader color="#f2492f" showSpinner={false} />
         <VersionWatcher />

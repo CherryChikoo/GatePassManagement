@@ -38,16 +38,17 @@ export function GreetingHero({
           </span>
           {children && (
             <>
-              <span className="h-1 w-1 shrink-0 rounded-full bg-zinc-600" aria-hidden="true" />
+              <span className="hidden h-1 w-1 shrink-0 rounded-full bg-zinc-600 sm:block" aria-hidden="true" />
               {children}
             </>
           )}
         </div>
-        <h1 className="mt-2.5 truncate text-3xl font-light leading-tight tracking-tight text-zinc-100 sm:text-[40px]">
+        <h1 className="font-display mt-2.5 min-w-0 text-[30px] font-light leading-[1.15] tracking-tight text-zinc-100 sm:text-[42px]">
           {greeting}
           {name ? (
             <>
-              , <span className="text-metal-red font-semibold">{name}</span>
+              ,{" "}
+              <span className="text-metal-red block break-words font-semibold sm:inline">{name}</span>
             </>
           ) : null}
         </h1>
