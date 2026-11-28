@@ -33,16 +33,18 @@ export function staySignedIn() {
  */
 export function goToSignIn(reason: SignOutReason = "ended") {
   if (typeof window === "undefined" || open || window.location.pathname === "/login") return;
-  // Security stays signed in: reload once and let the server renew the login; only a second
-  // refusal within a minute (really not allowed any more) goes to the sign-in page
-  if (reason === "ended" && document.documentElement.dataset.role === "SECURITY") {
+  // A refused request (often right after the laptop wakes, while the login is being renewed by
+  // another request) never signs out at once: the page reloads with the newest login and the
+  // server decides — it sends a really ended login to the sign-in page itself. Only a second
+  // refusal within a minute signs out here. (Every role; Security also renews on the server.)
+  if (reason === "ended") {
     let last = 0;
     try {
-      last = Number(sessionStorage.getItem("gatepass:security-reload") || 0);
+      last = Number(sessionStorage.getItem("gatepass:auth-reload") || 0);
     } catch {}
     if (Date.now() - last > 60_000) {
       try {
-        sessionStorage.setItem("gatepass:security-reload", String(Date.now()));
+        sessionStorage.setItem("gatepass:auth-reload", String(Date.now()));
       } catch {}
       open = true;
       window.location.reload();
